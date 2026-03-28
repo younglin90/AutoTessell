@@ -65,6 +65,33 @@ def list_jobs(
     ]
 
 
+@router.delete("/jobs/{job_id}", status_code=204)
+def delete_job(
+    job_id: str,
+    user_id: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Remove a job record (and its S3/local assets) for the requesting user.
+
+    Only terminal jobs (DONE, FAILED, REFUND_FAILED) can be deleted.
+    Returns 204 on success, 404 if not found, 409 if still in progress.
+    """
+    job = db.query(Job).filter(Job.id == job_id, Job.user_id == user_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    terminal = {JobStatus.DONE, JobStatus.FAILED, JobStatus.REFUND_FAILED}
+    if job.status not in terminal:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot delete an active job (status: {job.status.value}). Wait for it to finish.",
+        )
+
+    db.delete(job)
+    db.commit()
+
+
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse)
 def get_job_status(
     job_id: str,

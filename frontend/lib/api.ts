@@ -87,6 +87,17 @@ export interface JobListItem {
   created_at: string;
 }
 
+export async function deleteJob(jobId: string, userId: string): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/jobs/${jobId}?user_id=${encodeURIComponent(userId)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail ?? "Delete failed");
+  }
+}
+
 export async function listJobs(userId: string): Promise<JobListItem[]> {
   const res = await fetch(
     `${API_BASE}/jobs?user_id=${encodeURIComponent(userId)}`

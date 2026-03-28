@@ -322,6 +322,35 @@ def _make_done_job(*, user_id="u1") -> str:
     return job_id
 
 
+class TestDeleteJob:
+    def test_delete_done_job_204(self, client):
+        job_id = _make_done_job()
+        r = client.delete(f"/api/v1/jobs/{job_id}", params={"user_id": "u1"})
+        assert r.status_code == 204
+
+    def test_deleted_job_not_found_after(self, client):
+        job_id = _make_done_job()
+        client.delete(f"/api/v1/jobs/{job_id}", params={"user_id": "u1"})
+        r = client.get(f"/api/v1/jobs/{job_id}", params={"user_id": "u1"})
+        assert r.status_code == 404
+
+    def test_wrong_user_cannot_delete(self, client):
+        job_id = _make_done_job(user_id="alice")
+        r = client.delete(f"/api/v1/jobs/{job_id}", params={"user_id": "bob"})
+        assert r.status_code == 404
+
+    def test_active_job_cannot_be_deleted(self, client):
+        job_id = _upload(client, user_id="u1").json()["job_id"]
+        # PAID status
+        r = client.delete(f"/api/v1/jobs/{job_id}", params={"user_id": "u1"})
+        assert r.status_code == 409
+
+    def test_nonexistent_job_404(self, client):
+        r = client.delete("/api/v1/jobs/00000000-0000-0000-0000-000000000000",
+                          params={"user_id": "u1"})
+        assert r.status_code == 404
+
+
 class TestDownload:
     def test_done_job_returns_200(self, client):
         job_id = _make_done_job()

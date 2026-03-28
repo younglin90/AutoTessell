@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { listJobs, type JobListItem } from "@/lib/api";
+import { listJobs, deleteJob, type JobListItem } from "@/lib/api";
 import { loadJobs } from "@/lib/jobs";
 
 const STATUS_COLOR: Record<string, string> = {
@@ -37,6 +37,22 @@ function getUserId(): string {
 export default function JobsPage() {
   const [jobs, setJobs] = useState<JobListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  const handleDelete = async (e: React.MouseEvent, jobId: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDeleting(jobId);
+    try {
+      const userId = getUserId();
+      await deleteJob(jobId, userId);
+      setJobs((prev) => prev.filter((j) => j.job_id !== jobId));
+    } catch {
+      // Silently ignore — job might already be gone
+    } finally {
+      setDeleting(null);
+    }
+  };
 
   useEffect(() => {
     const userId = getUserId();
@@ -107,7 +123,19 @@ export default function JobsPage() {
                     {job.target_cells.toLocaleString()} cells · {job.mesh_purpose.toUpperCase()} · {job.created_at ? new Date(job.created_at).toLocaleString() : ""}
                   </span>
                 </div>
-                <span className="text-xs text-gray-400 font-mono shrink-0">{job.job_id.slice(0, 8)}…</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs text-gray-400 font-mono">{job.job_id.slice(0, 8)}…</span>
+                  {["DONE", "FAILED", "REFUND_FAILED"].includes(job.status) && (
+                    <button
+                      onClick={(e) => handleDelete(e, job.job_id)}
+                      disabled={deleting === job.job_id}
+                      className="text-gray-300 hover:text-red-400 transition-colors text-xs px-1"
+                      title="Delete job"
+                    >
+                      {deleting === job.job_id ? "…" : "✕"}
+                    </button>
+                  )}
+                </div>
               </Link>
             ))}
           </div>
