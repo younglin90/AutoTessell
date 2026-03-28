@@ -37,6 +37,7 @@ from mesh.stl_utils import (
     _binary_bbox,
     _is_ascii_stl,
     analyze_stl_complexity,
+    get_bbox,
     reconstruct_surface_poisson,
     remesh_surface_uniform,
     repair_stl_to_path,
@@ -229,6 +230,57 @@ class TestBinaryBbox:
         # With zero triangles the loop doesn't execute; values stay inf/-inf
         import math
         assert math.isinf(bbox.min_x)
+
+
+# ---------------------------------------------------------------------------
+# get_bbox — public API (trimesh fallback path)
+# ---------------------------------------------------------------------------
+
+class TestGetBboxPurePython:
+    """get_bbox() without trimesh — exercises the pure-Python parsers."""
+
+    def test_ascii_stl_returns_correct_bbox(self, tmp_path: Path):
+        stl = tmp_path / "shape.stl"
+        stl.write_bytes(_ascii_stl_text().encode())
+        with patch.dict(sys.modules, {"trimesh": None}):
+            bbox = get_bbox(stl)
+        assert bbox.min_x == pytest.approx(0.0)
+        assert bbox.max_x == pytest.approx(4.0)
+
+    def test_binary_stl_returns_correct_bbox(self, tmp_path: Path):
+        stl = tmp_path / "shape.stl"
+        stl.write_bytes(_simple_triangle_stl())
+        with patch.dict(sys.modules, {"trimesh": None}):
+            bbox = get_bbox(stl)
+        assert bbox.max_x == pytest.approx(5.0)
+        assert bbox.max_y == pytest.approx(3.0)
+        assert bbox.max_z == pytest.approx(2.0)
+
+    def test_binary_stl_with_solid_header_falls_through_to_binary_parser(self, tmp_path: Path):
+        """Many CAD tools write binary STLs whose 80-byte header starts with
+        'solid <name>'.  _is_ascii_stl() returns True, but _ascii_bbox raises
+        ValueError (no vertex tokens).  get_bbox() must fall through to
+        _binary_bbox() and still return correct bounds."""
+        # Build a binary STL whose header starts with "solid mypart"
+        solid_header = b"solid mypart" + b"\x00" * (80 - len(b"solid mypart"))
+        tris = [((0, 0, 0), (7, 0, 0), (0, 4, 3))]
+        count = struct.pack("<I", len(tris))
+        body = b""
+        for v0, v1, v2 in tris:
+            body += struct.pack("<3f", 0.0, 0.0, 1.0)
+            for vx, vy, vz in (v0, v1, v2):
+                body += struct.pack("<3f", vx, vy, vz)
+            body += b"\x00\x00"
+        content = solid_header + count + body
+        stl = tmp_path / "binary_solid_header.stl"
+        stl.write_bytes(content)
+
+        with patch.dict(sys.modules, {"trimesh": None}):
+            bbox = get_bbox(stl)
+
+        assert bbox.max_x == pytest.approx(7.0)
+        assert bbox.max_y == pytest.approx(4.0)
+        assert bbox.max_z == pytest.approx(3.0)
 
 
 # ---------------------------------------------------------------------------

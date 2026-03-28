@@ -101,6 +101,9 @@ class MeshParams:
             d["snappy_refine_min"] = clamp(d["snappy_refine_min"], 0, 5)
         if d["snappy_refine_max"] is not None:
             d["snappy_refine_max"] = clamp(d["snappy_refine_max"], 0, 6)
+        # Invariant: if both are explicitly set, max must be >= min
+        if d["snappy_refine_min"] is not None and d["snappy_refine_max"] is not None:
+            d["snappy_refine_max"] = max(d["snappy_refine_min"], d["snappy_refine_max"])
         if d["snappy_n_layers"] is not None:
             d["snappy_n_layers"] = clamp(d["snappy_n_layers"], 0, 12)
 

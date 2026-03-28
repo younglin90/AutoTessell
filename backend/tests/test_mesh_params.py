@@ -124,19 +124,28 @@ class TestSnappyParamsOverride:
         assert "level ( 2 4 )" in text
 
     def test_pro_refine_max_below_min_is_corrected(self, unit_domain):
-        # If user sets max < min, backend should correct it
+        # validated() raises snappy_refine_max to match snappy_refine_min when max < min
         mp = MeshParams(snappy_refine_min=3, snappy_refine_max=1)
         mp_v = mp.validated()
-        # After validation refine_max is still 1 (not corrected by validated()),
-        # but snappy_hex_mesh_dict applies max(s_min, s_max)
+        assert mp_v.snappy_refine_max >= mp_v.snappy_refine_min
         text = snappy_hex_mesh_dict(unit_domain, params=mp_v)
-        # Level should be at least min=3 for both numbers
         import re
         m = re.search(r"level \( (\d+) (\d+) \)", text)
         assert m is not None
         level_min = int(m.group(1))
         level_max = int(m.group(2))
         assert level_max >= level_min
+
+    def test_validated_snappy_max_raised_to_min_when_inverted(self):
+        """validated() must enforce snappy_refine_max >= snappy_refine_min."""
+        mp = MeshParams(snappy_refine_min=4, snappy_refine_max=2).validated()
+        assert mp.snappy_refine_max == 4  # raised from 2 to match min=4
+
+    def test_validated_snappy_equal_min_max_unchanged(self):
+        """Equal min/max is valid and must be preserved."""
+        mp = MeshParams(snappy_refine_min=3, snappy_refine_max=3).validated()
+        assert mp.snappy_refine_min == 3
+        assert mp.snappy_refine_max == 3
 
     def test_pro_refine_min_set_without_max_keeps_smax_gte_smin(self, unit_domain):
         """snappy_refine_min=5 with no snappy_refine_max must not produce min > max."""

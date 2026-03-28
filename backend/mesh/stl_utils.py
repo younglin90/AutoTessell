@@ -112,7 +112,12 @@ def get_bbox(stl_path: Path) -> BBox:
 
     content = stl_path.read_bytes()
     if _is_ascii_stl(content):
-        return _ascii_bbox(content)
+        try:
+            return _ascii_bbox(content)
+        except ValueError:
+            # Binary STL whose 80-byte header starts with "solid " — fall through.
+            # Many CAD exporters produce binary STLs with an ASCII-looking header.
+            pass
     return _binary_bbox(content)
 
 
