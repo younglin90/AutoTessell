@@ -291,6 +291,25 @@ class TestJobList:
         items = client.get("/api/v1/jobs", params={"user_id": "limit_user", "limit": 3}).json()
         assert len(items) == 3
 
+    def test_limit_capped_at_100(self, client):
+        """limit param > 100 must be silently capped — not an error, not unbounded."""
+        import config as _cfg
+        orig = _cfg.settings.max_jobs_per_user
+        _cfg.settings.max_jobs_per_user = 200
+        try:
+            for _ in range(5):
+                _upload(client, user_id="cap_user")
+        finally:
+            _cfg.settings.max_jobs_per_user = orig
+        items = client.get("/api/v1/jobs", params={"user_id": "cap_user", "limit": 999}).json()
+        assert len(items) == 5  # 5 < 100 cap, so all 5 returned (cap doesn't hide results)
+
+    def test_limit_zero_returns_empty(self, client):
+        """limit=0 should return empty list, not all rows."""
+        _upload(client, user_id="zero_limit_user")
+        items = client.get("/api/v1/jobs", params={"user_id": "zero_limit_user", "limit": 0}).json()
+        assert items == []
+
 
 class TestJobs:
     def test_get_own_job_200(self, client):

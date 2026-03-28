@@ -239,6 +239,31 @@ class TestRunMeshDevMode:
 
         assert status_at_gen_call[0] == JobStatus.PROCESSING
 
+    def test_soft_time_limit_calls_refund_with_timeout_message(self):
+        """SoftTimeLimitExceeded must trigger refund with timeout message and re-raise."""
+        from celery.exceptions import SoftTimeLimitExceeded
+        job = _make_job()
+
+        with _dev_mode_patches(_make_db(job), gen_raises=SoftTimeLimitExceeded("limit")) as (_, mock_refund):
+            with pytest.raises(SoftTimeLimitExceeded):
+                run_mesh(_fake_celery_self(), job.id)
+
+        mock_refund.assert_called_once()
+        call_args = mock_refund.call_args[0]
+        assert call_args[0] == job.id
+        assert "timed out" in call_args[1].lower()
+
+    def test_soft_time_limit_refund_called_once_not_twice(self):
+        """SoftTimeLimitExceeded must NOT double-invoke refund (caught separately from Exception)."""
+        from celery.exceptions import SoftTimeLimitExceeded
+        job = _make_job()
+
+        with _dev_mode_patches(_make_db(job), gen_raises=SoftTimeLimitExceeded("limit")) as (_, mock_refund):
+            with pytest.raises(SoftTimeLimitExceeded):
+                run_mesh(_fake_celery_self(), job.id)
+
+        assert mock_refund.call_count == 1
+
 
 # ---------------------------------------------------------------------------
 # TestDownloadS3DevMode

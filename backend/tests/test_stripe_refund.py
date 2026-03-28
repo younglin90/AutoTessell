@@ -119,3 +119,49 @@ class TestTerminalStatusGuard:
 
         assert job.status == JobStatus.FAILED
         mock_stripe.Refund.create.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Error message truncation (added batch 3)
+# ---------------------------------------------------------------------------
+
+class TestErrorMessageTruncation:
+    def test_long_error_truncated_to_1000_chars(self):
+        """error_message must be capped at 1000 chars to avoid DB overflow."""
+        job = _make_job()
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = job
+
+        long_error = "x" * 2000
+
+        with patch("worker.tasks.SessionLocal", return_value=db):
+            with patch("worker.tasks.stripe"):
+                _mark_failed_and_refund("test-job-id", long_error)
+
+        assert job.error_message == "x" * 1000
+
+    def test_short_error_stored_as_is(self):
+        """Short error messages should not be altered."""
+        job = _make_job()
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = job
+
+        with patch("worker.tasks.SessionLocal", return_value=db):
+            with patch("worker.tasks.stripe"):
+                _mark_failed_and_refund("test-job-id", "short error")
+
+        assert job.error_message == "short error"
+
+    def test_exactly_1000_chars_stored_unchanged(self):
+        """Exactly 1000-char error should pass through without truncation."""
+        job = _make_job()
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = job
+
+        exact_error = "e" * 1000
+
+        with patch("worker.tasks.SessionLocal", return_value=db):
+            with patch("worker.tasks.stripe"):
+                _mark_failed_and_refund("test-job-id", exact_error)
+
+        assert job.error_message == exact_error
