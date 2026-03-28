@@ -440,3 +440,34 @@ class TestProdModePath:
             result = await _call(settings=self._prod_settings())
 
         assert result.job_id in captured["key"]
+
+
+# ---------------------------------------------------------------------------
+# Filename path-traversal stripping (upload.py line 106)
+# ---------------------------------------------------------------------------
+
+class TestFilenamePathStripping:
+    """Path(filename).name strips directory components — security guard against
+    filenames like '../../etc/passwd.stl' writing outside dev_storage_path."""
+
+    async def test_path_traversal_filename_written_as_basename(self, tmp_path):
+        """'../../etc/passwd.stl' → file stored as 'passwd.stl' inside dev_storage_path."""
+        settings = _make_settings(dev_mode=True, dev_storage_path=str(tmp_path))
+        result = await _call(
+            file=_make_file(filename="../../etc/passwd.stl"),
+            settings=settings,
+        )
+        stl_dir = tmp_path / "stl" / result.job_id
+        assert (stl_dir / "passwd.stl").exists()
+
+    async def test_nested_path_filename_written_as_basename(self, tmp_path):
+        """'sub/dir/model.stl' → stored as 'model.stl', not under sub/dir/."""
+        settings = _make_settings(dev_mode=True, dev_storage_path=str(tmp_path))
+        result = await _call(
+            file=_make_file(filename="sub/dir/model.stl"),
+            settings=settings,
+        )
+        stl_dir = tmp_path / "stl" / result.job_id
+        assert (stl_dir / "model.stl").exists()
+        # The sub/dir/ path must NOT have been created
+        assert not (stl_dir / "sub").exists()
