@@ -148,3 +148,209 @@ class TestDeleteJobFilesDevMode:
         with patch("api.jobs.settings", mock_settings), \
              patch("api.jobs.shutil.rmtree", side_effect=PermissionError("locked")):
             _delete_job_files(job)   # must not raise
+
+
+# ---------------------------------------------------------------------------
+# list_jobs — response building
+# ---------------------------------------------------------------------------
+
+from datetime import datetime
+
+
+def _make_list_job(**kwargs):
+    """Return a mock Job with sensible defaults for list_jobs tests."""
+    from db import JobStatus
+    job = MagicMock()
+    job.id = kwargs.get("id", "job-abc")
+    job.status = kwargs.get("status", JobStatus.DONE)
+    job.stl_filename = kwargs.get("stl_filename", "model.stl")
+    job.target_cells = kwargs.get("target_cells", 500_000)
+    job.mesh_purpose = kwargs.get("mesh_purpose", "cfd")
+    job.mesh_params_json = kwargs.get("mesh_params_json", None)
+    job.created_at = kwargs.get("created_at", datetime(2026, 1, 1, 12, 0, 0))
+    return job
+
+
+class TestListJobsResponseBuilding:
+    """list_jobs — pure response-building logic, not the DB query itself."""
+
+    def _call(self, jobs, limit=20):
+        from api.jobs import list_jobs
+        from db import JobStatus
+
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.limit.return_value = mock_query
+        mock_query.all.return_value = jobs
+
+        mock_db = MagicMock()
+        mock_db.query.return_value = mock_query
+
+        return list_jobs(user_id="u1", limit=limit, db=mock_db)
+
+    def test_job_id_stringified(self):
+        """job.id must be converted to str in the response."""
+        j = _make_list_job(id="job-123")
+        result = self._call([j])
+        assert result[0].job_id == "job-123"
+
+    def test_status_value_used(self):
+        """job.status.value must be the string representation in the response."""
+        from db import JobStatus
+        j = _make_list_job(status=JobStatus.DONE)
+        result = self._call([j])
+        assert result[0].status == JobStatus.DONE.value
+
+    def test_target_cells_none_defaults_to_500k(self):
+        """job.target_cells=None must fall back to 500_000."""
+        j = _make_list_job(target_cells=None)
+        result = self._call([j])
+        assert result[0].target_cells == 500_000
+
+    def test_mesh_purpose_none_defaults_to_cfd(self):
+        """job.mesh_purpose=None must fall back to 'cfd'."""
+        j = _make_list_job(mesh_purpose=None)
+        result = self._call([j])
+        assert result[0].mesh_purpose == "cfd"
+
+    def test_has_pro_params_false_when_json_is_none(self):
+        """job.mesh_params_json=None → has_pro_params=False."""
+        j = _make_list_job(mesh_params_json=None)
+        result = self._call([j])
+        assert result[0].has_pro_params is False
+
+    def test_has_pro_params_true_when_json_is_set(self):
+        """job.mesh_params_json='{"tet_stop_energy": 5}' → has_pro_params=True."""
+        j = _make_list_job(mesh_params_json='{"tet_stop_energy": 5}')
+        result = self._call([j])
+        assert result[0].has_pro_params is True
+
+    def test_created_at_none_returns_empty_string(self):
+        """job.created_at=None → created_at='' in response."""
+        j = _make_list_job(created_at=None)
+        result = self._call([j])
+        assert result[0].created_at == ""
+
+    def test_created_at_iso_format_has_z_suffix(self):
+        """job.created_at → ISO-format string with 'Z' suffix."""
+        j = _make_list_job(created_at=datetime(2026, 3, 15, 10, 30, 0))
+        result = self._call([j])
+        assert result[0].created_at == "2026-03-15T10:30:00Z"
+
+    def test_limit_clamped_to_100(self):
+        """limit > 100 must be clamped to 100."""
+        jobs = [_make_list_job() for _ in range(5)]
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.all.return_value = jobs
+        mock_query.limit.return_value = mock_query
+
+        mock_db = MagicMock()
+        mock_db.query.return_value = mock_query
+
+        from api.jobs import list_jobs
+        list_jobs(user_id="u1", limit=9999, db=mock_db)
+
+        # Verify limit was called with a value <= 100
+        limit_arg = mock_query.limit.call_args[0][0]
+        assert limit_arg <= 100
+
+    def test_limit_clamped_to_zero_when_negative(self):
+        """limit < 0 must be clamped to 0 (max(0, ...))."""
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.all.return_value = []
+        mock_query.limit.return_value = mock_query
+
+        mock_db = MagicMock()
+        mock_db.query.return_value = mock_query
+
+        from api.jobs import list_jobs
+        list_jobs(user_id="u1", limit=-5, db=mock_db)
+
+        limit_arg = mock_query.limit.call_args[0][0]
+        assert limit_arg == 0
+
+
+# ---------------------------------------------------------------------------
+# get_job_status — None timestamp branches
+# ---------------------------------------------------------------------------
+
+class TestGetJobStatusResponseBuilding:
+    """get_job_status — response building for None timestamp fields."""
+
+    def _call(self, job):
+        from api.jobs import get_job_status
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = job
+        return get_job_status(job_id=str(job.id), user_id="u1", db=mock_db)
+
+    def _make_job(self, **kwargs):
+        from db import JobStatus
+        job = MagicMock()
+        job.id = kwargs.get("id", "job-abc")
+        job.status = kwargs.get("status", JobStatus.DONE)
+        job.error_message = kwargs.get("error_message", None)
+        job.amount_cents = kwargs.get("amount_cents", 0)
+        job.stl_filename = kwargs.get("stl_filename", "model.stl")
+        job.target_cells = kwargs.get("target_cells", 500_000)
+        job.mesh_purpose = kwargs.get("mesh_purpose", "cfd")
+        job.mesh_params_json = kwargs.get("mesh_params_json", None)
+        job.result_num_cells = kwargs.get("result_num_cells", None)
+        job.result_tier = kwargs.get("result_tier", None)
+        job.created_at = kwargs.get("created_at", datetime(2026, 1, 1, 12, 0, 0))
+        job.updated_at = kwargs.get("updated_at", datetime(2026, 1, 1, 13, 0, 0))
+        return job
+
+    def test_created_at_none_returns_none(self):
+        """job.created_at=None → created_at=None in response."""
+        job = self._make_job(created_at=None)
+        result = self._call(job)
+        assert result.created_at is None
+
+    def test_updated_at_none_returns_none(self):
+        """job.updated_at=None → updated_at=None in response."""
+        job = self._make_job(updated_at=None)
+        result = self._call(job)
+        assert result.updated_at is None
+
+    def test_created_at_set_returns_iso_with_z(self):
+        """job.created_at set → ISO string with 'Z' suffix."""
+        job = self._make_job(created_at=datetime(2026, 3, 28, 9, 0, 0))
+        result = self._call(job)
+        assert result.created_at == "2026-03-28T09:00:00Z"
+
+    def test_download_ready_true_when_done(self):
+        """job.status=DONE → download_ready=True."""
+        from db import JobStatus
+        job = self._make_job(status=JobStatus.DONE)
+        result = self._call(job)
+        assert result.download_ready is True
+
+    def test_download_ready_false_when_processing(self):
+        """job.status=PROCESSING → download_ready=False."""
+        from db import JobStatus
+        job = self._make_job(status=JobStatus.PROCESSING)
+        result = self._call(job)
+        assert result.download_ready is False
+
+    def test_amount_cents_none_returns_zero(self):
+        """job.amount_cents=None → amount_cents=0 in response."""
+        job = self._make_job(amount_cents=None)
+        result = self._call(job)
+        assert result.amount_cents == 0
+
+    def test_target_cells_none_defaults_to_500k(self):
+        """job.target_cells=None → target_cells=500_000 in response."""
+        job = self._make_job(target_cells=None)
+        result = self._call(job)
+        assert result.target_cells == 500_000
+
+    def test_mesh_purpose_none_defaults_to_cfd(self):
+        """job.mesh_purpose=None → mesh_purpose='cfd' in response."""
+        job = self._make_job(mesh_purpose=None)
+        result = self._call(job)
+        assert result.mesh_purpose == "cfd"
