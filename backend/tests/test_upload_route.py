@@ -283,6 +283,15 @@ class TestFileExtensionValidation:
             await _call(file=_make_file(filename="model"))
         assert exc_info.value.status_code == 400
 
+    async def test_none_filename_raises_400(self):
+        """file.filename=None → filename='' via `or ''` fallback → no .stl extension → 400."""
+        file = _make_file()
+        file.filename = None
+        with pytest.raises(HTTPException) as exc_info:
+            await _call(file=file)
+        assert exc_info.value.status_code == 400
+        assert "stl" in exc_info.value.detail.lower()
+
 
 # ---------------------------------------------------------------------------
 # STL validation
