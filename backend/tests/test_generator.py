@@ -1477,3 +1477,92 @@ class TestNetgenPipelineExportFails:
             with pytest.raises(MeshGenerationError, match="export"):
                 _netgen_pipeline(unit_cube_stl, tmp_path / "case",
                                  BBox(0, 0, 0, 1, 1, 1))
+
+
+# ---------------------------------------------------------------------------
+# _maybe_remesh_surface — Poisson succeeds branch
+# ---------------------------------------------------------------------------
+
+class TestMaybeRemeshSurfacePoissonSucceeds:
+    """
+    Tests the branch where Poisson reconstruction succeeds (returns True)
+    so that `source` is updated to `poisson_out` before the pyACVD step.
+    Previously only the Poisson-fails path was covered.
+    """
+
+    def test_poisson_success_then_remesh_success_returns_remeshed(
+        self, tmp_path: Path, unit_cube_stl: Path
+    ):
+        """Poisson succeeds + pyACVD succeeds → returned path is the remeshed file."""
+        import shutil
+        from mesh.generator import _maybe_remesh_surface
+
+        def fake_repair(src, dst):
+            shutil.copy2(src, dst)
+            return False  # not watertight → trigger Poisson
+
+        def fake_remesh(src, dst, target_points=5000):
+            dst.write_bytes(b"remeshed")
+            return True
+
+        with patch("mesh.generator.repair_stl_to_path", side_effect=fake_repair), \
+             patch("mesh.generator.reconstruct_surface_poisson", return_value=True), \
+             patch("mesh.generator.remesh_surface_uniform", side_effect=fake_remesh):
+            result = _maybe_remesh_surface(unit_cube_stl, tmp_path, BBox(0, 0, 0, 1, 1, 1))
+
+        assert result == tmp_path / "_remeshed.stl"
+        assert result.exists()
+
+    def test_poisson_success_then_remesh_fails_returns_poisson_out(
+        self, tmp_path: Path, unit_cube_stl: Path
+    ):
+        """Poisson succeeds + pyACVD fails → source (poisson_out) is returned, not repaired."""
+        import shutil
+        from mesh.generator import _maybe_remesh_surface
+
+        def fake_repair(src, dst):
+            shutil.copy2(src, dst)
+            return False  # not watertight → trigger Poisson
+
+        def fake_poisson(src, dst, bbox=None):
+            shutil.copy2(src, dst)
+            return True
+
+        with patch("mesh.generator.repair_stl_to_path", side_effect=fake_repair), \
+             patch("mesh.generator.reconstruct_surface_poisson", side_effect=fake_poisson), \
+             patch("mesh.generator.remesh_surface_uniform", return_value=False):
+            result = _maybe_remesh_surface(unit_cube_stl, tmp_path, BBox(0, 0, 0, 1, 1, 1))
+
+        # pyACVD failed, so the Poisson output (source) is returned
+        assert result == tmp_path / "_poisson.stl"
+        assert result.exists()
+
+    def test_poisson_success_uses_poisson_out_as_remesh_input(
+        self, tmp_path: Path, unit_cube_stl: Path
+    ):
+        """Verify remesh_surface_uniform is called with poisson_out as src, not repaired."""
+        import shutil
+        from mesh.generator import _maybe_remesh_surface
+
+        remesh_src_seen = []
+
+        def fake_repair(src, dst):
+            shutil.copy2(src, dst)
+            return False  # not watertight
+
+        def fake_poisson(src, dst, bbox=None):
+            shutil.copy2(src, dst)
+            return True
+
+        def fake_remesh(src, dst, target_points=5000):
+            remesh_src_seen.append(src)
+            return False
+
+        with patch("mesh.generator.repair_stl_to_path", side_effect=fake_repair), \
+             patch("mesh.generator.reconstruct_surface_poisson", side_effect=fake_poisson), \
+             patch("mesh.generator.remesh_surface_uniform", side_effect=fake_remesh):
+            _maybe_remesh_surface(unit_cube_stl, tmp_path, BBox(0, 0, 0, 1, 1, 1))
+
+        assert len(remesh_src_seen) == 1
+        # remesh was called with poisson_out, not the repaired file
+        assert remesh_src_seen[0] == tmp_path / "_poisson.stl"
