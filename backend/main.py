@@ -38,6 +38,17 @@ app.include_router(jobs_router, prefix="/api/v1")
 app.include_router(download_router, prefix="/api/v1")
 
 
+@app.get("/api/v1/config")
+def public_config():
+    """Return public configuration needed by the frontend (no auth required)."""
+    return {
+        "mesh_price_cents": settings.mesh_price_cents,
+        "max_stl_size_mb": settings.max_stl_size_bytes // (1024 * 1024),
+        "max_jobs_per_user": settings.max_jobs_per_user,
+        "dev_mode": settings.dev_mode,
+    }
+
+
 @app.get("/health")
 def health():
     from sqlalchemy import text

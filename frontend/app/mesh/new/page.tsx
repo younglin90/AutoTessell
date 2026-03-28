@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { loadStripe } from "@stripe/stripe-js";
@@ -10,7 +10,7 @@ import {
   useStripe,
   useElements,
 } from "@stripe/react-stripe-js";
-import { uploadSTL, type MeshParams } from "@/lib/api";
+import { uploadSTL, getConfig, type MeshParams } from "@/lib/api";
 import { saveJob } from "@/lib/jobs";
 
 const STRIPE_PK = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "";
@@ -206,6 +206,15 @@ export default function NewMeshPage() {
   const [proMode, setProMode] = useState(false);
   const [pro, setPro] = useState<Required<MeshParams>>(DEFAULT_PRO);
   const [proOpen, setProOpen] = useState<Record<string, boolean>>({});
+
+  // Config (loaded on mount)
+  const [priceCents, setPriceCents] = useState<number | null>(null);
+
+  useEffect(() => {
+    getConfig()
+      .then((c) => { if (!c.dev_mode) setPriceCents(c.mesh_price_cents); })
+      .catch(() => { /* ignore — price display is optional */ });
+  }, []);
 
   // Submit / payment phase
   const [uploading, setUploading] = useState(false);
@@ -623,6 +632,8 @@ export default function NewMeshPage() {
         >
           {uploading
             ? "Uploading..."
+            : priceCents != null
+            ? `Generate Mesh · ${targetCells.toLocaleString()} cells · $${(priceCents / 100).toFixed(2)}`
             : `Generate Mesh · ${targetCells.toLocaleString()} cells`}
         </button>
       </div>

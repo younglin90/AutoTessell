@@ -121,3 +121,16 @@ export async function getDownloadUrl(jobId: string, userId: string): Promise<Dow
   if (!res.ok) throw new Error("Download not ready");
   return res.json();
 }
+
+export interface PublicConfig {
+  mesh_price_cents: number;
+  max_stl_size_mb: number;
+  max_jobs_per_user: number;
+  dev_mode: boolean;
+}
+
+export async function getConfig(): Promise<PublicConfig> {
+  const res = await fetch(`${API_BASE}/config`);
+  if (!res.ok) throw new Error("Failed to fetch config");
+  return res.json();
+}
