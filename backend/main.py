@@ -37,7 +37,16 @@ app.include_router(download_router, prefix="/api/v1")
 
 @app.get("/health")
 def health():
-    return {"status": "ok"}
+    from sqlalchemy import text
+    from db import SessionLocal
+    db_ok = False
+    try:
+        with SessionLocal() as s:
+            s.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception:
+        pass
+    return {"status": "ok" if db_ok else "degraded", "db": db_ok, "dev_mode": settings.dev_mode}
 
 
 if settings.dev_mode:

@@ -3,7 +3,7 @@
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { uploadSTL, type MeshParams } from "@/lib/api";
-import { saveJob } from "@/app/jobs/page";
+import { saveJob } from "@/lib/jobs";
 
 const CELL_PRESETS = [
   { label: "Coarse", value: 100_000, hint: "~30s · fast check" },

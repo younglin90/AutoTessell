@@ -2,32 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-
-interface StoredJob {
-  jobId: string;
-  filename: string;
-  targetCells: number;
-  meshPurpose: string;
-  createdAt: string;
-}
-
-const STORAGE_KEY = "tessell_jobs";
-
-export function saveJob(job: StoredJob) {
-  if (typeof window === "undefined") return;
-  const existing = loadJobs();
-  const updated = [job, ...existing.filter((j) => j.jobId !== job.jobId)].slice(0, 20);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-}
-
-export function loadJobs(): StoredJob[] {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
-  } catch {
-    return [];
-  }
-}
+import { loadJobs, type StoredJob } from "@/lib/jobs";
 
 export default function JobsPage() {
   const [jobs, setJobs] = useState<StoredJob[]>([]);

@@ -2,11 +2,21 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { pollJobStatus, getDownloadUrl, type JobStatus, type MeshParams } from "@/lib/api";
 
 function getUserId(): string {
   if (typeof window === "undefined") return "anon";
   return localStorage.getItem("tessell_user_id") ?? "anon";
+}
+
+/** Returns a rough time estimate string based on target cell count. */
+function estimateTime(cells: number): string {
+  if (cells <= 100_000) return "~30 sec";
+  if (cells <= 500_000) return "~3 min";
+  if (cells <= 1_000_000) return "~7 min";
+  if (cells <= 2_000_000) return "~15 min";
+  return "~30 min";
 }
 
 const STATUS_LABEL: Record<JobStatus["status"], string> = {
@@ -130,17 +140,24 @@ export default function JobPage() {
           {!isTerminal && (
             <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
           )}
-          <span
-            className={`font-medium ${
-              status.status === "DONE"
-                ? "text-green-600"
-                : isFailed
-                ? "text-red-500"
-                : "text-blue-600"
-            }`}
-          >
-            {STATUS_LABEL[status.status]}
-          </span>
+          <div className="flex flex-col">
+            <span
+              className={`font-medium ${
+                status.status === "DONE"
+                  ? "text-green-600"
+                  : isFailed
+                  ? "text-red-500"
+                  : "text-blue-600"
+              }`}
+            >
+              {STATUS_LABEL[status.status]}
+            </span>
+            {status.status === "PROCESSING" && (
+              <span className="text-xs text-gray-400">
+                Est. {estimateTime(status.target_cells)} for {status.target_cells.toLocaleString()} cells
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Input summary */}
@@ -194,6 +211,16 @@ export default function JobPage() {
           >
             Download mesh.zip
           </a>
+        )}
+
+        {/* Post-completion CTA */}
+        {isTerminal && (
+          <Link
+            href="/mesh/new"
+            className="w-full py-2 border border-gray-300 text-gray-600 rounded-lg text-sm font-medium text-center hover:border-gray-400 hover:text-gray-700 transition-colors"
+          >
+            New job →
+          </Link>
         )}
 
         <p className="text-xs text-gray-400 font-mono break-all">Job ID: {jobId}</p>
