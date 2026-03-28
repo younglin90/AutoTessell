@@ -1025,3 +1025,125 @@ class TestZipMesh:
         # polyMesh files must be present
         assert any("faces" in n for n in names)
         assert any("points" in n for n in names)
+
+
+# ---------------------------------------------------------------------------
+# _write_gmsh_msh2 — additional coverage
+# ---------------------------------------------------------------------------
+
+class TestWriteGmshMsh2Extra:
+    def test_float_tet_indices_handled(self, tmp_path: Path):
+        """tet 배열이 float64인 경우에도 올바른 정수 노드 번호로 변환되어야 한다."""
+        from mesh.generator import _write_gmsh_msh2
+        import numpy as np
+
+        verts = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+        tets = np.array([[0.0, 1.0, 2.0, 3.0]], dtype=np.float64)  # float indices
+        out = tmp_path / "mesh.msh"
+        _write_gmsh_msh2(verts, tets, out)
+
+        content = out.read_text()
+        # Node indices must be 1-based integers (not floats like "1.0")
+        assert "1 1 2 3 4" in content  # element line with 1-based node ids
+
+    def test_node_coordinates_are_1_based(self, tmp_path: Path):
+        """Gmsh 포맷은 1-based 노드 번호를 사용해야 한다."""
+        from mesh.generator import _write_gmsh_msh2
+        import numpy as np
+
+        verts = np.array([[5.0, 6.0, 7.0]], dtype=np.float64)
+        tets = np.zeros((0, 4), dtype=np.int32)
+        out = tmp_path / "mesh.msh"
+        _write_gmsh_msh2(verts, tets, out)
+
+        content = out.read_text()
+        # First (and only) node must have id=1
+        assert "1 5 6 7" in content
+
+    def test_multiple_tets_all_written(self, tmp_path: Path):
+        """모든 tet 요소가 파일에 기록되어야 한다."""
+        from mesh.generator import _write_gmsh_msh2
+        import numpy as np
+
+        verts = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 1]], dtype=np.float64)
+        tets = np.array([[0, 1, 2, 3], [1, 2, 3, 4]], dtype=np.int32)
+        out = tmp_path / "mesh.msh"
+        _write_gmsh_msh2(verts, tets, out)
+
+        lines = out.read_text().splitlines()
+        elem_idx = next(i for i, l in enumerate(lines) if l == "$Elements")
+        assert lines[elem_idx + 1] == "2"  # 2 elements
+
+
+# ---------------------------------------------------------------------------
+# _apply_mmg_quality — meshio fallback
+# ---------------------------------------------------------------------------
+
+class TestApplyMmgQualityMeshioFallback:
+    def test_returns_original_when_meshio_absent(self, tmp_path: Path):
+        """meshio 미설치 시 (mmg3d는 있어도) 원본 v/t를 조용히 반환해야 한다."""
+        from mesh.generator import _apply_mmg_quality
+        from mesh.stl_utils import BBox
+        import numpy as np
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+        v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+        t = np.array([[0, 1, 2, 3]], dtype=np.int32)
+
+        with patch("shutil.which", return_value="/usr/bin/mmg3d"):  # mmg3d found
+            with patch.dict(__import__("sys").modules, {"meshio": None}):  # but meshio absent
+                v_out, t_out = _apply_mmg_quality(v, t, tmp_path, bbox)
+
+        assert v_out is v
+        assert t_out is t
+
+
+# ---------------------------------------------------------------------------
+# generate_mesh — tessell-skipped error message prefix
+# ---------------------------------------------------------------------------
+
+class TestGenerateMeshErrorPrefix:
+    def test_tessell_not_built_hint_in_error_when_all_fail(
+        self, tmp_path: Path, unit_cube_stl: Path
+    ):
+        """tessell_mesh.so 미빌드 → 전체 실패 에러 메시지에 빌드 안내 포함되어야 한다."""
+        from mesh.generator import generate_mesh, MeshGenerationError
+
+        with patch.dict(__import__("sys").modules, {"tessell_mesh": None}):  # not built
+            with patch("mesh.generator._netgen_pipeline", side_effect=RuntimeError("no netgen")):
+                with patch("mesh.generator._snappy_pipeline", side_effect=RuntimeError("no snappy")):
+                    with patch("mesh.generator._pytetwild_pipeline", side_effect=RuntimeError("no tet")):
+                        with pytest.raises(MeshGenerationError) as exc_info:
+                            generate_mesh(unit_cube_stl, tmp_path / "case")
+
+        msg = str(exc_info.value)
+        assert "tessell" in msg.lower() or "build.sh" in msg
+
+
+# ---------------------------------------------------------------------------
+# _safe_stl_name — non-ASCII characters
+# ---------------------------------------------------------------------------
+
+class TestSafeStlNameNonAscii:
+    def test_unicode_word_chars_preserved(self):
+        """Python \\w includes Unicode letters — Korean/Japanese chars are kept, not stripped."""
+        from mesh.generator import _safe_stl_name
+        result = _safe_stl_name("날개형상.stl")
+        assert result.endswith(".stl")
+        # Result must be non-empty stem + .stl (not fall back to geometry.stl)
+        assert result != "geometry.stl"
+
+    def test_unicode_stem_ends_with_stl(self):
+        """Unicode-only stem must still produce a valid .stl filename."""
+        from mesh.generator import _safe_stl_name
+        result = _safe_stl_name("翼型.stl")
+        assert result.endswith(".stl")
+        assert len(result) > len(".stl")
+
+    def test_mixed_unicode_and_special_chars(self):
+        """Mixed name: Unicode word chars kept, special chars (spaces, #) replaced."""
+        from mesh.generator import _safe_stl_name
+        result = _safe_stl_name("날개 #3.stl")
+        assert result.endswith(".stl")
+        assert " " not in result
+        assert "#" not in result
