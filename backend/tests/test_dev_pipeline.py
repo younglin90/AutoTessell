@@ -287,3 +287,25 @@ class TestGenerateMeshDevErrors:
 
         assert result["tier"] == "pytetwild_dev"
         mock_pytet.tetrahedralize.assert_called_once()
+
+    def test_raises_when_trimesh_load_returns_non_trimesh(self, cube_stl: Path, tmp_path: Path):
+        """trimesh.load returning a non-Trimesh object must raise RuntimeError."""
+        mock_pytet = _make_mock_pytetwild()
+
+        import trimesh as real_trimesh
+        # Return a Scene (non-Trimesh) to trigger the isinstance check
+        with patch.dict(__import__("sys").modules, {"pytetwild": mock_pytet}):
+            with patch.object(real_trimesh, "load", return_value=object()):
+                with pytest.raises(RuntimeError, match="STL 로딩 실패"):
+                    generate_mesh_dev(cube_stl, tmp_path / "case")
+
+    def test_num_internal_faces_not_in_result(self, cube_stl: Path, tmp_path: Path):
+        """generate_mesh_dev must NOT expose num_internal_faces in its return dict."""
+        mock_pytet = _make_mock_pytetwild()
+        mock_stats = {"num_cells": 80, "num_points": 50, "num_faces": 200, "num_internal_faces": 100}
+
+        with patch.dict(__import__("sys").modules, {"pytetwild": mock_pytet}):
+            with patch("mesh.dev_pipeline.write_polymesh", return_value=mock_stats):
+                result = generate_mesh_dev(cube_stl, tmp_path / "case")
+
+        assert "num_internal_faces" not in result
