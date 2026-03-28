@@ -404,3 +404,112 @@ class TestZipMesh:
         assert zip_path.exists()
         with zipfile.ZipFile(zip_path) as zf:
             assert zf.namelist() == []
+
+
+# ---------------------------------------------------------------------------
+# Production mode (dev_mode=False) — uses generate_mesh, not generate_mesh_dev
+# ---------------------------------------------------------------------------
+
+@contextmanager
+def _prod_mode_patches(db, gen_return=None, gen_raises=None):
+    """Apply standard production-mode patches for run_mesh tests."""
+    mock_settings = MagicMock()
+    mock_settings.dev_mode = False
+    mock_settings.stripe_secret_key = "sk_live_test"
+
+    gen_mock = MagicMock()
+    if gen_raises is not None:
+        gen_mock.side_effect = gen_raises
+    else:
+        gen_mock.return_value = gen_return if gen_return is not None else _mock_stats(tier="snappy")
+
+    with patch("worker.tasks.SessionLocal", return_value=db), \
+         patch("worker.tasks.settings", mock_settings), \
+         patch("worker.tasks._download_s3"), \
+         patch("worker.tasks._zip_mesh"), \
+         patch("worker.tasks._upload_s3"), \
+         patch("worker.tasks._mark_failed_and_refund") as mock_refund, \
+         patch("worker.tasks.generate_mesh", gen_mock) as mock_gen:
+        yield mock_gen, mock_refund
+
+
+class TestRunMeshProductionMode:
+    def test_calls_generate_mesh_not_dev(self):
+        """Production mode must call generate_mesh, not generate_mesh_dev."""
+        job = _make_job()
+        db = _make_db(job)
+
+        with _prod_mode_patches(db) as (mock_gen, _):
+            result = run_mesh(_fake_celery_self(), job.id)
+
+        mock_gen.assert_called_once()
+        assert result["tier"] == "snappy"
+
+    def test_production_mode_marks_done(self):
+        job = _make_job()
+        db = _make_db(job)
+
+        with _prod_mode_patches(db):
+            run_mesh(_fake_celery_self(), job.id)
+
+        assert job.status == JobStatus.DONE
+
+    def test_production_mode_failure_calls_refund(self):
+        """Exception in production pipeline must trigger refund."""
+        from mesh.generator import MeshGenerationError
+        job = _make_job()
+        db = _make_db(job)
+
+        with _prod_mode_patches(db, gen_raises=MeshGenerationError("all tiers failed")) as (_, mock_refund):
+            with pytest.raises(MeshGenerationError):
+                run_mesh(_fake_celery_self(), job.id)
+
+        mock_refund.assert_called_once()
+
+    def test_max_skewness_in_return_dict(self):
+        """Returned dict must include max_skewness from stats."""
+        job = _make_job()
+        db = _make_db(job)
+        stats = _mock_stats(tier="snappy")
+        stats["max_skewness"] = 2.3
+
+        with _prod_mode_patches(db, gen_return=stats):
+            result = run_mesh(_fake_celery_self(), job.id)
+
+        assert result["max_skewness"] == pytest.approx(2.3)
+
+
+# ---------------------------------------------------------------------------
+# _mark_failed_and_refund — db.close() in finally
+# ---------------------------------------------------------------------------
+
+class TestMarkFailedAndRefundDbClose:
+    def test_db_closed_on_normal_path(self):
+        """_mark_failed_and_refund must close its own DB session."""
+        job = _make_job()
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = job
+
+        with patch("worker.tasks.SessionLocal", return_value=db):
+            with patch("worker.tasks.stripe"):
+                _mark_failed_and_refund("test-job", "error")
+
+        db.close.assert_called_once()
+
+    def test_db_closed_even_when_stripe_raises(self):
+        """DB session must be closed even if stripe.Refund.create raises an unexpected error."""
+        import stripe as real_stripe
+        job = _make_job()
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = job
+
+        with patch("worker.tasks.SessionLocal", return_value=db):
+            with patch("worker.tasks.stripe") as mock_stripe:
+                mock_stripe.Refund.create.side_effect = Exception("unexpected error")
+                mock_stripe.StripeError = real_stripe.StripeError
+                try:
+                    _mark_failed_and_refund("test-job", "error")
+                except Exception:
+                    pass  # unexpected errors may propagate
+
+        db.close.assert_called_once()
