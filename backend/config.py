@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     # CORS — comma-separated origins (e.g. "http://localhost:3000,https://app.tessell.io")
     cors_origins: str = "http://localhost:3000"
 
+    # Dev mode: base URL used for mesh download links (overrides hardcoded localhost)
+    dev_api_base_url: str = "http://localhost:8000"
+
     class Config:
         env_file = ".env"
 

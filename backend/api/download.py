@@ -34,7 +34,8 @@ def get_download_url(
         raise HTTPException(status_code=500, detail="Mesh key missing — contact support")
 
     if settings.dev_mode:
-        url = f"http://localhost:8000/dev/files/{job.mesh_s3_key}"
+        base = settings.dev_api_base_url.rstrip("/")
+        url = f"{base}/dev/files/{job.mesh_s3_key}"
     else:
         url = _generate_presigned_url(job.mesh_s3_key)
 
