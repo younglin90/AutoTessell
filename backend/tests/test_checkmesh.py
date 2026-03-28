@@ -109,3 +109,34 @@ def test_checkmesh_result_dataclass_fields():
     assert r.max_non_orthogonality == pytest.approx(30.0)
     assert r.max_skewness == pytest.approx(0.5)
     assert r.num_cells == 1000
+
+
+def test_failed_without_mesh_ok():
+    """'Failed N mesh checks.' without 'Mesh OK.' must also be detected as failed."""
+    output = "    Failed 3 mesh checks.\n"
+    r = parse_checkmesh_output(output)
+    assert r.passed is False
+
+
+def test_non_ortho_and_skewness_both_none_when_absent():
+    """Output with no quality metrics must return None for both fields."""
+    output = "    cells:    500\n    Mesh OK.\n"
+    r = parse_checkmesh_output(output)
+    assert r.max_non_orthogonality is None
+    assert r.max_skewness is None
+
+
+def test_passed_requires_mesh_ok_keyword():
+    """A well-formed output must contain 'Mesh OK.' to be considered passing."""
+    output = "    Max non-orthogonality = 30.0 degrees.\n    Max skewness = 0.5\n"
+    r = parse_checkmesh_output(output)
+    # No 'Mesh OK.' → not passed
+    assert r.passed is False
+
+
+def test_skewness_value_none_when_only_non_ortho_present():
+    """max_skewness must be None when only non-orthogonality appears in output."""
+    output = "    Max non-orthogonality = 55.0 degrees.\n    Mesh OK.\n"
+    r = parse_checkmesh_output(output)
+    assert r.max_non_orthogonality == pytest.approx(55.0)
+    assert r.max_skewness is None
