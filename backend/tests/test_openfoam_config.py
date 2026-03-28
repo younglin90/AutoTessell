@@ -184,6 +184,23 @@ class TestBlockMeshDict:
         assert "inlet" in s
         assert "outlet" in s
 
+    def test_contains_sides_symmetry_plane(self):
+        """blockMeshDict must define a 'sides' symmetryPlane patch."""
+        d = _domain()
+        s = block_mesh_dict(d)
+        assert "sides" in s
+        assert "symmetryPlane" in s
+
+    def test_domain_bounds_in_vertex_list(self):
+        """The domain min/max coordinates must appear in the vertex list."""
+        L = 3.0
+        bbox = BBox(0, 0, 0, L, L, L)
+        d = build_domain(bbox, "shape.stl")
+        s = block_mesh_dict(d)
+        # xmin should appear as one of the vertex x-coordinates
+        assert f"{d.xmin:.6g}" in s
+        assert f"{d.xmax:.6g}" in s
+
 
 # ---------------------------------------------------------------------------
 # surface_feature_extract_dict
