@@ -97,6 +97,18 @@ class TestMeshParamsSerialisation:
         assert mp2.snappy_refine_min is None
         assert mp2.mmg_hausd is None
 
+    def test_from_json_raises_on_invalid_json(self):
+        """from_json with malformed JSON must raise JSONDecodeError (or ValueError)."""
+        import json
+        with pytest.raises((json.JSONDecodeError, ValueError)):
+            MeshParams.from_json("{not valid json")
+
+    def test_from_json_raises_on_empty_string(self):
+        """from_json with empty string must raise (not silently produce defaults)."""
+        import json
+        with pytest.raises((json.JSONDecodeError, ValueError)):
+            MeshParams.from_json("")
+
 
 # ---------------------------------------------------------------------------
 # validated(): clamping branches
