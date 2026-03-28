@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -13,7 +15,13 @@ from api.upload import router as upload_router
 from config import settings
 from db import create_tables
 
-app = FastAPI(title="auto-tessell", version="0.1.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    create_tables()
+    yield
+
+
+app = FastAPI(title="auto-tessell", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,11 +30,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.on_event("startup")
-def startup():
-    create_tables()
 
 
 app.include_router(upload_router, prefix="/api/v1")
