@@ -128,6 +128,36 @@ class TestMeshParamsValidation:
         assert restored.tet_edge_length_fac is None
         assert restored.snappy_refine_min is None
 
+    def test_edge_fac_clamped_low(self):
+        """tet_edge_length_fac=0.001 must be raised to >=0.005."""
+        mp = MeshParams(tet_edge_length_fac=0.001).validated()
+        assert mp.tet_edge_length_fac >= 0.005
+
+    def test_n_layers_clamped_low(self):
+        """snappy_n_layers=-5 must be raised to >=0."""
+        mp = MeshParams(snappy_n_layers=-5).validated()
+        assert mp.snappy_n_layers >= 0
+
+    def test_non_ortho_clamped_high(self):
+        """snappy_max_non_ortho=99 must be lowered to <=85."""
+        mp = MeshParams(snappy_max_non_ortho=99).validated()
+        assert mp.snappy_max_non_ortho <= 85.0
+
+    def test_expansion_ratio_clamped_high(self):
+        """snappy_expansion_ratio=5.0 must be lowered to <=2.0."""
+        mp = MeshParams(snappy_expansion_ratio=5.0).validated()
+        assert mp.snappy_expansion_ratio <= 2.0
+
+    def test_netgen_ratio_clamped_high(self):
+        """netgen_maxh_ratio=999 must be lowered to <=100."""
+        mp = MeshParams(netgen_maxh_ratio=999).validated()
+        assert mp.netgen_maxh_ratio <= 100.0
+
+    def test_hgrad_clamped_low(self):
+        """mmg_hgrad=0.5 must be raised to >=1.0."""
+        mp = MeshParams(mmg_hgrad=0.5).validated()
+        assert mp.mmg_hgrad >= 1.0
+
 
 # ---------------------------------------------------------------------------
 # snappy_hex_mesh_dict pro override tests
