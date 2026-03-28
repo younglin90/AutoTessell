@@ -52,6 +52,9 @@ class Job(Base):
     target_cells = Column(Integer, nullable=False, default=500_000)
     mesh_purpose = Column(String(10), nullable=False, default="cfd")  # "cfd" | "fea"
 
+    # Pro-mode mesh parameters (JSON, optional)
+    mesh_params_json = Column(Text, nullable=True)
+
     # Mesh result stats (filled after DONE)
     result_num_cells = Column(Integer, nullable=True)
     result_tier = Column(String(32), nullable=True)   # e.g. "pytetwild_dev", "snappy", "netgen"

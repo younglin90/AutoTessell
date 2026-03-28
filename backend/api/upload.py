@@ -47,6 +47,7 @@ async def upload_stl(
     user_id: str,
     target_cells: int = 500_000,
     mesh_purpose: str = "cfd",      # "cfd" | "fea"
+    mesh_params: str = "",          # JSON-encoded MeshParams (pro mode, optional)
     db: Session = Depends(get_db),
 ):
     # 1. Read and validate STL before charging the user
@@ -92,6 +93,7 @@ async def upload_stl(
             amount_cents=0,
             target_cells=target_cells,
             mesh_purpose=mesh_purpose,
+            mesh_params_json=mesh_params or None,
         )
         db.add(job)
         db.commit()
@@ -123,6 +125,7 @@ async def upload_stl(
         amount_cents=settings.mesh_price_cents,
         target_cells=target_cells,
         mesh_purpose=mesh_purpose,
+        mesh_params_json=mesh_params or None,
     )
     db.add(job)
     db.commit()

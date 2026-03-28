@@ -37,6 +37,7 @@ def generate_mesh_dev(
     case_dir: Path,
     target_cells: int = 500_000,
     mesh_purpose: str = "cfd",
+    params=None,  # MeshParams | None
 ) -> dict:
     """
     STL → real tet mesh → OpenFOAM polyMesh (Windows-compatible).
@@ -59,6 +60,9 @@ def generate_mesh_dev(
             "pip install pytetwild trimesh numpy"
         )
 
+    from mesh.params import MeshParams
+    mp: MeshParams = params if params is not None else MeshParams()
+
     logger.info("dev 메쉬 파이프라인 시작: %s", stl_path)
 
     # 1. Load and repair STL
@@ -80,17 +84,24 @@ def generate_mesh_dev(
     faces = np.array(mesh.faces, dtype=np.int32)
 
     # 2. Tetrahedralize with pytetwild
-    edge_fac = _cells_to_edge_fac(target_cells, vertices)
+    # edge_length_fac: pro override > auto from target_cells
+    edge_fac = (
+        max(0.02, min(0.2, mp.tet_edge_length_fac))
+        if mp.tet_edge_length_fac is not None
+        else _cells_to_edge_fac(target_cells, vertices)
+    )
+    stop_energy = mp.tet_stop_energy
+
     logger.info(
-        "pytetwild 실행: target_cells=%d, purpose=%s, edge_fac=%.4f",
-        target_cells, mesh_purpose, edge_fac,
+        "pytetwild 실행: target_cells=%d, purpose=%s, edge_fac=%.4f, stop_energy=%.1f",
+        target_cells, mesh_purpose, edge_fac, stop_energy,
     )
     try:
         v_out, t_out = pytetwild.tetrahedralize(
             vertices,
             faces,
             edge_length_fac=edge_fac,
-            stop_energy=10.0,
+            stop_energy=stop_energy,
             quiet=True,
         )
     except Exception as e:

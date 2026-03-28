@@ -21,11 +21,34 @@ export interface DownloadResponse {
   expires_in_seconds: number;
 }
 
+export interface MeshParams {
+  // pytetwild / dev
+  tet_stop_energy?: number;        // 1–50, default 10 (lower = higher quality)
+  tet_edge_length_fac?: number;    // 0.02–0.20, override auto from target_cells
+
+  // snappyHexMesh
+  snappy_refine_min?: number;      // 0–4
+  snappy_refine_max?: number;      // 1–6
+  snappy_n_layers?: number;        // 0–8 boundary layers
+  snappy_expansion_ratio?: number; // 1.1–1.5
+  snappy_final_layer_thickness?: number; // 0.1–0.5
+  snappy_max_non_ortho?: number;   // 60–85
+
+  // Netgen
+  netgen_maxh_ratio?: number;      // 5–40 (maxh = L / ratio)
+
+  // MMG post-processing
+  mmg_enabled?: boolean;
+  mmg_hausd?: number;              // surface fidelity (relative, e.g. 0.01)
+  mmg_hgrad?: number;              // 1.0–3.0
+}
+
 export async function uploadSTL(
   file: File,
   userId: string,
   targetCells: number = 500_000,
   meshPurpose: "cfd" | "fea" = "cfd",
+  meshParams?: MeshParams,
 ): Promise<UploadResponse> {
   const form = new FormData();
   form.append("file", file);
@@ -35,6 +58,9 @@ export async function uploadSTL(
     target_cells: String(targetCells),
     mesh_purpose: meshPurpose,
   });
+  if (meshParams && Object.keys(meshParams).length > 0) {
+    params.set("mesh_params", JSON.stringify(meshParams));
+  }
   const res = await fetch(`${API_BASE}/upload?${params}`, {
     method: "POST",
     body: form,

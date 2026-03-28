@@ -183,6 +183,7 @@ FoamFile
 def snappy_hex_mesh_dict(
     domain: FlowDomain,
     complexity: StlComplexity | None = None,
+    params=None,  # MeshParams | None
 ) -> str:
     """
     snappyHexMeshDict 생성.
@@ -196,6 +197,9 @@ def snappy_hex_mesh_dict(
       - resolveFeatureAngle: STL feature angle에 맞게 자동 조정
       - addLayersControls: 복잡도에 따라 경계층 레이어 수 조정
     """
+    from mesh.params import MeshParams
+    mp: MeshParams = params if params is not None else MeshParams()
+
     d = domain
     stem = d.stl_name.rsplit(".", 1)[0]
     L = d.char_length
@@ -205,11 +209,21 @@ def snappy_hex_mesh_dict(
         s_max = complexity.surface_refine_max
         feat_level = complexity.feature_refine_level
         feat_angle = complexity.resolve_feature_angle
-        n_layers = 3 if complexity.complexity_ratio < 3 else 5
+        n_layers_auto = 3 if complexity.complexity_ratio < 3 else 5
     else:
         s_min, s_max, feat_level = 1, 3, 3
         feat_angle = 30.0
-        n_layers = 3
+        n_layers_auto = 3
+
+    # Pro-mode overrides (take precedence over auto values)
+    if mp.snappy_refine_min is not None:
+        s_min = mp.snappy_refine_min
+    if mp.snappy_refine_max is not None:
+        s_max = max(s_min, mp.snappy_refine_max)
+    n_layers = mp.snappy_n_layers if mp.snappy_n_layers is not None else n_layers_auto
+    expansion_ratio = mp.snappy_expansion_ratio
+    final_layer_thickness = mp.snappy_final_layer_thickness
+    max_non_ortho = mp.snappy_max_non_ortho
 
     # 거리 기반 정밀화 영역 (complexity에 따라 레벨 조정)
     near_dist = L * 0.10
@@ -230,6 +244,8 @@ def snappy_hex_mesh_dict(
                 ( {wake_dist:.6g}  {wake_level} )
             );
         }}"""
+
+    max_non_ortho_relaxed = min(85, max_non_ortho + 5)
 
     return f"""\
 FoamFile
@@ -310,8 +326,8 @@ addLayersControls
             nSurfaceLayers  {n_layers};
         }}
     }}
-    expansionRatio          1.2;
-    finalLayerThickness     0.3;
+    expansionRatio          {expansion_ratio:.3g};
+    finalLayerThickness     {final_layer_thickness:.3g};
     minThickness            0.1;
     nGrow                   0;
     featureAngle            60;
@@ -329,7 +345,7 @@ addLayersControls
 
 meshQualityControls
 {{
-    maxNonOrtho             70;
+    maxNonOrtho             {max_non_ortho:.0f};
     maxBoundarySkewness     20;
     maxInternalSkewness     4;
     maxConcave              80;
@@ -345,7 +361,7 @@ meshQualityControls
     errorReduction          0.75;
     relaxed
     {{
-        maxNonOrtho 75;
+        maxNonOrtho {max_non_ortho_relaxed:.0f};
     }}
 }};
 

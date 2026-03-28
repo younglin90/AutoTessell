@@ -62,12 +62,21 @@ def run_mesh(self, job_id: str) -> dict:
             _download_s3(job.stl_s3_key, stl_path)
             mesh_dir = tmpdir / "case"
 
+            from mesh.params import MeshParams
+            mp = None
+            if job.mesh_params_json:
+                try:
+                    mp = MeshParams.from_json(job.mesh_params_json)
+                except Exception:
+                    logger.warning("mesh_params_json 파싱 실패 — 기본값 사용")
+
             if settings.dev_mode:
                 from mesh.dev_pipeline import generate_mesh_dev
                 stats = generate_mesh_dev(
                     stl_path, mesh_dir,
                     target_cells=job.target_cells or 500_000,
                     mesh_purpose=job.mesh_purpose or "cfd",
+                    params=mp,
                 )
             else:
                 # 2. Generate mesh (snappyHexMesh → fallback pytetwild+gmshToFoam)
@@ -75,6 +84,7 @@ def run_mesh(self, job_id: str) -> dict:
                     stl_path, mesh_dir,
                     target_cells=job.target_cells or 500_000,
                     mesh_purpose=job.mesh_purpose or "cfd",
+                    params=mp,
                 )  # MeshGenerationError는 RuntimeError 서브클래스
 
             if not stats.get("passed", True):

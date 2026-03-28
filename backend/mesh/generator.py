@@ -77,6 +77,7 @@ def generate_mesh(
     case_dir: Path,
     target_cells: int = 500_000,
     mesh_purpose: str = "cfd",
+    params=None,  # MeshParams | None
 ) -> dict:
     """
     STL → OpenFOAM polyMesh 생성.
@@ -87,6 +88,9 @@ def generate_mesh(
     Raises:
         MeshGenerationError: 모든 tier 실패 시
     """
+    from mesh.params import MeshParams
+    mp: MeshParams = params if params is not None else MeshParams()
+
     case_dir.mkdir(parents=True, exist_ok=True)
     bbox = get_bbox(stl_path)
     logger.info("STL bbox: %s, purpose: %s, target_cells: %d", bbox, mesh_purpose, target_cells)
@@ -114,7 +118,7 @@ def generate_mesh(
 
     # --- Tier 0.5: Netgen ---
     try:
-        result = _netgen_pipeline(clean_stl, case_dir, bbox)
+        result = _netgen_pipeline(clean_stl, case_dir, bbox, mp)
         return {"tier": "netgen", **result}
     except _NetgenNotInstalled:
         logger.info("netgen-mesher 미설치 — Tier 0.5 건너뜀")
@@ -128,7 +132,7 @@ def generate_mesh(
         logger.info("mesh_purpose=fea — snappyHexMesh 건너뜀")
     else:
         try:
-            result = _snappy_pipeline(clean_stl, case_dir, bbox, target_cells)
+            result = _snappy_pipeline(clean_stl, case_dir, bbox, target_cells, mp)
             return {"tier": "snappy", **result}
         except Exception as e:
             logger.warning("Tier 1 (snappy) 실패: %s", e)
@@ -137,7 +141,7 @@ def generate_mesh(
 
     # --- Tier 2: pytetwild + MMG 후처리 ---
     try:
-        result = _pytetwild_pipeline(clean_stl, case_dir, bbox)
+        result = _pytetwild_pipeline(clean_stl, case_dir, bbox, target_cells, mp)
         return {"tier": "pytetwild", **result}
     except Exception as e:
         errors.append(f"pytetwild: {e}")
@@ -233,7 +237,7 @@ def _tessell_pipeline(stl_path: Path, case_dir: Path, bbox: BBox) -> dict:
 # Tier 0.5: Netgen
 # ---------------------------------------------------------------------------
 
-def _netgen_pipeline(stl_path: Path, case_dir: Path, bbox: BBox) -> dict:
+def _netgen_pipeline(stl_path: Path, case_dir: Path, bbox: BBox, params=None) -> dict:
     """
     Netgen (LGPL-2.1) tet 메쉬 생성.
     pip install netgen-mesher
@@ -247,10 +251,12 @@ def _netgen_pipeline(stl_path: Path, case_dir: Path, bbox: BBox) -> dict:
             "netgen-mesher 미설치 (pip install netgen-mesher)"
         )
 
-    L = bbox.characteristic_length
-    maxh = L / 15.0  # geometry 전체에 ~15셀
+    from mesh.params import MeshParams
+    mp: MeshParams = params if params is not None else MeshParams()
 
-    logger.info("Netgen 실행: maxh=%.4g", maxh)
+    L = bbox.characteristic_length
+    maxh = L / mp.netgen_maxh_ratio
+    logger.info("Netgen 실행: maxh=%.4g (L/%.1f)", maxh, mp.netgen_maxh_ratio)
     try:
         geo = STLGeometry(str(stl_path))
         mesh = geo.GenerateMesh(maxh=maxh)
@@ -292,6 +298,7 @@ def _snappy_pipeline(
     case_dir: Path,
     bbox: BBox,
     target_cells: int,
+    params=None,
 ) -> dict:
     """
     snappyHexMesh hex-dominant 파이프라인.
@@ -300,6 +307,8 @@ def _snappy_pipeline(
       constant/triSurface/{geometry.stl}
       system/blockMeshDict, snappyHexMeshDict, ...
     """
+    from mesh.params import MeshParams
+    mp: MeshParams = params if params is not None else MeshParams()
     stl_name = stl_path.name
 
     # 곡률 기반 복잡도 분석 → 적응형 정밀화 파라미터 도출
@@ -314,7 +323,7 @@ def _snappy_pipeline(
     )
 
     domain = build_domain(bbox, stl_name, target_background_cells=max(8_000, target_cells // 50))
-    _write_snappy_case(case_dir, stl_path, domain, complexity)
+    _write_snappy_case(case_dir, stl_path, domain, complexity, mp)
 
     env = _openfoam_env()
     _run_of(["blockMesh", "-case", str(case_dir)], env, "blockMesh")
@@ -335,6 +344,7 @@ def _write_snappy_case(
     stl_path: Path,
     domain: FlowDomain,
     complexity: StlComplexity | None = None,
+    params=None,
 ) -> None:
     system = case_dir / "system"
     tri_surface = case_dir / "constant" / "triSurface"
@@ -343,7 +353,7 @@ def _write_snappy_case(
 
     shutil.copy2(stl_path, tri_surface / stl_path.name)
     (system / "blockMeshDict").write_text(block_mesh_dict(domain))
-    (system / "snappyHexMeshDict").write_text(snappy_hex_mesh_dict(domain, complexity))
+    (system / "snappyHexMeshDict").write_text(snappy_hex_mesh_dict(domain, complexity, params))
     (system / "surfaceFeatureExtractDict").write_text(
         surface_feature_extract_dict(stl_path.name, complexity)
     )
@@ -356,7 +366,7 @@ def _write_snappy_case(
 # Tier 2: pytetwild + MMG 품질 후처리
 # ---------------------------------------------------------------------------
 
-def _pytetwild_pipeline(stl_path: Path, case_dir: Path, bbox: BBox) -> dict:
+def _pytetwild_pipeline(stl_path: Path, case_dir: Path, bbox: BBox, target_cells: int = 500_000, params=None) -> dict:
     """
     pytetwild (MPL-2.0) robust tet 메쉬 생성.
     mmg3d binary 가 PATH에 있으면 MMG (LGPL) 품질 후처리 자동 적용.
@@ -372,24 +382,39 @@ def _pytetwild_pipeline(stl_path: Path, case_dir: Path, bbox: BBox) -> dict:
             f"pytetwild/trimesh 미설치 (pip install pytetwild trimesh): {e}"
         )
 
+    from mesh.dev_pipeline import _cells_to_edge_fac
+    from mesh.params import MeshParams
+    mp: MeshParams = params if params is not None else MeshParams()
+
     # stl_path는 _maybe_remesh_surface()에서 이미 수리됨
     logger.info("pytetwild 실행")
     surf = trimesh.load(str(stl_path), force="mesh")
     vertices = np.array(surf.vertices, dtype=np.float64)
     faces = np.array(surf.faces, dtype=np.int32)
 
+    edge_fac = (
+        max(0.02, min(0.2, mp.tet_edge_length_fac))
+        if mp.tet_edge_length_fac is not None
+        else _cells_to_edge_fac(target_cells, vertices)
+    )
+    logger.info("pytetwild: edge_fac=%.4f, stop_energy=%.1f", edge_fac, mp.tet_stop_energy)
+
     try:
         v_out, t_out = pytetwild.tetrahedralize(
             vertices,
             faces,
-            edge_length_r=0.05,  # 특성 길이의 5% — ≈ L/20
-            stop_quality=10,
+            edge_length_fac=edge_fac,
+            stop_energy=mp.tet_stop_energy,
+            quiet=True,
         )
     except Exception as e:
         raise MeshGenerationError(f"pytetwild 실패: {e}") from e
 
     # Optional: MMG 품질 후처리
-    v_out, t_out = _apply_mmg_quality(v_out, t_out, case_dir, bbox)
+    if mp.mmg_enabled:
+        v_out, t_out = _apply_mmg_quality(v_out, t_out, case_dir, bbox, mp)
+    else:
+        logger.info("MMG 후처리 비활성화 (mmg_enabled=False)")
 
     msh_path = case_dir / "mesh.msh"
     _write_gmsh_msh2(v_out, t_out, msh_path)
@@ -412,6 +437,7 @@ def _apply_mmg_quality(
     t_out,
     work_dir: Path,
     bbox: BBox,
+    params=None,
 ):
     """
     MMG3D (LGPL-3.0) 품질 개선 후처리.
@@ -446,10 +472,22 @@ def _apply_mmg_quality(
             ),
         )
 
+        from mesh.params import MeshParams
+        mp: MeshParams = params if params is not None else MeshParams()
+
         L = bbox.characteristic_length
+        hmin = L / 50
+        hmax = L / 5
+        hausd = mp.mmg_hausd if mp.mmg_hausd is not None else L / 50
+        mmg_cmd = [
+            mmg_bin,
+            "-in", str(in_mesh), "-out", str(out_mesh),
+            "-hmin", f"{hmin:.6g}", "-hmax", f"{hmax:.6g}",
+            "-hausd", f"{hausd:.6g}",
+            "-hgrad", f"{mp.mmg_hgrad:.4g}",
+        ]
         proc = subprocess.run(
-            [mmg_bin, "-in", str(in_mesh), "-out", str(out_mesh),
-             "-hmin", f"{L / 50:.6g}", "-hmax", f"{L / 5:.6g}"],
+            mmg_cmd,
             capture_output=True, text=True, timeout=300,
         )
 
