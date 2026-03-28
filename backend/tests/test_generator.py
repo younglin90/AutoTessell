@@ -1275,3 +1275,171 @@ class TestMeshStatsFields:
         assert stats.get("max_non_orthogonality") == pytest.approx(42.3)
         assert stats.get("max_skewness") == pytest.approx(0.87)
         assert stats.get("num_cells") == 10000
+
+
+# ---------------------------------------------------------------------------
+# _apply_mmg_quality — happy path (mmg succeeds, returns improved mesh)
+# ---------------------------------------------------------------------------
+
+class TestApplyMmgQualityHappyPath:
+    """MMG3D 성공 경로: v_new/t_new 반환."""
+
+    def test_returns_improved_mesh_when_mmg_succeeds(self, tmp_path: Path):
+        """MMG가 정상 완료되면 개선된 vertices/tets 반환."""
+        from mesh.generator import _apply_mmg_quality
+        import numpy as np
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+        v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+        t = np.array([[0, 1, 2, 3]], dtype=np.int32)
+
+        # Create out mesh file so out_mesh.exists() is True
+        (tmp_path / "_mmg_out.mesh").write_text("dummy")
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+
+        v_improved = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1],
+                                [0.5, 0.5, 0.5]], dtype=np.float64)
+        t_improved = np.array([[0, 1, 2, 4], [0, 2, 3, 4]], dtype=np.int64)
+
+        mock_mesh = MagicMock()
+        mock_mesh.points = v_improved
+        mock_mesh.cells_dict = {"tetra": t_improved}
+
+        mock_meshio = MagicMock()
+        mock_meshio.read.return_value = mock_mesh
+
+        with patch("mesh.generator.shutil.which", return_value="/usr/bin/mmg3d"):
+            with patch.dict(sys.modules, {"meshio": mock_meshio}):
+                with patch("mesh.generator.subprocess.run", return_value=mock_proc):
+                    v_out, t_out = _apply_mmg_quality(v, t, tmp_path, bbox)
+
+        # Should return the improved mesh, not the original
+        assert len(v_out) == len(v_improved)
+        assert len(t_out) == len(t_improved)
+        assert t_out.dtype == np.int32  # must be cast to int32
+
+    def test_explicit_mmg_hausd_passed_to_command(self, tmp_path: Path):
+        """mp.mmg_hausd가 설정되면 hausd=L/50 대신 명시적 값이 사용되어야 한다."""
+        from mesh.generator import _apply_mmg_quality
+        from mesh.params import MeshParams
+        import numpy as np
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+        v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+        t = np.array([[0, 1, 2, 3]], dtype=np.int32)
+        mp = MeshParams(mmg_hausd=0.05)
+
+        captured_cmd = []
+        mock_proc = MagicMock()
+        mock_proc.returncode = 1  # fail so we don't need to set up meshio fully
+
+        def capture_run(cmd, **kwargs):
+            captured_cmd.extend(cmd)
+            return mock_proc
+
+        mock_meshio = MagicMock()
+
+        with patch("mesh.generator.shutil.which", return_value="/usr/bin/mmg3d"):
+            with patch.dict(sys.modules, {"meshio": mock_meshio}):
+                with patch("mesh.generator.subprocess.run", side_effect=capture_run):
+                    _apply_mmg_quality(v, t, tmp_path, bbox, params=mp)
+
+        # hausd argument must appear in the command
+        assert "-hausd" in captured_cmd
+        hausd_idx = captured_cmd.index("-hausd")
+        assert float(captured_cmd[hausd_idx + 1]) == pytest.approx(0.05)
+
+
+# ---------------------------------------------------------------------------
+# _pytetwild_pipeline — mmg_enabled=False path
+# ---------------------------------------------------------------------------
+
+class TestPytetwiledPipelineMmgDisabled:
+    """mmg_enabled=False で MMG 후처리를 건너뛰는지 검증."""
+
+    def test_mmg_skipped_when_disabled(self, tmp_path: Path, unit_cube_stl: Path):
+        """MeshParams(mmg_enabled=False) → _apply_mmg_quality 호출 안 됨."""
+        from mesh.generator import _pytetwild_pipeline
+        from mesh.params import MeshParams
+
+        mp = MeshParams(mmg_enabled=False)
+
+        mock_pytet = MagicMock()
+        import numpy as np
+        v_out = np.random.default_rng(7).uniform(0, 1, (20, 3)).astype(np.float64)
+        t_out = np.zeros((10, 4), dtype=np.int32)
+        mock_pytet.tetrahedralize.return_value = (v_out, t_out)
+
+        with patch.dict(sys.modules, {"pytetwild": mock_pytet}):
+            with patch("mesh.generator._apply_mmg_quality") as mock_mmg:
+                with patch("mesh.generator._write_gmsh_msh2"):
+                    with patch("mesh.generator._setup_minimal_case"):
+                        with patch("mesh.generator._run_of"):
+                            with patch("mesh.generator._mesh_stats",
+                                       return_value={"passed": True, "num_cells": 10,
+                                                     "checkmesh_output": ""}):
+                                # Create polyMesh/faces so the existence check passes
+                                poly = tmp_path / "case" / "constant" / "polyMesh"
+                                poly.mkdir(parents=True)
+                                (poly / "faces").write_text("stub")
+                                _pytetwild_pipeline(
+                                    unit_cube_stl, tmp_path / "case",
+                                    BBox(0, 0, 0, 1, 1, 1), 100_000, mp,
+                                )
+
+        mock_mmg.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _tessell_pipeline — faces file absent → MeshGenerationError
+# ---------------------------------------------------------------------------
+
+class TestTessellPipelineFacesAbsent:
+    def test_raises_when_faces_not_created(self, tmp_path: Path, unit_cube_stl: Path):
+        """tessell_mesh writes nothing → MeshGenerationError raised."""
+        from mesh.generator import _tessell_pipeline, MeshGenerationError
+
+        mock_result = MagicMock()
+        mock_result.num_vertices = 4
+        mock_result.num_tets = 1
+        mock_result.write_openfoam.return_value = None  # writes nothing
+
+        mock_tm = MagicMock()
+        mock_tm.tetrahedralize_stl.return_value = mock_result
+
+        with patch.dict(sys.modules, {"tessell_mesh": mock_tm}):
+            with patch("mesh.generator._openfoam_env", return_value=None):
+                with patch("mesh.generator._mesh_stats", return_value={"passed": True}):
+                    with pytest.raises(MeshGenerationError, match="faces"):
+                        _tessell_pipeline(unit_cube_stl, tmp_path / "case",
+                                          BBox(0, 0, 0, 1, 1, 1))
+
+
+# ---------------------------------------------------------------------------
+# _netgen_pipeline — export fails for all formats → MeshGenerationError
+# ---------------------------------------------------------------------------
+
+class TestNetgenPipelineExportFails:
+    def test_raises_when_no_export_format_works(self, tmp_path: Path, unit_cube_stl: Path):
+        """Gmsh2 Format and Gmsh Format both fail → MeshGenerationError."""
+        from mesh.generator import _netgen_pipeline, MeshGenerationError
+
+        mock_geo = MagicMock()
+        mock_mesh = MagicMock()
+        mock_mesh.Export.side_effect = Exception("unsupported format")
+        mock_geo.GenerateMesh.return_value = mock_mesh
+
+        mock_stl_geom = MagicMock(return_value=mock_geo)
+        mock_netgen_stl = MagicMock()
+        mock_netgen_stl.STLGeometry = mock_stl_geom
+        mock_netgen = MagicMock()
+
+        with patch.dict(sys.modules, {
+            "netgen": mock_netgen,
+            "netgen.stl": mock_netgen_stl,
+        }):
+            with pytest.raises(MeshGenerationError, match="export"):
+                _netgen_pipeline(unit_cube_stl, tmp_path / "case",
+                                 BBox(0, 0, 0, 1, 1, 1))
