@@ -67,7 +67,12 @@ async def upload_stl(
         except (ValueError, TypeError, _json.JSONDecodeError) as e:
             raise HTTPException(status_code=400, detail=f"Invalid mesh_params: {e}")
 
-    # 1. Read and validate STL before charging the user
+    # 1a. Check file extension before reading content
+    filename = file.filename or ""
+    if not filename.lower().endswith(".stl"):
+        raise HTTPException(status_code=400, detail="Only .stl files are accepted")
+
+    # 1b. Read and validate STL structure before charging the user
     content = await file.read()
     try:
         validate_stl(content, max_size=settings.max_stl_size_bytes)
@@ -90,7 +95,8 @@ async def upload_stl(
         )
 
     job_id = str(uuid.uuid4())
-    filename = file.filename or "input.stl"
+    # filename already validated — use as-is (fallback shouldn't happen after extension check)
+    filename = filename or "input.stl"
 
     if settings.dev_mode:
         # Store locally, skip S3 and Stripe
