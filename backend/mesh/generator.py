@@ -96,7 +96,11 @@ def generate_mesh(
     logger.info("STL bbox: %s, purpose: %s, target_cells: %d", bbox, mesh_purpose, target_cells)
 
     # 공통 전처리: pyACVD 균일 remeshing (optional)
-    clean_stl = _maybe_remesh_surface(stl_path, case_dir, bbox)
+    # 전처리 파일을 stl_path.parent (tmpdir)에 저장 — _reset_case(case_dir)가 삭제하지 않도록.
+    # case_dir을 쓰면 Tier 0 실패 후 _reset_case()가 _repaired.stl 등을 지워버려
+    # 다음 tier가 존재하지 않는 경로를 열려고 함 (버그).
+    prep_dir = stl_path.parent
+    clean_stl = _maybe_remesh_surface(stl_path, prep_dir, bbox)
 
     errors: list[str] = []
     tessell_skipped = False

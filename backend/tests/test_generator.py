@@ -403,6 +403,44 @@ class TestTessellTier:
         assert "snappy" in msg
         assert "pytetwild" in msg
 
+    def test_clean_stl_survives_reset_case_after_tier_failure(
+        self, tmp_path: Path, unit_cube_stl: Path
+    ):
+        """
+        Regression: _maybe_remesh_surface used to write _repaired.stl into case_dir.
+        When Tier 0 failed and _reset_case deleted case_dir, subsequent tiers received
+        a clean_stl path that no longer existed.
+
+        Fix: prep files now go to stl_path.parent (never deleted by _reset_case).
+        """
+        from mesh.generator import generate_mesh
+
+        captured_paths: list[Path] = []
+
+        mock_tm = MagicMock()
+        mock_tm.tetrahedralize_stl.side_effect = RuntimeError("geogram fail")
+
+        def capture_stl_path(stl_path, *args, **kwargs):
+            captured_paths.append(Path(stl_path))
+            return {"passed": True, "num_cells": 50_000}
+
+        case_dir = tmp_path / "case"
+        with patch.dict(sys.modules, {"tessell_mesh": mock_tm}):
+            with patch("mesh.generator._netgen_pipeline", side_effect=RuntimeError("netgen fail")):
+                with patch("mesh.generator._snappy_pipeline", side_effect=RuntimeError("snappy fail")):
+                    with patch("mesh.generator._pytetwild_pipeline", side_effect=capture_stl_path):
+                        generate_mesh(unit_cube_stl, case_dir)
+
+        assert captured_paths, "pytetwild should have been called"
+        clean_stl = captured_paths[0]
+        # The clean STL must NOT be inside case_dir (which was reset 3 times)
+        assert not str(clean_stl).startswith(str(case_dir)), (
+            f"clean_stl {clean_stl} is inside case_dir {case_dir} — "
+            "_reset_case would have deleted it before pytetwild ran"
+        )
+        # The clean STL must still exist (or be the original stl_path if no remeshing happened)
+        assert clean_stl.exists() or clean_stl == unit_cube_stl
+
     def test_fea_purpose_skips_snappy(self, tmp_path: Path, unit_cube_stl: Path):
         """mesh_purpose='fea' must not call snappyHexMesh — it only generates tet meshes."""
         from mesh.generator import generate_mesh
