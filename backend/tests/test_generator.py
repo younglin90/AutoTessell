@@ -2316,3 +2316,112 @@ class TestWriteGmshMsh2FloatTets:
         content = out.read_text()
         # 0→1, 2→3, 3→4, 4→5 (1-based)
         assert "1 4 2 1 1 1 3 4 5" in content
+
+
+# ---------------------------------------------------------------------------
+# _pytetwild_pipeline — tet_edge_length_fac clamping to [0.02, 0.2]
+# ---------------------------------------------------------------------------
+
+class TestPytetwiledPipelineEdgeFacClamping:
+    """edge_length_fac = max(0.02, min(0.2, mp.tet_edge_length_fac)) clamping."""
+
+    def _run_and_capture_edge_fac(self, tmp_path, unit_cube_stl, tet_edge_length_fac):
+        from mesh.generator import _pytetwild_pipeline
+        from mesh.params import MeshParams
+        import numpy as np
+
+        mp = MeshParams(mmg_enabled=False, tet_edge_length_fac=tet_edge_length_fac)
+
+        mock_pytet = MagicMock()
+        v_out = np.zeros((4, 3), dtype=np.float64)
+        t_out = np.zeros((1, 4), dtype=np.int32)
+        mock_pytet.tetrahedralize.return_value = (v_out, t_out)
+
+        poly = tmp_path / "case" / "constant" / "polyMesh"
+        poly.mkdir(parents=True)
+        (poly / "faces").write_text("stub")
+
+        with patch.dict(sys.modules, {"pytetwild": mock_pytet}):
+            with patch("mesh.generator._write_gmsh_msh2"), \
+                 patch("mesh.generator._setup_minimal_case"), \
+                 patch("mesh.generator._run_of"), \
+                 patch("mesh.generator._mesh_stats",
+                       return_value={"passed": True, "num_cells": 10,
+                                     "checkmesh_output": ""}):
+                _pytetwild_pipeline(
+                    unit_cube_stl, tmp_path / "case",
+                    BBox(0, 0, 0, 1, 1, 1), 100_000, mp,
+                )
+
+        return mock_pytet.tetrahedralize.call_args.kwargs["edge_length_fac"]
+
+    def test_too_small_fac_clamped_to_0_02(self, tmp_path: Path, unit_cube_stl: Path):
+        """tet_edge_length_fac=0.001 (<0.02) must be clamped to 0.02."""
+        fac = self._run_and_capture_edge_fac(tmp_path, unit_cube_stl, 0.001)
+        assert fac == pytest.approx(0.02)
+
+    def test_too_large_fac_clamped_to_0_2(self, tmp_path: Path, unit_cube_stl: Path):
+        """tet_edge_length_fac=0.5 (>0.2) must be clamped to 0.2."""
+        fac = self._run_and_capture_edge_fac(tmp_path, unit_cube_stl, 0.5)
+        assert fac == pytest.approx(0.2)
+
+    def test_in_range_fac_used_as_is(self, tmp_path: Path, unit_cube_stl: Path):
+        """tet_edge_length_fac=0.1 (within [0.02, 0.2]) passes through unchanged."""
+        fac = self._run_and_capture_edge_fac(tmp_path, unit_cube_stl, 0.1)
+        assert fac == pytest.approx(0.1)
+
+
+# ---------------------------------------------------------------------------
+# _apply_mmg_quality — alternative MMG binary discovery
+# ---------------------------------------------------------------------------
+
+class TestApplyMmgQualityAlternativeBinary:
+    """mmg3d not in PATH but mmg3d_O3/mmg3d_64 is → that binary should be used."""
+
+    def test_uses_mmg3d_o3_when_mmg3d_absent(self, tmp_path: Path):
+        """shutil.which('mmg3d')=None, shutil.which('mmg3d_O3')='/path' → uses mmg3d_O3."""
+        from mesh.generator import _apply_mmg_quality
+        import numpy as np
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+        v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+        t = np.array([[0, 1, 2, 3]], dtype=np.int32)
+
+        captured_cmd = []
+
+        def which_side_effect(name):
+            return "/usr/bin/mmg3d_O3" if name == "mmg3d_O3" else None
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 1  # fail so we don't need full meshio mock
+
+        def capture_run(cmd, **kwargs):
+            captured_cmd.extend(cmd)
+            return mock_proc
+
+        mock_meshio = MagicMock()
+
+        with patch("mesh.generator.shutil.which", side_effect=which_side_effect):
+            with patch.dict(sys.modules, {"meshio": mock_meshio}):
+                with patch("mesh.generator.subprocess.run", side_effect=capture_run):
+                    _apply_mmg_quality(v, t, tmp_path, bbox)
+
+        # The command should have been called with the mmg3d_O3 binary path
+        assert captured_cmd[0] == "/usr/bin/mmg3d_O3"
+
+    def test_returns_original_when_all_mmg_candidates_absent(self, tmp_path: Path):
+        """All MMG candidate binaries absent → original v/t returned without calling subprocess."""
+        from mesh.generator import _apply_mmg_quality
+        import numpy as np
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+        v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+        t = np.array([[0, 1, 2, 3]], dtype=np.int32)
+
+        with patch("mesh.generator.shutil.which", return_value=None):
+            with patch("mesh.generator.subprocess.run") as mock_run:
+                v_out, t_out = _apply_mmg_quality(v, t, tmp_path, bbox)
+
+        mock_run.assert_not_called()
+        assert v_out is v
+        assert t_out is t
