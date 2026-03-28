@@ -354,3 +354,82 @@ class TestGetJobStatusResponseBuilding:
         job = self._make_job(mesh_purpose=None)
         result = self._call(job)
         assert result.mesh_purpose == "cfd"
+
+
+# ---------------------------------------------------------------------------
+# delete_job — route handler guards (404 / 409)
+# ---------------------------------------------------------------------------
+
+import pytest
+from fastapi import HTTPException
+
+
+class TestDeleteJobRouteGuards:
+    """delete_job route handler: 404 / 409 guards and happy-path delegation."""
+
+    def _make_db(self, job):
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = job
+        return mock_db
+
+    def _make_job(self, status):
+        from db import JobStatus
+        job = MagicMock()
+        job.id = "job-del-001"
+        job.status = status
+        return job
+
+    def test_raises_404_when_job_not_found(self):
+        """Job not found → HTTPException 404."""
+        from api.jobs import delete_job
+        mock_db = self._make_db(None)
+        with pytest.raises(HTTPException) as exc_info:
+            delete_job(job_id="missing", user_id="u1", db=mock_db)
+        assert exc_info.value.status_code == 404
+
+    @pytest.mark.parametrize("status", [
+        "PENDING", "PAID", "PROCESSING",
+    ])
+    def test_raises_409_for_active_job(self, status):
+        """Active job statuses must be rejected with 409."""
+        from db import JobStatus
+        from api.jobs import delete_job
+        job = self._make_job(JobStatus(status))
+        mock_db = self._make_db(job)
+        with pytest.raises(HTTPException) as exc_info:
+            delete_job(job_id=job.id, user_id="u1", db=mock_db)
+        assert exc_info.value.status_code == 409
+
+    @pytest.mark.parametrize("status", [
+        "DONE", "FAILED", "REFUND_FAILED",
+    ])
+    def test_terminal_job_deleted_and_committed(self, status):
+        """Terminal job → db.delete + db.commit called."""
+        from db import JobStatus
+        from api.jobs import delete_job
+        job = self._make_job(JobStatus(status))
+        mock_db = self._make_db(job)
+        with patch("api.jobs._delete_job_files"):
+            delete_job(job_id=job.id, user_id="u1", db=mock_db)
+        mock_db.delete.assert_called_once_with(job)
+        mock_db.commit.assert_called_once()
+
+    def test_terminal_job_calls_delete_job_files(self):
+        """Terminal job → _delete_job_files called with the job object."""
+        from db import JobStatus
+        from api.jobs import delete_job
+        job = self._make_job(JobStatus.DONE)
+        mock_db = self._make_db(job)
+        with patch("api.jobs._delete_job_files") as mock_cleanup:
+            delete_job(job_id=job.id, user_id="u1", db=mock_db)
+        mock_cleanup.assert_called_once_with(job)
+
+    def test_409_detail_contains_current_status(self):
+        """409 detail message must include the job's current status value."""
+        from db import JobStatus
+        from api.jobs import delete_job
+        job = self._make_job(JobStatus.PROCESSING)
+        mock_db = self._make_db(job)
+        with pytest.raises(HTTPException) as exc_info:
+            delete_job(job_id=job.id, user_id="u1", db=mock_db)
+        assert "PROCESSING" in exc_info.value.detail
