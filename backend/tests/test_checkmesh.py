@@ -71,3 +71,17 @@ def test_num_cells_none_when_absent():
     r = parse_checkmesh_output("Mesh OK.\n")
     assert r.passed is True
     assert r.num_cells is None
+
+
+def test_mesh_ok_with_failed_check_is_failed():
+    """If both 'Mesh OK.' and 'Failed N mesh checks.' appear, treat as failed."""
+    output = "    Mesh OK.\n    Failed 1 mesh checks.\n"
+    r = parse_checkmesh_output(output)
+    assert r.passed is False
+
+
+def test_failed_check_case_insensitive():
+    """'FAILED 2 MESH CHECKS' should also be detected."""
+    output = "Mesh OK.\nFAILED 2 MESH CHECKS.\n"
+    r = parse_checkmesh_output(output)
+    assert r.passed is False

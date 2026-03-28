@@ -13,8 +13,13 @@ class CheckMeshResult:
     raw_output: str
 
 
+_FAILED_RE = re.compile(r"Failed\s+\d+\s+mesh\s+checks", re.IGNORECASE)
+
+
 def parse_checkmesh_output(stdout: str) -> CheckMeshResult:
-    passed = "Mesh OK." in stdout
+    # "Mesh OK." is the success marker; but some versions also print
+    # "Failed N mesh checks." in the same run — that always means failure.
+    passed = "Mesh OK." in stdout and not _FAILED_RE.search(stdout)
 
     return CheckMeshResult(
         passed=passed,
