@@ -1147,3 +1147,131 @@ class TestSafeStlNameNonAscii:
         assert result.endswith(".stl")
         assert " " not in result
         assert "#" not in result
+
+
+# ---------------------------------------------------------------------------
+# _apply_mmg_quality — mmg found, various failure modes
+# ---------------------------------------------------------------------------
+
+class TestApplyMmgQualityFailureModes:
+    """Edge cases when mmg3d binary is on PATH but something still goes wrong."""
+
+    def test_returns_original_when_mmg_exits_nonzero(self, tmp_path: Path):
+        """returncode != 0 → 원본 v/t 반환."""
+        from mesh.generator import _apply_mmg_quality
+        import numpy as np
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+        v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+        t = np.array([[0, 1, 2, 3]], dtype=np.int32)
+
+        mock_meshio = MagicMock()
+        mock_proc = MagicMock()
+        mock_proc.returncode = 1  # non-zero — mmg failed
+
+        with patch("mesh.generator.shutil.which", return_value="/usr/bin/mmg3d"):
+            with patch.dict(sys.modules, {"meshio": mock_meshio}):
+                with patch("mesh.generator.subprocess.run", return_value=mock_proc):
+                    v_out, t_out = _apply_mmg_quality(v, t, tmp_path, bbox)
+
+        assert v_out is v
+        assert t_out is t
+
+    def test_returns_original_when_t_new_is_none(self, tmp_path: Path):
+        """MMG output에 tetra 셀이 없으면 원본 v/t 반환."""
+        from mesh.generator import _apply_mmg_quality
+        import numpy as np
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+        v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+        t = np.array([[0, 1, 2, 3]], dtype=np.int32)
+
+        # Create _mmg_out.mesh so out_mesh.exists() is True
+        (tmp_path / "_mmg_out.mesh").write_text("dummy")
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+
+        mock_mesh = MagicMock()
+        mock_mesh.cells_dict = {}  # no "tetra" key
+        mock_meshio = MagicMock()
+        mock_meshio.read.return_value = mock_mesh
+
+        with patch("mesh.generator.shutil.which", return_value="/usr/bin/mmg3d"):
+            with patch.dict(sys.modules, {"meshio": mock_meshio}):
+                with patch("mesh.generator.subprocess.run", return_value=mock_proc):
+                    v_out, t_out = _apply_mmg_quality(v, t, tmp_path, bbox)
+
+        assert v_out is v
+        assert t_out is t
+
+    def test_returns_original_on_subprocess_exception(self, tmp_path: Path):
+        """subprocess.run raises → exception caught → 원본 반환."""
+        from mesh.generator import _apply_mmg_quality
+        import numpy as np
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+        v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+        t = np.array([[0, 1, 2, 3]], dtype=np.int32)
+
+        mock_meshio = MagicMock()
+
+        with patch("mesh.generator.shutil.which", return_value="/usr/bin/mmg3d"):
+            with patch.dict(sys.modules, {"meshio": mock_meshio}):
+                with patch("mesh.generator.subprocess.run",
+                           side_effect=RuntimeError("mmg process crashed")):
+                    v_out, t_out = _apply_mmg_quality(v, t, tmp_path, bbox)
+
+        assert v_out is v
+        assert t_out is t
+
+
+# ---------------------------------------------------------------------------
+# _openfoam_env — bashrc sourcing path
+# ---------------------------------------------------------------------------
+
+class TestOpenfoamEnvBashrc:
+    def test_sources_bashrc_and_returns_env_when_present(self):
+        """WM_PROJECT_DIR 없어도 bashrc가 있으면 env 반환."""
+        from mesh.generator import _openfoam_env
+
+        fake_env_output = "WM_PROJECT_DIR=/opt/openfoam12\nFOAM_ETC=/opt/openfoam12/etc\n"
+        mock_proc = MagicMock()
+        mock_proc.stdout = fake_env_output
+
+        env_without_wm = {k: v for k, v in os.environ.items() if k != "WM_PROJECT_DIR"}
+
+        with patch.dict(os.environ, env_without_wm, clear=True):
+            with patch("mesh.generator.Path.exists", return_value=True):
+                with patch("mesh.generator.subprocess.run", return_value=mock_proc):
+                    env = _openfoam_env()
+
+        assert env is not None
+        assert "WM_PROJECT_DIR" in env
+
+
+# ---------------------------------------------------------------------------
+# _mesh_stats — non-orthogonality and skewness fields
+# ---------------------------------------------------------------------------
+
+class TestMeshStatsFields:
+    def test_includes_non_ortho_and_skewness(self, tmp_path: Path):
+        """checkMesh 출력에 non-ortho/skewness 있으면 stats dict에 포함되어야 한다."""
+        from mesh.generator import _mesh_stats
+
+        checkmesh_output = (
+            "    Max non-orthogonality = 42.3 degrees.\n"
+            "    Max skewness = 0.87\n"
+            "    cells:          10000\n"
+            "Mesh OK.\n"
+        )
+        mock_proc = MagicMock()
+        mock_proc.stdout = checkmesh_output
+        mock_proc.stderr = ""
+
+        with patch("mesh.generator.subprocess.run", return_value=mock_proc):
+            stats = _mesh_stats(tmp_path, env=None)
+
+        assert stats.get("max_non_orthogonality") == pytest.approx(42.3)
+        assert stats.get("max_skewness") == pytest.approx(0.87)
+        assert stats.get("num_cells") == 10000
