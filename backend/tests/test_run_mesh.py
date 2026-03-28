@@ -284,6 +284,24 @@ class TestRunMeshDevMode:
 
         assert mock_refund.call_count == 1
 
+    def test_celery_task_id_stored_on_processing(self):
+        """job.celery_task_id must be set to Celery's self.request.id when PROCESSING begins."""
+        job = _make_job()
+
+        with _dev_mode_patches(_make_db(job)):
+            run_mesh(_fake_celery_self(), job.id)
+
+        assert job.celery_task_id == "celery-task-test-123"
+
+    def test_mesh_s3_key_stored_on_success(self):
+        """After success, job.mesh_s3_key must be 'meshes/{job_id}/mesh.zip'."""
+        job = _make_job(job_id="job-key-test")
+
+        with _dev_mode_patches(_make_db(job)):
+            run_mesh(_fake_celery_self(), job.id)
+
+        assert job.mesh_s3_key == "meshes/job-key-test/mesh.zip"
+
 
 # ---------------------------------------------------------------------------
 # TestDownloadS3DevMode

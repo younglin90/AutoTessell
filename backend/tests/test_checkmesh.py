@@ -85,3 +85,27 @@ def test_failed_check_case_insensitive():
     output = "Mesh OK.\nFAILED 2 MESH CHECKS.\n"
     r = parse_checkmesh_output(output)
     assert r.passed is False
+
+
+def test_large_cell_count_parsed():
+    """Cell counts in the millions must parse correctly."""
+    output = "    cells:          12345678\n    Mesh OK.\n"
+    r = parse_checkmesh_output(output)
+    assert r.num_cells == 12345678
+
+
+def test_non_orthogonality_with_extra_whitespace():
+    """Extra spaces between '=' and the value must not break extraction."""
+    output = "    Max non-orthogonality =    55.7 degrees.\n    Mesh OK.\n"
+    r = parse_checkmesh_output(output)
+    assert r.max_non_orthogonality == pytest.approx(55.7)
+
+
+def test_checkmesh_result_dataclass_fields():
+    """CheckMeshResult must expose the expected fields."""
+    from mesh.checkmesh import CheckMeshResult
+    r = CheckMeshResult(passed=True, max_non_orthogonality=30.0, max_skewness=0.5, num_cells=1000, raw_output="")
+    assert r.passed is True
+    assert r.max_non_orthogonality == pytest.approx(30.0)
+    assert r.max_skewness == pytest.approx(0.5)
+    assert r.num_cells == 1000
