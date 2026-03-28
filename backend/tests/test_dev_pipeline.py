@@ -194,6 +194,44 @@ class TestGenerateMeshDev:
         # Auto-calculated fac should be in the valid range
         assert 0.02 <= call_kwargs["edge_length_fac"] <= 0.2
 
+    def test_edge_fac_clamped_below_minimum(self, cube_stl: Path, tmp_path: Path):
+        """tet_edge_length_fac below 0.02 is clamped to 0.02 in dev_pipeline."""
+        mock_pytet = _make_mock_pytetwild()
+        mock_stats = {"num_cells": 10, "num_points": 8, "num_faces": 16, "num_internal_faces": 4}
+
+        mp = MeshParams(tet_edge_length_fac=0.005)  # below the 0.02 floor
+        with patch.dict(__import__("sys").modules, {"pytetwild": mock_pytet}):
+            with patch("mesh.dev_pipeline.write_polymesh", return_value=mock_stats):
+                generate_mesh_dev(cube_stl, tmp_path / "case", params=mp)
+
+        call_kwargs = mock_pytet.tetrahedralize.call_args[1]
+        assert call_kwargs["edge_length_fac"] == pytest.approx(0.02)
+
+    def test_edge_fac_clamped_above_maximum(self, cube_stl: Path, tmp_path: Path):
+        """tet_edge_length_fac above 0.2 is clamped to 0.2 in dev_pipeline."""
+        mock_pytet = _make_mock_pytetwild()
+        mock_stats = {"num_cells": 10, "num_points": 8, "num_faces": 16, "num_internal_faces": 4}
+
+        mp = MeshParams(tet_edge_length_fac=0.5)  # above the 0.2 ceiling
+        with patch.dict(__import__("sys").modules, {"pytetwild": mock_pytet}):
+            with patch("mesh.dev_pipeline.write_polymesh", return_value=mock_stats):
+                generate_mesh_dev(cube_stl, tmp_path / "case", params=mp)
+
+        call_kwargs = mock_pytet.tetrahedralize.call_args[1]
+        assert call_kwargs["edge_length_fac"] == pytest.approx(0.2)
+
+    def test_result_contains_num_points_and_num_faces(self, cube_stl: Path, tmp_path: Path):
+        """generate_mesh_dev must return num_points and num_faces from write_polymesh."""
+        mock_pytet = _make_mock_pytetwild()
+        mock_stats = {"num_cells": 80, "num_points": 50, "num_faces": 200, "num_internal_faces": 100}
+
+        with patch.dict(__import__("sys").modules, {"pytetwild": mock_pytet}):
+            with patch("mesh.dev_pipeline.write_polymesh", return_value=mock_stats):
+                result = generate_mesh_dev(cube_stl, tmp_path / "case")
+
+        assert result["num_points"] == 50
+        assert result["num_faces"] == 200
+
 
 # ---------------------------------------------------------------------------
 # Error handling
