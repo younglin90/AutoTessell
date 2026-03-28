@@ -1559,6 +1559,68 @@ class TestNetgenPipelineExportFails:
 
 
 # ---------------------------------------------------------------------------
+# _netgen_pipeline — GenerateMesh failure
+# ---------------------------------------------------------------------------
+
+class TestNetgenPipelineGenerateMeshFails:
+    """GenerateMesh raises → MeshGenerationError wrapping the original."""
+
+    def test_raises_when_generate_mesh_fails(self, tmp_path: Path, unit_cube_stl: Path):
+        """geo.GenerateMesh raises → MeshGenerationError('Netgen 메쉬 생성 실패: ...')."""
+        from mesh.generator import _netgen_pipeline, MeshGenerationError
+
+        mock_geo = MagicMock()
+        mock_geo.GenerateMesh.side_effect = RuntimeError("memory allocation failure")
+
+        mock_stl_geom = MagicMock(return_value=mock_geo)
+        mock_netgen_stl = MagicMock()
+        mock_netgen_stl.STLGeometry = mock_stl_geom
+        mock_netgen = MagicMock()
+
+        with patch.dict(sys.modules, {
+            "netgen": mock_netgen,
+            "netgen.stl": mock_netgen_stl,
+        }):
+            with pytest.raises(MeshGenerationError, match="Netgen 메쉬 생성 실패"):
+                _netgen_pipeline(unit_cube_stl, tmp_path / "case",
+                                 BBox(0, 0, 0, 1, 1, 1))
+
+
+# ---------------------------------------------------------------------------
+# _netgen_pipeline — faces absent after gmshToFoam
+# ---------------------------------------------------------------------------
+
+class TestNetgenPipelineFacesAbsent:
+    """gmshToFoam runs but produces no polyMesh/faces → MeshGenerationError."""
+
+    def test_raises_when_faces_not_created(self, tmp_path: Path, unit_cube_stl: Path):
+        """polyMesh/faces missing after gmshToFoam → MeshGenerationError."""
+        from mesh.generator import _netgen_pipeline, MeshGenerationError
+
+        mock_geo = MagicMock()
+        mock_mesh = MagicMock()
+        mock_mesh.Export.return_value = None  # export succeeds
+        mock_geo.GenerateMesh.return_value = mock_mesh
+
+        mock_stl_geom = MagicMock(return_value=mock_geo)
+        mock_netgen_stl = MagicMock()
+        mock_netgen_stl.STLGeometry = mock_stl_geom
+        mock_netgen = MagicMock()
+
+        case_dir = tmp_path / "case"
+        case_dir.mkdir()
+
+        with patch.dict(sys.modules, {
+            "netgen": mock_netgen,
+            "netgen.stl": mock_netgen_stl,
+        }):
+            with patch("mesh.generator._setup_minimal_case"), \
+                 patch("mesh.generator._run_of"):
+                with pytest.raises(MeshGenerationError, match="polyMesh/faces"):
+                    _netgen_pipeline(unit_cube_stl, case_dir, BBox(0, 0, 0, 1, 1, 1))
+
+
+# ---------------------------------------------------------------------------
 # _maybe_remesh_surface — Poisson succeeds branch
 # ---------------------------------------------------------------------------
 
