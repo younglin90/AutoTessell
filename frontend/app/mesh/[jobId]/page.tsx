@@ -76,6 +76,8 @@ function ProParamsBadges({ json }: { json: string }) {
   );
 }
 
+const TERMINAL = new Set(["DONE", "FAILED", "REFUND_FAILED"]);
+
 export default function JobPage() {
   const { jobId } = useParams<{ jobId: string }>();
   const [status, setStatus] = useState<JobStatus | null>(null);
@@ -84,32 +86,34 @@ export default function JobPage() {
 
   useEffect(() => {
     const userId = getUserId();
+    let stopped = false;
 
     const poll = async () => {
       try {
         const s = await pollJobStatus(jobId, userId);
+        if (stopped) return;
         setStatus(s);
 
-        if (s.status === "DONE" && !downloadUrl) {
-          const d = await getDownloadUrl(jobId, userId);
-          setDownloadUrl(d.url);
+        if (s.status === "DONE") {
+          stopped = true;
+          try {
+            const d = await getDownloadUrl(jobId, userId);
+            setDownloadUrl(d.url);
+          } catch {
+            // download URL not critical — status is already shown
+          }
+        } else if (TERMINAL.has(s.status)) {
+          stopped = true;
         }
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Failed to fetch status");
+        if (!stopped) setError(e instanceof Error ? e.message : "Failed to fetch status");
       }
     };
 
     poll();
-    const interval = setInterval(() => {
-      if (status?.status === "DONE" || status?.status === "FAILED" || status?.status === "REFUND_FAILED") {
-        clearInterval(interval);
-        return;
-      }
-      poll();
-    }, 4000);
-
-    return () => clearInterval(interval);
-  }, [jobId, downloadUrl, status?.status]);
+    const interval = setInterval(() => { if (!stopped) poll(); }, 4000);
+    return () => { stopped = true; clearInterval(interval); };
+  }, [jobId]);
 
   if (error) {
     return (
