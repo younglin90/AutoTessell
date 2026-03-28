@@ -1497,6 +1497,67 @@ class TestTessellPipelineFacesAbsent:
 
 
 # ---------------------------------------------------------------------------
+# _snappy_pipeline — faces file absent → MeshGenerationError
+# ---------------------------------------------------------------------------
+
+class TestSnappyPipelineFacesAbsent:
+    """snappyHexMesh runs but polyMesh/faces not created → MeshGenerationError."""
+
+    def test_raises_when_faces_not_created(self, tmp_path: Path, unit_cube_stl: Path):
+        from mesh.generator import _snappy_pipeline, MeshGenerationError
+        from mesh.stl_utils import StlComplexity
+
+        case_dir = tmp_path / "case"
+        case_dir.mkdir()
+
+        fake_complexity = StlComplexity(
+            mean_curvature=0.5, p95_curvature=1.0,
+            complexity_ratio=2.0,
+            surface_refine_min=1, surface_refine_max=2, feature_refine_level=2,
+            resolve_feature_angle=30.0,
+        )
+
+        with patch("mesh.generator.analyze_stl_complexity", return_value=fake_complexity), \
+             patch("mesh.generator.build_domain"), \
+             patch("mesh.generator._write_snappy_case"), \
+             patch("mesh.generator._openfoam_env", return_value=None), \
+             patch("mesh.generator._run_of"):
+            with pytest.raises(MeshGenerationError, match="polyMesh/faces"):
+                _snappy_pipeline(unit_cube_stl, case_dir, BBox(0, 0, 0, 1, 1, 1), 100_000)
+
+
+# ---------------------------------------------------------------------------
+# _pytetwild_pipeline — faces file absent → MeshGenerationError
+# ---------------------------------------------------------------------------
+
+class TestPytetwiledPipelineFacesAbsent:
+    """gmshToFoam runs but polyMesh/faces not created → MeshGenerationError."""
+
+    def test_raises_when_faces_not_created(self, tmp_path: Path, unit_cube_stl: Path):
+        from mesh.generator import _pytetwild_pipeline, MeshGenerationError
+        from mesh.params import MeshParams
+        import numpy as np
+
+        mp = MeshParams(mmg_enabled=False)  # disable MMG to avoid unpack issue
+
+        mock_pytet = MagicMock()
+        v_out = np.zeros((4, 3), dtype=np.float64)
+        t_out = np.zeros((1, 4), dtype=np.int32)
+        mock_pytet.tetrahedralize.return_value = (v_out, t_out)
+
+        case_dir = tmp_path / "case"
+        case_dir.mkdir()
+
+        with patch.dict(sys.modules, {"pytetwild": mock_pytet}):
+            with patch("mesh.generator._write_gmsh_msh2"), \
+                 patch("mesh.generator._setup_minimal_case"), \
+                 patch("mesh.generator._run_of"):
+                with pytest.raises(MeshGenerationError, match="polyMesh/faces"):
+                    _pytetwild_pipeline(unit_cube_stl, case_dir,
+                                        BBox(0, 0, 0, 1, 1, 1), 100_000, mp)
+
+
+# ---------------------------------------------------------------------------
 # _netgen_pipeline — export fails for all formats → MeshGenerationError
 # ---------------------------------------------------------------------------
 
