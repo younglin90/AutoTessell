@@ -100,3 +100,26 @@ class TestBinarySTLWithSolidHeader:
         content = self._make_solid_header_binary_stl(10)[:-20]
         with pytest.raises(STLValidationError, match="size mismatch"):
             validate_stl(content)
+
+
+# ---- Binary STL with extra trailing bytes ----
+
+class TestBinarySTLOversized:
+    """Binary STL files that are *larger* than the declared triangle count require."""
+
+    def test_extra_trailing_bytes_rejected(self):
+        """Binary STL with extra bytes after the declared triangles → size mismatch."""
+        content = _make_binary_stl(5) + b"\x00" * 50  # 50 extra bytes appended
+        with pytest.raises(STLValidationError, match="size mismatch"):
+            validate_stl(content)
+
+    def test_one_extra_byte_rejected(self):
+        """Even a single extra byte at the end must be caught."""
+        content = _make_binary_stl(3) + b"\xff"
+        with pytest.raises(STLValidationError, match="size mismatch"):
+            validate_stl(content)
+
+    def test_exact_size_accepted(self):
+        """The correct-size file must still be accepted (regression guard)."""
+        content = _make_binary_stl(4)
+        validate_stl(content)  # must not raise

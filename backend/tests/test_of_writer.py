@@ -191,6 +191,20 @@ class TestWritePolyMesh:
         assert stats["num_cells"] == 3
         assert any("non-manifold" in r.message.lower() for r in caplog.records)
 
+    def test_two_tets_boundary_start_face(self, tmp_path: Path):
+        """With 1 internal face, boundary startFace must be 1 (not 0)."""
+        v, t = _two_tets_sharing_face()
+        write_polymesh(v, t, tmp_path)
+        content = (tmp_path / "constant" / "polyMesh" / "boundary").read_text()
+        assert "startFace       1" in content
+
+    def test_two_tets_boundary_n_faces(self, tmp_path: Path):
+        """Two tets sharing 1 face → 6 boundary faces (7 total − 1 internal)."""
+        v, t = _two_tets_sharing_face()
+        write_polymesh(v, t, tmp_path)
+        content = (tmp_path / "constant" / "polyMesh" / "boundary").read_text()
+        assert "nFaces          6" in content
+
     def test_large_mesh_stats(self, tmp_path: Path):
         """Smoke test with 100 tets to verify scalability."""
         rng = np.random.default_rng(42)

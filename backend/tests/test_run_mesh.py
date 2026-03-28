@@ -147,6 +147,26 @@ class TestRunMeshDevMode:
         assert call_kwargs["target_cells"] == 250_000
         assert call_kwargs["mesh_purpose"] == "fea"
 
+    def test_none_target_cells_defaults_to_500k(self):
+        """job.target_cells=None must fall back to 500_000 (not raise TypeError)."""
+        job = _make_job(target_cells=None)
+
+        with _dev_mode_patches(_make_db(job)) as (mock_gen, _):
+            run_mesh(_fake_celery_self(), job.id)
+
+        call_kwargs = mock_gen.call_args[1]
+        assert call_kwargs["target_cells"] == 500_000
+
+    def test_none_mesh_purpose_defaults_to_cfd(self):
+        """job.mesh_purpose=None must fall back to 'cfd' (not pass None)."""
+        job = _make_job(mesh_purpose=None)
+
+        with _dev_mode_patches(_make_db(job)) as (mock_gen, _):
+            run_mesh(_fake_celery_self(), job.id)
+
+        call_kwargs = mock_gen.call_args[1]
+        assert call_kwargs["mesh_purpose"] == "cfd"
+
     def test_passed_false_raises_and_calls_refund(self):
         job = _make_job()
         stats = _mock_stats(passed=False)
