@@ -1850,3 +1850,48 @@ class TestGenerateMeshFeaPurpose:
                 generate_mesh(unit_cube_stl, tmp_path / "case")
 
         assert "build.sh" in str(exc_info.value)
+
+
+# ---------------------------------------------------------------------------
+# _netgen_pipeline — Gmsh2 Format fails, fallback to Gmsh Format succeeds
+# ---------------------------------------------------------------------------
+
+class TestNetgenPipelineGmshFormatFallback:
+    """_netgen_pipeline export loop: first format (Gmsh2) raises, second (Gmsh) succeeds."""
+
+    def test_falls_back_to_gmsh_format_when_gmsh2_fails(self, tmp_path: Path, unit_cube_stl: Path):
+        """Gmsh2 Format export raises → second iteration (Gmsh Format) used → pipeline continues."""
+        from mesh.generator import _netgen_pipeline
+
+        mock_geo = MagicMock()
+        mock_mesh = MagicMock()
+        # First Export call (Gmsh2 Format) raises; second (Gmsh Format) returns None (success)
+        mock_mesh.Export.side_effect = [Exception("Gmsh2 not supported by this build"), None]
+        mock_geo.GenerateMesh.return_value = mock_mesh
+
+        mock_stl_geom = MagicMock(return_value=mock_geo)
+        mock_netgen_stl = MagicMock()
+        mock_netgen_stl.STLGeometry = mock_stl_geom
+        mock_netgen = MagicMock()
+
+        case_dir = tmp_path / "case"
+        case_dir.mkdir()
+
+        # Pre-create polyMesh/faces so the post-gmshToFoam presence check passes
+        poly = case_dir / "constant" / "polyMesh"
+        poly.mkdir(parents=True)
+        (poly / "faces").write_text("dummy")
+
+        with patch.dict(sys.modules, {
+            "netgen": mock_netgen,
+            "netgen.stl": mock_netgen_stl,
+        }):
+            with patch("mesh.generator._setup_minimal_case"), \
+                 patch("mesh.generator._openfoam_env", return_value=None), \
+                 patch("mesh.generator._run_of"), \
+                 patch("mesh.generator._mesh_stats", return_value={"passed": True, "num_cells": 100}):
+                stats = _netgen_pipeline(unit_cube_stl, case_dir, BBox(0, 0, 0, 1, 1, 1))
+
+        assert stats["passed"] is True
+        # Export called twice: once for Gmsh2 Format (raised), once for Gmsh Format (succeeded)
+        assert mock_mesh.Export.call_count == 2

@@ -399,6 +399,100 @@ class TestRepairStlToPathHappyPath:
         mock_mesh.export.assert_called_once_with(str(dst))
 
 
+class TestRepairStlToPathNonWatertight:
+    """repair_stl_to_path — trimesh succeeds but mesh is not watertight → returns False."""
+
+    def test_non_watertight_mesh_returns_false(self, tmp_path: Path):
+        """trimesh repair runs successfully, but mesh.is_watertight == False → return False."""
+        import trimesh as _trimesh
+
+        src = tmp_path / "open.stl"
+        dst = tmp_path / "open_out.stl"
+        src.write_bytes(_simple_triangle_stl())
+
+        mock_mesh = MagicMock()
+        mock_mesh.is_watertight = False
+        mock_repair = MagicMock()
+
+        with patch.object(_trimesh, "load", return_value=mock_mesh):
+            with patch.object(_trimesh, "repair", mock_repair):
+                result = repair_stl_to_path(src, dst)
+
+        assert result is False
+        mock_mesh.export.assert_called_once_with(str(dst))
+
+
+# ---------------------------------------------------------------------------
+# analyze_stl_complexity — feature angle capping in medium and low branches
+# ---------------------------------------------------------------------------
+
+class TestAnalyzeStlComplexityFeatureAngleCapping:
+    """
+    Verify the per-branch feature angle caps trigger when actual adjacency angles
+    are high:
+      medium (3 < ratio ≤ 10): feat_angle = min(feat_angle, 30.0) → 30.0
+      low    (ratio ≤ 3)      : feat_angle = min(feat_angle, 40.0) → 40.0
+
+    The previous tests in TestAnalyzeStlComplexityFaceAdjacency only exercised
+    the empty-adjacency path (feat_angle default 30.0) and the high-ratio cap (20°).
+    """
+
+    def _make_stl(self, tmp_path: Path) -> Path:
+        p = tmp_path / "shape.stl"
+        p.write_bytes(_simple_triangle_stl())
+        return p
+
+    def _mock_mesh_with_angles(self, angle_rad: float):
+        """Return a trimesh-like mock with 3 identical face adjacency angles."""
+        import numpy as np
+        mock_mesh = MagicMock()
+        mock_mesh.vertices = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
+        mock_mesh.scale = 1.0
+        # Three equal angles, all > the relevant cap, so p10 ≈ angle_rad
+        mock_mesh.face_adjacency_angles = np.array([angle_rad, angle_rad, angle_rad])
+        return mock_mesh
+
+    def test_medium_ratio_caps_feature_angle_at_30(self, tmp_path: Path):
+        """3 < ratio ≤ 10 + large adjacency angle → feat_angle capped at ≤ 30°."""
+        import numpy as np
+        import trimesh as real_trimesh
+
+        stl = self._make_stl(tmp_path)
+        # ≈ 60° in radians — p10 → 60°, clip([15,60]) → 60°, then min(60, 30) = 30
+        mock_mesh = self._mock_mesh_with_angles(1.047)
+        medium_curv = np.array([1e-5] * 80 + [100.0] * 20)  # 3 < ratio ≤ 10
+
+        with patch("trimesh.load", return_value=mock_mesh):
+            with patch.object(
+                real_trimesh.curvature,
+                "discrete_mean_curvature_measure",
+                return_value=medium_curv,
+            ):
+                result = analyze_stl_complexity(stl)
+
+        assert result.resolve_feature_angle <= 30.0
+
+    def test_low_ratio_caps_feature_angle_at_40(self, tmp_path: Path):
+        """ratio ≤ 3 + large adjacency angle → feat_angle capped at ≤ 40°."""
+        import numpy as np
+        import trimesh as real_trimesh
+
+        stl = self._make_stl(tmp_path)
+        # ≈ 60° in radians — p10 → 60°, clip([15,60]) → 60°, then min(60, 40) = 40
+        mock_mesh = self._mock_mesh_with_angles(1.047)
+        low_curv = np.array([1e-5] * 50 + [100.0] * 50)  # ratio ≤ 3
+
+        with patch("trimesh.load", return_value=mock_mesh):
+            with patch.object(
+                real_trimesh.curvature,
+                "discrete_mean_curvature_measure",
+                return_value=low_curv,
+            ):
+                result = analyze_stl_complexity(stl)
+
+        assert result.resolve_feature_angle <= 40.0
+
+
 class TestBinaryBboxNegativeCoords:
     def test_negative_coordinates(self):
         """음수 좌표가 포함된 바이너리 STL bbox 추출이 정확해야 한다."""
