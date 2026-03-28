@@ -433,3 +433,32 @@ class TestDeleteJobRouteGuards:
         with pytest.raises(HTTPException) as exc_info:
             delete_job(job_id=job.id, user_id="u1", db=mock_db)
         assert "PROCESSING" in exc_info.value.detail
+
+
+# ---------------------------------------------------------------------------
+# get_job_status — 404 guard
+# ---------------------------------------------------------------------------
+
+class TestGetJobStatusRouteGuards:
+    """get_job_status route handler: 404 when job not found."""
+
+    def _make_db(self, job):
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = job
+        return mock_db
+
+    def test_raises_404_when_job_not_found(self):
+        """Job not in DB → 404 HTTPException."""
+        from api.jobs import get_job_status
+        mock_db = self._make_db(None)
+        with pytest.raises(HTTPException) as exc_info:
+            get_job_status(job_id="missing-id", user_id="u1", db=mock_db)
+        assert exc_info.value.status_code == 404
+
+    def test_404_detail_contains_job_not_found(self):
+        """404 detail message must say 'Job not found'."""
+        from api.jobs import get_job_status
+        mock_db = self._make_db(None)
+        with pytest.raises(HTTPException) as exc_info:
+            get_job_status(job_id="missing-id", user_id="u1", db=mock_db)
+        assert "not found" in exc_info.value.detail.lower()
