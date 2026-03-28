@@ -462,6 +462,23 @@ class TestDownload:
                        params={"user_id": "u1"})
         assert r.status_code == 404
 
+    def test_done_job_without_mesh_key_returns_500(self, client):
+        """DONE job with missing mesh_s3_key should return 500 (data integrity guard)."""
+        import uuid
+        job_id = str(uuid.uuid4())
+        db = _TestSession()
+        job = Job(
+            id=job_id, user_id="u1", status=JobStatus.DONE,
+            stl_s3_key="stl/test.stl",
+            mesh_s3_key=None,   # key missing
+            stl_filename="test.stl", amount_cents=0,
+        )
+        db.add(job)
+        db.commit()
+        db.close()
+        r = client.get(f"/api/v1/jobs/{job_id}/download", params={"user_id": "u1"})
+        assert r.status_code == 500
+
 
 # ---------------------------------------------------------------------------
 # Rate limiting
@@ -669,8 +686,8 @@ class TestRateLimitRetryAfter:
 # created_at in job status response
 # ---------------------------------------------------------------------------
 
-class TestJobStatusCreatedAt:
-    def test_created_at_present_in_status_response(self, client):
+class TestJobStatusTimestamps:
+    def test_created_at_present(self, client):
         job_id = _upload(client, user_id="ts_user").json()["job_id"]
         r = client.get(f"/api/v1/jobs/{job_id}", params={"user_id": "ts_user"}).json()
         assert "created_at" in r
@@ -680,16 +697,35 @@ class TestJobStatusCreatedAt:
         from datetime import datetime
         job_id = _upload(client, user_id="ts_iso").json()["job_id"]
         r = client.get(f"/api/v1/jobs/{job_id}", params={"user_id": "ts_iso"}).json()
-        # ISO parse should not raise
         dt = datetime.fromisoformat(r["created_at"])
         assert dt is not None
 
     def test_created_at_recent(self, client):
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timezone
         job_id = _upload(client, user_id="ts_recent").json()["job_id"]
         r = client.get(f"/api/v1/jobs/{job_id}", params={"user_id": "ts_recent"}).json()
         dt = datetime.fromisoformat(r["created_at"])
-        # The timestamp should be within the last minute
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        assert abs((now - dt).total_seconds()) < 60
+
+    def test_updated_at_present(self, client):
+        job_id = _upload(client, user_id="upd_user").json()["job_id"]
+        r = client.get(f"/api/v1/jobs/{job_id}", params={"user_id": "upd_user"}).json()
+        assert "updated_at" in r
+        assert r["updated_at"] is not None
+
+    def test_updated_at_is_iso_format(self, client):
+        from datetime import datetime
+        job_id = _upload(client, user_id="upd_iso").json()["job_id"]
+        r = client.get(f"/api/v1/jobs/{job_id}", params={"user_id": "upd_iso"}).json()
+        dt = datetime.fromisoformat(r["updated_at"])
+        assert dt is not None
+
+    def test_updated_at_recent(self, client):
+        from datetime import datetime, timezone
+        job_id = _upload(client, user_id="upd_recent").json()["job_id"]
+        r = client.get(f"/api/v1/jobs/{job_id}", params={"user_id": "upd_recent"}).json()
+        dt = datetime.fromisoformat(r["updated_at"])
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         assert abs((now - dt).total_seconds()) < 60
 
