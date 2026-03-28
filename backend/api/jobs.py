@@ -46,6 +46,7 @@ class JobStatusResponse(BaseModel):
     result_tier: str | None = None
     # Timestamps
     created_at: str | None = None
+    updated_at: str | None = None
 
 
 @router.get("/jobs", response_model=list[JobListItem])
@@ -163,4 +164,5 @@ def get_job_status(
         result_num_cells=job.result_num_cells,
         result_tier=job.result_tier,
         created_at=job.created_at.isoformat() if job.created_at else None,
+        updated_at=job.updated_at.isoformat() if job.updated_at else None,
     )

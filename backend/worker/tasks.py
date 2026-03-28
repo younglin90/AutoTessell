@@ -172,6 +172,10 @@ def _mark_failed_and_refund(job_id: str, error: str) -> None:
         job = db.query(Job).filter(Job.id == job_id).first()
         if not job:
             return
+        # Don't overwrite a terminal status already set by another path
+        if job.status in (JobStatus.DONE, JobStatus.FAILED, JobStatus.REFUND_FAILED):
+            logger.warning("Job %s already in terminal status %s — skipping failure mark", job_id, job.status)
+            return
         job.status = JobStatus.FAILED
         job.error_message = error[:1000]
         db.commit()

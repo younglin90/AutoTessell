@@ -224,6 +224,12 @@ export default function JobPage() {
                 <span className="font-medium font-mono text-gray-700">{status.result_tier}</span>
               </div>
             )}
+            {status.updated_at && (
+              <div className="flex justify-between">
+                <span className="text-gray-500">Completed</span>
+                <span className="text-gray-600">{relativeTime(status.updated_at)}</span>
+              </div>
+            )}
           </div>
         )}
 

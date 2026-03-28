@@ -19,6 +19,7 @@ export interface JobStatus {
   result_num_cells: number | null;
   result_tier: string | null;
   created_at: string | null;
+  updated_at: string | null;
 }
 
 export interface DownloadResponse {

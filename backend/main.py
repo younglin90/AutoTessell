@@ -67,7 +67,11 @@ if settings.dev_mode:
     @app.get("/dev/files/{path:path}")
     def serve_dev_file(path: str):
         """Serve local mesh files in dev mode (replaces S3 presigned URLs)."""
-        file_path = Path(settings.dev_storage_path) / path
+        storage_root = Path(settings.dev_storage_path).resolve()
+        file_path = (storage_root / path).resolve()
+        # Guard against path traversal (e.g. "../../etc/passwd")
+        if not str(file_path).startswith(str(storage_root)):
+            raise HTTPException(status_code=400, detail="Invalid file path")
         if not file_path.exists():
             raise HTTPException(status_code=404, detail="File not found")
         return FileResponse(str(file_path), filename=file_path.name)
