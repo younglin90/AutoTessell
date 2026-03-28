@@ -16,7 +16,7 @@ Covers:
 import struct
 import sys
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -360,6 +360,57 @@ class TestRepairStlToPathFallback:
 # ---------------------------------------------------------------------------
 # remesh_surface_uniform — returns False when pyacvd is absent
 # ---------------------------------------------------------------------------
+
+class TestAnalyzeStlComplexityFallbackExact:
+    def test_fallback_exact_defaults(self, tmp_path: Path):
+        """trimesh 미설치 시 정확한 기본값을 반환해야 한다."""
+        stl = tmp_path / "shape.stl"
+        stl.write_bytes(_simple_triangle_stl())
+        with patch.dict(sys.modules, {"trimesh": None}):
+            result = analyze_stl_complexity(stl)
+        assert result.complexity_ratio == pytest.approx(1.0)
+        assert result.surface_refine_min == 1
+        assert result.surface_refine_max == 3
+        assert result.feature_refine_level == 3
+        assert result.resolve_feature_angle == pytest.approx(30.0)
+        assert result.mean_curvature == pytest.approx(0.0)
+        assert result.p95_curvature == pytest.approx(0.0)
+
+
+class TestRepairStlToPathHappyPath:
+    def test_watertight_mesh_returns_true(self, tmp_path: Path):
+        """trimesh가 성공적으로 repair하면 mesh.is_watertight 결과를 반환해야 한다."""
+        import trimesh as _trimesh
+
+        src = tmp_path / "tet.stl"
+        dst = tmp_path / "tet_out.stl"
+        src.write_bytes(_simple_triangle_stl())
+
+        # Mock the trimesh mesh object and repair functions
+        mock_mesh = MagicMock()
+        mock_mesh.is_watertight = True
+        mock_repair = MagicMock()
+
+        with patch.object(_trimesh, "load", return_value=mock_mesh):
+            with patch.object(_trimesh, "repair", mock_repair):
+                result = repair_stl_to_path(src, dst)
+
+        assert result is True
+        mock_mesh.export.assert_called_once_with(str(dst))
+
+
+class TestBinaryBboxNegativeCoords:
+    def test_negative_coordinates(self):
+        """음수 좌표가 포함된 바이너리 STL bbox 추출이 정확해야 한다."""
+        tris = [((-2.0, -3.0, -4.0), (1.0, 0.0, 0.0), (0.0, 2.0, 0.0))]
+        bbox = _binary_bbox(_make_binary_stl(tris))
+        assert pytest.approx(bbox.min_x) == -2.0
+        assert pytest.approx(bbox.min_y) == -3.0
+        assert pytest.approx(bbox.min_z) == -4.0
+        assert pytest.approx(bbox.max_x) == 1.0
+        assert pytest.approx(bbox.max_y) == 2.0
+        assert pytest.approx(bbox.max_z) == 0.0
+
 
 class TestRemeshSurfaceUniformFallback:
     def test_returns_false_when_pyacvd_absent(self, tmp_path: Path):
