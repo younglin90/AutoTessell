@@ -282,3 +282,21 @@ class TestWritePolyMesh:
         stats = write_polymesh(vertices, tet_indices, tmp_path)
         assert stats["num_cells"] == len(tet_indices)
         assert stats["num_points"] == len(vertices)
+
+    def test_neighbour_file_has_foam_header(self, tmp_path: Path):
+        """neighbour file must have FoamFile header with class=labelList and object=neighbour."""
+        v, t = _two_tets_sharing_face()
+        write_polymesh(v, t, tmp_path)
+        content = (tmp_path / "constant" / "polyMesh" / "neighbour").read_text()
+        assert "FoamFile" in content
+        assert "labelList" in content
+        assert "neighbour" in content
+
+    def test_boundary_file_has_foam_header(self, tmp_path: Path):
+        """boundary file must have FoamFile header with class=polyBoundaryMesh."""
+        v, t = _single_tet()
+        write_polymesh(v, t, tmp_path)
+        content = (tmp_path / "constant" / "polyMesh" / "boundary").read_text()
+        assert "FoamFile" in content
+        assert "polyBoundaryMesh" in content
+        assert "boundary" in content
