@@ -3,17 +3,24 @@
 import struct
 
 
-MAX_STL_SIZE = 100 * 1024 * 1024  # 100 MB
+_DEFAULT_MAX_SIZE = 100 * 1024 * 1024  # 100 MB — upload.py가 config 값을 주입하지 않을 때 방어용
 
 
 class STLValidationError(ValueError):
     pass
 
 
-def validate_stl(content: bytes) -> None:
-    """Raise STLValidationError if content is not a valid STL file."""
-    if len(content) > MAX_STL_SIZE:
-        raise STLValidationError(f"STL file too large (max 100 MB, got {len(content) // 1024 // 1024} MB)")
+def validate_stl(content: bytes, max_size: int = _DEFAULT_MAX_SIZE) -> None:
+    """
+    Raise STLValidationError if content is not a valid STL file.
+
+    max_size: 바이트 단위 최대 허용 크기 (기본 100 MB).
+              config.max_stl_size_bytes 값을 외부에서 주입하는 것을 권장.
+    """
+    if len(content) > max_size:
+        limit_mb = max_size // (1024 * 1024)
+        got_mb = len(content) // (1024 * 1024)
+        raise STLValidationError(f"STL file too large (max {limit_mb} MB, got {got_mb} MB)")
 
     # ASCII check must come before the 84-byte size guard:
     # valid ASCII STL files can be shorter than the binary minimum.

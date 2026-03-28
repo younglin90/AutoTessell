@@ -46,11 +46,9 @@ class TestBinarySTL:
         with pytest.raises(STLValidationError, match="size mismatch"):
             validate_stl(content)
 
-    def test_too_large(self, monkeypatch):
-        import mesh.validator as v
-        monkeypatch.setattr(v, "MAX_STL_SIZE", 100)
+    def test_too_large(self):
         with pytest.raises(STLValidationError, match="too large"):
-            validate_stl(_make_binary_stl(10))
+            validate_stl(_make_binary_stl(10), max_size=100)
 
     def test_too_short(self):
         with pytest.raises(STLValidationError):

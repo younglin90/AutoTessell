@@ -38,7 +38,7 @@ async def upload_stl(
     # 1. Read and validate STL before charging the user
     content = await file.read()
     try:
-        validate_stl(content)
+        validate_stl(content, max_size=settings.max_stl_size_bytes)
     except STLValidationError as e:
         raise HTTPException(status_code=400, detail=str(e))
 

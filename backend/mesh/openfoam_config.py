@@ -7,10 +7,27 @@ Domain layout (external aerodynamics, flow in +x direction):
   z:  center - 5L   →  center + 5L
 
 where L = characteristic_length (longest bbox dimension).
+
+snappy_hex_mesh_dict() accepts an optional StlComplexity (from stl_utils) to
+enable curvature-based adaptive refinement:
+  - Simple geometry   (ratio < 3):  refine level 1-2, featureAngle 40°
+  - Moderate geometry (ratio 3-10): refine level 1-3, featureAngle 30°
+  - Complex geometry  (ratio > 10): refine level 2-4, featureAngle 20°
+
+Distance-based refinementRegions:
+  - Within 10% L: max refinement (sharp near-wall cells)
+  - Within 50% L: mid refinement (geometry boundary layer)
+  - Within 200% L: base refinement (wake region)
 """
+
+from __future__ import annotations
 
 from dataclasses import dataclass
 from math import ceil, log2
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mesh.stl_utils import StlComplexity
 
 
 @dataclass
@@ -21,22 +38,19 @@ class FlowDomain:
     ymax: float
     zmin: float
     zmax: float
-    nx: int       # background mesh cells in x
-    ny: int       # background mesh cells in y
-    nz: int       # background mesh cells in z
-    stl_name: str  # e.g. "geometry.stl" (filename only)
-    # A point guaranteed to be in the flow region (outside the geometry)
+    nx: int         # background mesh cells in x
+    ny: int         # background mesh cells in y
+    nz: int         # background mesh cells in z
+    stl_name: str   # e.g. "geometry.stl"
     location_x: float
     location_y: float
     location_z: float
+    char_length: float  # characteristic length L (for refinementRegions distances)
 
 
 def build_domain(bbox, stl_filename: str, target_background_cells: int = 40_000) -> FlowDomain:
     """
-    Calculate the CFD domain and background mesh resolution from the geometry bounding box.
-
-    target_background_cells controls the coarseness of the blockMesh hex grid.
-    snappyHexMesh will then refine this grid near the surface.
+    STL BBox에서 CFD 도메인과 blockMesh 해상도 계산.
     """
     L = bbox.characteristic_length
     if L == 0:
@@ -51,23 +65,12 @@ def build_domain(bbox, stl_filename: str, target_background_cells: int = 40_000)
     zmin = cz - 5 * L
     zmax = cz + 5 * L
 
-    dx = xmax - xmin  # 30L
-    dy = ymax - ymin  # 10L
-    dz = zmax - zmin  # 10L
+    dx, dy, dz = xmax - xmin, ymax - ymin, zmax - zmin
 
-    # Target cell size so total cells ≈ target_background_cells
-    # dx/h * dy/h * dz/h = N  →  h = (dx*dy*dz / N)^(1/3)
     h = (dx * dy * dz / target_background_cells) ** (1 / 3)
-
     nx = max(4, round(dx / h))
     ny = max(4, round(dy / h))
     nz = max(4, round(dz / h))
-
-    # The "locationInMesh" must be OUTSIDE the geometry.
-    # Place it upstream and slightly off-center.
-    loc_x = cx - 8 * L   # far upstream
-    loc_y = cy + 0.1 * L  # slightly off axis to avoid degenerate cases
-    loc_z = cz + 0.1 * L
 
     return FlowDomain(
         xmin=xmin, xmax=xmax,
@@ -75,9 +78,10 @@ def build_domain(bbox, stl_filename: str, target_background_cells: int = 40_000)
         zmin=zmin, zmax=zmax,
         nx=nx, ny=ny, nz=nz,
         stl_name=stl_filename,
-        location_x=loc_x,
-        location_y=loc_y,
-        location_z=loc_z,
+        location_x=cx - 8 * L,
+        location_y=cy + 0.1 * L,
+        location_z=cz + 0.1 * L,
+        char_length=L,
     )
 
 
@@ -138,8 +142,23 @@ boundary
 """
 
 
-def surface_feature_extract_dict(stl_name: str) -> str:
+def surface_feature_extract_dict(stl_name: str, complexity: StlComplexity | None = None) -> str:
+    """
+    surfaceFeatureExtractDict 생성.
+
+    complexity가 있으면 STL 복잡도에 따라 includedAngle 자동 조정:
+      복잡한 geometry → 낮은 includedAngle (더 많은 feature edge 캡처)
+      단순한 geometry → 높은 includedAngle (주요 feature만 캡처)
+    """
     stem = stl_name.rsplit(".", 1)[0]
+
+    if complexity is not None:
+        # resolveFeatureAngle이 작을수록 세밀한 feature 캡처
+        # includedAngle = 180 - resolve_feature_angle
+        included_angle = int(180 - complexity.resolve_feature_angle)
+    else:
+        included_angle = 150  # 기본값: 30° sharpness threshold
+
     return f"""\
 FoamFile
 {{
@@ -154,25 +173,64 @@ FoamFile
     extractionMethod    extractFromSurface;
     extractFromSurfaceCoeffs
     {{
-        includedAngle   150;
+        includedAngle   {included_angle};
     }}
     writeObj    yes;
 }}
 """
 
 
-def snappy_hex_mesh_dict(domain: FlowDomain, refinement_level: int = 2) -> str:
+def snappy_hex_mesh_dict(
+    domain: FlowDomain,
+    complexity: StlComplexity | None = None,
+) -> str:
     """
-    Generate snappyHexMeshDict for external flow meshing.
+    snappyHexMeshDict 생성.
 
-    refinement_level controls surface refinement:
-      1 → coarse  (2× background cell size)
-      2 → medium  (4× background cell size)  ← default
-      3 → fine    (8× background cell size)
+    complexity (StlComplexity)가 전달되면 곡률 기반 적응형 정밀화 적용:
+      - refinementSurfaces: geometry 표면 min/max 레벨 자동 설정
+      - refinementRegions: geometry와의 거리별 체적 정밀화 자동 생성
+        · 0.1L 이내:  최대 정밀화 (near-wall, 경계층)
+        · 0.5L 이내:  중간 정밀화
+        · 2.0L 이내:  기본 정밀화 (후류 영역)
+      - resolveFeatureAngle: STL feature angle에 맞게 자동 조정
+      - addLayersControls: 복잡도에 따라 경계층 레이어 수 조정
     """
     d = domain
     stem = d.stl_name.rsplit(".", 1)[0]
-    rl = refinement_level
+    L = d.char_length
+
+    if complexity is not None:
+        s_min = complexity.surface_refine_min
+        s_max = complexity.surface_refine_max
+        feat_level = complexity.feature_refine_level
+        feat_angle = complexity.resolve_feature_angle
+        n_layers = 3 if complexity.complexity_ratio < 3 else 5
+    else:
+        s_min, s_max, feat_level = 1, 3, 3
+        feat_angle = 30.0
+        n_layers = 3
+
+    # 거리 기반 정밀화 영역 (complexity에 따라 레벨 조정)
+    near_dist = L * 0.10
+    mid_dist  = L * 0.50
+    wake_dist = L * 2.00
+    near_level = s_max + 1
+    mid_level  = s_max
+    wake_level = max(s_min, s_max - 1)
+
+    refinement_regions = f"""\
+        {stem}
+        {{
+            mode distance;
+            levels
+            (
+                ( {near_dist:.6g}  {near_level} )
+                ( {mid_dist:.6g}   {mid_level}  )
+                ( {wake_dist:.6g}  {wake_level} )
+            );
+        }}"""
+
     return f"""\
 FoamFile
 {{
@@ -207,7 +265,7 @@ castellatedMeshControls
     (
         {{
             file "{stem}.eMesh";
-            level {rl};
+            level {feat_level};
         }}
     );
 
@@ -215,14 +273,15 @@ castellatedMeshControls
     {{
         {stem}
         {{
-            level ( {rl} {rl} );
+            level ( {s_min} {s_max} );
         }}
     }};
 
-    resolveFeatureAngle 30;
+    resolveFeatureAngle {feat_angle:.1f};
 
     refinementRegions
     {{
+{refinement_regions}
     }}
 
     locationInMesh ( {d.location_x:.6g} {d.location_y:.6g} {d.location_z:.6g} );
@@ -248,7 +307,7 @@ addLayersControls
     {{
         {stem}
         {{
-            nSurfaceLayers  3;
+            nSurfaceLayers  {n_layers};
         }}
     }}
     expansionRatio          1.2;

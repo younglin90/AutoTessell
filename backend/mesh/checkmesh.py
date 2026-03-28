@@ -2,15 +2,14 @@
 
 import re
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
 class CheckMeshResult:
     passed: bool
-    max_non_orthogonality: Optional[float]
-    max_skewness: Optional[float]
-    num_cells: Optional[int]
+    max_non_orthogonality: float | None
+    max_skewness: float | None
+    num_cells: int | None
     raw_output: str
 
 
@@ -26,7 +25,7 @@ def parse_checkmesh_output(stdout: str) -> CheckMeshResult:
     )
 
 
-def _extract_float(text: str, pattern: str) -> Optional[float]:
+def _extract_float(text: str, pattern: str) -> float | None:
     m = re.search(pattern, text)
     if m:
         try:
@@ -36,7 +35,7 @@ def _extract_float(text: str, pattern: str) -> Optional[float]:
     return None
 
 
-def _extract_int(text: str, pattern: str) -> Optional[int]:
+def _extract_int(text: str, pattern: str) -> int | None:
     m = re.search(pattern, text)
     if m:
         try:

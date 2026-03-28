@@ -10,12 +10,28 @@ boto3==1.35.50
 stripe==11.1.0
 pydantic-settings==2.6.0
 httpx==0.27.2
-# Mesh generation (commercial-safe licenses)
-trimesh==4.5.3           # MIT — STL loading, repair, bounding box
-pytetwild==0.1.0         # MPL-2.0 — robust tet meshing (fallback tier)
-numpy==2.1.3             # BSD — required by trimesh + pytetwild
 
-# Dev / test
+# ── Mesh generation (commercial-safe licenses) ────────────────────────────
+trimesh==4.5.3           # MIT        — STL 로딩, 수리, BBox 추출
+numpy==2.1.3             # BSD        — trimesh / pytetwild / pyACVD 공통 의존성
+pytetwild==0.1.0         # MPL-2.0    — Tier 2: robust tet fallback
+
+# ── Surface pre-processing ────────────────────────────────────────────────
+pyacvd>=0.3.0            # MIT        — 공통 전처리: Voronoi 균일 surface remeshing
+pyvista>=0.44.0          # MIT        — pyACVD 의존성
+
+# ── Tier 0.5: Netgen ──────────────────────────────────────────────────────
+netgen-mesher>=6.2.2402  # LGPL-2.1   — STL → tet → Gmsh → gmshToFoam
+
+# ── Poisson 표면 재구성 + 곡률 기반 적응형 정밀화 ────────────────────────
+open3d>=0.18.0           # MIT        — Poisson surface reconstruction (비수밀 STL 복구)
+
+# ── MMG 품질 후처리 중간 포맷 변환 ──────────────────────────────────────
+meshio>=5.3.5            # MIT        — Medit .mesh 변환 (MMG 입출력)
+# MMG 바이너리(mmg3d)는 Docker Dockerfile.worker 에서 apt-get으로 설치:
+#   apt-get install -y mmg
+
+# ── Dev / test ────────────────────────────────────────────────────────────
 pytest==8.3.3
 pytest-asyncio==0.24.0
 pytest-mock==3.14.0
