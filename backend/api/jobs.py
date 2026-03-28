@@ -17,6 +17,8 @@ class JobStatusResponse(BaseModel):
     error_message: str | None = None
     download_ready: bool = False
     amount_cents: int = 0
+    result_num_cells: int | None = None
+    result_tier: str | None = None
 
 
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse)
@@ -35,4 +37,6 @@ def get_job_status(
         error_message=job.error_message,
         download_ready=job.status == JobStatus.DONE,
         amount_cents=job.amount_cents or 0,
+        result_num_cells=job.result_num_cells,
+        result_tier=job.result_tier,
     )

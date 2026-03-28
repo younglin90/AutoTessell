@@ -3,6 +3,7 @@
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { uploadSTL } from "@/lib/api";
+import { saveJob } from "@/app/jobs/page";
 
 const CELL_PRESETS = [
   { label: "Coarse", value: 100_000, hint: "~30s · 빠른 확인용" },
@@ -69,6 +70,13 @@ export default function NewMeshPage() {
     setError(null);
     try {
       const res = await uploadSTL(file, getUserId(), targetCells, meshPurpose);
+      saveJob({
+        jobId: res.job_id,
+        filename: file.name,
+        targetCells,
+        meshPurpose,
+        createdAt: new Date().toISOString(),
+      });
       // dev_mode or post-payment redirect
       router.push(`/mesh/${res.job_id}`);
     } catch (e: unknown) {

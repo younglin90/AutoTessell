@@ -12,6 +12,8 @@ export interface JobStatus {
   error_message: string | null;
   download_ready: boolean;
   amount_cents: number;
+  result_num_cells: number | null;
+  result_tier: string | null;
 }
 
 export interface DownloadResponse {

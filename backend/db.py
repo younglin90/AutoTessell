@@ -52,6 +52,10 @@ class Job(Base):
     target_cells = Column(Integer, nullable=False, default=500_000)
     mesh_purpose = Column(String(10), nullable=False, default="cfd")  # "cfd" | "fea"
 
+    # Mesh result stats (filled after DONE)
+    result_num_cells = Column(Integer, nullable=True)
+    result_tier = Column(String(32), nullable=True)   # e.g. "pytetwild_dev", "snappy", "netgen"
+
     # Meta
     stl_filename = Column(String(255), nullable=True)
     error_message = Column(Text, nullable=True)

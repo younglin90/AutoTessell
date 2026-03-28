@@ -15,7 +15,13 @@ export default function Home() {
           href="/mesh/new"
           className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors"
         >
-          Generate Mesh → $5
+          Generate Mesh
+        </Link>
+        <Link
+          href="/jobs"
+          className="px-6 py-3 bg-white border border-gray-300 text-gray-700 rounded-lg font-medium hover:border-gray-400 transition-colors"
+        >
+          Recent Jobs
         </Link>
       </div>
 

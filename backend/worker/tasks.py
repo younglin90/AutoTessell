@@ -91,6 +91,8 @@ def run_mesh(self, job_id: str) -> dict:
             # 4. Mark done
             job.status = JobStatus.DONE
             job.mesh_s3_key = mesh_s3_key
+            job.result_num_cells = stats.get("num_cells")
+            job.result_tier = stats.get("tier")
             db.commit()
 
             return {

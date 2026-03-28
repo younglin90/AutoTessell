@@ -106,6 +106,21 @@ export default function JobPage() {
           </div>
         )}
 
+        {status.status === "DONE" && status.result_num_cells && (
+          <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-700 flex flex-col gap-1">
+            <div className="flex justify-between">
+              <span className="text-gray-500">Cells</span>
+              <span className="font-medium font-mono">{status.result_num_cells.toLocaleString()}</span>
+            </div>
+            {status.result_tier && (
+              <div className="flex justify-between">
+                <span className="text-gray-500">Engine</span>
+                <span className="font-medium font-mono">{status.result_tier}</span>
+              </div>
+            )}
+          </div>
+        )}
+
         {downloadUrl && (
           <a
             href={downloadUrl}

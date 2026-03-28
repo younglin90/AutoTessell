@@ -28,3 +28,13 @@ htmlcov/
 # OS
 .DS_Store
 Thumbs.db
+
+# Dev runtime files
+dev_storage/
+tessell.db
+tessell.db-shm
+tessell.db-wal
+backend/__tracked_surface.stl
+
+# bkit
+.bkit/
