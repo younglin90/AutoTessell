@@ -12,19 +12,27 @@ install:  ## Install Python dependencies
 
 .PHONY: dev
 dev:  ## Start FastAPI dev server (SQLite, no Docker needed)
-	cd backend && DEV_MODE=true uvicorn main:app --reload --port 8000
+	cd backend && uvicorn main:app --reload --port 8000
+
+.PHONY: worker-dev
+worker-dev:  ## Start Celery worker in dev mode (requires Redis)
+	cd backend && celery -A worker.celery_app worker --loglevel=info --concurrency=1
 
 .PHONY: test
-test:  ## Run unit tests
+test:  ## Run unit tests (128 tests, fast)
 	cd backend && $(PYTHON) -m pytest tests/ -v
 
 .PHONY: test-integration
-test-integration:  ## Run integration tests (unit tests + full endpoint tests)
+test-integration:  ## Run integration tests (53 tests, real FastAPI+SQLite)
 	cd backend && $(PYTHON) -m pytest integration/ -v
 
 .PHONY: test-all
 test-all:  ## Run unit tests then integration tests
 	cd backend && $(PYTHON) -m pytest tests/ -q && $(PYTHON) -m pytest integration/ -q
+
+.PHONY: typecheck
+typecheck:  ## TypeScript type check (no emit)
+	cd frontend && npx tsc --noEmit
 
 # ── Frontend ─────────────────────────────────────────────────────────────────
 
@@ -36,11 +44,19 @@ frontend:  ## Start Next.js dev server
 frontend-install:  ## Install Node dependencies
 	cd frontend && npm install
 
+.PHONY: frontend-build
+frontend-build:  ## Build Next.js for production
+	cd frontend && npm run build
+
 # ── Docker Compose ───────────────────────────────────────────────────────────
 
 .PHONY: up
 up:  ## Start full stack (db + redis + api + worker)
 	docker compose up --build
+
+.PHONY: up-d
+up-d:  ## Start full stack in background
+	docker compose up --build -d
 
 .PHONY: down
 down:  ## Stop and remove containers
@@ -50,11 +66,19 @@ down:  ## Stop and remove containers
 logs:  ## Follow all container logs
 	docker compose logs -f
 
+.PHONY: logs-api
+logs-api:  ## Follow API container logs
+	docker compose logs -f api
+
+.PHONY: logs-worker
+logs-worker:  ## Follow worker container logs
+	docker compose logs -f worker
+
 # ── Help ─────────────────────────────────────────────────────────────────────
 
 .PHONY: help
 help:  ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
-	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	  awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
 .DEFAULT_GOAL := help
