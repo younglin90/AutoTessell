@@ -335,6 +335,26 @@ class TestSnappyHexMeshDictComplexity:
         assert f"{mid:.6g}" in s
         assert f"{wake:.6g}" in s
 
+    def test_near_level_is_s_max_plus_1(self):
+        """near-wall refinement level = s_max + 1 (one finer than surface max)."""
+        c = _complexity(ratio=5.0, s_min=1, s_max=3)
+        d = _domain()
+        s = snappy_hex_mesh_dict(d, complexity=c)
+        # near_level = 3 + 1 = 4; must appear paired with near_dist
+        L = d.char_length
+        near_dist = f"{L * 0.10:.6g}"
+        assert f"( {near_dist}  4 )" in s
+
+    def test_wake_level_clamped_to_s_min_when_s_max_equals_s_min(self):
+        """When s_max == s_min, wake_level = max(s_min, s_max-1) = s_min (not below)."""
+        c = _complexity(ratio=2.0, s_min=2, s_max=2)  # equal min and max
+        d = _domain()
+        s = snappy_hex_mesh_dict(d, complexity=c)
+        # wake_level = max(2, 2-1) = max(2, 1) = 2
+        L = d.char_length
+        wake_dist = f"{L * 2.0:.6g}"
+        assert f"( {wake_dist}  2 )" in s
+
 
 # ---------------------------------------------------------------------------
 # snappy_hex_mesh_dict — pro-mode overrides
@@ -389,6 +409,14 @@ class TestSnappyHexMeshDictProMode:
         s = snappy_hex_mesh_dict(d, params=mp)
         assert "expansionRatio          1.4" in s
 
+    def test_pro_final_layer_thickness_override(self):
+        """snappy_final_layer_thickness pro override must appear in the output."""
+        mp = MeshParams(snappy_final_layer_thickness=0.45)
+        d = _domain()
+        s = snappy_hex_mesh_dict(d, params=mp)
+        assert "finalLayerThickness" in s
+        assert "0.45" in s
+
 
 # ---------------------------------------------------------------------------
 # control_dict
@@ -430,6 +458,11 @@ class TestFvSchemes:
     def test_steady_state_ddt(self):
         s = fv_schemes()
         assert "steadyState" in s
+
+    def test_contains_div_schemes(self):
+        s = fv_schemes()
+        assert "divSchemes" in s
+        assert "div(phi,U)" in s
 
 
 class TestFvSolution:
