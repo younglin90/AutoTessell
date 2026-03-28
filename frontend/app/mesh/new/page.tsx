@@ -525,7 +525,7 @@ export default function NewMeshPage() {
                       label="Refine Min"
                       hint="Surface refinement min level (0 = auto)"
                       value={pro.snappy_refine_min}
-                      min={0} max={4} step={1}
+                      min={0} max={5} step={1}
                       onChange={(v) => setP("snappy_refine_min", v)}
                       format={(v) => v === 0 ? "auto" : String(v)}
                     />
@@ -542,7 +542,7 @@ export default function NewMeshPage() {
                     label="Boundary Layers"
                     hint="Prism layers grown from wall surface. 0 = auto (3–5 based on complexity)"
                     value={pro.snappy_n_layers}
-                    min={0} max={8} step={1}
+                    min={0} max={12} step={1}
                     onChange={(v) => setP("snappy_n_layers", v)}
                     format={(v) => v === 0 ? "auto" : String(v)}
                   />
@@ -607,9 +607,9 @@ export default function NewMeshPage() {
                   <>
                     <ParamRow
                       label="Gradation"
-                      hint="Size ratio between adjacent cells. 1.0 (uniform) – 3.0 (rapid change)"
+                      hint="Size ratio between adjacent cells. 1.0 (uniform) – 5.0 (rapid change)"
                       value={pro.mmg_hgrad}
-                      min={1.0} max={3.0} step={0.1}
+                      min={1.0} max={5.0} step={0.1}
                       onChange={(v) => setP("mmg_hgrad", v)}
                       format={(v) => v.toFixed(1)}
                     />
