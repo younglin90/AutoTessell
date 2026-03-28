@@ -209,11 +209,15 @@ export default function NewMeshPage() {
 
   // Config (loaded on mount)
   const [priceCents, setPriceCents] = useState<number | null>(null);
+  const [maxSizeMb, setMaxSizeMb] = useState(100);
 
   useEffect(() => {
     getConfig()
-      .then((c) => { if (!c.dev_mode) setPriceCents(c.mesh_price_cents); })
-      .catch(() => { /* ignore — price display is optional */ });
+      .then((c) => {
+        if (!c.dev_mode) setPriceCents(c.mesh_price_cents);
+        if (c.max_stl_size_mb) setMaxSizeMb(c.max_stl_size_mb);
+      })
+      .catch(() => { /* ignore — price and size display are optional */ });
   }, []);
 
   // Submit / payment phase
@@ -229,13 +233,13 @@ export default function NewMeshPage() {
       setError("Only .stl files are accepted.");
       return;
     }
-    if (f.size > 100 * 1024 * 1024) {
-      setError("File must be under 100 MB.");
+    if (f.size > maxSizeMb * 1024 * 1024) {
+      setError(`File must be under ${maxSizeMb} MB.`);
       return;
     }
     setError(null);
     setFile(f);
-  }, []);
+  }, [maxSizeMb]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -246,7 +250,7 @@ export default function NewMeshPage() {
 
   const targetCells =
     selectedPreset === 0
-      ? Math.max(10_000, Math.min(5_000_000, parseInt(customCells) || 500_000))
+      ? Math.max(1_000, Math.min(10_000_000, parseInt(customCells) || 500_000))
       : selectedPreset;
 
   function setP<K extends keyof MeshParams>(key: K, val: MeshParams[K]) {
@@ -280,14 +284,15 @@ export default function NewMeshPage() {
     setUploading(true);
     setError(null);
     try {
-      const res = await uploadSTL(file, getUserId(), targetCells, meshPurpose, buildMeshParams());
+      const meshParams = buildMeshParams();
+      const res = await uploadSTL(file, getUserId(), targetCells, meshPurpose, meshParams);
       saveJob({
         jobId: res.job_id,
         filename: file.name,
         targetCells,
         meshPurpose,
         createdAt: new Date().toISOString(),
-        hasProParams: proMode && Object.keys(buildMeshParams() ?? {}).length > 0,
+        hasProParams: proMode && Object.keys(meshParams ?? {}).length > 0,
       });
 
       if (res.client_secret === "dev_mode" || !res.client_secret || !stripePromise) {
@@ -405,15 +410,15 @@ export default function NewMeshPage() {
             <div className="flex items-center gap-3">
               <input
                 type="number"
-                min={10000}
-                max={5000000}
-                step={10000}
+                min={1000}
+                max={10000000}
+                step={1000}
                 value={customCells}
                 onChange={(e) => setCustomCells(e.target.value)}
                 className="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                 placeholder="e.g. 1000000"
               />
-              <span className="text-sm text-gray-400">cells (10k – 5M)</span>
+              <span className="text-sm text-gray-400">cells (1k – 10M)</span>
             </div>
           )}
 
