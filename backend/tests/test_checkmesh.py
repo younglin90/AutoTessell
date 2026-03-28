@@ -60,3 +60,14 @@ def test_empty_output():
     assert r.passed is False
     assert r.max_non_orthogonality is None
     assert r.max_skewness is None
+
+
+def test_raw_output_preserved():
+    r = parse_checkmesh_output(PASSING_OUTPUT)
+    assert PASSING_OUTPUT in r.raw_output
+
+
+def test_num_cells_none_when_absent():
+    r = parse_checkmesh_output("Mesh OK.\n")
+    assert r.passed is True
+    assert r.num_cells is None
