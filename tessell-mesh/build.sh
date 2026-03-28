@@ -8,10 +8,12 @@ BUILD_DIR="$SCRIPT_DIR/build"
 BUILD_TYPE="Release"
 BUILD_TESTS="OFF"
 
+CMAKE_EXTRA=()
 for arg in "$@"; do
     case $arg in
         --debug)   BUILD_TYPE="Debug" ;;
         --tests)   BUILD_TESTS="ON" ;;
+        -D*)       CMAKE_EXTRA+=("$arg") ;;  # forward -DFOO=BAR to cmake
     esac
 done
 
@@ -24,7 +26,7 @@ cmake "$SCRIPT_DIR" \
     -DTESSELL_BUILD_PYTHON=ON \
     -DTESSELL_BUILD_TESTS="$BUILD_TESTS" \
     -G "Ninja" \
-    "$@"
+    "${CMAKE_EXTRA[@]}"
 
 cmake --build . --parallel "$(nproc 2>/dev/null || sysctl -n hw.logicalcpu 2>/dev/null || echo 4)"
 
