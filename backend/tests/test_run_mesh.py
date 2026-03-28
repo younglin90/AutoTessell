@@ -302,6 +302,18 @@ class TestRunMeshDevMode:
 
         assert job.mesh_s3_key == "meshes/job-key-test/mesh.zip"
 
+    def test_missing_passed_key_defaults_to_true(self):
+        """stats.get('passed', True) — if 'passed' is absent the job must succeed, not fail."""
+        job = _make_job()
+        # Return stats without the 'passed' key — default True should prevent RuntimeError
+        stats_no_passed = {"num_cells": 100, "tier": "pytetwild_dev"}
+
+        with _dev_mode_patches(_make_db(job), gen_return=stats_no_passed):
+            result = run_mesh(_fake_celery_self(), job.id)
+
+        assert job.status == JobStatus.DONE
+        assert result["num_cells"] == 100
+
 
 # ---------------------------------------------------------------------------
 # TestDownloadS3DevMode
