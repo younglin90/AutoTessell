@@ -1685,6 +1685,57 @@ class TestNetgenPipelineFacesAbsent:
 # _maybe_remesh_surface — Poisson succeeds branch
 # ---------------------------------------------------------------------------
 
+class TestMaybeRemeshSurfaceWatertightPyacvdSuccess:
+    """watertight=True + pyACVD succeeds → remeshed path returned (Poisson never called)."""
+
+    def test_watertight_and_remesh_success_returns_remeshed(
+        self, tmp_path: Path, unit_cube_stl: Path
+    ):
+        """repair watertight → skip Poisson → pyACVD succeeds → return _remeshed.stl."""
+        from mesh.stl_utils import BBox
+        from mesh.generator import _maybe_remesh_surface
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+
+        # Create the _remeshed.stl stub so the returned path exists
+        remeshed_stub = tmp_path / "_remeshed.stl"
+        remeshed_stub.write_bytes(b"stub")
+
+        def fake_remesh(src, dst, target_points=5000):
+            dst.write_bytes(b"remeshed")
+            return True  # remeshing succeeded
+
+        with patch("mesh.generator.repair_stl_to_path", return_value=True):  # watertight
+            with patch("mesh.generator.reconstruct_surface_poisson") as mock_poisson:
+                with patch("mesh.generator.remesh_surface_uniform", side_effect=fake_remesh):
+                    result = _maybe_remesh_surface(unit_cube_stl, tmp_path, bbox)
+
+        # Poisson must NOT be called when already watertight
+        mock_poisson.assert_not_called()
+        # pyACVD succeeded → remeshed path returned
+        assert result == tmp_path / "_remeshed.stl"
+
+    def test_watertight_remesh_success_path_not_repaired(
+        self, tmp_path: Path, unit_cube_stl: Path
+    ):
+        """When watertight + pyACVD succeeds, result must NOT be the repaired path."""
+        from mesh.stl_utils import BBox
+        from mesh.generator import _maybe_remesh_surface
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+
+        def fake_remesh(src, dst, target_points=5000):
+            dst.write_bytes(b"remeshed")
+            return True
+
+        with patch("mesh.generator.repair_stl_to_path", return_value=True):
+            with patch("mesh.generator.reconstruct_surface_poisson"):
+                with patch("mesh.generator.remesh_surface_uniform", side_effect=fake_remesh):
+                    result = _maybe_remesh_surface(unit_cube_stl, tmp_path, bbox)
+
+        assert result != tmp_path / "_repaired.stl"
+
+
 class TestMaybeRemeshSurfacePoissonSucceeds:
     """
     Tests the branch where Poisson reconstruction succeeds (returns True)
