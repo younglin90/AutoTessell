@@ -323,6 +323,12 @@ class TestJobList:
         item = client.get("/api/v1/jobs", params={"user_id": "pro_list"}).json()[0]
         assert item["has_pro_params"] is True
 
+    def test_created_at_has_utc_suffix(self, client):
+        """List endpoint created_at must end with 'Z' for correct JS Date parsing."""
+        _upload(client, user_id="list_tz")
+        item = client.get("/api/v1/jobs", params={"user_id": "list_tz"}).json()[0]
+        assert item["created_at"].endswith("Z")
+
     def test_limit_default_20(self, client):
         import config as _cfg
         orig = _cfg.settings.max_jobs_per_user
