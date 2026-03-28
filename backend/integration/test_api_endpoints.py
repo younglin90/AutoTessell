@@ -115,6 +115,28 @@ class TestHealth:
 
 
 # ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+class TestConfig:
+    def test_200(self, client):
+        assert client.get("/api/v1/config").status_code == 200
+
+    def test_returns_price_cents(self, client):
+        r = client.get("/api/v1/config").json()
+        assert "mesh_price_cents" in r
+        assert isinstance(r["mesh_price_cents"], int)
+
+    def test_returns_max_stl_size_mb(self, client):
+        r = client.get("/api/v1/config").json()
+        assert r["max_stl_size_mb"] == 100  # 100 MB default
+
+    def test_dev_mode_true_in_test_env(self, client):
+        r = client.get("/api/v1/config").json()
+        assert r["dev_mode"] is True
+
+
+# ---------------------------------------------------------------------------
 # Upload
 # ---------------------------------------------------------------------------
 
