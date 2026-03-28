@@ -179,6 +179,19 @@ class TestUpload:
             )
         assert r.status_code == 400
 
+    def test_invalid_mesh_purpose_rejected(self, client):
+        r = _upload(client, mesh_purpose="bad_purpose")
+        assert r.status_code == 400
+        assert "mesh_purpose" in r.json()["detail"].lower()
+
+    def test_target_cells_too_small_rejected(self, client):
+        r = _upload(client, target_cells=500)
+        assert r.status_code == 400
+
+    def test_target_cells_too_large_rejected(self, client):
+        r = _upload(client, target_cells=999_999_999)
+        assert r.status_code == 400
+
     def test_pro_params_stored_as_json(self, client):
         params = {"tet_stop_energy": 4.5, "mmg_enabled": False}
         job_id = _upload(client, mesh_params=params).json()["job_id"]

@@ -50,7 +50,15 @@ async def upload_stl(
     mesh_params: str = "",          # JSON-encoded MeshParams (pro mode, optional)
     db: Session = Depends(get_db),
 ):
-    # 0. Validate pro params JSON if provided
+    # 0a. Validate mesh_purpose
+    if mesh_purpose not in ("cfd", "fea"):
+        raise HTTPException(status_code=400, detail=f"Invalid mesh_purpose '{mesh_purpose}' — must be 'cfd' or 'fea'")
+
+    # 0b. Validate target_cells range
+    if not (1_000 <= target_cells <= 10_000_000):
+        raise HTTPException(status_code=400, detail="target_cells must be between 1,000 and 10,000,000")
+
+    # 0c. Validate pro params JSON if provided
     if mesh_params:
         try:
             from mesh.params import MeshParams
