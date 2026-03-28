@@ -246,6 +246,26 @@ class TestWritePolyMesh:
         assert "labelList" in content
         assert "owner" in content
 
+    def test_non_manifold_face_does_not_crash(self, tmp_path: Path):
+        """A face shared by 3+ cells (non-manifold) must be handled gracefully."""
+        # Build a degenerate mesh where 3 tets share the same face (0,1,2).
+        # Tet 0: (0,1,2,3), Tet 1: (0,1,2,4), Tet 2: (0,1,2,5)
+        vertices = np.array([
+            [0, 0, 0], [1, 0, 0], [0, 1, 0],  # shared face vertices
+            [0, 0, 1], [0, 0, -1], [0, 0, 2],  # apex vertices
+        ], dtype=np.float64)
+        tets = np.array([
+            [0, 1, 2, 3],
+            [0, 1, 2, 4],
+            [0, 1, 2, 5],
+        ], dtype=np.int32)
+
+        # Must not raise — non-manifold face treated as boundary with warning
+        stats = write_polymesh(vertices, tets, tmp_path)
+
+        assert stats["num_cells"] == 3
+        assert (tmp_path / "constant" / "polyMesh" / "faces").exists()
+
     def test_large_mesh_stats(self, tmp_path: Path):
         """Smoke test with 100 tets to verify scalability."""
         rng = np.random.default_rng(42)
