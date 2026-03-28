@@ -478,3 +478,46 @@ class TestFvSolution:
     def test_contains_simple_block(self):
         s = fv_solution()
         assert "SIMPLE" in s
+
+    def test_velocity_solver_present(self):
+        """U velocity solver must be defined."""
+        s = fv_solution()
+        assert "U    { solver" in s or "U    { solver" in s
+
+    def test_turbulence_solvers_k_and_omega_present(self):
+        """k and omega turbulence solvers must be present for k-omega SST."""
+        s = fv_solution()
+        assert "k    {" in s or "k   {" in s
+        assert "omega {" in s or "omega{" in s
+
+    def test_non_orthogonal_correctors_defined(self):
+        """SIMPLE block must set nNonOrthogonalCorrectors."""
+        s = fv_solution()
+        assert "nNonOrthogonalCorrectors" in s
+
+
+class TestFvSchemesExtended:
+    def test_laplacian_schemes_present(self):
+        """laplacianSchemes block must be present for diffusion terms."""
+        s = fv_schemes()
+        assert "laplacianSchemes" in s
+
+    def test_sn_grad_schemes_present(self):
+        """snGradSchemes block must be present for surface-normal gradients."""
+        s = fv_schemes()
+        assert "snGradSchemes" in s
+
+    def test_interpolation_schemes_present(self):
+        """interpolationSchemes block must be present."""
+        s = fv_schemes()
+        assert "interpolationSchemes" in s
+
+
+class TestBuildDomainLocationZ:
+    def test_location_z_offset_from_center(self):
+        """location_z = cz + 0.1*L (matches location_y offset convention)."""
+        L = 3.0
+        bbox = BBox(0, 0, 0, L, L, L)
+        d = build_domain(bbox, "shape.stl")
+        cz = bbox.center_z
+        assert d.location_z == pytest.approx(cz + 0.1 * L)
