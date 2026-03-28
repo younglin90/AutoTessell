@@ -98,6 +98,22 @@ class TestDeleteJobFilesProdMode:
         # Should not raise despite S3 error
         self._call_prod(job, mock_s3)
 
+    def test_delete_objects_bucket_param(self):
+        """delete_objects must pass Bucket=settings.s3_bucket."""
+        job = _make_job("stl/j/file.stl", None)
+        mock_s3 = self._call_prod(job)
+
+        call_kwargs = mock_s3.delete_objects.call_args[1]
+        assert call_kwargs["Bucket"] == "test-bucket"
+
+    def test_delete_objects_quiet_true(self):
+        """delete_objects Delete dict must include Quiet=True to suppress S3 per-key errors."""
+        job = _make_job("stl/j/file.stl", None)
+        mock_s3 = self._call_prod(job)
+
+        call_kwargs = mock_s3.delete_objects.call_args[1]
+        assert call_kwargs["Delete"]["Quiet"] is True
+
 
 # ---------------------------------------------------------------------------
 # dev-mode path: local shutil.rmtree removal

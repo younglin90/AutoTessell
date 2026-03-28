@@ -963,3 +963,80 @@ class TestGetBboxWithTrimesh:
             bbox = get_bbox(stl)
 
         assert isinstance(bbox, BBox)
+
+
+# ---------------------------------------------------------------------------
+# reconstruct_surface_poisson — normal_radius floor at 1e-6
+# ---------------------------------------------------------------------------
+
+class TestReconstructSurfacePoissonNormalRadiusFloor:
+    """
+    Line 199 in stl_utils.py: normal_radius = max(normal_radius, 1e-6)
+
+    For microscale geometry (characteristic_length < 0.0001), the raw radius
+    would be < 1e-6.  The clamp ensures estimate_normals never receives radius=0.
+    """
+
+    def _make_happy_mocks(self):
+        import numpy as np
+
+        mock_o3d = MagicMock()
+        mock_in_mesh = MagicMock()
+        mock_in_mesh.vertices = [1, 2, 3]
+
+        mock_recon = MagicMock()
+        mock_recon.vertices = [1, 2, 3]
+        densities = np.array([0.1, 0.5, 0.9])
+
+        mock_o3d.io.read_triangle_mesh.return_value = mock_in_mesh
+        mock_o3d.geometry.TriangleMesh.create_from_point_cloud_poisson.return_value = (
+            mock_recon,
+            densities,
+        )
+        return mock_o3d, mock_in_mesh
+
+    def test_tiny_bbox_clamps_radius_to_1e6(self, tmp_path: Path):
+        """bbox.characteristic_length=0.000001 → normal_radius must be >= 1e-6."""
+        src = tmp_path / "input.stl"
+        dst = tmp_path / "output.stl"
+        src.write_bytes(_simple_triangle_stl())
+
+        mock_o3d, mock_in_mesh = self._make_happy_mocks()
+        # characteristic_length = 0.000001 → raw radius = 1e-8 < 1e-6 → clamped to 1e-6
+        tiny_bbox = BBox(0.0, 0.0, 0.0, 0.000001, 0.0000005, 0.0000002)
+
+        with patch.dict(sys.modules, {"open3d": mock_o3d}):
+            result = reconstruct_surface_poisson(src, dst, bbox=tiny_bbox)
+
+        assert result is True
+        call_args = mock_in_mesh.sample_points_poisson_disk.call_args
+        # Verify estimate_normals was called with radius >= 1e-6
+        estimate_call = mock_in_mesh.sample_points_poisson_disk.return_value
+        estimate_args = estimate_call.estimate_normals.call_args[1]
+        # The search_param should have radius >= 1e-6
+        search_param = estimate_args["search_param"]
+        # KDTreeSearchParamHybrid(radius=...) — verify via mock the radius is 1e-6
+        # The mock records the call — check that the radius kwarg passed to the ctor is >= 1e-6
+        hybrid_call = mock_o3d.geometry.KDTreeSearchParamHybrid.call_args
+        radius_used = hybrid_call[1]["radius"]
+        assert radius_used >= 1e-6
+
+    def test_tiny_aabb_bbox_none_clamps_radius(self, tmp_path: Path):
+        """bbox=None with tiny AABB extent → normal_radius must be >= 1e-6."""
+        src = tmp_path / "input.stl"
+        dst = tmp_path / "output.stl"
+        src.write_bytes(_simple_triangle_stl())
+
+        mock_o3d, mock_in_mesh = self._make_happy_mocks()
+        mock_aabb = MagicMock()
+        # max(ext) = 0.000001 → raw radius = 1e-8 → clamped to 1e-6
+        mock_aabb.get_extent.return_value = [0.000001, 0.0000005, 0.0000002]
+        mock_in_mesh.get_axis_aligned_bounding_box.return_value = mock_aabb
+
+        with patch.dict(sys.modules, {"open3d": mock_o3d}):
+            result = reconstruct_surface_poisson(src, dst, bbox=None)
+
+        assert result is True
+        hybrid_call = mock_o3d.geometry.KDTreeSearchParamHybrid.call_args
+        radius_used = hybrid_call[1]["radius"]
+        assert radius_used >= 1e-6
