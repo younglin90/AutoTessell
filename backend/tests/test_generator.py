@@ -403,6 +403,24 @@ class TestTessellTier:
         assert "snappy" in msg
         assert "pytetwild" in msg
 
+    def test_fea_purpose_skips_snappy(self, tmp_path: Path, unit_cube_stl: Path):
+        """mesh_purpose='fea' must not call snappyHexMesh — it only generates tet meshes."""
+        from mesh.generator import generate_mesh
+
+        mock_tm = MagicMock()
+        mock_tm.tetrahedralize_stl.side_effect = RuntimeError("geogram fail")
+
+        pytetwild_stats = {"passed": True, "num_cells": 50_000}
+
+        with patch.dict(sys.modules, {"tessell_mesh": mock_tm}):
+            with patch("mesh.generator._netgen_pipeline", side_effect=RuntimeError("netgen fail")):
+                with patch("mesh.generator._snappy_pipeline") as mock_snappy:
+                    with patch("mesh.generator._pytetwild_pipeline", return_value=pytetwild_stats):
+                        stats = generate_mesh(unit_cube_stl, tmp_path / "case", mesh_purpose="fea")
+
+        mock_snappy.assert_not_called()
+        assert stats["tier"] == "pytetwild"
+
 
 # ---------------------------------------------------------------------------
 # Gmsh .msh v2 writer
