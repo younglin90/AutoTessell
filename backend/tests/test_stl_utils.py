@@ -475,3 +475,109 @@ class TestReconstructSurfacePoissonFallback:
 
         assert result is False
         assert not dst.exists()
+
+
+# ---------------------------------------------------------------------------
+# reconstruct_surface_poisson — empty mesh vertices path
+# ---------------------------------------------------------------------------
+
+class TestReconstructSurfacePoissonEmptyVertices:
+    def test_returns_false_when_read_mesh_has_no_vertices(self, tmp_path: Path):
+        """o3d.io.read_triangle_mesh returns a mesh with zero vertices → returns False."""
+        src = tmp_path / "input.stl"
+        dst = tmp_path / "output.stl"
+        src.write_bytes(_simple_triangle_stl())
+
+        mock_o3d = MagicMock()
+        mock_mesh = MagicMock()
+        mock_mesh.vertices = []  # len == 0 → early return False
+        mock_o3d.io.read_triangle_mesh.return_value = mock_mesh
+
+        with patch.dict(sys.modules, {"open3d": mock_o3d}):
+            result = reconstruct_surface_poisson(src, dst)
+
+        assert result is False
+        assert not dst.exists()
+
+
+# ---------------------------------------------------------------------------
+# analyze_stl_complexity — three ratio branches (high / medium / low)
+# ---------------------------------------------------------------------------
+
+class TestAnalyzeStlComplexityBranches:
+    """
+    Verify the three complexity-ratio branches produce the correct refinement levels.
+
+    Strategy: patch trimesh.curvature.discrete_mean_curvature_measure to return
+    controlled numpy arrays whose p95/mean ratio falls in the desired range, then
+    let the real numpy code derive the StlComplexity fields.
+
+    Distributions chosen so that the 95th-percentile value is 100.0 regardless
+    of branch, while the mean varies:
+
+      High  (ratio ≈ 16) : [1e-5]*94 + [100]*6  → mean ≈ 6,   p95 = 100
+      Medium(ratio ≈ 5)  : [1e-5]*80 + [100]*20 → mean ≈ 20,  p95 = 100
+      Low   (ratio ≈ 2)  : [1e-5]*50 + [100]*50 → mean ≈ 50,  p95 = 100
+    """
+
+    def _make_stl(self, tmp_path: Path) -> Path:
+        p = tmp_path / "shape.stl"
+        p.write_bytes(_simple_triangle_stl())
+        return p
+
+    def test_high_ratio_gives_fine_refinement(self, tmp_path: Path):
+        """ratio > 10 → surface_refine_min=2, surface_refine_max=4, feature_refine_level=4."""
+        import numpy as np
+        import trimesh as real_trimesh
+
+        stl = self._make_stl(tmp_path)
+        high_ratio_curv = np.array([1e-5] * 94 + [100.0] * 6)
+
+        with patch.object(
+            real_trimesh.curvature,
+            "discrete_mean_curvature_measure",
+            return_value=high_ratio_curv,
+        ):
+            result = analyze_stl_complexity(stl)
+
+        assert result.surface_refine_min == 2
+        assert result.surface_refine_max == 4
+        assert result.feature_refine_level == 4
+
+    def test_medium_ratio_gives_moderate_refinement(self, tmp_path: Path):
+        """3 < ratio ≤ 10 → surface_refine_min=1, surface_refine_max=3, feature_refine_level=3."""
+        import numpy as np
+        import trimesh as real_trimesh
+
+        stl = self._make_stl(tmp_path)
+        medium_ratio_curv = np.array([1e-5] * 80 + [100.0] * 20)
+
+        with patch.object(
+            real_trimesh.curvature,
+            "discrete_mean_curvature_measure",
+            return_value=medium_ratio_curv,
+        ):
+            result = analyze_stl_complexity(stl)
+
+        assert result.surface_refine_min == 1
+        assert result.surface_refine_max == 3
+        assert result.feature_refine_level == 3
+
+    def test_low_ratio_gives_coarse_refinement(self, tmp_path: Path):
+        """ratio ≤ 3 → surface_refine_min=1, surface_refine_max=2, feature_refine_level=2."""
+        import numpy as np
+        import trimesh as real_trimesh
+
+        stl = self._make_stl(tmp_path)
+        low_ratio_curv = np.array([1e-5] * 50 + [100.0] * 50)
+
+        with patch.object(
+            real_trimesh.curvature,
+            "discrete_mean_curvature_measure",
+            return_value=low_ratio_curv,
+        ):
+            result = analyze_stl_complexity(stl)
+
+        assert result.surface_refine_min == 1
+        assert result.surface_refine_max == 2
+        assert result.feature_refine_level == 2
