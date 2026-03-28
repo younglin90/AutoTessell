@@ -66,7 +66,7 @@ def run_mesh(self, job_id: str) -> dict:
             mp = None
             if job.mesh_params_json:
                 try:
-                    mp = MeshParams.from_json(job.mesh_params_json)
+                    mp = MeshParams.from_json(job.mesh_params_json).validated()
                 except Exception:
                     logger.warning("mesh_params_json 파싱 실패 — 기본값 사용")
 

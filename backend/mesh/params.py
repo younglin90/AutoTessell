@@ -84,3 +84,32 @@ class MeshParams:
     @classmethod
     def default(cls) -> "MeshParams":
         return cls()
+
+    def validated(self) -> "MeshParams":
+        """Return a copy with all values clamped to safe ranges."""
+        import dataclasses
+        d = dataclasses.asdict(self)
+
+        def clamp(v, lo, hi):
+            return max(lo, min(hi, v)) if v is not None else v
+
+        d["tet_stop_energy"] = clamp(d["tet_stop_energy"], 0.5, 100.0)
+        if d["tet_edge_length_fac"] is not None:
+            d["tet_edge_length_fac"] = clamp(d["tet_edge_length_fac"], 0.005, 0.5)
+
+        if d["snappy_refine_min"] is not None:
+            d["snappy_refine_min"] = clamp(d["snappy_refine_min"], 0, 5)
+        if d["snappy_refine_max"] is not None:
+            d["snappy_refine_max"] = clamp(d["snappy_refine_max"], 0, 6)
+        if d["snappy_n_layers"] is not None:
+            d["snappy_n_layers"] = clamp(d["snappy_n_layers"], 0, 12)
+
+        d["snappy_expansion_ratio"] = clamp(d["snappy_expansion_ratio"], 1.05, 2.0)
+        d["snappy_final_layer_thickness"] = clamp(d["snappy_final_layer_thickness"], 0.05, 0.9)
+        d["snappy_max_non_ortho"] = clamp(d["snappy_max_non_ortho"], 50.0, 85.0)
+        d["netgen_maxh_ratio"] = clamp(d["netgen_maxh_ratio"], 2.0, 100.0)
+        if d["mmg_hausd"] is not None:
+            d["mmg_hausd"] = clamp(d["mmg_hausd"], 1e-6, 1.0)
+        d["mmg_hgrad"] = clamp(d["mmg_hgrad"], 1.0, 5.0)
+
+        return self.__class__.from_dict(d)
