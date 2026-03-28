@@ -8,8 +8,6 @@ MeshTask — Celery task that runs the full mesh pipeline:
 """
 
 import logging
-import os
-import subprocess
 import tempfile
 import zipfile
 from pathlib import Path
@@ -22,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from config import settings
 from db import Job, JobStatus, SessionLocal
-from mesh.checkmesh import parse_checkmesh_output
+from mesh.generator import MeshGenerationError, generate_mesh
 from worker.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
@@ -65,33 +63,35 @@ def run_mesh(self, job_id: str) -> dict:
             stl_path = tmpdir / "input.stl"
             _download_s3(job.stl_s3_key, stl_path)
 
-            # 2. Generate mesh (SDF+Octree → OpenFOAM constant/polyMesh/)
+            # 2. Generate mesh (snappyHexMesh → fallback pytetwild+gmshToFoam)
             mesh_dir = tmpdir / "case"
-            _run_mesh_generator(stl_path, mesh_dir)
+            try:
+                stats = generate_mesh(stl_path, mesh_dir)
+            except MeshGenerationError as e:
+                raise RuntimeError(str(e)) from e
 
-            # 3. Run checkMesh
-            result = _run_checkmesh(mesh_dir)
-            if not result.passed:
+            if not stats.get("passed", True):
                 raise RuntimeError(
-                    f"checkMesh FAILED — max_skewness={result.max_skewness}, "
-                    f"max_non_orthogonality={result.max_non_orthogonality}"
+                    f"checkMesh FAILED — max_skewness={stats.get('max_skewness')}, "
+                    f"max_non_orthogonality={stats.get('max_non_orthogonality')}"
                 )
 
-            # 4. Zip and upload
+            # 3. Zip and upload
             zip_path = tmpdir / "mesh.zip"
             _zip_mesh(mesh_dir, zip_path)
             mesh_s3_key = f"meshes/{job_id}/mesh.zip"
             _upload_s3(zip_path, mesh_s3_key)
 
-            # 5. Mark done
+            # 4. Mark done
             job.status = JobStatus.DONE
             job.mesh_s3_key = mesh_s3_key
             db.commit()
 
             return {
                 "job_id": job_id,
-                "num_cells": result.num_cells,
-                "max_skewness": result.max_skewness,
+                "tier": stats.get("tier"),
+                "num_cells": stats.get("num_cells"),
+                "max_skewness": stats.get("max_skewness"),
             }
 
     except SoftTimeLimitExceeded:
@@ -131,57 +131,6 @@ def _upload_s3(src: Path, s3_key: str) -> None:
     )
     s3.upload_file(str(src), settings.s3_bucket, s3_key)
 
-
-def _run_mesh_generator(stl_path: Path, mesh_dir: Path) -> None:
-    """
-    Phase 1 stub: copies STL and creates a minimal OpenFOAM case structure.
-    Replace with the real SDF+Octree engine in Phase 1b.
-
-    Real implementation will call:
-      tessell-mesh --stl input.stl --output case/
-    which produces constant/polyMesh/ with points, faces, owner, neighbour, boundary.
-    """
-    mesh_dir.mkdir(parents=True, exist_ok=True)
-    (mesh_dir / "constant" / "polyMesh").mkdir(parents=True, exist_ok=True)
-    (mesh_dir / "system").mkdir(parents=True, exist_ok=True)
-
-    # Write a minimal controlDict so checkMesh can run
-    (mesh_dir / "system" / "controlDict").write_text(
-        "FoamFile { version 2.0; format ascii; class dictionary; location system; object controlDict; }\n"
-        "application simpleFoam;\nstartFrom startTime;\nstartTime 0;\nstopAt endTime;\nendTime 100;\n"
-        "deltaT 1;\nwriteControl timeStep;\nwriteInterval 100;\n"
-    )
-
-    # TODO: replace with: subprocess.run(["tessell-mesh", "--stl", str(stl_path), "--output", str(mesh_dir)], check=True)
-    logger.info("Mesh generator stub: created case scaffold at %s", mesh_dir)
-
-
-def _run_checkmesh(mesh_dir: Path) -> object:
-    """Run OpenFOAM checkMesh and return parsed result."""
-    from mesh.checkmesh import parse_checkmesh_output  # local import to avoid circular
-
-    try:
-        proc = subprocess.run(
-            ["checkMesh", "-case", str(mesh_dir)],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        stdout = proc.stdout + proc.stderr
-    except FileNotFoundError:
-        # checkMesh not installed — skip in dev/test environments
-        logger.warning("checkMesh not found — skipping mesh quality check")
-
-        class _FakeResult:
-            passed = True
-            max_non_orthogonality = None
-            max_skewness = None
-            num_cells = None
-            raw_output = "checkMesh not available"
-
-        return _FakeResult()
-
-    return parse_checkmesh_output(stdout)
 
 
 def _zip_mesh(mesh_dir: Path, zip_path: Path) -> None:

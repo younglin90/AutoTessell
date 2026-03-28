@@ -15,14 +15,16 @@ def validate_stl(content: bytes) -> None:
     if len(content) > MAX_STL_SIZE:
         raise STLValidationError(f"STL file too large (max 100 MB, got {len(content) // 1024 // 1024} MB)")
 
+    # ASCII check must come before the 84-byte size guard:
+    # valid ASCII STL files can be shorter than the binary minimum.
+    if _is_ascii_stl(content):
+        _validate_ascii_stl(content)
+        return
+
     if len(content) < 84:
         raise STLValidationError("File too small to be a valid STL")
 
-    # Detect binary vs ASCII STL
-    if _is_ascii_stl(content):
-        _validate_ascii_stl(content)
-    else:
-        _validate_binary_stl(content)
+    _validate_binary_stl(content)
 
 
 def _is_ascii_stl(content: bytes) -> bool:
