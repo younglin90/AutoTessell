@@ -361,7 +361,18 @@ def _ascii_bbox(content: bytes) -> BBox:
 
 
 def _binary_bbox(content: bytes) -> BBox:
+    if len(content) < 84:
+        raise ValueError(
+            f"Binary STL too short ({len(content)} bytes) — "
+            "need at least 84 bytes for header + triangle count"
+        )
     num_tri = struct.unpack_from("<I", content, 80)[0]
+    expected = 84 + num_tri * 50
+    if len(content) < expected:
+        raise ValueError(
+            f"Binary STL truncated: header claims {num_tri} triangles "
+            f"({expected} bytes needed) but only {len(content)} bytes present"
+        )
     inf = float("inf")
     min_x = min_y = min_z = inf
     max_x = max_y = max_z = -inf

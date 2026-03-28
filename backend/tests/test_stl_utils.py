@@ -224,12 +224,21 @@ class TestBinaryBbox:
 
     def test_zero_triangle_count(self):
         content = b"\x00" * 80 + struct.pack("<I", 0)
-        # No triangles — but _binary_bbox would return inf/-inf for all
-        # bounds. It should not raise.
+        # No triangles — _binary_bbox returns inf/-inf for all bounds, not an error.
         bbox = _binary_bbox(content)
-        # With zero triangles the loop doesn't execute; values stay inf/-inf
         import math
         assert math.isinf(bbox.min_x)
+
+    def test_content_too_short_for_header_raises(self):
+        # Only 80 bytes — not enough for the 4-byte triangle count field.
+        with pytest.raises(ValueError, match="too short"):
+            _binary_bbox(b"\x00" * 80)
+
+    def test_truncated_content_raises(self):
+        # Header claims 10 triangles but file contains none of them.
+        content = b"\x00" * 80 + struct.pack("<I", 10)  # claims 10 tris, 0 data
+        with pytest.raises(ValueError, match="truncated"):
+            _binary_bbox(content)
 
 
 # ---------------------------------------------------------------------------
