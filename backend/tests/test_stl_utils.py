@@ -695,3 +695,83 @@ class TestReconstructSurfacePoissonReconEmpty:
 
         assert result is False
         assert not dst.exists()
+
+
+# ---------------------------------------------------------------------------
+# reconstruct_surface_poisson — happy path
+# ---------------------------------------------------------------------------
+
+class TestReconstructSurfacePoissonHappyPath:
+    def _make_happy_mocks(self):
+        import numpy as np
+
+        mock_o3d = MagicMock()
+        mock_in_mesh = MagicMock()
+        mock_in_mesh.vertices = [1, 2, 3]  # non-empty → passes first guard
+
+        mock_recon = MagicMock()
+        mock_recon.vertices = [1, 2, 3]  # non-empty → passes second guard
+        densities = np.array([0.1, 0.3, 0.5, 0.7, 0.9])
+
+        mock_o3d.io.read_triangle_mesh.return_value = mock_in_mesh
+        mock_o3d.geometry.TriangleMesh.create_from_point_cloud_poisson.return_value = (
+            mock_recon,
+            densities,
+        )
+        return mock_o3d, mock_in_mesh
+
+    def test_returns_true_and_writes_output_when_bbox_provided(self, tmp_path: Path):
+        """bbox provided → normal_radius derived from bbox span, returns True."""
+        src = tmp_path / "input.stl"
+        dst = tmp_path / "output.stl"
+        src.write_bytes(_simple_triangle_stl())
+
+        mock_o3d, _ = self._make_happy_mocks()
+        bbox = BBox(0.0, 0.0, 0.0, 2.0, 1.0, 1.0)
+
+        with patch.dict(sys.modules, {"open3d": mock_o3d}):
+            result = reconstruct_surface_poisson(src, dst, bbox=bbox)
+
+        assert result is True
+        mock_o3d.io.write_triangle_mesh.assert_called_once()
+
+    def test_bbox_none_uses_aabb_for_normal_radius(self, tmp_path: Path):
+        """bbox=None → function calls get_axis_aligned_bounding_box on the mesh."""
+        src = tmp_path / "input.stl"
+        dst = tmp_path / "output.stl"
+        src.write_bytes(_simple_triangle_stl())
+
+        mock_o3d, mock_in_mesh = self._make_happy_mocks()
+        mock_aabb = MagicMock()
+        mock_aabb.get_extent.return_value = [2.0, 1.0, 1.5]
+        mock_in_mesh.get_axis_aligned_bounding_box.return_value = mock_aabb
+
+        with patch.dict(sys.modules, {"open3d": mock_o3d}):
+            result = reconstruct_surface_poisson(src, dst, bbox=None)
+
+        assert result is True
+        mock_in_mesh.get_axis_aligned_bounding_box.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# remesh_surface_uniform — happy path
+# ---------------------------------------------------------------------------
+
+class TestRemeshSurfaceUniformHappyPath:
+    def test_returns_true_on_success(self, tmp_path: Path):
+        """pyacvd available and clustering succeeds → returns True."""
+        src = tmp_path / "input.stl"
+        dst = tmp_path / "output.stl"
+        src.write_bytes(_simple_triangle_stl())
+
+        mock_pyacvd = MagicMock()
+        mock_pyvista = MagicMock()
+        mock_clus = MagicMock()
+        mock_pyacvd.Clustering.return_value = mock_clus
+
+        with patch.dict(sys.modules, {"pyacvd": mock_pyacvd, "pyvista": mock_pyvista}):
+            result = remesh_surface_uniform(src, dst)
+
+        assert result is True
+        mock_clus.subdivide.assert_called_once_with(3)
+        mock_clus.cluster.assert_called_once()
