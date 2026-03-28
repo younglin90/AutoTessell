@@ -43,6 +43,7 @@ from mesh.openfoam_config import (
 )
 from mesh.stl_utils import (
     BBox,
+    StlComplexity,
     analyze_stl_complexity,
     get_bbox,
     reconstruct_surface_poisson,
@@ -322,7 +323,12 @@ def _snappy_pipeline(
     return stats
 
 
-def _write_snappy_case(case_dir: Path, stl_path: Path, domain: FlowDomain, complexity=None) -> None:
+def _write_snappy_case(
+    case_dir: Path,
+    stl_path: Path,
+    domain: FlowDomain,
+    complexity: StlComplexity | None = None,
+) -> None:
     system = case_dir / "system"
     tri_surface = case_dir / "constant" / "triSurface"
     system.mkdir(parents=True, exist_ok=True)
