@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from api.download import router as download_router
 from api.jobs import router as jobs_router
@@ -60,7 +60,8 @@ def health():
         db_ok = True
     except Exception:
         pass
-    return {"status": "ok" if db_ok else "degraded", "db": db_ok, "dev_mode": settings.dev_mode}
+    body = {"status": "ok" if db_ok else "degraded", "db": db_ok, "dev_mode": settings.dev_mode}
+    return JSONResponse(content=body, status_code=200 if db_ok else 503)
 
 
 if settings.dev_mode:

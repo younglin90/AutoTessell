@@ -113,6 +113,20 @@ class TestHealth:
         r = client.get("/health").json()
         assert r["db"] is True
 
+    def test_503_when_db_unreachable(self, client):
+        """Health endpoint must return 503 when the DB cannot be reached."""
+        from unittest.mock import patch
+        from sqlalchemy.exc import OperationalError
+
+        def _broken_session():
+            raise OperationalError("SELECT 1", None, Exception("connection refused"))
+
+        with patch("db.SessionLocal", side_effect=_broken_session):
+            r = client.get("/health")
+        assert r.status_code == 503
+        assert r.json()["db"] is False
+        assert r.json()["status"] == "degraded"
+
 
 # ---------------------------------------------------------------------------
 # Config
