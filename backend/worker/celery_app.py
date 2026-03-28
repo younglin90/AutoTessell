@@ -19,6 +19,5 @@ celery_app.conf.update(
     # Hard kill after 10 minutes; soft kill at 9 minutes
     task_time_limit=settings.job_timeout_seconds,
     task_soft_time_limit=settings.job_soft_timeout_seconds,
-    # Rate limiting: at most 2 concurrent tasks per worker
-    worker_concurrency=4,
+    worker_concurrency=settings.worker_concurrency,
 )

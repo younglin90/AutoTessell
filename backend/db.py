@@ -1,6 +1,11 @@
 import enum
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
+
+
+def _utcnow() -> datetime:
+    """Return current UTC time as a timezone-naive datetime (avoids datetime.utcnow deprecation)."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 from sqlalchemy import (
     Column, DateTime, Enum, ForeignKey, Integer, String, Text, create_engine,
@@ -47,8 +52,8 @@ class Job(Base):
     error_message = Column(Text, nullable=True)
     celery_task_id = Column(String(255), nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=_utcnow, nullable=False)
+    updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, nullable=False)
 
 
 def get_db():

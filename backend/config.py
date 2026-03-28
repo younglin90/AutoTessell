@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     max_jobs_per_user: int = 2
     job_timeout_seconds: int = 600  # 10 min hard kill
     job_soft_timeout_seconds: int = 540  # 9 min soft kill
+    worker_concurrency: int = 4
+
+    # CORS — comma-separated origins (e.g. "http://localhost:3000,https://app.tessell.io")
+    cors_origins: str = "http://localhost:3000"
 
     class Config:
         env_file = ".env"

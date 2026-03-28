@@ -7,13 +7,14 @@ from api.download import router as download_router
 from api.jobs import router as jobs_router
 from api.payment import router as payment_router
 from api.upload import router as upload_router
+from config import settings
 from db import create_tables
 
 app = FastAPI(title="auto-tessell", version="0.1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=[o.strip() for o in settings.cors_origins.split(",")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
