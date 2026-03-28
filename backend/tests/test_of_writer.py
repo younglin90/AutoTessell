@@ -171,6 +171,26 @@ class TestWritePolyMesh:
         assert "(0 0 0)" in content
         assert "(1 0 0)" in content
 
+    def test_non_manifold_face_logs_warning(self, tmp_path: Path, caplog):
+        """A face shared by 3 cells (non-manifold) must trigger a warning, not a crash."""
+        import logging
+        # Build a degenerate mesh: three tets sharing the same face (0,1,2)
+        vertices = np.array([
+            [0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0], [0.0, 0.0, -1.0], [0.0, 0.0, 2.0],
+        ], dtype=np.float64)
+        tets = np.array([
+            [0, 1, 2, 3],
+            [0, 1, 2, 4],
+            [0, 1, 2, 5],  # third cell sharing face (0,1,2) — non-manifold
+        ], dtype=np.int32)
+
+        with caplog.at_level(logging.WARNING, logger="mesh.of_writer"):
+            stats = write_polymesh(vertices, tets, tmp_path)
+
+        assert stats["num_cells"] == 3
+        assert any("non-manifold" in r.message.lower() for r in caplog.records)
+
     def test_large_mesh_stats(self, tmp_path: Path):
         """Smoke test with 100 tets to verify scalability."""
         rng = np.random.default_rng(42)

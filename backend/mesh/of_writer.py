@@ -10,9 +10,12 @@ Output:
     case_dir/constant/polyMesh/{points, faces, owner, neighbour, boundary}
 """
 
+import logging
 from pathlib import Path
 
 import numpy as np
+
+log = logging.getLogger(__name__)
 
 
 _FOAM_HEADER = """\
@@ -104,6 +107,7 @@ def _build_face_tables(tets: np.ndarray):
     internal: list[tuple] = []  # (owner_cell, neighbour_cell, face_verts)
     boundary: list[tuple] = []  # (owner_cell, face_verts)
 
+    non_manifold_count = 0
     for cells in face_map.values():
         if len(cells) == 2:
             c0, f0 = cells[0]
@@ -112,9 +116,21 @@ def _build_face_tables(tets: np.ndarray):
                 internal.append((c0, c1, f0))
             else:
                 internal.append((c1, c0, f1))
-        else:
+        elif len(cells) == 1:
             c0, f0 = cells[0]
             boundary.append((c0, f0))
+        else:
+            # Non-manifold edge: face shared by 3+ cells — degenerate mesh.
+            non_manifold_count += 1
+            c0, f0 = cells[0]
+            boundary.append((c0, f0))
+
+    if non_manifold_count:
+        log.warning(
+            "%d non-manifold face(s) detected in tet mesh — "
+            "mesh quality may be poor; consider re-running STL repair",
+            non_manifold_count,
+        )
 
     # Sort internal faces by owner cell (OpenFOAM requirement)
     internal.sort(key=lambda x: (x[0], x[1]))
