@@ -554,3 +554,49 @@ class TestUploadS3ProdMode:
         mock_s3_client.upload_file.assert_called_once_with(
             str(src), "prod-bucket", "meshes/job-prod/mesh.zip"
         )
+
+
+# ---------------------------------------------------------------------------
+# _s3_client — boto3 client constructor
+# ---------------------------------------------------------------------------
+
+class TestS3Client:
+    """_s3_client() must call boto3.client with the correct kwargs from settings."""
+
+    def _call(self):
+        from worker.tasks import _s3_client
+
+        mock_boto3 = MagicMock()
+        mock_settings = MagicMock()
+        mock_settings.s3_region = "ap-northeast-1"
+        mock_settings.aws_access_key_id = "AKIATEST"
+        mock_settings.aws_secret_access_key = "wJalrXUtest"
+
+        with patch("worker.tasks.settings", mock_settings), \
+             patch.dict(__import__("sys").modules, {"boto3": mock_boto3}):
+            _s3_client()
+        return mock_boto3
+
+    def test_boto3_client_called_with_s3(self):
+        """First positional argument to boto3.client must be 's3'."""
+        mock_boto3 = self._call()
+        call_args = mock_boto3.client.call_args
+        assert call_args[0][0] == "s3"
+
+    def test_region_name_passed(self):
+        """region_name kwarg must equal settings.s3_region."""
+        mock_boto3 = self._call()
+        call_kwargs = mock_boto3.client.call_args[1]
+        assert call_kwargs["region_name"] == "ap-northeast-1"
+
+    def test_access_key_id_passed(self):
+        """aws_access_key_id kwarg must equal settings.aws_access_key_id."""
+        mock_boto3 = self._call()
+        call_kwargs = mock_boto3.client.call_args[1]
+        assert call_kwargs["aws_access_key_id"] == "AKIATEST"
+
+    def test_secret_access_key_passed(self):
+        """aws_secret_access_key kwarg must equal settings.aws_secret_access_key."""
+        mock_boto3 = self._call()
+        call_kwargs = mock_boto3.client.call_args[1]
+        assert call_kwargs["aws_secret_access_key"] == "wJalrXUtest"

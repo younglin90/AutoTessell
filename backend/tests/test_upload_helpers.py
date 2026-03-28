@@ -83,3 +83,25 @@ class TestUploadToS3:
 
         with pytest.raises(Exception, match="S3 unavailable"):
             self._call(b"data", "stl/job-2/input.stl", mock_s3)
+
+    def test_boto3_client_called_with_s3_service(self):
+        """boto3.client must be called with 's3' as the first argument."""
+        mock_s3 = MagicMock()
+        mock_boto3 = MagicMock()
+        mock_boto3.client.return_value = mock_s3
+
+        mock_settings = MagicMock()
+        mock_settings.s3_region = "us-west-2"
+        mock_settings.aws_access_key_id = "key-upload"
+        mock_settings.aws_secret_access_key = "secret-upload"
+        mock_settings.s3_bucket = "upload-bucket"
+
+        with patch("api.upload.settings", mock_settings), \
+             patch.dict(sys.modules, {"boto3": mock_boto3}):
+            _upload_to_s3(b"content", "stl/job-x/input.stl")
+
+        call_args = mock_boto3.client.call_args
+        assert call_args[0][0] == "s3"
+        assert call_args[1]["region_name"] == "us-west-2"
+        assert call_args[1]["aws_access_key_id"] == "key-upload"
+        assert call_args[1]["aws_secret_access_key"] == "secret-upload"
