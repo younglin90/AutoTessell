@@ -60,6 +60,19 @@ def _on_payment_succeeded(db: Session, job_id: str, payment_intent_id: str) -> N
         logger.warning("Stripe webhook: job %s already in status %s — skipping", job_id, job.status)
         return
 
+    # Verify the PI ID from the event matches what we recorded at upload time.
+    # This prevents a replay where a legit webhook for one job is attributed to another.
+    if job.stripe_payment_intent_id and job.stripe_payment_intent_id != payment_intent_id:
+        logger.error(
+            "Stripe webhook: PI mismatch for job %s — stored=%s, event=%s",
+            job_id, job.stripe_payment_intent_id, payment_intent_id,
+        )
+        return
+
+    # Store PI ID if it wasn't set at upload time (shouldn't happen in normal flow)
+    if not job.stripe_payment_intent_id:
+        job.stripe_payment_intent_id = payment_intent_id
+
     job.status = JobStatus.PAID
     db.commit()
 

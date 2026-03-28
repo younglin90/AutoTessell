@@ -546,3 +546,53 @@ class TestWebhook:
             mock_task.apply_async = lambda **_kw: None
             r = _post_webhook(client, payload)
         assert r.status_code == 200  # logged + ignored, not an error
+
+    def test_pi_mismatch_does_not_change_status(self, client):
+        """Webhook with wrong PI ID must not advance job status."""
+        import uuid
+        job_id = str(uuid.uuid4())
+        db = _TestSession()
+        job = Job(
+            id=job_id, user_id="u1", status=JobStatus.PENDING,
+            stripe_payment_intent_id="pi_correct",
+            stl_s3_key="stl/test.stl", stl_filename="test.stl", amount_cents=500,
+        )
+        db.add(job)
+        db.commit()
+        db.close()
+
+        payload = _build_webhook_payload("payment_intent.succeeded", job_id, pi_id="pi_different")
+        with patch("api.payment.run_mesh") as mock_task:
+            mock_task.apply_async = lambda **_kw: None
+            r = _post_webhook(client, payload)
+        assert r.status_code == 200  # returns 200 (just ignored)
+
+        db = _TestSession()
+        job = db.query(Job).filter(Job.id == job_id).first()
+        assert job.status == JobStatus.PENDING  # not changed
+        db.close()
+
+    def test_pi_id_stored_if_missing_on_job(self, client):
+        """If stripe_payment_intent_id was missing, webhook should fill it in."""
+        import uuid
+        job_id = str(uuid.uuid4())
+        db = _TestSession()
+        job = Job(
+            id=job_id, user_id="u1", status=JobStatus.PENDING,
+            stripe_payment_intent_id=None,   # not set at upload time
+            stl_s3_key="stl/test.stl", stl_filename="test.stl", amount_cents=500,
+        )
+        db.add(job)
+        db.commit()
+        db.close()
+
+        payload = _build_webhook_payload("payment_intent.succeeded", job_id, pi_id="pi_new")
+        with patch("api.payment.run_mesh") as mock_task:
+            mock_task.apply_async = lambda **_kw: None
+            _post_webhook(client, payload)
+
+        db = _TestSession()
+        job = db.query(Job).filter(Job.id == job_id).first()
+        assert job.stripe_payment_intent_id == "pi_new"
+        assert job.status == JobStatus.PAID
+        db.close()
