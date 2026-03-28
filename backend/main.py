@@ -69,8 +69,9 @@ if settings.dev_mode:
         """Serve local mesh files in dev mode (replaces S3 presigned URLs)."""
         storage_root = Path(settings.dev_storage_path).resolve()
         file_path = (storage_root / path).resolve()
-        # Guard against path traversal (e.g. "../../etc/passwd")
-        if not str(file_path).startswith(str(storage_root)):
+        # Guard against path traversal (e.g. "../../etc/passwd").
+        # is_relative_to() is robust to prefix confusion (e.g. /dev vs /dev2).
+        if not file_path.is_relative_to(storage_root):
             raise HTTPException(status_code=400, detail="Invalid file path")
         if not file_path.exists():
             raise HTTPException(status_code=404, detail="File not found")

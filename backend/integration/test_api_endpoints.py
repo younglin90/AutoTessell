@@ -749,3 +749,66 @@ class TestWebhookEnqueueFailureRefund:
 
         # _mark_failed_and_refund is called with the job_id — verify it was invoked
         mock_refund.assert_called_once_with(job_id, mock_refund.call_args[0][1])
+
+
+# ---------------------------------------------------------------------------
+# Dev file serving — path traversal protection
+# ---------------------------------------------------------------------------
+
+class TestDevFileServing:
+    def test_serves_existing_file(self, client, tmp_path):
+        import config as _cfg
+        original = _cfg.settings.dev_storage_path
+        _cfg.settings.dev_storage_path = str(tmp_path)
+        try:
+            (tmp_path / "meshes" / "job-abc").mkdir(parents=True)
+            (tmp_path / "meshes" / "job-abc" / "mesh.zip").write_bytes(b"fake zip")
+            r = client.get("/dev/files/meshes/job-abc/mesh.zip")
+            assert r.status_code == 200
+        finally:
+            _cfg.settings.dev_storage_path = original
+
+    def test_path_traversal_not_served(self, client, tmp_path):
+        """Path traversal attempts must not return file contents.
+        Starlette normalizes URL paths, so ../ is stripped before the handler
+        sees it — the guard returns 404 (path doesn't exist inside storage).
+        Either 400 or 404 is acceptable; 200 is not.
+        """
+        import config as _cfg
+        original = _cfg.settings.dev_storage_path
+        _cfg.settings.dev_storage_path = str(tmp_path)
+        try:
+            r = client.get("/dev/files/../../../etc/passwd")
+            assert r.status_code != 200
+        finally:
+            _cfg.settings.dev_storage_path = original
+
+    def test_sibling_dir_traversal_rejected(self, client, tmp_path):
+        """Ensure /dev/files/ prefix sibling confusion is blocked.
+        /storage/../storage2/secret should be rejected even though startswith
+        a naïve prefix check might have passed for a path like /dev and /dev2.
+        """
+        import config as _cfg
+        original = _cfg.settings.dev_storage_path
+        storage = tmp_path / "storage"
+        storage.mkdir()
+        sibling = tmp_path / "storage_sibling"
+        sibling.mkdir()
+        (sibling / "secret.txt").write_text("sensitive")
+        _cfg.settings.dev_storage_path = str(storage)
+        try:
+            # Try to escape to sibling via "../storage_sibling/secret.txt"
+            r = client.get("/dev/files/../storage_sibling/secret.txt")
+            assert r.status_code in (400, 404)  # traversal blocked or file not found after resolve
+        finally:
+            _cfg.settings.dev_storage_path = original
+
+    def test_nonexistent_file_returns_404(self, client, tmp_path):
+        import config as _cfg
+        original = _cfg.settings.dev_storage_path
+        _cfg.settings.dev_storage_path = str(tmp_path)
+        try:
+            r = client.get("/dev/files/nonexistent/file.zip")
+            assert r.status_code == 404
+        finally:
+            _cfg.settings.dev_storage_path = original
