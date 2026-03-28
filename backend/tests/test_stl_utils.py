@@ -869,3 +869,97 @@ class TestRemeshSurfaceUniformHappyPath:
         assert result is True
         mock_clus.subdivide.assert_called_once_with(3)
         mock_clus.cluster.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# get_bbox — trimesh-present path
+# ---------------------------------------------------------------------------
+
+class TestGetBboxWithTrimesh:
+    """
+    Exercises the trimesh branch of get_bbox() (stl_utils.py lines 105-110).
+
+    All tests in TestGetBboxPurePython patch trimesh to None, so the pure-Python
+    fallback paths are covered there.  These tests explicitly call get_bbox()
+    with a mocked-but-present trimesh so that the `import trimesh` inside
+    get_bbox() succeeds and `mesh.bounds` is used to build the BBox.
+    """
+
+    def _mock_trimesh_bounds(self, lo, hi):
+        """Return a mock trimesh mesh whose .bounds == (lo, hi)."""
+        import numpy as np
+        mock_mesh = MagicMock()
+        mock_mesh.bounds = (np.array(lo), np.array(hi))
+        return mock_mesh
+
+    def test_ascii_stl_uses_trimesh_bounds(self, tmp_path: Path):
+        """ASCII STL: get_bbox returns BBox built from trimesh mesh.bounds."""
+        import trimesh as real_trimesh
+
+        stl = tmp_path / "shape.stl"
+        stl.write_bytes(_ascii_stl_text().encode())
+
+        lo, hi = [1.0, 2.0, 3.0], [4.0, 5.0, 6.0]
+        mock_mesh = self._mock_trimesh_bounds(lo, hi)
+
+        with patch.object(real_trimesh, "load", return_value=mock_mesh):
+            bbox = get_bbox(stl)
+
+        assert bbox.min_x == pytest.approx(1.0)
+        assert bbox.min_y == pytest.approx(2.0)
+        assert bbox.min_z == pytest.approx(3.0)
+        assert bbox.max_x == pytest.approx(4.0)
+        assert bbox.max_y == pytest.approx(5.0)
+        assert bbox.max_z == pytest.approx(6.0)
+
+    def test_binary_stl_uses_trimesh_bounds(self, tmp_path: Path):
+        """Binary STL: get_bbox returns BBox built from trimesh mesh.bounds."""
+        import trimesh as real_trimesh
+
+        stl = tmp_path / "shape.stl"
+        stl.write_bytes(_simple_triangle_stl())
+
+        lo, hi = [0.0, 0.0, 0.0], [10.0, 20.0, 30.0]
+        mock_mesh = self._mock_trimesh_bounds(lo, hi)
+
+        with patch.object(real_trimesh, "load", return_value=mock_mesh):
+            bbox = get_bbox(stl)
+
+        assert bbox.max_x == pytest.approx(10.0)
+        assert bbox.max_y == pytest.approx(20.0)
+        assert bbox.max_z == pytest.approx(30.0)
+
+    def test_trimesh_bounds_take_priority_over_pure_python(self, tmp_path: Path):
+        """
+        When trimesh is available, get_bbox must use trimesh bounds
+        (not the pure-Python parser).  The two results may differ because
+        trimesh can correct winding/normals; this test verifies trimesh wins.
+        """
+        import trimesh as real_trimesh
+
+        stl = tmp_path / "shape.stl"
+        stl.write_bytes(_ascii_stl_text().encode())
+
+        # trimesh claims different bounds than pure-Python would return
+        lo, hi = [0.5, 0.5, 0.5], [3.5, 4.5, 2.5]
+        mock_mesh = self._mock_trimesh_bounds(lo, hi)
+
+        with patch.object(real_trimesh, "load", return_value=mock_mesh):
+            bbox = get_bbox(stl)
+
+        assert bbox.min_x == pytest.approx(0.5)
+        assert bbox.max_x == pytest.approx(3.5)
+
+    def test_returns_bbox_instance(self, tmp_path: Path):
+        """get_bbox with trimesh must return a BBox dataclass instance."""
+        import trimesh as real_trimesh
+
+        stl = tmp_path / "shape.stl"
+        stl.write_bytes(_simple_triangle_stl())
+
+        mock_mesh = self._mock_trimesh_bounds([0.0, 0.0, 0.0], [1.0, 1.0, 1.0])
+
+        with patch.object(real_trimesh, "load", return_value=mock_mesh):
+            bbox = get_bbox(stl)
+
+        assert isinstance(bbox, BBox)
