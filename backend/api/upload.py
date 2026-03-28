@@ -50,6 +50,10 @@ async def upload_stl(
     mesh_params: str = "",          # JSON-encoded MeshParams (pro mode, optional)
     db: Session = Depends(get_db),
 ):
+    # 0. Validate user_id (DB column is String(255); reject blank and oversized IDs)
+    if not user_id or len(user_id) > 255:
+        raise HTTPException(status_code=400, detail="user_id must be 1–255 characters")
+
     # 0a. Validate mesh_purpose
     if mesh_purpose not in ("cfd", "fea"):
         raise HTTPException(status_code=400, detail=f"Invalid mesh_purpose '{mesh_purpose}' — must be 'cfd' or 'fea'")

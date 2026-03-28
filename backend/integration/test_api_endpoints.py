@@ -228,6 +228,14 @@ class TestUpload:
         r = _upload(client, target_cells=999_999_999)
         assert r.status_code == 400
 
+    def test_empty_user_id_rejected(self, client):
+        r = _upload(client, user_id="")
+        assert r.status_code == 400
+
+    def test_oversized_user_id_rejected(self, client):
+        r = _upload(client, user_id="x" * 256)
+        assert r.status_code == 400
+
     def test_pro_params_stored_as_json(self, client):
         params = {"tet_stop_energy": 4.5, "mmg_enabled": False}
         job_id = _upload(client, mesh_params=params).json()["job_id"]
