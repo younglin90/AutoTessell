@@ -1,13 +1,21 @@
 """
-GET /api/v1/jobs          — List recent jobs for a user (newest first, capped at 20)
-GET /api/v1/jobs/{job_id} — Poll single job status
+GET    /api/v1/jobs          — List recent jobs for a user (newest first, capped at 20)
+GET    /api/v1/jobs/{job_id} — Poll single job status
+DELETE /api/v1/jobs/{job_id} — Remove a terminal job and its stored assets
 """
+
+import logging
+import shutil
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from config import settings
 from db import Job, JobStatus, get_db
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -65,6 +73,42 @@ def list_jobs(
     ]
 
 
+def _delete_job_files(job: Job) -> None:
+    """Best-effort removal of STL and mesh assets for a deleted job."""
+    if settings.dev_mode:
+        base = Path(settings.dev_storage_path)
+        for subdir in ("stl", "meshes"):
+            target = base / subdir / str(job.id)
+            if target.exists():
+                try:
+                    shutil.rmtree(target)
+                except Exception as exc:
+                    log.warning("Could not remove %s: %s", target, exc)
+    else:
+        # S3 cleanup — graceful no-op if boto3 not configured
+        try:
+            import boto3
+
+            s3 = boto3.client(
+                "s3",
+                region_name=settings.s3_region,
+                aws_access_key_id=settings.aws_access_key_id,
+                aws_secret_access_key=settings.aws_secret_access_key,
+            )
+            keys_to_delete = []
+            if job.stl_s3_key:
+                keys_to_delete.append({"Key": job.stl_s3_key})
+            if job.mesh_s3_key:
+                keys_to_delete.append({"Key": job.mesh_s3_key})
+            if keys_to_delete:
+                s3.delete_objects(
+                    Bucket=settings.s3_bucket,
+                    Delete={"Objects": keys_to_delete, "Quiet": True},
+                )
+        except Exception as exc:
+            log.warning("S3 cleanup failed for job %s: %s", job.id, exc)
+
+
 @router.delete("/jobs/{job_id}", status_code=204)
 def delete_job(
     job_id: str,
@@ -90,6 +134,8 @@ def delete_job(
 
     db.delete(job)
     db.commit()
+
+    _delete_job_files(job)
 
 
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse)

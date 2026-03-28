@@ -350,6 +350,50 @@ class TestDeleteJob:
                           params={"user_id": "u1"})
         assert r.status_code == 404
 
+    def test_delete_removes_dev_storage_dirs(self, client, tmp_path):
+        """Files in dev_storage are removed when a job is deleted."""
+        import config as _cfg
+        original_path = _cfg.settings.dev_storage_path
+        _cfg.settings.dev_storage_path = str(tmp_path)
+        try:
+            job_id = _make_done_job()
+            # Create fake asset dirs
+            stl_dir = tmp_path / "stl" / job_id
+            mesh_dir = tmp_path / "meshes" / job_id
+            stl_dir.mkdir(parents=True)
+            mesh_dir.mkdir(parents=True)
+            (stl_dir / "model.stl").write_text("fake")
+            (mesh_dir / "mesh.zip").write_text("fake")
+
+            r = client.delete(f"/api/v1/jobs/{job_id}", params={"user_id": "u1"})
+            assert r.status_code == 204
+            assert not stl_dir.exists()
+            assert not mesh_dir.exists()
+        finally:
+            _cfg.settings.dev_storage_path = original_path
+
+    def test_delete_tolerates_missing_files(self, client):
+        """Delete succeeds even when asset dirs don't exist."""
+        job_id = _make_done_job()
+        # Don't create any files — should still return 204
+        r = client.delete(f"/api/v1/jobs/{job_id}", params={"user_id": "u1"})
+        assert r.status_code == 204
+
+    def test_failed_job_can_be_deleted(self, client):
+        """FAILED jobs should also be deletable."""
+        import uuid
+        job_id = str(uuid.uuid4())
+        db = _TestSession()
+        job = Job(
+            id=job_id, user_id="u1", status=JobStatus.FAILED,
+            stl_s3_key="stl/test.stl", stl_filename="test.stl", amount_cents=0,
+        )
+        db.add(job)
+        db.commit()
+        db.close()
+        r = client.delete(f"/api/v1/jobs/{job_id}", params={"user_id": "u1"})
+        assert r.status_code == 204
+
 
 class TestDownload:
     def test_done_job_returns_200(self, client):
