@@ -64,6 +64,8 @@ async def upload_stl(
 
     # 0c. Validate pro params JSON if provided
     if mesh_params:
+        if len(mesh_params) > 4096:
+            raise HTTPException(status_code=400, detail="mesh_params too large (max 4096 bytes)")
         try:
             from mesh.params import MeshParams
             import json as _json

@@ -236,6 +236,18 @@ class TestUpload:
         r = _upload(client, user_id="x" * 256)
         assert r.status_code == 400
 
+    def test_oversized_mesh_params_rejected(self, client):
+        """mesh_params > 4096 bytes should return 400 without attempting JSON parse."""
+        with patch("api.upload._run_mesh_background"):
+            r = client.post(
+                "/api/v1/upload",
+                params={"user_id": "u1", "mesh_params": "x" * 5000},
+                files={"file": ("test.stl", io.BytesIO(_make_stl()),
+                                "application/octet-stream")},
+            )
+        assert r.status_code == 400
+        assert "mesh_params" in r.json()["detail"].lower()
+
     def test_pro_params_stored_as_json(self, client):
         params = {"tet_stop_energy": 4.5, "mmg_enabled": False}
         job_id = _upload(client, mesh_params=params).json()["job_id"]
