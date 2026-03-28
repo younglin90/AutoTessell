@@ -104,6 +104,27 @@ class TestBinarySTLWithSolidHeader:
 
 # ---- Binary STL with extra trailing bytes ----
 
+class TestSizeLimit:
+    """Tests for the max_size enforcement."""
+
+    def test_exactly_at_max_size_accepted(self):
+        """A file whose size equals max_size exactly must be accepted (> not >=)."""
+        content = _make_binary_stl(5)
+        validate_stl(content, max_size=len(content))  # must not raise
+
+    def test_one_byte_over_max_size_rejected(self):
+        """One byte over the limit must be rejected."""
+        content = _make_binary_stl(5)
+        with pytest.raises(STLValidationError, match="too large"):
+            validate_stl(content, max_size=len(content) - 1)
+
+    def test_too_large_error_mentions_max(self):
+        """Error message must name the limit (helps user understand the constraint)."""
+        content = _make_binary_stl(5)
+        with pytest.raises(STLValidationError, match="max"):
+            validate_stl(content, max_size=10)
+
+
 class TestBinarySTLOversized:
     """Binary STL files that are *larger* than the declared triangle count require."""
 
