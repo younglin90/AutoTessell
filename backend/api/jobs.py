@@ -59,7 +59,7 @@ def list_jobs(
         db.query(Job)
         .filter(Job.user_id == user_id)
         .order_by(Job.created_at.desc())
-        .limit(min(limit, 100))
+        .limit(max(0, min(limit, 100)))
         .all()
     )
     return [

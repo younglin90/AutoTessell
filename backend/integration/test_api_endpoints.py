@@ -360,6 +360,12 @@ class TestJobList:
         items = client.get("/api/v1/jobs", params={"user_id": "zero_limit_user", "limit": 0}).json()
         assert items == []
 
+    def test_negative_limit_returns_empty(self, client):
+        """Negative limit must not bypass the cap and return all rows."""
+        _upload(client, user_id="neg_limit_user")
+        items = client.get("/api/v1/jobs", params={"user_id": "neg_limit_user", "limit": -99}).json()
+        assert items == []
+
 
 class TestJobs:
     def test_get_own_job_200(self, client):
