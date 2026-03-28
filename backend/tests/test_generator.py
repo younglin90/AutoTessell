@@ -1895,3 +1895,61 @@ class TestNetgenPipelineGmshFormatFallback:
         assert stats["passed"] is True
         # Export called twice: once for Gmsh2 Format (raised), once for Gmsh Format (succeeded)
         assert mock_mesh.Export.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# _pytetwild_pipeline — ImportError and tetrahedralize failure paths
+# ---------------------------------------------------------------------------
+
+class TestPytetwiledPipelineImportError:
+    """pytetwild or trimesh not installed → MeshGenerationError with install hint."""
+
+    def test_raises_mesh_generation_error_when_pytetwild_absent(
+        self, tmp_path: Path, unit_cube_stl: Path
+    ):
+        """patch pytetwild=None → ImportError inside pipeline → MeshGenerationError."""
+        from mesh.generator import _pytetwild_pipeline, MeshGenerationError
+        from mesh.params import MeshParams
+
+        mp = MeshParams(mmg_enabled=False)
+        case_dir = tmp_path / "case"
+        case_dir.mkdir()
+
+        with patch.dict(sys.modules, {"pytetwild": None}):
+            with pytest.raises(MeshGenerationError, match="pip install"):
+                _pytetwild_pipeline(unit_cube_stl, case_dir, BBox(0, 0, 0, 1, 1, 1), 100_000, mp)
+
+    def test_error_message_mentions_pytetwild(self, tmp_path: Path, unit_cube_stl: Path):
+        """Error message must name pytetwild so users know what to install."""
+        from mesh.generator import _pytetwild_pipeline, MeshGenerationError
+        from mesh.params import MeshParams
+
+        mp = MeshParams(mmg_enabled=False)
+        case_dir = tmp_path / "case"
+        case_dir.mkdir()
+
+        with patch.dict(sys.modules, {"pytetwild": None}):
+            with pytest.raises(MeshGenerationError, match="pytetwild"):
+                _pytetwild_pipeline(unit_cube_stl, case_dir, BBox(0, 0, 0, 1, 1, 1), 100_000, mp)
+
+
+class TestPytetwiledPipelineTetrahedralizeRaises:
+    """pytetwild.tetrahedralize raises → MeshGenerationError wrapping the cause."""
+
+    def test_raises_mesh_generation_error_on_tetrahedralize_failure(
+        self, tmp_path: Path, unit_cube_stl: Path
+    ):
+        """pytetwild.tetrahedralize raises RuntimeError → MeshGenerationError('pytetwild 실패: ...')."""
+        from mesh.generator import _pytetwild_pipeline, MeshGenerationError
+        from mesh.params import MeshParams
+
+        mp = MeshParams(mmg_enabled=False)
+        case_dir = tmp_path / "case"
+        case_dir.mkdir()
+
+        mock_pytet = MagicMock()
+        mock_pytet.tetrahedralize.side_effect = RuntimeError("out of memory")
+
+        with patch.dict(sys.modules, {"pytetwild": mock_pytet}):
+            with pytest.raises(MeshGenerationError, match="pytetwild 실패"):
+                _pytetwild_pipeline(unit_cube_stl, case_dir, BBox(0, 0, 0, 1, 1, 1), 100_000, mp)
