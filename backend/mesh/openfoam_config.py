@@ -219,7 +219,9 @@ def snappy_hex_mesh_dict(
     if mp.snappy_refine_min is not None:
         s_min = mp.snappy_refine_min
     if mp.snappy_refine_max is not None:
-        s_max = max(s_min, mp.snappy_refine_max)
+        s_max = mp.snappy_refine_max
+    # Invariant: s_max must always be >= s_min regardless of which overrides were applied
+    s_max = max(s_min, s_max)
     n_layers = mp.snappy_n_layers if mp.snappy_n_layers is not None else n_layers_auto
     expansion_ratio = mp.snappy_expansion_ratio
     final_layer_thickness = mp.snappy_final_layer_thickness

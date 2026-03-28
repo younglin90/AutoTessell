@@ -138,6 +138,15 @@ class TestSnappyParamsOverride:
         level_max = int(m.group(2))
         assert level_max >= level_min
 
+    def test_pro_refine_min_set_without_max_keeps_smax_gte_smin(self, unit_domain):
+        """snappy_refine_min=5 with no snappy_refine_max must not produce min > max."""
+        import re
+        mp = MeshParams(snappy_refine_min=5)  # snappy_refine_max left as None
+        text = snappy_hex_mesh_dict(unit_domain, params=mp)
+        m = re.search(r"level \( (\d+) (\d+) \)", text)
+        assert m is not None
+        assert int(m.group(2)) >= int(m.group(1)), "s_max must be >= s_min"
+
     def test_relaxed_non_ortho_is_5_above_max(self, unit_domain):
         mp = MeshParams(snappy_max_non_ortho=75)
         text = snappy_hex_mesh_dict(unit_domain, params=mp)
