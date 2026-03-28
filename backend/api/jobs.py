@@ -70,7 +70,7 @@ def list_jobs(
             target_cells=j.target_cells or 500_000,
             mesh_purpose=j.mesh_purpose or "cfd",
             has_pro_params=bool(j.mesh_params_json),
-            created_at=j.created_at.isoformat() if j.created_at else "",
+            created_at=j.created_at.isoformat() + "Z" if j.created_at else "",
         )
         for j in rows
     ]
@@ -163,6 +163,6 @@ def get_job_status(
         mesh_params_json=job.mesh_params_json,
         result_num_cells=job.result_num_cells,
         result_tier=job.result_tier,
-        created_at=job.created_at.isoformat() if job.created_at else None,
-        updated_at=job.updated_at.isoformat() if job.updated_at else None,
+        created_at=job.created_at.isoformat() + "Z" if job.created_at else None,
+        updated_at=job.updated_at.isoformat() + "Z" if job.updated_at else None,
     )

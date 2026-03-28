@@ -850,8 +850,14 @@ class TestJobStatusTimestamps:
         job_id = _upload(client, user_id="ts_recent").json()["job_id"]
         r = client.get(f"/api/v1/jobs/{job_id}", params={"user_id": "ts_recent"}).json()
         dt = datetime.fromisoformat(r["created_at"])
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(timezone.utc)
         assert abs((now - dt).total_seconds()) < 60
+
+    def test_created_at_has_utc_suffix(self, client):
+        """created_at must end with 'Z' so JavaScript Date parses it as UTC."""
+        job_id = _upload(client, user_id="ts_z").json()["job_id"]
+        r = client.get(f"/api/v1/jobs/{job_id}", params={"user_id": "ts_z"}).json()
+        assert r["created_at"].endswith("Z"), "ISO timestamp must have 'Z' UTC suffix"
 
     def test_updated_at_present(self, client):
         job_id = _upload(client, user_id="upd_user").json()["job_id"]
@@ -871,8 +877,14 @@ class TestJobStatusTimestamps:
         job_id = _upload(client, user_id="upd_recent").json()["job_id"]
         r = client.get(f"/api/v1/jobs/{job_id}", params={"user_id": "upd_recent"}).json()
         dt = datetime.fromisoformat(r["updated_at"])
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        now = datetime.now(timezone.utc)
         assert abs((now - dt).total_seconds()) < 60
+
+    def test_updated_at_has_utc_suffix(self, client):
+        """updated_at must end with 'Z' so JavaScript Date parses it as UTC."""
+        job_id = _upload(client, user_id="upd_z").json()["job_id"]
+        r = client.get(f"/api/v1/jobs/{job_id}", params={"user_id": "upd_z"}).json()
+        assert r["updated_at"].endswith("Z"), "ISO timestamp must have 'Z' UTC suffix"
 
 
 # ---------------------------------------------------------------------------
