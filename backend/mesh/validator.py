@@ -24,9 +24,19 @@ def validate_stl(content: bytes, max_size: int = _DEFAULT_MAX_SIZE) -> None:
 
     # ASCII check must come before the 84-byte size guard:
     # valid ASCII STL files can be shorter than the binary minimum.
+    # If ASCII parsing fails, fall through to binary — some exporters
+    # (incorrectly) start binary STL headers with "solid".
     if _is_ascii_stl(content):
-        _validate_ascii_stl(content)
-        return
+        try:
+            _validate_ascii_stl(content)
+            return
+        except STLValidationError:
+            # Only fall through to binary validation if the file is large enough
+            # to possibly be a binary STL — some exporters incorrectly start
+            # binary headers with "solid <name>".  Short files are genuinely
+            # malformed ASCII, so re-raise the original ASCII error.
+            if len(content) < 84:
+                raise
 
     if len(content) < 84:
         raise STLValidationError("File too small to be a valid STL")

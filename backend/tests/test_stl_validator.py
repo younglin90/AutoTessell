@@ -70,3 +70,33 @@ class TestASCIISTL:
         content = b"solid test\n  facet normal 0 0 1\n    outer loop\n"
         with pytest.raises(STLValidationError, match="endsolid"):
             validate_stl(content)
+
+
+# ---- Binary STL with "solid" header (common exporter bug) ----
+
+class TestBinarySTLWithSolidHeader:
+    """Some exporters put "solid <name>" in the 80-byte binary header.
+    The validator must not reject these as malformed ASCII files."""
+
+    def _make_solid_header_binary_stl(self, num_triangles: int) -> bytes:
+        """Binary STL whose header starts with 'solid' (as some buggy exporters produce)."""
+        header_text = b"solid exported_by_buggy_exporter"
+        header = header_text + b"\x00" * (80 - len(header_text))
+        count = struct.pack("<I", num_triangles)
+        triangle = struct.pack("<12f", *([0.0] * 12)) + b"\x00\x00"
+        return header + count + (triangle * num_triangles)
+
+    def test_valid_binary_with_solid_header_accepted(self):
+        """Binary STL starting with 'solid' must not be rejected."""
+        validate_stl(self._make_solid_header_binary_stl(5))
+
+    def test_solid_header_binary_zero_triangles_rejected(self):
+        """Valid structure, zero triangles → still rejected."""
+        with pytest.raises(STLValidationError, match="zero triangles"):
+            validate_stl(self._make_solid_header_binary_stl(0))
+
+    def test_solid_header_binary_truncated_rejected(self):
+        """Truncated binary with solid header → size mismatch."""
+        content = self._make_solid_header_binary_stl(10)[:-20]
+        with pytest.raises(STLValidationError, match="size mismatch"):
+            validate_stl(content)
