@@ -262,6 +262,22 @@ class TestMeshParamsValidation:
 
         assert result is not None
 
+    async def test_json_decode_error_raises_400(self):
+        """Truly invalid JSON (not parseable) in mesh_params → 400 via JSONDecodeError path."""
+        # Don't patch MeshParams — let actual json.loads fail with JSONDecodeError
+        with pytest.raises(HTTPException) as exc_info:
+            await _call(mesh_params="not valid json at all !!!")
+        assert exc_info.value.status_code == 400
+        assert "mesh_params" in exc_info.value.detail.lower()
+
+    async def test_type_error_from_mesh_params_raises_400(self):
+        """TypeError from MeshParams.from_json (e.g. wrong field type) → 400."""
+        with patch("mesh.params.MeshParams") as mock_cls:
+            mock_cls.from_json.side_effect = TypeError("unexpected type")
+            with pytest.raises(HTTPException) as exc_info:
+                await _call(mesh_params='{"tet_stop_energy": "should be float"}')
+        assert exc_info.value.status_code == 400
+
 
 # ---------------------------------------------------------------------------
 # File extension validation
