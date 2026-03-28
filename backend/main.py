@@ -25,7 +25,7 @@ app = FastAPI(title="auto-tessell", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in settings.cors_origins.split(",")],
+    allow_origins=[o for o in (o.strip() for o in settings.cors_origins.split(",")) if o],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
