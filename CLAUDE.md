@@ -237,7 +237,7 @@ cd tessell-mesh/build && ctest --output-on-failure
 ## 환경 변수
 
 ```env
-DATABASE_URL=postgresql+asyncpg://user:pass@db:5432/tessell
+DATABASE_URL=postgresql://user:pass@db:5432/tessell
 REDIS_URL=redis://redis:6379/0
 AWS_ACCESS_KEY_ID=...
 AWS_SECRET_ACCESS_KEY=...

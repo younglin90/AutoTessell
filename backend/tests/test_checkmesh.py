@@ -1,5 +1,7 @@
 """Unit tests for checkMesh output parser."""
 
+import pytest
+
 from mesh.checkmesh import parse_checkmesh_output
 
 
@@ -58,6 +60,3 @@ def test_empty_output():
     assert r.passed is False
     assert r.max_non_orthogonality is None
     assert r.max_skewness is None
-
-
-import pytest
