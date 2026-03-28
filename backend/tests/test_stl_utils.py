@@ -581,3 +581,117 @@ class TestAnalyzeStlComplexityBranches:
         assert result.surface_refine_min == 1
         assert result.surface_refine_max == 2
         assert result.feature_refine_level == 2
+
+
+# ---------------------------------------------------------------------------
+# analyze_stl_complexity — face_adjacency_angles edge cases
+# ---------------------------------------------------------------------------
+
+class TestAnalyzeStlComplexityFaceAdjacency:
+    """
+    Tests for the face_adjacency_angles guard (lines 298-302 in stl_utils.py).
+
+    When the mesh has no face-adjacency angles (e.g. a degenerate surface with a
+    single triangle) the code falls into the `else: feat_angle = 30.0` branch.
+    The branch clipping (`min(feat_angle, threshold)`) then caps that 30.0 value.
+    """
+
+    def _make_stl(self, tmp_path: Path) -> Path:
+        p = tmp_path / "shape.stl"
+        p.write_bytes(_simple_triangle_stl())
+        return p
+
+    def test_empty_face_adjacency_uses_default_feat_angle_30(self, tmp_path: Path):
+        """mesh.face_adjacency_angles == [] → feat_angle defaults to 30.0."""
+        import numpy as np
+        import trimesh as real_trimesh
+
+        stl = self._make_stl(tmp_path)
+
+        mock_mesh = MagicMock()
+        mock_mesh.vertices = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
+        mock_mesh.scale = 1.0
+        mock_mesh.face_adjacency_angles = np.array([])  # empty → else branch
+
+        medium_curv = np.array([1e-5] * 80 + [100.0] * 20)  # ratio > 3 (medium)
+
+        with patch("trimesh.load", return_value=mock_mesh):
+            with patch.object(
+                real_trimesh.curvature,
+                "discrete_mean_curvature_measure",
+                return_value=medium_curv,
+            ):
+                result = analyze_stl_complexity(stl)
+
+        # Medium branch: feat_angle = min(30.0_default, 30.0) = 30.0
+        assert result.resolve_feature_angle == pytest.approx(30.0)
+
+    def test_high_ratio_feature_angle_capped_at_20(self, tmp_path: Path):
+        """High-ratio branch caps resolve_feature_angle at 20.0."""
+        import numpy as np
+        import trimesh as real_trimesh
+
+        stl = self._make_stl(tmp_path)
+
+        mock_mesh = MagicMock()
+        mock_mesh.vertices = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
+        mock_mesh.scale = 1.0
+        # Provide a high face adjacency angle (e.g. 45°) — high-ratio branch caps to 20°
+        mock_mesh.face_adjacency_angles = np.array([0.785, 0.785, 0.785])  # ≈45° in radians
+
+        high_ratio_curv = np.array([1e-5] * 94 + [100.0] * 6)  # ratio > 10
+
+        with patch("trimesh.load", return_value=mock_mesh):
+            with patch.object(
+                real_trimesh.curvature,
+                "discrete_mean_curvature_measure",
+                return_value=high_ratio_curv,
+            ):
+                result = analyze_stl_complexity(stl)
+
+        # High branch: feat_angle = min(p10_of_45deg_angles, 20.0) ≤ 20.0
+        assert result.resolve_feature_angle <= 20.0
+
+
+# ---------------------------------------------------------------------------
+# reconstruct_surface_poisson — empty reconstructed mesh vertices path
+# ---------------------------------------------------------------------------
+
+class TestReconstructSurfacePoissonReconEmpty:
+    """
+    Tests the len(recon.vertices) == 0 guard (lines 220-221 in stl_utils.py).
+
+    This fires when the Poisson reconstruction itself produces an empty mesh,
+    which is distinct from the input mesh having no vertices.
+    """
+
+    def test_returns_false_when_reconstructed_mesh_has_no_vertices(self, tmp_path: Path):
+        """After Poisson reconstruction, if recon.vertices is empty → returns False."""
+        import numpy as np
+
+        src = tmp_path / "input.stl"
+        dst = tmp_path / "output.stl"
+        src.write_bytes(_simple_triangle_stl())
+
+        mock_o3d = MagicMock()
+
+        # Input mesh has vertices (passes the first guard)
+        mock_in_mesh = MagicMock()
+        mock_in_mesh.vertices = [1, 2, 3]  # len > 0
+
+        # Reconstructed mesh has NO vertices (triggers the second guard)
+        mock_recon = MagicMock()
+        mock_recon.vertices = []
+        densities = np.array([0.5, 0.6, 0.7])  # real numpy so percentile works
+
+        mock_o3d.io.read_triangle_mesh.return_value = mock_in_mesh
+        mock_o3d.geometry.TriangleMesh.create_from_point_cloud_poisson.return_value = (
+            mock_recon,
+            densities,
+        )
+
+        with patch.dict(sys.modules, {"open3d": mock_o3d}):
+            result = reconstruct_surface_poisson(src, dst)
+
+        assert result is False
+        assert not dst.exists()
