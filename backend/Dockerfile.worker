@@ -21,6 +21,11 @@ COPY . .
 # Source OpenFOAM env for interactive debug shells
 RUN echo "source /opt/openfoam12/etc/bashrc" >> /etc/bash.bashrc
 
+# Non-root user — uid 1000 matches the API container (easier volume ownership)
+# /tmp is world-writable so tempfile.TemporaryDirectory() works for any user.
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
 # Source OF env before launching Celery so WM_PROJECT_DIR and all OF
 # PATH entries are available inside the Python process (fast-path in
 # generator._openfoam_env avoids the expensive subshell on each mesh job).
