@@ -7,7 +7,7 @@ Stripe, S3, and background mesh tasks are patched.
 import io
 import json
 import struct
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -641,6 +641,33 @@ class TestWebhook:
         db = _TestSession()
         job = db.query(Job).filter(Job.id == job_id).first()
         assert job.status == JobStatus.PENDING  # not changed
+        db.close()
+
+    def test_duplicate_webhook_is_idempotent(self, client):
+        """A second payment_intent.succeeded for an already-PAID job must not re-enqueue."""
+        import uuid
+        job_id = str(uuid.uuid4())
+        db = _TestSession()
+        job = Job(
+            id=job_id, user_id="u1", status=JobStatus.PAID,  # already processed
+            stripe_payment_intent_id="pi_dupe",
+            stl_s3_key="stl/test.stl", stl_filename="test.stl", amount_cents=500,
+        )
+        db.add(job)
+        db.commit()
+        db.close()
+
+        payload = _build_webhook_payload("payment_intent.succeeded", job_id, pi_id="pi_dupe")
+        with patch("api.payment.run_mesh") as mock_task:
+            mock_task.apply_async = MagicMock()
+            r = _post_webhook(client, payload)
+
+        assert r.status_code == 200
+        mock_task.apply_async.assert_not_called()  # no duplicate enqueue
+
+        db = _TestSession()
+        job = db.query(Job).filter(Job.id == job_id).first()
+        assert job.status == JobStatus.PAID  # status unchanged
         db.close()
 
     def test_pi_id_stored_if_missing_on_job(self, client):

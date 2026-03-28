@@ -35,7 +35,7 @@ export interface MeshParams {
   // snappyHexMesh
   snappy_refine_min?: number;      // 0–4
   snappy_refine_max?: number;      // 1–6
-  snappy_n_layers?: number;        // 0–8 boundary layers
+  snappy_n_layers?: number;        // 0–12 boundary layers (0 = auto)
   snappy_expansion_ratio?: number; // 1.1–1.5
   snappy_final_layer_thickness?: number; // 0.1–0.5
   snappy_max_non_ortho?: number;   // 60–85
@@ -46,7 +46,7 @@ export interface MeshParams {
   // MMG post-processing
   mmg_enabled?: boolean;
   mmg_hausd?: number;              // surface fidelity (relative, e.g. 0.01)
-  mmg_hgrad?: number;              // 1.0–3.0
+  mmg_hgrad?: number;              // 1.0–5.0
 }
 
 export async function uploadSTL(
