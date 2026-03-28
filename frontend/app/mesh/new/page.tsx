@@ -3,8 +3,18 @@
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { loadStripe } from "@stripe/stripe-js";
+import {
+  Elements,
+  PaymentElement,
+  useStripe,
+  useElements,
+} from "@stripe/react-stripe-js";
 import { uploadSTL, type MeshParams } from "@/lib/api";
 import { saveJob } from "@/lib/jobs";
+
+const STRIPE_PK = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "";
+const stripePromise = STRIPE_PK ? loadStripe(STRIPE_PK) : null;
 
 const CELL_PRESETS = [
   { label: "Coarse", value: 100_000, hint: "~30s · fast check" },
@@ -113,6 +123,73 @@ const DEFAULT_PRO: Required<MeshParams> = {
   mmg_hgrad: 1.3,
 };
 
+// ---------------------------------------------------------------------------
+// Stripe payment step (rendered inside <Elements> provider)
+// ---------------------------------------------------------------------------
+
+function PaymentStep({
+  jobId,
+  amountCents,
+  onSuccess,
+  onError,
+}: {
+  jobId: string;
+  amountCents: number;
+  onSuccess: () => void;
+  onError: (msg: string) => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [submitting, setSubmitting] = useState(false);
+
+  const handlePay = async () => {
+    if (!stripe || !elements) return;
+    setSubmitting(true);
+    const { error } = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        // Return URL is used by Stripe for redirect-based methods (card doesn't redirect)
+        return_url: window.location.origin + `/mesh/${jobId}`,
+      },
+      redirect: "if_required",
+    });
+    setSubmitting(false);
+    if (error) {
+      onError(error.message ?? "Payment failed");
+    } else {
+      onSuccess();
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="bg-white border rounded-xl p-5 flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-medium text-gray-700">Mesh generation</span>
+          <span className="font-semibold text-gray-900">
+            ${(amountCents / 100).toFixed(2)}
+          </span>
+        </div>
+        <PaymentElement />
+      </div>
+
+      <button
+        onClick={handlePay}
+        disabled={!stripe || submitting}
+        className="w-full py-3 bg-blue-600 text-white rounded-lg font-medium disabled:opacity-40 hover:bg-blue-700 transition-colors"
+      >
+        {submitting ? "Processing..." : `Pay $${(amountCents / 100).toFixed(2)}`}
+      </button>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main page
+// ---------------------------------------------------------------------------
+
+type Phase = "form" | "payment";
+
 export default function NewMeshPage() {
   const router = useRouter();
 
@@ -130,9 +207,13 @@ export default function NewMeshPage() {
   const [pro, setPro] = useState<Required<MeshParams>>(DEFAULT_PRO);
   const [proOpen, setProOpen] = useState<Record<string, boolean>>({});
 
-  // Submit
+  // Submit / payment phase
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [phase, setPhase] = useState<Phase>("form");
+  const [pendingJobId, setPendingJobId] = useState<string | null>(null);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [amountCents, setAmountCents] = useState(0);
 
   const handleFile = useCallback((f: File) => {
     if (!f.name.toLowerCase().endsWith(".stl")) {
@@ -170,7 +251,6 @@ export default function NewMeshPage() {
   function buildMeshParams(): MeshParams | undefined {
     if (!proMode) return undefined;
     const p: MeshParams = {};
-    // Only send values that differ from backend defaults
     if (pro.tet_stop_energy !== 10) p.tet_stop_energy = pro.tet_stop_energy;
     if (pro.tet_edge_length_fac > 0) p.tet_edge_length_fac = pro.tet_edge_length_fac;
     if (pro.snappy_refine_min > 0) p.snappy_refine_min = pro.snappy_refine_min;
@@ -200,13 +280,63 @@ export default function NewMeshPage() {
         createdAt: new Date().toISOString(),
         hasProParams: proMode && Object.keys(buildMeshParams() ?? {}).length > 0,
       });
-      router.push(`/mesh/${res.job_id}`);
+
+      if (res.client_secret === "dev_mode" || !res.client_secret || !stripePromise) {
+        // Dev mode or no Stripe key — go straight to job page
+        router.push(`/mesh/${res.job_id}`);
+      } else {
+        // Production: show payment form
+        setPendingJobId(res.job_id);
+        setClientSecret(res.client_secret);
+        setAmountCents(res.amount_cents);
+        setPhase("payment");
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Upload failed");
     } finally {
       setUploading(false);
     }
   };
+
+  // ---------------------------------------------------------------------------
+  // Payment phase
+  // ---------------------------------------------------------------------------
+
+  if (phase === "payment" && pendingJobId && clientSecret && stripePromise) {
+    return (
+      <main className="min-h-screen flex flex-col items-center justify-center p-8 bg-gray-50">
+        <div className="w-full max-w-lg flex flex-col gap-6">
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-semibold text-gray-800">Payment</h1>
+            <button
+              onClick={() => { setPhase("form"); setError(null); }}
+              className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              ← Back
+            </button>
+          </div>
+
+          {error && <p className="text-red-500 text-sm">{error}</p>}
+
+          <Elements
+            stripe={stripePromise}
+            options={{ clientSecret, appearance: { theme: "stripe" } }}
+          >
+            <PaymentStep
+              jobId={pendingJobId}
+              amountCents={amountCents}
+              onSuccess={() => router.push(`/mesh/${pendingJobId}`)}
+              onError={(msg) => setError(msg)}
+            />
+          </Elements>
+        </div>
+      </main>
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Upload form phase
+  // ---------------------------------------------------------------------------
 
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-8 bg-gray-50">
