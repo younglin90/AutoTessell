@@ -569,3 +569,34 @@ class TestSnappyComplexityPlusParams:
         d = _domain()
         s = snappy_hex_mesh_dict(d, complexity=c, params=mp)
         assert "nSurfaceLayers  2" in s
+
+
+# ---------------------------------------------------------------------------
+# snappy_hex_mesh_dict — n_layers_auto boundary at complexity_ratio == 3.0
+# ---------------------------------------------------------------------------
+
+class TestNLayersAutoBoundary:
+    """n_layers_auto = 3 if complexity_ratio < 3 else 5.
+    ratio=3.0 is NOT < 3, so auto n_layers must be 5, not 3.
+    """
+
+    def test_ratio_exactly_3_gives_5_layers(self):
+        """complexity_ratio=3.0 → auto n_layers=5 (< 3 is False at the boundary)."""
+        c = _complexity(ratio=3.0, s_min=1, s_max=2)
+        d = _domain()
+        s = snappy_hex_mesh_dict(d, complexity=c)
+        assert "nSurfaceLayers  5" in s
+
+    def test_ratio_just_below_3_gives_3_layers(self):
+        """complexity_ratio=2.999 → auto n_layers=3 (< 3 is True)."""
+        c = _complexity(ratio=2.999, s_min=1, s_max=2)
+        d = _domain()
+        s = snappy_hex_mesh_dict(d, complexity=c)
+        assert "nSurfaceLayers  3" in s
+
+    def test_ratio_just_above_3_gives_5_layers(self):
+        """complexity_ratio=3.001 → auto n_layers=5 (< 3 is False)."""
+        c = _complexity(ratio=3.001, s_min=1, s_max=3)
+        d = _domain()
+        s = snappy_hex_mesh_dict(d, complexity=c)
+        assert "nSurfaceLayers  5" in s

@@ -515,6 +515,91 @@ class TestMarkFailedAndRefundDbClose:
         db.close.assert_called_once()
 
 
+class TestMarkFailedAndRefundEarlyReturn:
+    """Guard branches that prevent double-failure and redundant refunds."""
+
+    def _make_db_with(self, job):
+        db = MagicMock()
+        db.query.return_value.filter.return_value.first.return_value = job
+        return db
+
+    def test_job_not_found_returns_without_refund(self):
+        """If job is not found in DB, function must return early without issuing refund."""
+        db = self._make_db_with(None)
+        mock_stripe = MagicMock()
+
+        with patch("worker.tasks.SessionLocal", return_value=db), \
+             patch("worker.tasks.stripe", mock_stripe):
+            _mark_failed_and_refund("nonexistent-job", "error")
+
+        mock_stripe.Refund.create.assert_not_called()
+
+    def test_job_not_found_closes_db(self):
+        """DB must be closed even when job is not found (finally block)."""
+        db = self._make_db_with(None)
+
+        with patch("worker.tasks.SessionLocal", return_value=db), \
+             patch("worker.tasks.stripe"):
+            _mark_failed_and_refund("nonexistent-job", "error")
+
+        db.close.assert_called_once()
+
+    def test_already_done_skips_status_update(self):
+        """Job already in DONE must not be overwritten with FAILED."""
+        job = _make_job()
+        job.status = JobStatus.DONE
+        db = self._make_db_with(job)
+        mock_stripe = MagicMock()
+
+        with patch("worker.tasks.SessionLocal", return_value=db), \
+             patch("worker.tasks.stripe", mock_stripe):
+            _mark_failed_and_refund("job-done", "late error")
+
+        assert job.status == JobStatus.DONE
+        mock_stripe.Refund.create.assert_not_called()
+
+    def test_already_failed_skips_status_update(self):
+        """Job already in FAILED must not be updated again (no double-refund)."""
+        job = _make_job()
+        job.status = JobStatus.FAILED
+        db = self._make_db_with(job)
+        mock_stripe = MagicMock()
+
+        with patch("worker.tasks.SessionLocal", return_value=db), \
+             patch("worker.tasks.stripe", mock_stripe):
+            _mark_failed_and_refund("job-already-failed", "error")
+
+        assert job.status == JobStatus.FAILED
+        mock_stripe.Refund.create.assert_not_called()
+
+    def test_already_refund_failed_skips_update(self):
+        """Job already in REFUND_FAILED must not be touched again."""
+        job = _make_job()
+        job.status = JobStatus.REFUND_FAILED
+        db = self._make_db_with(job)
+        mock_stripe = MagicMock()
+
+        with patch("worker.tasks.SessionLocal", return_value=db), \
+             patch("worker.tasks.stripe", mock_stripe):
+            _mark_failed_and_refund("job-refund-failed", "error")
+
+        assert job.status == JobStatus.REFUND_FAILED
+        mock_stripe.Refund.create.assert_not_called()
+
+    def test_error_message_truncated_to_1000_chars(self):
+        """error[:1000] must be stored — long messages must be truncated."""
+        job = _make_job()
+        db = self._make_db_with(job)
+        long_error = "E" * 1500
+
+        with patch("worker.tasks.SessionLocal", return_value=db), \
+             patch("worker.tasks.stripe"):
+            _mark_failed_and_refund("job-long-err", long_error)
+
+        assert len(job.error_message) == 1000
+        assert job.error_message == "E" * 1000
+
+
 # ---------------------------------------------------------------------------
 # Production-mode S3 helpers (_download_s3 and _upload_s3, dev_mode=False)
 # ---------------------------------------------------------------------------
