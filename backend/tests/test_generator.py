@@ -1953,3 +1953,152 @@ class TestPytetwiledPipelineTetrahedralizeRaises:
         with patch.dict(sys.modules, {"pytetwild": mock_pytet}):
             with pytest.raises(MeshGenerationError, match="pytetwild 실패"):
                 _pytetwild_pipeline(unit_cube_stl, case_dir, BBox(0, 0, 0, 1, 1, 1), 100_000, mp)
+
+
+# ---------------------------------------------------------------------------
+# _openfoam_env — bashrc-present happy path
+# ---------------------------------------------------------------------------
+
+class TestOpenfoamEnvBashrcSuccess:
+    """bashrc exists and is successfully sourced → returns populated env dict."""
+
+    def test_returns_env_dict_when_bashrc_sourced_successfully(self):
+        """/opt/openfoam12/etc/bashrc exists, bash outputs KEY=VALUE → dict returned."""
+        from mesh.generator import _openfoam_env
+
+        env_without_wm = {k: v for k, v in os.environ.items() if k != "WM_PROJECT_DIR"}
+
+        mock_proc = MagicMock()
+        mock_proc.stdout = "WM_PROJECT_DIR=/opt/openfoam12\nWM_OPTIONS=linux64GccDPInt32Opt\n"
+
+        with patch.dict(os.environ, env_without_wm, clear=True):
+            with patch("mesh.generator.Path.exists", return_value=True):
+                with patch("mesh.generator.subprocess.run", return_value=mock_proc):
+                    env = _openfoam_env()
+
+        assert env is not None
+        assert isinstance(env, dict)
+        assert env.get("WM_PROJECT_DIR") == "/opt/openfoam12"
+        assert env.get("WM_OPTIONS") == "linux64GccDPInt32Opt"
+
+    def test_returns_none_when_bash_output_has_no_equals(self):
+        """bash output with no KEY=VALUE lines → env dict empty → None returned."""
+        from mesh.generator import _openfoam_env
+
+        env_without_wm = {k: v for k, v in os.environ.items() if k != "WM_PROJECT_DIR"}
+
+        mock_proc = MagicMock()
+        mock_proc.stdout = "no equals here\njust plain lines\n"
+
+        with patch.dict(os.environ, env_without_wm, clear=True):
+            with patch("mesh.generator.Path.exists", return_value=True):
+                with patch("mesh.generator.subprocess.run", return_value=mock_proc):
+                    env = _openfoam_env()
+
+        assert env is None
+
+
+# ---------------------------------------------------------------------------
+# _apply_mmg_quality — meshio ImportError path
+# ---------------------------------------------------------------------------
+
+class TestApplyMmgQualityMeshioAbsent:
+    """mmg_bin found but meshio is not installed → return original v/t unchanged."""
+
+    def test_returns_original_when_meshio_absent(self, tmp_path: Path):
+        """mmg3d found in PATH but import meshio fails → original mesh returned."""
+        from mesh.generator import _apply_mmg_quality
+        import numpy as np
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+        v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+        t = np.array([[0, 1, 2, 3]], dtype=np.int32)
+
+        with patch("mesh.generator.shutil.which", return_value="/usr/bin/mmg3d"):
+            with patch.dict(sys.modules, {"meshio": None}):
+                v_out, t_out = _apply_mmg_quality(v, t, tmp_path, bbox)
+
+        assert v_out is v
+        assert t_out is t
+
+
+# ---------------------------------------------------------------------------
+# _apply_mmg_quality — t_new is None path
+# ---------------------------------------------------------------------------
+
+class TestApplyMmgQualityTetNone:
+    """mmg3d runs successfully but output mesh contains no tetra cells → original returned."""
+
+    def test_returns_original_when_no_tetra_cells_in_output(self, tmp_path: Path):
+        """meshio.read returns a mesh with no tetra cell block → original v/t returned."""
+        from mesh.generator import _apply_mmg_quality
+        import numpy as np
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+        v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+        t = np.array([[0, 1, 2, 3]], dtype=np.int32)
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+
+        # Output file will be created by meshio.write mock; ensure it exists
+        out_mesh = tmp_path / "_mmg_out.mesh"
+        out_mesh.write_text("dummy")
+
+        mock_improved = MagicMock()
+        mock_improved.points = v.copy()
+        mock_improved.cells_dict = {}  # no "tetra" key → t_new is None
+
+        mock_meshio = MagicMock()
+        mock_meshio.read.return_value = mock_improved
+
+        with patch("mesh.generator.shutil.which", return_value="/usr/bin/mmg3d"):
+            with patch.dict(sys.modules, {"meshio": mock_meshio}):
+                with patch("mesh.generator.subprocess.run", return_value=mock_proc):
+                    # Patch out_mesh path to use tmp_path so exists() returns True
+                    with patch("mesh.generator.Path.__truediv__",
+                               side_effect=lambda self, other: tmp_path / other
+                               if other in ("_mmg_in.mesh", "_mmg_out.mesh") else Path.__truediv__(self, other)):
+                        v_out, t_out = _apply_mmg_quality(v, t, tmp_path, bbox)
+
+        # cells_dict has no "tetra" → fall through to return original
+        assert v_out is v or (v_out == v).all()
+        assert t_out is t or (t_out == t).all()
+
+
+# ---------------------------------------------------------------------------
+# _write_gmsh_msh2 — float dtype tet array
+# ---------------------------------------------------------------------------
+
+class TestWriteGmshMsh2FloatTets:
+    """Tet index array with float dtype must be safely converted to int."""
+
+    def test_float_tet_indices_written_correctly(self, tmp_path: Path):
+        """tet array with float64 dtype (e.g. from MMG output) → int nodes in .msh file."""
+        from mesh.generator import _write_gmsh_msh2
+        import numpy as np
+
+        verts = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+        # Float-dtype tet indices (as MMG may return)
+        tets = np.array([[0.0, 1.0, 2.0, 3.0]], dtype=np.float64)
+        out = tmp_path / "mesh.msh"
+        _write_gmsh_msh2(verts, tets, out)
+
+        content = out.read_text()
+        # Verify element line has integer node indices (1-based: 1 2 3 4)
+        assert "1 4 2 1 1 1 2 3 4" in content
+
+    def test_float_tet_indices_are_1_based_in_output(self, tmp_path: Path):
+        """0-indexed float tet → 1-indexed integers in Gmsh format."""
+        from mesh.generator import _write_gmsh_msh2
+        import numpy as np
+
+        verts = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1],
+                          [0.5, 0.5, 0.5]], dtype=np.float64)
+        tets = np.array([[0.0, 2.0, 3.0, 4.0]], dtype=np.float64)
+        out = tmp_path / "mesh.msh"
+        _write_gmsh_msh2(verts, tets, out)
+
+        content = out.read_text()
+        # 0→1, 2→3, 3→4, 4→5 (1-based)
+        assert "1 4 2 1 1 1 3 4 5" in content
