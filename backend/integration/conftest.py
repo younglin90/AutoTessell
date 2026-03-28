@@ -27,9 +27,15 @@ _ps_mod = _mock.MagicMock()
 _ps_mod.BaseSettings = _BaseSettings
 sys.modules.setdefault("pydantic_settings", _ps_mod)
 
-# Stub Stripe
+# Stub Stripe — SignatureVerificationError must be a real exception class so
+# `except stripe.SignatureVerificationError` in payment.py actually catches it.
+class _StripeSignatureError(Exception):
+    def __init__(self, message="", http_body=None, **_kw):
+        super().__init__(message)
+
 _stripe_mod = _mock.MagicMock()
 _stripe_mod.StripeError = Exception
+_stripe_mod.SignatureVerificationError = _StripeSignatureError
 sys.modules.setdefault("stripe", _stripe_mod)
 
 # Stub boto3 / botocore

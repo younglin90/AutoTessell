@@ -329,3 +329,90 @@ class TestRateLimit:
             assert r_b.status_code == 429
         finally:
             _cfg.settings.max_jobs_per_user = original
+
+
+# ---------------------------------------------------------------------------
+# Webhook
+# ---------------------------------------------------------------------------
+
+def _build_webhook_payload(event_type: str, job_id: str, pi_id: str = "pi_test") -> dict:
+    return {
+        "type": event_type,
+        "data": {
+            "object": {
+                "id": pi_id,
+                "metadata": {"job_id": job_id},
+            }
+        },
+    }
+
+
+def _post_webhook(client, payload: dict):
+    """Post a Stripe webhook with mocked signature verification."""
+    import stripe as _stripe_module
+    with patch.object(_stripe_module.Webhook, "construct_event", return_value=payload):
+        return client.post(
+            "/api/v1/webhook",
+            content=json.dumps(payload),
+            headers={"stripe-signature": "t=1,v1=fake"},
+        )
+
+
+class TestWebhook:
+    def test_invalid_signature_returns_400(self, client):
+        import stripe as _stripe_module
+        # SignatureVerificationError is a real exception class (set in conftest)
+        with patch.object(
+            _stripe_module.Webhook, "construct_event",
+            side_effect=_stripe_module.SignatureVerificationError("bad sig"),
+        ):
+            r = client.post(
+                "/api/v1/webhook",
+                content=b"{}",
+                headers={"stripe-signature": "bad"},
+            )
+        assert r.status_code == 400
+
+    def test_payment_succeeded_marks_job_paid(self, client):
+        job_id = _upload(client).json()["job_id"]
+        # Reset to PENDING to simulate pre-payment state
+        db = _TestSession()
+        job = db.query(Job).filter(Job.id == job_id).first()
+        job.status = JobStatus.PENDING
+        db.commit()
+        db.close()
+
+        with patch("api.payment.run_mesh") as mock_task:
+            mock_task.apply_async = lambda **_kw: None
+            _post_webhook(client, _build_webhook_payload("payment_intent.succeeded", job_id))
+
+        db = _TestSession()
+        job = db.query(Job).filter(Job.id == job_id).first()
+        assert job.status == JobStatus.PAID
+        db.close()
+
+    def test_payment_failed_marks_job_failed(self, client):
+        job_id = _upload(client).json()["job_id"]
+        db = _TestSession()
+        job = db.query(Job).filter(Job.id == job_id).first()
+        job.status = JobStatus.PENDING
+        db.commit()
+        db.close()
+
+        _post_webhook(client, _build_webhook_payload("payment_intent.payment_failed", job_id))
+
+        db = _TestSession()
+        job = db.query(Job).filter(Job.id == job_id).first()
+        assert job.status == JobStatus.FAILED
+        db.close()
+
+    def test_unknown_event_returns_200(self, client):
+        r = _post_webhook(client, {"type": "some.unknown.event", "data": {"object": {}}})
+        assert r.status_code == 200
+
+    def test_nonexistent_job_in_webhook_is_ignored(self, client):
+        payload = _build_webhook_payload("payment_intent.succeeded", "00000000-0000-0000-0000-000000000000")
+        with patch("api.payment.run_mesh") as mock_task:
+            mock_task.apply_async = lambda **_kw: None
+            r = _post_webhook(client, payload)
+        assert r.status_code == 200  # logged + ignored, not an error

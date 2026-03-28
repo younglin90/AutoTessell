@@ -18,6 +18,7 @@ class JobStatusResponse(BaseModel):
     download_ready: bool = False
     amount_cents: int = 0
     # Input parameters (echo back for display)
+    stl_filename: str | None = None
     target_cells: int = 500_000
     mesh_purpose: str = "cfd"
     mesh_params_json: str | None = None
@@ -42,6 +43,7 @@ def get_job_status(
         error_message=job.error_message,
         download_ready=job.status == JobStatus.DONE,
         amount_cents=job.amount_cents or 0,
+        stl_filename=job.stl_filename,
         target_cells=job.target_cells or 500_000,
         mesh_purpose=job.mesh_purpose or "cfd",
         mesh_params_json=job.mesh_params_json,

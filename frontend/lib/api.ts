@@ -12,6 +12,7 @@ export interface JobStatus {
   error_message: string | null;
   download_ready: boolean;
   amount_cents: number;
+  stl_filename: string | null;
   target_cells: number;
   mesh_purpose: string;
   mesh_params_json: string | null;

@@ -133,7 +133,12 @@ export default function JobPage() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center gap-8 p-8 bg-gray-50">
       <div className="bg-white rounded-xl shadow-sm border p-8 max-w-md w-full flex flex-col gap-6">
-        <h1 className="text-xl font-semibold text-gray-800">Job Status</h1>
+        <div>
+          <h1 className="text-xl font-semibold text-gray-800">
+            {status.stl_filename ?? "Mesh Job"}
+          </h1>
+          <p className="text-xs text-gray-400 mt-0.5 font-mono">{jobId.slice(0, 8)}…</p>
+        </div>
 
         {/* Status indicator */}
         <div className="flex items-center gap-3">
@@ -223,7 +228,12 @@ export default function JobPage() {
           </Link>
         )}
 
-        <p className="text-xs text-gray-400 font-mono break-all">Job ID: {jobId}</p>
+        <Link
+          href="/jobs"
+          className="text-xs text-gray-400 hover:text-gray-600 transition-colors text-center"
+        >
+          ← All jobs
+        </Link>
       </div>
     </main>
   );
