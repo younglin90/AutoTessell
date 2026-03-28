@@ -524,3 +524,41 @@ class TestApplyMmgQuality:
 
         assert v_out is v
         assert t_out is t
+
+
+# ---------------------------------------------------------------------------
+# _write_snappy_case 파일 시스템 검증
+# ---------------------------------------------------------------------------
+
+class TestWriteSnappyCase:
+    """Verify _write_snappy_case creates all required OpenFOAM system files."""
+
+    def test_required_files_created(self, tmp_path: Path, unit_cube_stl: Path):
+        from mesh.generator import _write_snappy_case
+        from mesh.stl_utils import BBox
+        from mesh.openfoam_config import build_domain
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+        domain = build_domain(bbox, unit_cube_stl.name)
+        _write_snappy_case(tmp_path, unit_cube_stl, domain)
+
+        system = tmp_path / "system"
+        assert (system / "blockMeshDict").exists()
+        assert (system / "snappyHexMeshDict").exists()
+        assert (system / "surfaceFeatureExtractDict").exists()
+        assert (system / "controlDict").exists()
+        assert (system / "fvSchemes").exists()
+        assert (system / "fvSolution").exists()
+
+    def test_stl_copied_to_triSurface(self, tmp_path: Path, unit_cube_stl: Path):
+        from mesh.generator import _write_snappy_case
+        from mesh.stl_utils import BBox
+        from mesh.openfoam_config import build_domain
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+        domain = build_domain(bbox, unit_cube_stl.name)
+        _write_snappy_case(tmp_path, unit_cube_stl, domain)
+
+        tri_surface = tmp_path / "constant" / "triSurface" / unit_cube_stl.name
+        assert tri_surface.exists()
+        assert tri_surface.stat().st_size > 0
