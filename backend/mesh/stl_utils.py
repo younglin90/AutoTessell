@@ -218,7 +218,8 @@ def reconstruct_surface_poisson(
         o3d.io.write_triangle_mesh(str(output_path), recon)
         return True
 
-    except Exception:
+    except Exception as e:
+        logger.warning("Open3D Poisson 재구성 실패 (%s)", e)
         return False
 
 
@@ -255,7 +256,8 @@ def remesh_surface_uniform(
         remeshed = clus.create_mesh()
         remeshed.save(str(output_path))
         return True
-    except Exception:
+    except Exception as e:
+        logger.warning("pyACVD remeshing 실패 (%s)", e)
         return False
 
 

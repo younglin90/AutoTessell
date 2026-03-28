@@ -521,7 +521,8 @@ def _openfoam_env() -> dict:
                 k, _, v = line.partition("=")
                 env[k] = v
         return env or None  # type: ignore[return-value]
-    except Exception:
+    except Exception as e:
+        logger.warning("OpenFOAM bashrc source 실패 (%s) — env=None", e)
         return None  # type: ignore[return-value]
 
 
