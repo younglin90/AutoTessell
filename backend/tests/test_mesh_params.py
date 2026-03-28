@@ -82,6 +82,52 @@ class TestMeshParamsValidation:
         mp = MeshParams(mmg_hgrad=100.0).validated()
         assert mp.mmg_hgrad <= 5.0
 
+    def test_final_layer_thickness_clamped_high(self):
+        mp = MeshParams(snappy_final_layer_thickness=99.0).validated()
+        assert mp.snappy_final_layer_thickness <= 0.9
+
+    def test_final_layer_thickness_clamped_low(self):
+        mp = MeshParams(snappy_final_layer_thickness=0.0).validated()
+        assert mp.snappy_final_layer_thickness >= 0.05
+
+    def test_mmg_hausd_clamped_high(self):
+        mp = MeshParams(mmg_hausd=100.0).validated()
+        assert mp.mmg_hausd <= 1.0
+
+    def test_mmg_hausd_clamped_low(self):
+        mp = MeshParams(mmg_hausd=0.0).validated()
+        assert mp.mmg_hausd >= 1e-6
+
+    def test_mmg_hausd_none_stays_none(self):
+        mp = MeshParams(mmg_hausd=None).validated()
+        assert mp.mmg_hausd is None
+
+    def test_snappy_refine_min_clamped_low(self):
+        """snappy_refine_min=-1 must be clamped to 0."""
+        mp = MeshParams(snappy_refine_min=-1).validated()
+        assert mp.snappy_refine_min >= 0
+
+    def test_snappy_refine_max_clamped_high(self):
+        """snappy_refine_max=10 must be clamped to 6."""
+        mp = MeshParams(snappy_refine_max=10).validated()
+        assert mp.snappy_refine_max <= 6
+
+    def test_to_json_with_none_values(self):
+        """None fields must serialize as JSON null, not raise."""
+        import json
+        mp = MeshParams(tet_edge_length_fac=None, mmg_hausd=None)
+        data = json.loads(mp.to_json())
+        assert data["tet_edge_length_fac"] is None
+        assert data["mmg_hausd"] is None
+
+    def test_from_json_restores_none_values(self):
+        """Deserialized MeshParams must keep None for fields that were null."""
+        import json
+        mp = MeshParams(tet_edge_length_fac=None, snappy_refine_min=None)
+        restored = MeshParams.from_json(mp.to_json())
+        assert restored.tet_edge_length_fac is None
+        assert restored.snappy_refine_min is None
+
 
 # ---------------------------------------------------------------------------
 # snappy_hex_mesh_dict pro override tests
