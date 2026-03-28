@@ -30,8 +30,8 @@ class MeshParams:
     # snappyHexMesh  (Tier 1, CFD)
     # -----------------------------------------------------------------------
     # Surface refinement level range. None = auto from STL complexity analysis.
-    snappy_refine_min: int | None = None   # 0 – 4
-    snappy_refine_max: int | None = None   # 1 – 6
+    snappy_refine_min: int | None = None   # 0 – 5
+    snappy_refine_max: int | None = None   # 0 – 6
 
     # Number of boundary-layer (prism) cells grown from the wall. 0 = disabled.
     snappy_n_layers: int | None = None     # None = auto (3 simple / 5 complex)
@@ -61,7 +61,7 @@ class MeshParams:
     # 0 = auto (L/50).  Practical: 0.001 – 0.1 (relative to bbox).
     mmg_hausd: float | None = None
 
-    # Size gradation between adjacent elements: 1.0 (uniform) – 3.0 (rapid change).
+    # Size gradation between adjacent elements: 1.0 (uniform) – 5.0 (rapid change).
     mmg_hgrad: float = 1.3
 
     # -----------------------------------------------------------------------

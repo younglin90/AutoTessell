@@ -33,12 +33,12 @@ export interface MeshParams {
   tet_edge_length_fac?: number;    // 0.02–0.20, override auto from target_cells
 
   // snappyHexMesh
-  snappy_refine_min?: number;      // 0–4
-  snappy_refine_max?: number;      // 1–6
+  snappy_refine_min?: number;      // 0–5
+  snappy_refine_max?: number;      // 0–6
   snappy_n_layers?: number;        // 0–12 boundary layers (0 = auto)
-  snappy_expansion_ratio?: number; // 1.1–1.5
-  snappy_final_layer_thickness?: number; // 0.1–0.5
-  snappy_max_non_ortho?: number;   // 60–85
+  snappy_expansion_ratio?: number; // 1.05–2.0
+  snappy_final_layer_thickness?: number; // 0.05–0.9
+  snappy_max_non_ortho?: number;   // 50–85
 
   // Netgen
   netgen_maxh_ratio?: number;      // 5–40 (maxh = L / ratio)
