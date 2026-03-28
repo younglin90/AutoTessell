@@ -1825,6 +1825,66 @@ class TestMaybeRemeshSurfacePoissonSucceeds:
 # _apply_mmg_quality — returncode=0 but output file missing
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# _maybe_remesh_surface — non-watertight + Poisson fails + remesh succeeds
+# ---------------------------------------------------------------------------
+
+class TestMaybeRemeshSurfacePoissonFailsRemeshSucceeds:
+    """watertight=False, Poisson fails (returns False), remesh succeeds → remeshed returned."""
+
+    def test_poisson_fails_then_remesh_succeeds_returns_remeshed(
+        self, tmp_path: Path, unit_cube_stl: Path
+    ):
+        """Poisson fails → source stays as repaired → remesh succeeds → remeshed returned."""
+        import shutil
+        from mesh.generator import _maybe_remesh_surface
+
+        def fake_repair(src, dst):
+            shutil.copy2(src, dst)
+            return False  # not watertight → Poisson attempted
+
+        def fake_remesh(src, dst, target_points=5000):
+            dst.write_bytes(b"remeshed_content")
+            return True
+
+        with patch("mesh.generator.repair_stl_to_path", side_effect=fake_repair), \
+             patch("mesh.generator.reconstruct_surface_poisson", return_value=False), \
+             patch("mesh.generator.remesh_surface_uniform", side_effect=fake_remesh):
+            result = _maybe_remesh_surface(unit_cube_stl, tmp_path, BBox(0, 0, 0, 1, 1, 1))
+
+        assert result == tmp_path / "_remeshed.stl"
+        assert result.exists()
+
+    def test_poisson_fails_remesh_input_is_repaired_not_poisson(
+        self, tmp_path: Path, unit_cube_stl: Path
+    ):
+        """When Poisson fails, remesh must use repaired file as input (not non-existent poisson_out)."""
+        import shutil
+        from mesh.generator import _maybe_remesh_surface
+
+        remesh_src_seen = []
+
+        def fake_repair(src, dst):
+            shutil.copy2(src, dst)
+            return False
+
+        def fake_remesh(src, dst, target_points=5000):
+            remesh_src_seen.append(src)
+            return False
+
+        with patch("mesh.generator.repair_stl_to_path", side_effect=fake_repair), \
+             patch("mesh.generator.reconstruct_surface_poisson", return_value=False), \
+             patch("mesh.generator.remesh_surface_uniform", side_effect=fake_remesh):
+            _maybe_remesh_surface(unit_cube_stl, tmp_path, BBox(0, 0, 0, 1, 1, 1))
+
+        assert len(remesh_src_seen) == 1
+        assert remesh_src_seen[0] == tmp_path / "_repaired.stl"
+
+
+# ---------------------------------------------------------------------------
+# _apply_mmg_quality — returncode=0 but output file missing
+# ---------------------------------------------------------------------------
+
 class TestApplyMmgQualityOutputMissing:
     """returncode=0 (process exits cleanly) but out_mesh doesn't exist → original 반환."""
 
