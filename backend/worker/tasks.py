@@ -1,9 +1,9 @@
 """
 MeshTask — Celery task that runs the full mesh pipeline:
   1. Download STL from S3
-  2. Run SDF + Octree mesh generation (stub → real engine in Phase 1b)
-  3. Run OpenFOAM checkMesh
-  4. Upload mesh ZIP to S3
+  2. Run 5-tier mesh pipeline (tessell → netgen → snappyHexMesh → pytetwild+MMG)
+  3. checkMesh quality validation
+  4. Upload polyMesh ZIP to S3
   5. Update job status; issue Stripe refund on failure
 """
 
@@ -29,14 +29,12 @@ stripe.api_key = settings.stripe_secret_key
 
 
 class MeshTask(Task):
-    """Base task class with DB session lifecycle management."""
+    """Base task class — on_failure는 사용하지 않음.
+    실패/환불 처리는 run_mesh 내부 except 블록에서 직접 수행.
+    on_failure에서 중복 호출하면 동일 job에 Stripe refund가 두 번 시도될 수 있음.
+    """
 
     abstract = True
-
-    def on_failure(self, exc, task_id, args, kwargs, einfo):
-        job_id = kwargs.get("job_id") or (args[0] if args else None)
-        if job_id:
-            _mark_failed_and_refund(job_id, str(exc))
 
 
 @celery_app.task(
@@ -65,10 +63,7 @@ def run_mesh(self, job_id: str) -> dict:
 
             # 2. Generate mesh (snappyHexMesh → fallback pytetwild+gmshToFoam)
             mesh_dir = tmpdir / "case"
-            try:
-                stats = generate_mesh(stl_path, mesh_dir)
-            except MeshGenerationError as e:
-                raise RuntimeError(str(e)) from e
+            stats = generate_mesh(stl_path, mesh_dir)  # MeshGenerationError는 RuntimeError 서브클래스
 
             if not stats.get("passed", True):
                 raise RuntimeError(
@@ -112,24 +107,21 @@ def run_mesh(self, job_id: str) -> dict:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _download_s3(s3_key: str, dest: Path) -> None:
-    s3 = boto3.client(
+def _s3_client():
+    return boto3.client(
         "s3",
         region_name=settings.s3_region,
         aws_access_key_id=settings.aws_access_key_id,
         aws_secret_access_key=settings.aws_secret_access_key,
     )
-    s3.download_file(settings.s3_bucket, s3_key, str(dest))
+
+
+def _download_s3(s3_key: str, dest: Path) -> None:
+    _s3_client().download_file(settings.s3_bucket, s3_key, str(dest))
 
 
 def _upload_s3(src: Path, s3_key: str) -> None:
-    s3 = boto3.client(
-        "s3",
-        region_name=settings.s3_region,
-        aws_access_key_id=settings.aws_access_key_id,
-        aws_secret_access_key=settings.aws_secret_access_key,
-    )
-    s3.upload_file(str(src), settings.s3_bucket, s3_key)
+    _s3_client().upload_file(str(src), settings.s3_bucket, s3_key)
 
 
 

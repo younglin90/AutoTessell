@@ -53,7 +53,7 @@ def build_domain(bbox, stl_filename: str, target_background_cells: int = 40_000)
     STL BBox에서 CFD 도메인과 blockMesh 해상도 계산.
     """
     L = bbox.characteristic_length
-    if L == 0:
+    if L <= 0:
         raise ValueError("STL bounding box has zero characteristic length — empty geometry?")
 
     cx, cy, cz = bbox.center_x, bbox.center_y, bbox.center_z

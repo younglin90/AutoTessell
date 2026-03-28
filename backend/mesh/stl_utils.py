@@ -9,10 +9,13 @@ Dependencies (MIT/LGPL, commercial-safe):
   (pure-Python fallback if any of the above is unavailable)
 """
 
+import logging
 import re
 import struct
 from dataclasses import dataclass
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +135,11 @@ def repair_stl_to_path(stl_path: Path, output_path: Path) -> bool:
         mesh.export(str(output_path))
         return mesh.is_watertight
     except ImportError:
+        import shutil
+        shutil.copy2(stl_path, output_path)
+        return False
+    except Exception as e:
+        logger.warning("trimesh 수리 실패 (%s) — 원본 복사", e)
         import shutil
         shutil.copy2(stl_path, output_path)
         return False
@@ -307,7 +315,8 @@ def analyze_stl_complexity(stl_path: Path) -> StlComplexity:
             feature_refine_level=feat,
         )
 
-    except Exception:
+    except Exception as e:
+        logger.warning("STL 복잡도 분석 실패 (%s) — 기본 정밀화 설정 사용", e)
         return StlComplexity(
             mean_curvature=0.0,
             p95_curvature=0.0,
