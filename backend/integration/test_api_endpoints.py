@@ -637,6 +637,49 @@ class TestWebhook:
         assert job.status == JobStatus.FAILED
         db.close()
 
+    def test_payment_failed_noop_if_already_failed(self, client):
+        """payment_intent.payment_failed is idempotent — must not change an already-FAILED job."""
+        import uuid
+        job_id = str(uuid.uuid4())
+        db = _TestSession()
+        job = Job(
+            id=job_id, user_id="u1", status=JobStatus.FAILED,
+            stl_s3_key="stl/test.stl", stl_filename="test.stl", amount_cents=500,
+            error_message="original error",
+        )
+        db.add(job)
+        db.commit()
+        db.close()
+
+        _post_webhook(client, _build_webhook_payload("payment_intent.payment_failed", job_id))
+
+        db = _TestSession()
+        job = db.query(Job).filter(Job.id == job_id).first()
+        assert job.status == JobStatus.FAILED
+        assert job.error_message == "original error"  # not overwritten
+        db.close()
+
+    def test_payment_failed_noop_if_paid(self, client):
+        """payment_intent.payment_failed for a PAID job must be ignored — charge already succeeded."""
+        import uuid
+        job_id = str(uuid.uuid4())
+        db = _TestSession()
+        job = Job(
+            id=job_id, user_id="u1", status=JobStatus.PAID,
+            stripe_payment_intent_id="pi_paid",
+            stl_s3_key="stl/test.stl", stl_filename="test.stl", amount_cents=500,
+        )
+        db.add(job)
+        db.commit()
+        db.close()
+
+        _post_webhook(client, _build_webhook_payload("payment_intent.payment_failed", job_id, pi_id="pi_paid"))
+
+        db = _TestSession()
+        job = db.query(Job).filter(Job.id == job_id).first()
+        assert job.status == JobStatus.PAID  # unchanged
+        db.close()
+
     def test_unknown_event_returns_200(self, client):
         r = _post_webhook(client, {"type": "some.unknown.event", "data": {"object": {}}})
         assert r.status_code == 200
