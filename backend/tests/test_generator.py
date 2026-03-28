@@ -1393,6 +1393,85 @@ class TestPytetwiledPipelineMmgDisabled:
 
 
 # ---------------------------------------------------------------------------
+# _pytetwild_pipeline — mmg_enabled=True path
+# ---------------------------------------------------------------------------
+
+class TestPytetwiledPipelineMmgEnabled:
+    """mmg_enabled=True → _apply_mmg_quality is called with the tet mesh."""
+
+    def _run_pipeline(self, tmp_path, unit_cube_stl, mp, mock_pytet, mmg_return):
+        import numpy as np
+        v_out = np.random.default_rng(7).uniform(0, 1, (20, 3)).astype(np.float64)
+        t_out = np.zeros((10, 4), dtype=np.int32)
+        mock_pytet.tetrahedralize.return_value = (v_out, t_out)
+
+        poly = tmp_path / "case" / "constant" / "polyMesh"
+        poly.mkdir(parents=True)
+        (poly / "faces").write_text("stub")
+
+        with patch.dict(sys.modules, {"pytetwild": mock_pytet}):
+            with patch("mesh.generator._apply_mmg_quality",
+                       return_value=mmg_return) as mock_mmg:
+                with patch("mesh.generator._write_gmsh_msh2"):
+                    with patch("mesh.generator._setup_minimal_case"):
+                        with patch("mesh.generator._run_of"):
+                            with patch("mesh.generator._mesh_stats",
+                                       return_value={"passed": True, "num_cells": 10,
+                                                     "checkmesh_output": ""}):
+                                from mesh.generator import _pytetwild_pipeline
+                                _pytetwild_pipeline(
+                                    unit_cube_stl, tmp_path / "case",
+                                    BBox(0, 0, 0, 1, 1, 1), 100_000, mp,
+                                )
+        return mock_mmg
+
+    def test_mmg_called_when_enabled(self, tmp_path: Path, unit_cube_stl: Path):
+        """MeshParams(mmg_enabled=True) → _apply_mmg_quality called once."""
+        import numpy as np
+        from mesh.params import MeshParams
+
+        mp = MeshParams(mmg_enabled=True)
+        mock_pytet = MagicMock()
+        v_dummy = np.zeros((4, 3))
+        t_dummy = np.zeros((1, 4), dtype=np.int32)
+        mock_mmg = self._run_pipeline(tmp_path, unit_cube_stl, mp, mock_pytet,
+                                       mmg_return=(v_dummy, t_dummy))
+        mock_mmg.assert_called_once()
+
+    def test_explicit_edge_fac_used_when_set(self, tmp_path: Path, unit_cube_stl: Path):
+        """tet_edge_length_fac set explicitly → tetrahedralize called with that value."""
+        from mesh.params import MeshParams
+
+        mp = MeshParams(mmg_enabled=False, tet_edge_length_fac=0.05)
+        mock_pytet = MagicMock()
+        import numpy as np
+        v_out = np.random.default_rng(7).uniform(0, 1, (20, 3)).astype(np.float64)
+        t_out = np.zeros((10, 4), dtype=np.int32)
+        mock_pytet.tetrahedralize.return_value = (v_out, t_out)
+
+        poly = tmp_path / "case" / "constant" / "polyMesh"
+        poly.mkdir(parents=True)
+        (poly / "faces").write_text("stub")
+
+        with patch.dict(sys.modules, {"pytetwild": mock_pytet}):
+            with patch("mesh.generator._apply_mmg_quality"):
+                with patch("mesh.generator._write_gmsh_msh2"):
+                    with patch("mesh.generator._setup_minimal_case"):
+                        with patch("mesh.generator._run_of"):
+                            with patch("mesh.generator._mesh_stats",
+                                       return_value={"passed": True, "num_cells": 10,
+                                                     "checkmesh_output": ""}):
+                                from mesh.generator import _pytetwild_pipeline
+                                _pytetwild_pipeline(
+                                    unit_cube_stl, tmp_path / "case",
+                                    BBox(0, 0, 0, 1, 1, 1), 100_000, mp,
+                                )
+
+        call_kwargs = mock_pytet.tetrahedralize.call_args
+        assert call_kwargs.kwargs["edge_length_fac"] == pytest.approx(0.05)
+
+
+# ---------------------------------------------------------------------------
 # _tessell_pipeline — faces file absent → MeshGenerationError
 # ---------------------------------------------------------------------------
 
