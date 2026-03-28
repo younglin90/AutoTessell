@@ -9,9 +9,16 @@ Covers:
   - tessell_mesh tier: graceful skip when .so not built, fallback chain
   - _maybe_remesh_surface 3-stage preprocessing chain
   - _apply_mmg_quality graceful fallback when binary absent
+  - _setup_minimal_case: creates required OpenFOAM skeleton files
+  - _reset_case: clears and recreates case directory
+  - _run_of: subprocess error/timeout handling
+  - _openfoam_env: WM_PROJECT_DIR fast-path
+  - _mesh_stats: graceful fallback when checkMesh absent
 """
 
+import os
 import struct
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -562,3 +569,216 @@ class TestWriteSnappyCase:
         tri_surface = tmp_path / "constant" / "triSurface" / unit_cube_stl.name
         assert tri_surface.exists()
         assert tri_surface.stat().st_size > 0
+
+
+# ---------------------------------------------------------------------------
+# _setup_minimal_case — Netgen/pytetwild용 최소 OpenFOAM 스켈레톤
+# ---------------------------------------------------------------------------
+
+class TestSetupMinimalCase:
+    def test_creates_control_dict(self, tmp_path: Path):
+        from mesh.generator import _setup_minimal_case
+
+        case_dir = tmp_path / "case"
+        _setup_minimal_case(case_dir)
+
+        assert (case_dir / "system" / "controlDict").exists()
+
+    def test_creates_fv_files(self, tmp_path: Path):
+        from mesh.generator import _setup_minimal_case
+
+        case_dir = tmp_path / "case"
+        _setup_minimal_case(case_dir)
+
+        assert (case_dir / "system" / "fvSchemes").exists()
+        assert (case_dir / "system" / "fvSolution").exists()
+
+    def test_creates_constant_dir(self, tmp_path: Path):
+        from mesh.generator import _setup_minimal_case
+
+        case_dir = tmp_path / "case"
+        _setup_minimal_case(case_dir)
+
+        assert (case_dir / "constant").is_dir()
+
+    def test_idempotent_on_existing_dir(self, tmp_path: Path):
+        from mesh.generator import _setup_minimal_case
+
+        case_dir = tmp_path / "case"
+        case_dir.mkdir()
+        _setup_minimal_case(case_dir)  # 두 번 호출해도 에러 없어야 함
+        _setup_minimal_case(case_dir)
+        assert (case_dir / "system" / "controlDict").exists()
+
+
+# ---------------------------------------------------------------------------
+# _reset_case — case 디렉터리 초기화
+# ---------------------------------------------------------------------------
+
+class TestResetCase:
+    def test_clears_existing_files(self, tmp_path: Path):
+        from mesh.generator import _reset_case
+
+        case_dir = tmp_path / "case"
+        case_dir.mkdir()
+        (case_dir / "leftover.txt").write_text("stale")
+
+        _reset_case(case_dir)
+
+        assert case_dir.is_dir()
+        assert not (case_dir / "leftover.txt").exists()
+
+    def test_recreates_directory_if_not_exists(self, tmp_path: Path):
+        from mesh.generator import _reset_case
+
+        case_dir = tmp_path / "nonexistent_case"
+        _reset_case(case_dir)
+
+        assert case_dir.is_dir()
+
+    def test_empty_case_dir_stays_empty(self, tmp_path: Path):
+        from mesh.generator import _reset_case
+
+        case_dir = tmp_path / "case"
+        case_dir.mkdir()
+        _reset_case(case_dir)
+
+        assert case_dir.is_dir()
+        assert list(case_dir.iterdir()) == []
+
+
+# ---------------------------------------------------------------------------
+# _run_of — OpenFOAM 명령 실행 헬퍼
+# ---------------------------------------------------------------------------
+
+class TestRunOf:
+    def test_returns_stdout_on_success(self, tmp_path: Path):
+        from mesh.generator import _run_of
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        mock_proc.stdout = "mesh generation complete\n"
+        mock_proc.stderr = ""
+
+        with patch("mesh.generator.subprocess.run", return_value=mock_proc):
+            out = _run_of(["blockMesh", "-case", str(tmp_path)], env=None, label="blockMesh")
+
+        assert "mesh generation complete" in out
+
+    def test_raises_on_nonzero_returncode(self, tmp_path: Path):
+        from mesh.generator import _run_of, MeshGenerationError
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 1
+        mock_proc.stdout = ""
+        mock_proc.stderr = "FOAM FATAL ERROR: something went wrong\n"
+
+        with patch("mesh.generator.subprocess.run", return_value=mock_proc):
+            with pytest.raises(MeshGenerationError, match="blockMesh 실패"):
+                _run_of(["blockMesh"], env=None, label="blockMesh")
+
+    def test_raises_on_file_not_found(self, tmp_path: Path):
+        from mesh.generator import _run_of, MeshGenerationError
+
+        with patch("mesh.generator.subprocess.run", side_effect=FileNotFoundError):
+            with pytest.raises(MeshGenerationError, match="명령 없음"):
+                _run_of(["nonexistent_command"], env=None, label="nonexistent_command")
+
+    def test_raises_on_timeout(self, tmp_path: Path):
+        from mesh.generator import _run_of, MeshGenerationError
+
+        with patch("mesh.generator.subprocess.run",
+                   side_effect=subprocess.TimeoutExpired(cmd="blockMesh", timeout=300)):
+            with pytest.raises(MeshGenerationError, match="타임아웃"):
+                _run_of(["blockMesh"], env=None, label="blockMesh")
+
+    def test_error_message_includes_last_50_lines(self, tmp_path: Path):
+        from mesh.generator import _run_of, MeshGenerationError
+
+        long_stderr = "\n".join(f"line {i}" for i in range(100))
+        mock_proc = MagicMock()
+        mock_proc.returncode = 1
+        mock_proc.stdout = ""
+        mock_proc.stderr = long_stderr
+
+        with patch("mesh.generator.subprocess.run", return_value=mock_proc):
+            with pytest.raises(MeshGenerationError) as exc_info:
+                _run_of(["blockMesh"], env=None, label="blockMesh")
+
+        msg = str(exc_info.value)
+        assert "line 99" in msg   # last line included
+        assert "line 50" in msg   # last 50 lines boundary (lines 50-99)
+        assert "line 49" not in msg  # older lines dropped
+
+
+# ---------------------------------------------------------------------------
+# _openfoam_env — 환경변수 설정
+# ---------------------------------------------------------------------------
+
+class TestOpenfoamEnv:
+    def test_fast_path_when_wm_project_dir_set(self):
+        from mesh.generator import _openfoam_env
+
+        with patch.dict(os.environ, {"WM_PROJECT_DIR": "/opt/openfoam12"}):
+            env = _openfoam_env()
+
+        assert env is not None
+        assert env.get("WM_PROJECT_DIR") == "/opt/openfoam12"
+
+    def test_returns_none_when_bashrc_absent(self):
+        from mesh.generator import _openfoam_env
+
+        env_without_wm = {k: v for k, v in os.environ.items() if k != "WM_PROJECT_DIR"}
+        with patch.dict(os.environ, env_without_wm, clear=True):
+            with patch("mesh.generator.Path.exists", return_value=False):
+                env = _openfoam_env()
+
+        assert env is None
+
+
+# ---------------------------------------------------------------------------
+# _mesh_stats — checkMesh 실행 및 품질 통계
+# ---------------------------------------------------------------------------
+
+class TestMeshStats:
+    def test_graceful_fallback_when_checkmesh_absent(self, tmp_path: Path):
+        from mesh.generator import _mesh_stats
+
+        with patch("mesh.generator.subprocess.run",
+                   side_effect=FileNotFoundError("checkMesh not found")):
+            stats = _mesh_stats(tmp_path, env=None)
+
+        assert stats["passed"] is True
+        assert stats["num_cells"] is None
+
+    def test_returns_parsed_stats_on_success(self, tmp_path: Path):
+        from mesh.generator import _mesh_stats
+
+        checkmesh_output = (
+            "Mesh stats\n"
+            "    cells:           100000\n"
+            "Mesh OK.\n"
+        )
+        mock_proc = MagicMock()
+        mock_proc.stdout = checkmesh_output
+        mock_proc.stderr = ""
+
+        with patch("mesh.generator.subprocess.run", return_value=mock_proc):
+            stats = _mesh_stats(tmp_path, env=None)
+
+        assert "passed" in stats
+        assert "num_cells" in stats
+        assert "checkmesh_output" in stats
+
+    def test_checkmesh_output_truncated_to_2000_chars(self, tmp_path: Path):
+        from mesh.generator import _mesh_stats
+
+        long_output = "x" * 5000 + "\nMesh OK.\n"
+        mock_proc = MagicMock()
+        mock_proc.stdout = long_output
+        mock_proc.stderr = ""
+
+        with patch("mesh.generator.subprocess.run", return_value=mock_proc):
+            stats = _mesh_stats(tmp_path, env=None)
+
+        assert len(stats["checkmesh_output"]) <= 2000
