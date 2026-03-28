@@ -244,6 +244,22 @@ class TestUpload:
         assert job.status == JobStatus.PAID
         db.close()
 
+    def test_path_traversal_filename_stripped(self, client):
+        """Filenames like ../../evil.stl must be stripped to just their basename."""
+        with patch("api.upload._run_mesh_background"):
+            r = client.post(
+                "/api/v1/upload",
+                params={"user_id": "u1"},
+                files={"file": ("../../evil.stl", io.BytesIO(_make_stl()),
+                                "application/octet-stream")},
+            )
+        assert r.status_code == 200
+        job_id = r.json()["job_id"]
+        db = _TestSession()
+        job = db.query(Job).filter(Job.id == job_id).first()
+        assert job.stl_filename == "evil.stl"  # directory component stripped
+        db.close()
+
 
 # ---------------------------------------------------------------------------
 # Jobs status

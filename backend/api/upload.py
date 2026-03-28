@@ -96,8 +96,8 @@ async def upload_stl(
         )
 
     job_id = str(uuid.uuid4())
-    # filename already validated — use as-is (fallback shouldn't happen after extension check)
-    filename = filename or "input.stl"
+    # Strip any directory components — prevent path traversal (e.g. "../../etc/passwd.stl")
+    filename = Path(filename).name or "input.stl"
 
     if settings.dev_mode:
         # Store locally, skip S3 and Stripe
