@@ -1768,3 +1768,85 @@ class TestMaybeRemeshSurfacePoissonSucceeds:
         assert len(remesh_src_seen) == 1
         # remesh was called with poisson_out, not the repaired file
         assert remesh_src_seen[0] == tmp_path / "_poisson.stl"
+
+
+# ---------------------------------------------------------------------------
+# _apply_mmg_quality — returncode=0 but output file missing
+# ---------------------------------------------------------------------------
+
+class TestApplyMmgQualityOutputMissing:
+    """returncode=0 (process exits cleanly) but out_mesh doesn't exist → original 반환."""
+
+    def test_returns_original_when_returncode_zero_but_file_missing(self, tmp_path: Path):
+        """proc.returncode == 0 but _mmg_out.mesh never created → return original v/t."""
+        from mesh.generator import _apply_mmg_quality
+        import numpy as np
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+        v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+        t = np.array([[0, 1, 2, 3]], dtype=np.int32)
+
+        # returncode=0 (success) but out_mesh file is NOT created
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+        # Note: we deliberately do NOT create tmp_path / "_mmg_out.mesh"
+        mock_meshio = MagicMock()
+
+        with patch("mesh.generator.shutil.which", return_value="/usr/bin/mmg3d"):
+            with patch.dict(sys.modules, {"meshio": mock_meshio}):
+                with patch("mesh.generator.subprocess.run", return_value=mock_proc):
+                    v_out, t_out = _apply_mmg_quality(v, t, tmp_path, bbox)
+
+        assert v_out is v
+        assert t_out is t
+        mock_meshio.read.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# generate_mesh — mesh_purpose="fea" skips snappy
+# ---------------------------------------------------------------------------
+
+class TestGenerateMeshFeaPurpose:
+    """mesh_purpose='fea' → snappyHexMesh tier must be skipped entirely."""
+
+    def test_snappy_not_called_when_purpose_is_fea(self, tmp_path: Path, unit_cube_stl: Path):
+        """FEA purpose must skip snappy, go straight to pytetwild."""
+        from mesh.generator import generate_mesh
+
+        snappy_calls = []
+
+        def fake_snappy(*args, **kwargs):
+            snappy_calls.append(True)
+            return {"passed": True}
+
+        def fake_pytetwild(*args, **kwargs):
+            # Create polyMesh/faces so the pipeline completes
+            poly = tmp_path / "case" / "constant" / "polyMesh"
+            poly.mkdir(parents=True, exist_ok=True)
+            (poly / "faces").write_text("dummy")
+            return {"passed": True, "num_cells": 50}
+
+        with patch.dict(sys.modules, {"tessell_mesh": None}), \
+             patch("mesh.generator._netgen_pipeline", side_effect=RuntimeError("no netgen")), \
+             patch("mesh.generator._snappy_pipeline", side_effect=fake_snappy), \
+             patch("mesh.generator._pytetwild_pipeline", side_effect=fake_pytetwild), \
+             patch("mesh.generator._openfoam_env", return_value=None), \
+             patch("mesh.generator._mesh_stats", return_value={"passed": True}):
+            result = generate_mesh(unit_cube_stl, tmp_path / "case",
+                                   mesh_purpose="fea")
+
+        assert snappy_calls == [], "snappy must not be called for fea purpose"
+        assert result["tier"] == "pytetwild"
+
+    def test_tessell_skipped_hint_in_error_message(self, tmp_path: Path, unit_cube_stl: Path):
+        """tessell not built + all tiers fail → error message hints at ./build.sh."""
+        from mesh.generator import generate_mesh, MeshGenerationError
+
+        with patch.dict(sys.modules, {"tessell_mesh": None}), \
+             patch("mesh.generator._netgen_pipeline", side_effect=RuntimeError("no netgen")), \
+             patch("mesh.generator._snappy_pipeline", side_effect=RuntimeError("no snappy")), \
+             patch("mesh.generator._pytetwild_pipeline", side_effect=RuntimeError("no pytetwild")):
+            with pytest.raises(MeshGenerationError) as exc_info:
+                generate_mesh(unit_cube_stl, tmp_path / "case")
+
+        assert "build.sh" in str(exc_info.value)

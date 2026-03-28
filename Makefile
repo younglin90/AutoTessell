@@ -19,7 +19,7 @@ worker-dev:  ## Start Celery worker in dev mode (requires Redis)
 	cd backend && celery -A worker.celery_app worker --loglevel=info --concurrency=1
 
 .PHONY: test
-test:  ## Run unit tests (438 tests, fast)
+test:  ## Run unit tests (441 tests, fast)
 	cd backend && $(PYTHON) -m pytest tests/ -v
 
 .PHONY: test-integration
