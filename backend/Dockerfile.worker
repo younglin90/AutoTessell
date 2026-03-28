@@ -1,0 +1,24 @@
+# OpenFOAM worker image (~5 GB)
+# Uses the official OpenFOAM Foundation image with Python layer on top.
+FROM openfoam/openfoam12-paraview510:latest
+
+USER root
+
+# Install Python 3.12
+RUN apt-get update && apt-get install -y \
+    python3.12 \
+    python3.12-venv \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip3 install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+# Source OpenFOAM environment for every shell invocation
+RUN echo "source /opt/openfoam12/etc/bashrc" >> /etc/bash.bashrc
+
+CMD ["celery", "-A", "worker.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
