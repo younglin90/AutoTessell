@@ -2118,6 +2118,109 @@ class TestApplyMmgQualityTetNone:
 
 
 # ---------------------------------------------------------------------------
+# _apply_mmg_quality — returncode != 0 path
+# ---------------------------------------------------------------------------
+
+class TestApplyMmgQualityNonzeroReturncode:
+    """mmg3d exits with nonzero returncode → original mesh returned."""
+
+    def test_returns_original_when_returncode_nonzero(self, tmp_path: Path):
+        """proc.returncode != 0 must cause early return with original v/t."""
+        from mesh.generator import _apply_mmg_quality
+        import numpy as np
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+        v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+        t = np.array([[0, 1, 2, 3]], dtype=np.int32)
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 1  # nonzero
+
+        mock_meshio = MagicMock()
+
+        with patch("mesh.generator.shutil.which", return_value="/usr/bin/mmg3d"):
+            with patch.dict(sys.modules, {"meshio": mock_meshio}):
+                with patch("mesh.generator.subprocess.run", return_value=mock_proc):
+                    v_out, t_out = _apply_mmg_quality(v, t, tmp_path, bbox)
+
+        assert v_out is v
+        assert t_out is t
+        mock_meshio.read.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _apply_mmg_quality — happy path: improved mesh returned
+# ---------------------------------------------------------------------------
+
+class TestApplyMmgQualityHappyPath:
+    """mmg3d runs cleanly and output mesh has tetra cells → improved mesh returned."""
+
+    def test_returns_improved_mesh_on_success(self, tmp_path: Path):
+        """Full success path: v_new / t_new from meshio.read must be returned."""
+        from mesh.generator import _apply_mmg_quality
+        import numpy as np
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+        v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+        t = np.array([[0, 1, 2, 3]], dtype=np.int32)
+
+        # Improved mesh has more vertices
+        v_new = np.array([
+            [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1],
+            [0.5, 0.5, 0.5],
+        ], dtype=np.float64)
+        t_new = np.array([[0, 1, 2, 4], [0, 1, 3, 4]], dtype=np.int32)
+
+        out_mesh = tmp_path / "_mmg_out.mesh"
+        out_mesh.write_text("dummy")  # ensure out_mesh.exists() == True
+
+        mock_proc = MagicMock()
+        mock_proc.returncode = 0
+
+        mock_improved = MagicMock()
+        mock_improved.points = v_new
+        mock_improved.cells_dict = {"tetra": t_new}
+
+        mock_meshio = MagicMock()
+        mock_meshio.read.return_value = mock_improved
+
+        with patch("mesh.generator.shutil.which", return_value="/usr/bin/mmg3d"):
+            with patch.dict(sys.modules, {"meshio": mock_meshio}):
+                with patch("mesh.generator.subprocess.run", return_value=mock_proc):
+                    v_ret, t_ret = _apply_mmg_quality(v, t, tmp_path, bbox)
+
+        assert (v_ret == v_new).all()
+        assert t_ret.dtype == np.int32
+
+
+# ---------------------------------------------------------------------------
+# _apply_mmg_quality — except Exception fallback
+# ---------------------------------------------------------------------------
+
+class TestApplyMmgQualityException:
+    """Unexpected exception during MMG processing → original mesh returned gracefully."""
+
+    def test_returns_original_on_unexpected_exception(self, tmp_path: Path):
+        """If meshio.write raises an unexpected error, original v/t must be returned."""
+        from mesh.generator import _apply_mmg_quality
+        import numpy as np
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+        v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+        t = np.array([[0, 1, 2, 3]], dtype=np.int32)
+
+        mock_meshio = MagicMock()
+        mock_meshio.write.side_effect = RuntimeError("disk full")
+
+        with patch("mesh.generator.shutil.which", return_value="/usr/bin/mmg3d"):
+            with patch.dict(sys.modules, {"meshio": mock_meshio}):
+                v_out, t_out = _apply_mmg_quality(v, t, tmp_path, bbox)
+
+        assert v_out is v
+        assert t_out is t
+
+
+# ---------------------------------------------------------------------------
 # _write_gmsh_msh2 — float dtype tet array
 # ---------------------------------------------------------------------------
 

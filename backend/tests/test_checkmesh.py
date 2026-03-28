@@ -140,3 +140,36 @@ def test_skewness_value_none_when_only_non_ortho_present():
     r = parse_checkmesh_output(output)
     assert r.max_non_orthogonality == pytest.approx(55.0)
     assert r.max_skewness is None
+
+
+# ---------------------------------------------------------------------------
+# _extract_float / _extract_int — ValueError defensive branches
+# ---------------------------------------------------------------------------
+
+def test_extract_float_returns_none_on_non_float_capture():
+    """_extract_float must return None when the captured group is not a valid float."""
+    from mesh.checkmesh import _extract_float
+    # Use a pattern that captures a word instead of digits
+    result = _extract_float("value = abc", r"value\s*=\s*(\w+)")
+    assert result is None
+
+
+def test_extract_int_returns_none_on_non_int_capture():
+    """_extract_int must return None when the captured group is not a valid int."""
+    from mesh.checkmesh import _extract_int
+    result = _extract_int("cells: abc", r"cells:\s+(\w+)")
+    assert result is None
+
+
+def test_extract_float_returns_none_when_no_match():
+    """_extract_float must return None when the pattern does not match."""
+    from mesh.checkmesh import _extract_float
+    result = _extract_float("no match here", r"Max non-orthogonality\s*=\s*([\d.]+)")
+    assert result is None
+
+
+def test_extract_int_returns_none_when_no_match():
+    """_extract_int must return None when the pattern does not match."""
+    from mesh.checkmesh import _extract_int
+    result = _extract_int("no match here", r"cells:\s+(\d+)")
+    assert result is None
