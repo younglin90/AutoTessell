@@ -279,3 +279,26 @@ class TestCellsToEdgeFac:
         """When tet_edge_length_fac is set, auto calc should not be used."""
         mp = MeshParams(tet_edge_length_fac=0.07)
         assert mp.tet_edge_length_fac == 0.07
+
+
+# ---------------------------------------------------------------------------
+# MeshParams identity / from_dict edge cases
+# ---------------------------------------------------------------------------
+
+class TestMeshParamsIdentity:
+    def test_validated_returns_new_object(self):
+        """validated() must return a new MeshParams instance, not mutate self."""
+        mp = MeshParams(tet_stop_energy=200.0)  # will be clamped
+        mp_v = mp.validated()
+        assert mp_v is not mp
+        assert mp.tet_stop_energy == 200.0      # original unchanged
+        assert mp_v.tet_stop_energy <= 100.0    # copy is clamped
+
+    def test_from_dict_empty_uses_all_defaults(self):
+        """from_dict({}) must produce a MeshParams with all default values."""
+        mp = MeshParams.from_dict({})
+        defaults = MeshParams()
+        assert mp.tet_stop_energy == defaults.tet_stop_energy
+        assert mp.snappy_refine_min == defaults.snappy_refine_min
+        assert mp.mmg_enabled == defaults.mmg_enabled
+        assert mp.netgen_maxh_ratio == defaults.netgen_maxh_ratio

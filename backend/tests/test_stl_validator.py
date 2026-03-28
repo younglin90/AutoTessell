@@ -144,3 +144,33 @@ class TestBinarySTLOversized:
         """The correct-size file must still be accepted (regression guard)."""
         content = _make_binary_stl(4)
         validate_stl(content)  # must not raise
+
+
+# ---- Short malformed ASCII STL (< 84 bytes) re-raise path ----
+
+class TestShortMalformedAsciiSTL:
+    """validator.py line 38-39: short malformed ASCII must re-raise the ASCII
+    error rather than falling through to binary validation."""
+
+    def test_short_ascii_no_facets_raises_ascii_error(self):
+        """< 84-byte content starting with 'solid' but missing 'facet normal'
+        must raise the ASCII 'no facets' error, not 'too small to be a valid STL'."""
+        content = b"solid bad\nno_facets_here\nendsolid bad\n"  # 38 bytes, < 84
+        assert len(content) < 84  # precondition
+        with pytest.raises(STLValidationError, match="no facets"):
+            validate_stl(content)
+
+    def test_short_ascii_no_endsolid_raises_ascii_error(self):
+        """< 84-byte ASCII STL missing 'endsolid' must raise the truncation error."""
+        content = b"solid s\n  facet normal 0 0 1\n    outer loop\n"  # ~45 bytes
+        assert len(content) < 84  # precondition
+        with pytest.raises(STLValidationError, match="endsolid"):
+            validate_stl(content)
+
+    def test_non_ascii_bytes_fall_through_to_binary_validation(self):
+        """Content whose first 256 bytes contain non-ASCII (> 127) bytes must
+        not be treated as ASCII — _is_ascii_stl returns False and binary validation
+        runs instead (which raises 'too small' for short content)."""
+        content = b"\xff\xfe" + b"\x00" * 8  # 10 bytes, starts with non-ASCII
+        with pytest.raises(STLValidationError):
+            validate_stl(content)  # fails binary validation (too short)

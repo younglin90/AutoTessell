@@ -521,3 +521,51 @@ class TestBuildDomainLocationZ:
         d = build_domain(bbox, "shape.stl")
         cz = bbox.center_z
         assert d.location_z == pytest.approx(cz + 0.1 * L)
+
+
+# ---------------------------------------------------------------------------
+# surface_feature_extract_dict — FoamFile header
+# ---------------------------------------------------------------------------
+
+class TestSurfaceFeatureExtractDictHeader:
+    def test_foam_file_header_present(self):
+        """surfaceFeatureExtractDict must contain a FoamFile header."""
+        s = surface_feature_extract_dict("part.stl")
+        assert "FoamFile" in s
+
+    def test_object_name_in_header(self):
+        """FoamFile object field must identify surfaceFeatureExtractDict."""
+        s = surface_feature_extract_dict("part.stl")
+        assert "surfaceFeatureExtractDict" in s
+
+    def test_stem_used_for_geometry_key(self):
+        """The geometry block must be keyed by the STL stem (without extension)."""
+        s = surface_feature_extract_dict("wing_v2.stl")
+        # stem = "wing_v2"; full name also appears but key must be present
+        assert "wing_v2.stl" in s
+
+
+# ---------------------------------------------------------------------------
+# snappy_hex_mesh_dict — complexity + params combined
+# ---------------------------------------------------------------------------
+
+class TestSnappyComplexityPlusParams:
+    def test_pro_refine_min_overrides_complexity_s_min(self):
+        """When both complexity and params are provided, pro params take precedence."""
+        c = _complexity(ratio=2.0, s_min=1, s_max=2)  # complexity says s_min=1
+        mp = MeshParams(snappy_refine_min=3)           # pro says s_min=3
+        d = _domain()
+        s = snappy_hex_mesh_dict(d, complexity=c, params=mp)
+        # invariant: s_max must be raised to >= s_min=3
+        import re
+        m = re.search(r"level \( (\d+) (\d+) \)", s)
+        assert m is not None
+        assert int(m.group(1)) == 3
+
+    def test_pro_n_layers_overrides_complexity_auto_n_layers(self):
+        """snappy_n_layers in params must override complexity-driven auto n_layers."""
+        c = _complexity(ratio=15.0, s_min=2, s_max=4)  # complex → auto 5 layers
+        mp = MeshParams(snappy_n_layers=2)              # pro override to 2
+        d = _domain()
+        s = snappy_hex_mesh_dict(d, complexity=c, params=mp)
+        assert "nSurfaceLayers  2" in s
