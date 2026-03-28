@@ -1,5 +1,6 @@
 """
-GET /api/v1/jobs/{job_id}  — Poll job status
+GET /api/v1/jobs          — List recent jobs for a user (newest first, capped at 20)
+GET /api/v1/jobs/{job_id} — Poll single job status
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,6 +10,16 @@ from sqlalchemy.orm import Session
 from db import Job, JobStatus, get_db
 
 router = APIRouter()
+
+
+class JobListItem(BaseModel):
+    job_id: str
+    status: str
+    stl_filename: str | None = None
+    target_cells: int = 500_000
+    mesh_purpose: str = "cfd"
+    has_pro_params: bool = False
+    created_at: str
 
 
 class JobStatusResponse(BaseModel):
@@ -25,6 +36,33 @@ class JobStatusResponse(BaseModel):
     # Result stats (filled on DONE)
     result_num_cells: int | None = None
     result_tier: str | None = None
+
+
+@router.get("/jobs", response_model=list[JobListItem])
+def list_jobs(
+    user_id: str,
+    limit: int = 20,
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(Job)
+        .filter(Job.user_id == user_id)
+        .order_by(Job.created_at.desc())
+        .limit(min(limit, 100))
+        .all()
+    )
+    return [
+        JobListItem(
+            job_id=str(j.id),
+            status=j.status.value,
+            stl_filename=j.stl_filename,
+            target_cells=j.target_cells or 500_000,
+            mesh_purpose=j.mesh_purpose or "cfd",
+            has_pro_params=bool(j.mesh_params_json),
+            created_at=j.created_at.isoformat() if j.created_at else "",
+        )
+        for j in rows
+    ]
 
 
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse)

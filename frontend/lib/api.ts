@@ -77,6 +77,24 @@ export async function uploadSTL(
   return res.json();
 }
 
+export interface JobListItem {
+  job_id: string;
+  status: string;
+  stl_filename: string | null;
+  target_cells: number;
+  mesh_purpose: string;
+  has_pro_params: boolean;
+  created_at: string;
+}
+
+export async function listJobs(userId: string): Promise<JobListItem[]> {
+  const res = await fetch(
+    `${API_BASE}/jobs?user_id=${encodeURIComponent(userId)}`
+  );
+  if (!res.ok) throw new Error("Failed to fetch job list");
+  return res.json();
+}
+
 export async function pollJobStatus(jobId: string, userId: string): Promise<JobStatus> {
   const res = await fetch(
     `${API_BASE}/jobs/${jobId}?user_id=${encodeURIComponent(userId)}`

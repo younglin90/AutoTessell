@@ -200,6 +200,63 @@ class TestUpload:
 # Jobs status
 # ---------------------------------------------------------------------------
 
+class TestJobList:
+    def test_empty_list(self, client):
+        r = client.get("/api/v1/jobs", params={"user_id": "nobody"})
+        assert r.status_code == 200
+        assert r.json() == []
+
+    def test_returns_own_jobs(self, client):
+        _upload(client, user_id="list_user")
+        _upload(client, user_id="list_user")
+        r = client.get("/api/v1/jobs", params={"user_id": "list_user"}).json()
+        assert len(r) == 2
+
+    def test_does_not_return_other_users_jobs(self, client):
+        _upload(client, user_id="alice_l")
+        _upload(client, user_id="bob_l")
+        r = client.get("/api/v1/jobs", params={"user_id": "alice_l"}).json()
+        assert len(r) == 1
+
+    def test_newest_first(self, client):
+        j1 = _upload(client, user_id="order_user").json()["job_id"]
+        j2 = _upload(client, user_id="order_user").json()["job_id"]
+        items = client.get("/api/v1/jobs", params={"user_id": "order_user"}).json()
+        assert items[0]["job_id"] == j2  # newest first
+
+    def test_item_has_expected_fields(self, client):
+        _upload(client, user_id="fields_user", target_cells=222_000, mesh_purpose="fea")
+        item = client.get("/api/v1/jobs", params={"user_id": "fields_user"}).json()[0]
+        assert item["stl_filename"] == "test.stl"
+        assert item["target_cells"] == 222_000
+        assert item["mesh_purpose"] == "fea"
+        assert item["status"] == "PAID"
+        assert "created_at" in item
+
+    def test_has_pro_params_flag(self, client):
+        _upload(client, user_id="pro_list", mesh_params={"tet_stop_energy": 3.0})
+        item = client.get("/api/v1/jobs", params={"user_id": "pro_list"}).json()[0]
+        assert item["has_pro_params"] is True
+
+    def test_limit_default_20(self, client):
+        import config as _cfg
+        orig = _cfg.settings.max_jobs_per_user
+        _cfg.settings.max_jobs_per_user = 100
+        try:
+            for _ in range(25):
+                _upload(client, user_id="many_user")
+        finally:
+            _cfg.settings.max_jobs_per_user = orig
+        items = client.get("/api/v1/jobs", params={"user_id": "many_user"}).json()
+        assert len(items) == 20
+
+    def test_custom_limit(self, client):
+        for _ in range(5):
+            _upload(client, user_id="limit_user")
+        items = client.get("/api/v1/jobs", params={"user_id": "limit_user", "limit": 3}).json()
+        assert len(items) == 3
+
+
 class TestJobs:
     def test_get_own_job_200(self, client):
         job_id = _upload(client, user_id="alice").json()["job_id"]
