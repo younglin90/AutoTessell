@@ -18,7 +18,11 @@ RUN pip3 install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Source OpenFOAM environment for every shell invocation
+# Source OpenFOAM env for interactive debug shells
 RUN echo "source /opt/openfoam12/etc/bashrc" >> /etc/bash.bashrc
 
+# Source OF env before launching Celery so WM_PROJECT_DIR and all OF
+# PATH entries are available inside the Python process (fast-path in
+# generator._openfoam_env avoids the expensive subshell on each mesh job).
+ENTRYPOINT ["/bin/bash", "-c", "source /opt/openfoam12/etc/bashrc && exec \"$@\"", "--"]
 CMD ["celery", "-A", "worker.celery_app", "worker", "--loglevel=info", "--concurrency=2"]
