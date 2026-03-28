@@ -1040,3 +1040,154 @@ class TestReconstructSurfacePoissonNormalRadiusFloor:
         hybrid_call = mock_o3d.geometry.KDTreeSearchParamHybrid.call_args
         radius_used = hybrid_call[1]["radius"]
         assert radius_used >= 1e-6
+
+
+# ---------------------------------------------------------------------------
+# analyze_stl_complexity — feature angle lower clip at 15.0 degrees
+# ---------------------------------------------------------------------------
+
+class TestAnalyzeStlComplexityFeatureAngleLowerClip:
+    """
+    stl_utils.py: feat_angle = float(np.clip(np.percentile(angles_deg, 10), 15.0, 60.0))
+
+    The lower bound of 15° fires when adjacency angles are all very sharp (< 15°).
+    Existing tests only exercise the upper caps (20°, 30°, 40°).
+    """
+
+    def _make_stl(self, tmp_path: Path) -> Path:
+        p = tmp_path / "shape.stl"
+        p.write_bytes(_simple_triangle_stl())
+        return p
+
+    def test_very_sharp_angles_clipped_to_15_degrees(self, tmp_path: Path):
+        """Adjacency angles ≈ 0.001 rad (≈0.06°) → p10 << 15° → clamped to 15°."""
+        import numpy as np
+        import trimesh as real_trimesh
+
+        stl = self._make_stl(tmp_path)
+
+        mock_mesh = MagicMock()
+        mock_mesh.vertices = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
+        mock_mesh.scale = 1.0
+        # Very small angles in radians (≈ 0.06°) — all well below 15°
+        mock_mesh.face_adjacency_angles = np.array([0.001, 0.001, 0.001])
+
+        # Use low complexity (ratio ≤ 3) so the feat_angle cap is min(clipped, 40.0)
+        # The clipped value = 15.0, min(15.0, 40.0) = 15.0
+        low_curv = np.array([1e-5] * 50 + [100.0] * 50)
+
+        with patch("trimesh.load", return_value=mock_mesh):
+            with patch.object(
+                real_trimesh.curvature,
+                "discrete_mean_curvature_measure",
+                return_value=low_curv,
+            ):
+                result = analyze_stl_complexity(stl)
+
+        assert result.resolve_feature_angle == pytest.approx(15.0)
+
+    def test_15_degree_lower_bound_for_high_complexity(self, tmp_path: Path):
+        """High-complexity branch also clips feat_angle at 15° minimum."""
+        import numpy as np
+        import trimesh as real_trimesh
+
+        stl = self._make_stl(tmp_path)
+
+        mock_mesh = MagicMock()
+        mock_mesh.vertices = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]], dtype=float)
+        mock_mesh.scale = 1.0
+        # Near-zero angles → p10 ≈ 0 → clipped to 15 → then min(15, 20) = 15
+        mock_mesh.face_adjacency_angles = np.array([0.0001, 0.0001, 0.0001])
+
+        high_curv = np.array([1e-5] * 94 + [100.0] * 6)  # ratio > 10
+
+        with patch("trimesh.load", return_value=mock_mesh):
+            with patch.object(
+                real_trimesh.curvature,
+                "discrete_mean_curvature_measure",
+                return_value=high_curv,
+            ):
+                result = analyze_stl_complexity(stl)
+
+        # High branch: min(clip(~0, 15, 60), 20) = min(15, 20) = 15
+        assert result.resolve_feature_angle == pytest.approx(15.0)
+
+
+# ---------------------------------------------------------------------------
+# reconstruct_surface_poisson — n_pts = max(10_000, len(vertices) * 3)
+# ---------------------------------------------------------------------------
+
+class TestReconstructSurfacePoissonNPtsFloor:
+    """
+    stl_utils.py: n_pts = max(10_000, len(mesh_o3d.vertices) * 3)
+
+    When vertex_count * 3 > 10_000, the actual count (not 10_000) must be used.
+    All existing tests use vertices=[1,2,3] (len=3, 3*3=9 → floored to 10_000).
+    This test provides 5000 vertices so 5000*3=15_000 > 10_000 → actual count used.
+    """
+
+    def _make_happy_mocks_large(self):
+        import numpy as np
+
+        mock_o3d = MagicMock()
+        mock_in_mesh = MagicMock()
+        # 5000 vertex objects → len = 5000 → n_pts = max(10_000, 15_000) = 15_000
+        mock_in_mesh.vertices = list(range(5000))
+
+        mock_recon = MagicMock()
+        mock_recon.vertices = [1, 2, 3]
+        densities = np.array([0.1, 0.5, 0.9])
+
+        mock_o3d.io.read_triangle_mesh.return_value = mock_in_mesh
+        mock_o3d.geometry.TriangleMesh.create_from_point_cloud_poisson.return_value = (
+            mock_recon,
+            densities,
+        )
+        return mock_o3d, mock_in_mesh
+
+    def test_large_mesh_uses_vertex_count_times_3(self, tmp_path: Path):
+        """len(vertices)=5000 → n_pts = max(10_000, 15_000) = 15_000."""
+        src = tmp_path / "input.stl"
+        dst = tmp_path / "output.stl"
+        src.write_bytes(_simple_triangle_stl())
+
+        mock_o3d, mock_in_mesh = self._make_happy_mocks_large()
+        bbox = BBox(0.0, 0.0, 0.0, 1.0, 1.0, 1.0)
+
+        with patch.dict(sys.modules, {"open3d": mock_o3d}):
+            result = reconstruct_surface_poisson(src, dst, bbox=bbox)
+
+        assert result is True
+        call_kwargs = mock_in_mesh.sample_points_poisson_disk.call_args[1]
+        assert call_kwargs["number_of_points"] == 15_000
+
+    def test_small_mesh_uses_floor_10000(self, tmp_path: Path):
+        """len(vertices)=3 → 3*3=9 < 10_000 → n_pts floored to 10_000."""
+        import numpy as np
+
+        src = tmp_path / "input.stl"
+        dst = tmp_path / "output.stl"
+        src.write_bytes(_simple_triangle_stl())
+
+        mock_o3d = MagicMock()
+        mock_in_mesh = MagicMock()
+        mock_in_mesh.vertices = [1, 2, 3]  # len=3 → 9 < 10_000
+
+        mock_recon = MagicMock()
+        mock_recon.vertices = [1, 2, 3]
+        densities = np.array([0.1, 0.5, 0.9])
+
+        mock_o3d.io.read_triangle_mesh.return_value = mock_in_mesh
+        mock_o3d.geometry.TriangleMesh.create_from_point_cloud_poisson.return_value = (
+            mock_recon,
+            densities,
+        )
+
+        bbox = BBox(0.0, 0.0, 0.0, 1.0, 1.0, 1.0)
+
+        with patch.dict(sys.modules, {"open3d": mock_o3d}):
+            result = reconstruct_surface_poisson(src, dst, bbox=bbox)
+
+        assert result is True
+        call_kwargs = mock_in_mesh.sample_points_poisson_disk.call_args[1]
+        assert call_kwargs["number_of_points"] == 10_000
