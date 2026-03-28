@@ -18,6 +18,7 @@
 #include <geogram/mesh/mesh_repair.h>
 #include <geogram/mesh/mesh_tetrahedralize.h>
 
+#include <mutex>
 #include <stdexcept>
 #include <string>
 
@@ -25,17 +26,15 @@ namespace tessell {
 
 namespace {
 
-bool geo_initialized = false;
-
 void ensure_geo_initialized(bool verbose) {
-    if (!geo_initialized) {
+    static std::once_flag init_flag;
+    std::call_once(init_flag, [verbose]() {
         GEO::initialize(GEO::GEOGRAM_INSTALL_ALL);
         GEO::CmdLine::import_arg_group("algo");
         if (!verbose) {
             GEO::Logger::instance()->set_quiet(true);
         }
-        geo_initialized = true;
-    }
+    });
 }
 
 Mesh3D extract_mesh3d(const GEO::Mesh& gm) {

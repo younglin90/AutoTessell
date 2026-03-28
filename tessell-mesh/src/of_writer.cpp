@@ -313,17 +313,6 @@ void write_openfoam_2d(const std::string& case_dir,
     // For each 2D edge shared by two triangles → internal quad face.
     // Boundary 2D edges → external quad faces (wall/inlet/outlet etc.)
 
-    // Build edge → triangle adjacency
-    std::map<std::pair<int,int>, int> edge_to_tri; // canonical edge → tri id
-    for (int t = 0; t < nt; ++t) {
-        for (int e = 0; e < 3; ++e) {
-            int a = mesh2d.triangles[t][e];
-            int b = mesh2d.triangles[t][(e+1)%3];
-            auto key = std::make_pair(std::min(a,b), std::max(a,b));
-            edge_to_tri[key] = t; // second insertion overwrites → gives neighbour
-        }
-    }
-
     // Count internal faces first
     std::vector<QuadFace> int_quads;
     std::vector<int>      int_owner, int_neigh;
