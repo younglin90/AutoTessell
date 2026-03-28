@@ -7,6 +7,8 @@ Covers:
   - OpenFOAM config file generation (blockMeshDict, snappyHexMeshDict)
   - Gmsh .msh v2 writer (node/element count)
   - tessell_mesh tier: graceful skip when .so not built, fallback chain
+  - _maybe_remesh_surface 3-stage preprocessing chain
+  - _apply_mmg_quality graceful fallback when binary absent
 """
 
 import struct
@@ -430,3 +432,95 @@ class TestWriteGmshMsh2:
         # type=4 means tetrahedron in Gmsh
         elem_lines = [l for l in out.read_text().splitlines() if l.startswith("1 4")]
         assert len(elem_lines) == 1
+
+
+# ---------------------------------------------------------------------------
+# _maybe_remesh_surface 전처리 체인
+# ---------------------------------------------------------------------------
+
+class TestMaybeRemeshSurface:
+    """Tests for the 3-stage surface preprocessing chain."""
+
+    def test_returns_path(self, tmp_path: Path, unit_cube_stl: Path):
+        """반환값은 존재하는 Path여야 한다."""
+        from mesh.stl_utils import BBox
+        from mesh.generator import _maybe_remesh_surface
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+        result = _maybe_remesh_surface(unit_cube_stl, tmp_path, bbox)
+        assert isinstance(result, Path)
+        assert result.exists()
+
+    def test_falls_back_to_repaired_when_remesh_fails(self, tmp_path: Path, unit_cube_stl: Path):
+        """pyACVD 실패 시 repair된 STL을 반환해야 한다."""
+        from mesh.stl_utils import BBox
+        from mesh.generator import _maybe_remesh_surface
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+        with patch("mesh.generator.remesh_surface_uniform", return_value=False):
+            result = _maybe_remesh_surface(unit_cube_stl, tmp_path, bbox)
+        # pyACVD 실패 → repaired STL 반환 (not None, exists)
+        assert result.exists()
+        assert result != unit_cube_stl  # 원본이 아닌 수리된 파일
+
+    def test_uses_poisson_when_not_watertight(self, tmp_path: Path, unit_cube_stl: Path):
+        """비수밀 STL에서 Poisson 재구성이 시도되어야 한다."""
+        from mesh.stl_utils import BBox
+        from mesh.generator import _maybe_remesh_surface
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+
+        poisson_called_with = {}
+
+        def fake_poisson(src, dst, bbox=None):
+            poisson_called_with["called"] = True
+            poisson_called_with["bbox"] = bbox
+            return False  # Poisson 실패 시뮬레이션
+
+        with patch("mesh.generator.repair_stl_to_path", return_value=False):  # 비수밀
+            with patch("mesh.generator.reconstruct_surface_poisson", side_effect=fake_poisson):
+                with patch("mesh.generator.remesh_surface_uniform", return_value=False):
+                    _maybe_remesh_surface(unit_cube_stl, tmp_path, bbox)
+
+        assert poisson_called_with.get("called"), "Poisson 재구성이 호출되어야 한다"
+        assert poisson_called_with.get("bbox") is bbox, "bbox가 전달되어야 한다"
+
+    def test_skips_poisson_when_watertight(self, tmp_path: Path, unit_cube_stl: Path):
+        """수밀 STL에서 Poisson 재구성을 건너뛰어야 한다."""
+        from mesh.stl_utils import BBox
+        from mesh.generator import _maybe_remesh_surface
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+
+        poisson_called = []
+        with patch("mesh.generator.repair_stl_to_path", return_value=True):  # 수밀
+            with patch("mesh.generator.reconstruct_surface_poisson",
+                       side_effect=lambda *a, **kw: poisson_called.append(1)):
+                with patch("mesh.generator.remesh_surface_uniform", return_value=False):
+                    _maybe_remesh_surface(unit_cube_stl, tmp_path, bbox)
+
+        assert not poisson_called, "수밀이면 Poisson 재구성 불필요"
+
+
+# ---------------------------------------------------------------------------
+# _apply_mmg_quality graceful fallback
+# ---------------------------------------------------------------------------
+
+class TestApplyMmgQuality:
+    """Tests for optional MMG post-processing."""
+
+    def test_returns_original_when_mmg_not_found(self, tmp_path: Path):
+        """mmg3d binary 없으면 원본 v/t 반환."""
+        from mesh.generator import _apply_mmg_quality
+        from mesh.stl_utils import BBox
+        import numpy as np
+
+        bbox = BBox(0, 0, 0, 1, 1, 1)
+        v = np.array([[0,0,0],[1,0,0],[0,1,0],[0,0,1]], dtype=float)
+        t = np.array([[0,1,2,3]], dtype=np.int32)
+
+        with patch("shutil.which", return_value=None):
+            v_out, t_out = _apply_mmg_quality(v, t, tmp_path, bbox)
+
+        assert v_out is v
+        assert t_out is t
