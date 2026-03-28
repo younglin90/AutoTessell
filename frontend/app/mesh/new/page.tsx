@@ -2,6 +2,7 @@
 
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { uploadSTL, type MeshParams } from "@/lib/api";
 import { saveJob } from "@/lib/jobs";
 
@@ -210,7 +211,12 @@ export default function NewMeshPage() {
   return (
     <main className="min-h-screen flex flex-col items-center justify-center p-8 bg-gray-50">
       <div className="w-full max-w-lg flex flex-col gap-6">
-        <h1 className="text-2xl font-semibold text-gray-800">New Mesh Job</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-semibold text-gray-800">New Mesh Job</h1>
+          <Link href="/jobs" className="text-sm text-gray-400 hover:text-gray-600 transition-colors">
+            ← Jobs
+          </Link>
+        </div>
 
         {/* STL upload */}
         <section className="flex flex-col gap-3">
