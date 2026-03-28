@@ -205,6 +205,47 @@ class TestWritePolyMesh:
         content = (tmp_path / "constant" / "polyMesh" / "boundary").read_text()
         assert "nFaces          6" in content
 
+    def test_faces_file_has_foam_header(self, tmp_path: Path):
+        """faces file must have FoamFile header with class=faceList."""
+        v, t = _single_tet()
+        write_polymesh(v, t, tmp_path)
+        content = (tmp_path / "constant" / "polyMesh" / "faces").read_text()
+        assert "FoamFile" in content
+        assert "faceList" in content
+
+    def test_faces_format_uses_triangle_prefix(self, tmp_path: Path):
+        """Each triangular face must be written as '3(v0 v1 v2)' in the faces file."""
+        v, t = _single_tet()
+        write_polymesh(v, t, tmp_path)
+        content = (tmp_path / "constant" / "polyMesh" / "faces").read_text()
+        # Triangular faces have 3 vertices: "3(..."
+        import re
+        face_entries = re.findall(r"\d+\([\d ]+\)", content)
+        assert len(face_entries) == 4  # single tet has 4 boundary faces
+        assert all(e.startswith("3(") for e in face_entries)
+
+    def test_owner_file_all_zeros_for_single_tet(self, tmp_path: Path):
+        """Single tet = single cell (index 0). All 4 faces must be owned by cell 0."""
+        v, t = _single_tet()
+        write_polymesh(v, t, tmp_path)
+        content = (tmp_path / "constant" / "polyMesh" / "owner").read_text()
+        # Extract integer entries after the count line
+        import re
+        entries = re.findall(r"^(\d+)$", content, re.MULTILINE)
+        # First entry is the count (4), rest are owner indices (all 0)
+        counts_and_owners = [int(x) for x in entries if int(x) < 10]
+        # All owner entries should be 0 (cell 0 owns all faces)
+        assert all(x == 0 for x in counts_and_owners if x != 4)
+
+    def test_owner_file_has_foam_header(self, tmp_path: Path):
+        """owner file must have FoamFile header with class=labelList."""
+        v, t = _single_tet()
+        write_polymesh(v, t, tmp_path)
+        content = (tmp_path / "constant" / "polyMesh" / "owner").read_text()
+        assert "FoamFile" in content
+        assert "labelList" in content
+        assert "owner" in content
+
     def test_large_mesh_stats(self, tmp_path: Path):
         """Smoke test with 100 tets to verify scalability."""
         rng = np.random.default_rng(42)
