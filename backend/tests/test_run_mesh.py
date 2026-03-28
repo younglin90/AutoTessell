@@ -513,3 +513,44 @@ class TestMarkFailedAndRefundDbClose:
                     pass  # unexpected errors may propagate
 
         db.close.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Production-mode S3 helpers (_download_s3 and _upload_s3, dev_mode=False)
+# ---------------------------------------------------------------------------
+
+class TestDownloadS3ProdMode:
+    def test_calls_download_file_in_prod_mode(self, tmp_path: Path):
+        """_download_s3 prod path must call s3_client.download_file with correct args."""
+        dest = tmp_path / "out.stl"
+        mock_s3_client = MagicMock()
+        mock_settings = MagicMock()
+        mock_settings.dev_mode = False
+        mock_settings.s3_bucket = "prod-bucket"
+
+        with patch("worker.tasks.settings", mock_settings), \
+             patch("worker.tasks._s3_client", return_value=mock_s3_client):
+            _download_s3("stl/job-prod/input.stl", dest)
+
+        mock_s3_client.download_file.assert_called_once_with(
+            "prod-bucket", "stl/job-prod/input.stl", str(dest)
+        )
+
+
+class TestUploadS3ProdMode:
+    def test_calls_upload_file_in_prod_mode(self, tmp_path: Path):
+        """_upload_s3 prod path must call s3_client.upload_file with correct args."""
+        src = tmp_path / "mesh.zip"
+        src.write_bytes(b"zip data")
+        mock_s3_client = MagicMock()
+        mock_settings = MagicMock()
+        mock_settings.dev_mode = False
+        mock_settings.s3_bucket = "prod-bucket"
+
+        with patch("worker.tasks.settings", mock_settings), \
+             patch("worker.tasks._s3_client", return_value=mock_s3_client):
+            _upload_s3(src, "meshes/job-prod/mesh.zip")
+
+        mock_s3_client.upload_file.assert_called_once_with(
+            str(src), "prod-bucket", "meshes/job-prod/mesh.zip"
+        )
