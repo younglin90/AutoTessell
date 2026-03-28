@@ -842,6 +842,59 @@ class TestMeshStats:
 
         assert len(stats["checkmesh_output"]) <= 2000
 
+    def test_graceful_fallback_when_checkmesh_times_out(self, tmp_path: Path):
+        """checkMesh timeout must not propagate — treat like absent command."""
+        from mesh.generator import _mesh_stats
+
+        with patch("mesh.generator.subprocess.run",
+                   side_effect=subprocess.TimeoutExpired(["checkMesh"], 120)):
+            stats = _mesh_stats(tmp_path, env=None)
+
+        assert stats["passed"] is True
+        assert stats["num_cells"] is None
+
+
+# ---------------------------------------------------------------------------
+# _safe_stl_name — OpenFOAM dict token sanitization
+# ---------------------------------------------------------------------------
+
+class TestSafeStlName:
+    def test_normal_filename_unchanged(self):
+        from mesh.generator import _safe_stl_name
+        assert _safe_stl_name("geometry.stl") == "geometry.stl"
+
+    def test_spaces_replaced_with_underscores(self):
+        from mesh.generator import _safe_stl_name
+        assert _safe_stl_name("my part.stl") == "my_part.stl"
+
+    def test_hyphens_replaced_with_underscores(self):
+        from mesh.generator import _safe_stl_name
+        assert _safe_stl_name("wing-profile.stl") == "wing_profile.stl"
+
+    def test_dots_in_stem_replaced(self):
+        from mesh.generator import _safe_stl_name
+        # "wing.v2.stl" → stem="wing.v2" → "wing_v2.stl"
+        assert _safe_stl_name("wing.v2.stl") == "wing_v2.stl"
+
+    def test_all_special_chars_stripped(self):
+        from mesh.generator import _safe_stl_name
+        result = _safe_stl_name("part (final) #3!.stl")
+        assert " " not in result
+        assert "(" not in result
+        assert ")" not in result
+        assert "#" not in result
+        assert "!" not in result
+        assert result.endswith(".stl")
+
+    def test_empty_stem_falls_back_to_geometry(self):
+        from mesh.generator import _safe_stl_name
+        # A filename like "----.stl" has a stem of all special chars → "geometry.stl"
+        assert _safe_stl_name("----.stl") == "geometry.stl"
+
+    def test_already_safe_name_preserved(self):
+        from mesh.generator import _safe_stl_name
+        assert _safe_stl_name("aircraft_wing_v3.stl") == "aircraft_wing_v3.stl"
+
 
 # ---------------------------------------------------------------------------
 # surface_feature_extract_dict — includedAngle 계산

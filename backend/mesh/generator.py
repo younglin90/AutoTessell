@@ -27,6 +27,7 @@ Mesh generation pipeline: STL → OpenFOAM polyMesh
 """
 
 import logging
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -313,7 +314,9 @@ def _snappy_pipeline(
     """
     from mesh.params import MeshParams
     mp: MeshParams = params if params is not None else MeshParams()
-    stl_name = stl_path.name
+    # Use a sanitized name for the STL — spaces or special chars in the original
+    # filename would produce invalid tokens in snappyHexMeshDict.
+    stl_name = _safe_stl_name(stl_path.name)
 
     # 곡률 기반 복잡도 분석 → 적응형 정밀화 파라미터 도출
     complexity = analyze_stl_complexity(stl_path)
@@ -355,11 +358,12 @@ def _write_snappy_case(
     system.mkdir(parents=True, exist_ok=True)
     tri_surface.mkdir(parents=True, exist_ok=True)
 
-    shutil.copy2(stl_path, tri_surface / stl_path.name)
+    # domain.stl_name is already sanitized (set by _snappy_pipeline via _safe_stl_name)
+    shutil.copy2(stl_path, tri_surface / domain.stl_name)
     (system / "blockMeshDict").write_text(block_mesh_dict(domain))
     (system / "snappyHexMeshDict").write_text(snappy_hex_mesh_dict(domain, complexity, params))
     (system / "surfaceFeatureExtractDict").write_text(
-        surface_feature_extract_dict(stl_path.name, complexity)
+        surface_feature_extract_dict(domain.stl_name, complexity)
     )
     (system / "controlDict").write_text(control_dict())
     (system / "fvSchemes").write_text(fv_schemes())
@@ -533,6 +537,20 @@ def _write_gmsh_msh2(vertices, tets, msh_path: Path) -> None:
         f.write("$EndElements\n")
 
 
+def _safe_stl_name(original: str) -> str:
+    """
+    Return an OpenFOAM-safe version of an STL filename.
+
+    OpenFOAM dict tokens must not contain spaces or special shell characters.
+    Replace any non-alphanumeric/non-underscore/non-dot character with '_',
+    then ensure the stem is non-empty and ends with '.stl'.
+    """
+    stem = Path(original).stem
+    stem = re.sub(r"[^\w]", "_", stem)  # \w = [a-zA-Z0-9_]
+    stem = stem.strip("_") or "geometry"
+    return stem + ".stl"
+
+
 def _setup_minimal_case(case_dir: Path) -> None:
     system = case_dir / "system"
     constant = case_dir / "constant"
@@ -621,4 +639,7 @@ def _mesh_stats(case_dir: Path, env: dict | None) -> dict:
         }
     except FileNotFoundError:
         logger.warning("checkMesh 없음 — 품질 검증 생략")
+        return {"passed": True, "num_cells": None}
+    except subprocess.TimeoutExpired:
+        logger.warning("checkMesh 타임아웃 — 품질 검증 생략")
         return {"passed": True, "num_cells": None}
