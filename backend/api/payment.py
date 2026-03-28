@@ -63,9 +63,16 @@ def _on_payment_succeeded(db: Session, job_id: str, payment_intent_id: str) -> N
     job.status = JobStatus.PAID
     db.commit()
 
-    # Enqueue Celery task
-    run_mesh.apply_async(kwargs={"job_id": str(job_id)})
-    logger.info("Job %s enqueued for mesh generation", job_id)
+    # Enqueue Celery task — if broker is unavailable, mark failed immediately
+    # so the job doesn't get stuck in PAID with no worker picking it up.
+    try:
+        run_mesh.apply_async(kwargs={"job_id": str(job_id)})
+        logger.info("Job %s enqueued for mesh generation", job_id)
+    except Exception as e:
+        logger.error("Failed to enqueue job %s: %s", job_id, e)
+        job.status = JobStatus.FAILED
+        job.error_message = "Failed to enqueue mesh task — please contact support"
+        db.commit()
 
 
 def _on_payment_failed(db: Session, job_id: str) -> None:
