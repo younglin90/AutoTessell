@@ -1421,6 +1421,40 @@ class TestTessellPipelineFacesAbsent:
 # _netgen_pipeline — export fails for all formats → MeshGenerationError
 # ---------------------------------------------------------------------------
 
+class TestOpenfoamEnvBashrcFailure:
+    """_openfoam_env — bashrc source raises or returns empty env."""
+
+    def test_returns_none_when_bash_subprocess_raises(self):
+        """bash -c 'source bashrc && env' raises → exception caught → None 반환."""
+        from mesh.generator import _openfoam_env
+
+        env_without_wm = {k: v for k, v in os.environ.items() if k != "WM_PROJECT_DIR"}
+
+        with patch.dict(os.environ, env_without_wm, clear=True):
+            with patch("mesh.generator.Path.exists", return_value=True):
+                with patch("mesh.generator.subprocess.run",
+                           side_effect=OSError("bash not found")):
+                    env = _openfoam_env()
+
+        assert env is None
+
+    def test_returns_none_when_bash_output_is_empty(self):
+        """bash 실행 성공하지만 환경변수가 비어있으면 None 반환."""
+        from mesh.generator import _openfoam_env
+
+        mock_proc = MagicMock()
+        mock_proc.stdout = ""  # empty output → env dict empty → returns None
+
+        env_without_wm = {k: v for k, v in os.environ.items() if k != "WM_PROJECT_DIR"}
+
+        with patch.dict(os.environ, env_without_wm, clear=True):
+            with patch("mesh.generator.Path.exists", return_value=True):
+                with patch("mesh.generator.subprocess.run", return_value=mock_proc):
+                    env = _openfoam_env()
+
+        assert env is None
+
+
 class TestNetgenPipelineExportFails:
     def test_raises_when_no_export_format_works(self, tmp_path: Path, unit_cube_stl: Path):
         """Gmsh2 Format and Gmsh Format both fail → MeshGenerationError."""

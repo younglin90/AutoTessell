@@ -412,6 +412,41 @@ class TestBinaryBboxNegativeCoords:
         assert pytest.approx(bbox.max_z) == 0.0
 
 
+class TestRemeshSurfaceUniformException:
+    def test_returns_false_when_pyacvd_raises_during_operation(self, tmp_path: Path):
+        """pyacvd가 설치되어 있지만 remeshing 도중 예외를 발생시키면 False를 반환해야 한다."""
+        src = tmp_path / "input.stl"
+        dst = tmp_path / "output.stl"
+        src.write_bytes(_simple_triangle_stl())
+
+        mock_pyacvd = MagicMock()
+        mock_pyvista = MagicMock()
+        mock_pyvista.read.side_effect = RuntimeError("mesh read failed")
+
+        with patch.dict(sys.modules, {"pyacvd": mock_pyacvd, "pyvista": mock_pyvista}):
+            result = remesh_surface_uniform(src, dst)
+
+        assert result is False
+
+
+class TestReconstructSurfacePoissonException:
+    def test_returns_false_when_open3d_raises_during_operation(self, tmp_path: Path):
+        """open3d가 설치되어 있지만 처리 도중 예외를 발생시키면 False를 반환해야 한다."""
+        src = tmp_path / "input.stl"
+        dst = tmp_path / "output.stl"
+        src.write_bytes(_simple_triangle_stl())
+
+        mock_o3d = MagicMock()
+        mock_o3d.io.read_triangle_mesh.side_effect = RuntimeError("o3d failed")
+
+        mock_np = MagicMock()
+
+        with patch.dict(sys.modules, {"open3d": mock_o3d, "numpy": mock_np}):
+            result = reconstruct_surface_poisson(src, dst)
+
+        assert result is False
+
+
 class TestRemeshSurfaceUniformFallback:
     def test_returns_false_when_pyacvd_absent(self, tmp_path: Path):
         src = tmp_path / "input.stl"
