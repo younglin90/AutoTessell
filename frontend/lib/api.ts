@@ -11,6 +11,7 @@ export interface JobStatus {
   status: "PENDING" | "PAID" | "PROCESSING" | "DONE" | "FAILED" | "REFUND_FAILED";
   error_message: string | null;
   download_ready: boolean;
+  amount_cents: number;
 }
 
 export interface DownloadResponse {
@@ -20,12 +21,19 @@ export interface DownloadResponse {
 
 export async function uploadSTL(
   file: File,
-  userId: string
+  userId: string,
+  targetCells: number = 500_000,
+  meshPurpose: "cfd" | "fea" = "cfd",
 ): Promise<UploadResponse> {
   const form = new FormData();
   form.append("file", file);
 
-  const res = await fetch(`${API_BASE}/upload?user_id=${encodeURIComponent(userId)}`, {
+  const params = new URLSearchParams({
+    user_id: userId,
+    target_cells: String(targetCells),
+    mesh_purpose: meshPurpose,
+  });
+  const res = await fetch(`${API_BASE}/upload?${params}`, {
     method: "POST",
     body: form,
   });

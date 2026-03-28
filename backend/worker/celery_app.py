@@ -2,10 +2,13 @@ from celery import Celery
 
 from config import settings
 
+_broker = "memory://" if settings.dev_mode else settings.redis_url
+_backend = "cache+memory://" if settings.dev_mode else settings.redis_url
+
 celery_app = Celery(
     "tessell",
-    broker=settings.redis_url,
-    backend=settings.redis_url,
+    broker=_broker,
+    backend=_backend,
     include=["worker.tasks"],
 )
 
@@ -20,4 +23,7 @@ celery_app.conf.update(
     task_time_limit=settings.job_timeout_seconds,
     task_soft_time_limit=settings.job_soft_timeout_seconds,
     worker_concurrency=settings.worker_concurrency,
+    # DEV_MODE: run tasks synchronously in-process (no Redis broker needed)
+    task_always_eager=settings.dev_mode,
+    task_eager_propagates=settings.dev_mode,
 )

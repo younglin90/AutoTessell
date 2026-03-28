@@ -1,18 +1,20 @@
 """
 POST /api/v1/upload
   - Validates STL (size, structure)
-  - Uploads to S3
-  - Creates Job record (PENDING)
-  - Returns job_id + Stripe PaymentIntent client_secret
+  - DEV_MODE: stores locally, auto-enqueues mesh task, skips Stripe
+  - PROD: uploads to S3, creates Stripe PaymentIntent
 """
 
+import logging
 import uuid
+from pathlib import Path
 
-import boto3
 import stripe
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from config import settings
 from db import Job, JobStatus, get_db
@@ -29,10 +31,22 @@ class UploadResponse(BaseModel):
     amount_cents: int
 
 
+def _run_mesh_background(job_id: str) -> None:
+    """Run mesh task in background for dev mode (errors are logged, not raised)."""
+    from worker.tasks import run_mesh
+    try:
+        run_mesh.apply(kwargs={"job_id": job_id})
+    except Exception as e:
+        logger.error("Dev mesh task failed for job %s: %s", job_id, e)
+
+
 @router.post("/upload", response_model=UploadResponse)
 async def upload_stl(
     file: UploadFile,
-    user_id: str,         # In production: extract from JWT/session
+    background_tasks: BackgroundTasks,
+    user_id: str,
+    target_cells: int = 500_000,
+    mesh_purpose: str = "cfd",      # "cfd" | "fea"
     db: Session = Depends(get_db),
 ):
     # 1. Read and validate STL before charging the user
@@ -57,9 +71,38 @@ async def upload_stl(
             detail=f"You already have {settings.max_jobs_per_user} active jobs. Wait for them to finish.",
         )
 
-    # 3. Upload STL to S3
     job_id = str(uuid.uuid4())
-    stl_key = f"stl/{job_id}/{file.filename or 'input.stl'}"
+    filename = file.filename or "input.stl"
+
+    if settings.dev_mode:
+        # Store locally, skip S3 and Stripe
+        stl_dir = Path(settings.dev_storage_path) / "stl" / job_id
+        stl_dir.mkdir(parents=True, exist_ok=True)
+        stl_path = stl_dir / filename
+        stl_path.write_bytes(content)
+        stl_key = str(stl_path)
+
+        job = Job(
+            id=job_id,
+            user_id=user_id,
+            status=JobStatus.PAID,
+            stl_s3_key=stl_key,
+            stl_filename=filename,
+            stripe_payment_intent_id=None,
+            amount_cents=0,
+            target_cells=target_cells,
+            mesh_purpose=mesh_purpose,
+        )
+        db.add(job)
+        db.commit()
+
+        # Run in background after response is sent
+        background_tasks.add_task(_run_mesh_background, job_id)
+
+        return UploadResponse(job_id=job_id, client_secret="dev_mode", amount_cents=0)
+
+    # 3. Upload STL to S3
+    stl_key = f"stl/{job_id}/{filename}"
     _upload_to_s3(content, stl_key)
 
     # 4. Create Stripe PaymentIntent
@@ -75,9 +118,11 @@ async def upload_stl(
         user_id=user_id,
         status=JobStatus.PENDING,
         stl_s3_key=stl_key,
-        stl_filename=file.filename,
+        stl_filename=filename,
         stripe_payment_intent_id=intent.id,
         amount_cents=settings.mesh_price_cents,
+        target_cells=target_cells,
+        mesh_purpose=mesh_purpose,
     )
     db.add(job)
     db.commit()
@@ -90,6 +135,7 @@ async def upload_stl(
 
 
 def _upload_to_s3(content: bytes, key: str) -> None:
+    import boto3
     s3 = boto3.client(
         "s3",
         region_name=settings.s3_region,

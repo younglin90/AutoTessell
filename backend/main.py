@@ -1,7 +1,10 @@
 """FastAPI application entry point."""
 
-from fastapi import FastAPI
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from api.download import router as download_router
 from api.jobs import router as jobs_router
@@ -35,3 +38,13 @@ app.include_router(download_router, prefix="/api/v1")
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+if settings.dev_mode:
+    @app.get("/dev/files/{path:path}")
+    def serve_dev_file(path: str):
+        """Serve local mesh files in dev mode (replaces S3 presigned URLs)."""
+        file_path = Path(settings.dev_storage_path) / path
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="File not found")
+        return FileResponse(str(file_path), filename=file_path.name)

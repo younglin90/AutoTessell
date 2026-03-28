@@ -1,8 +1,9 @@
 """
-GET /api/v1/jobs/{job_id}/download  — Signed S3 URL for mesh ZIP
+GET /api/v1/jobs/{job_id}/download  — Signed S3 URL (prod) or local file URL (dev)
 """
 
-import boto3
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -32,11 +33,16 @@ def get_download_url(
     if not job.mesh_s3_key:
         raise HTTPException(status_code=500, detail="Mesh key missing — contact support")
 
-    url = _generate_presigned_url(job.mesh_s3_key)
+    if settings.dev_mode:
+        url = f"http://localhost:8000/dev/files/{job.mesh_s3_key}"
+    else:
+        url = _generate_presigned_url(job.mesh_s3_key)
+
     return DownloadResponse(url=url)
 
 
 def _generate_presigned_url(s3_key: str, expires: int = 3600) -> str:
+    import boto3
     s3 = boto3.client(
         "s3",
         region_name=settings.s3_region,

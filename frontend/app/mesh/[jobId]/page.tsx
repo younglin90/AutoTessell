@@ -97,7 +97,7 @@ export default function JobPage() {
         {status.error_message && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-700">
             {status.error_message}
-            {status.status === "FAILED" && (
+            {status.status === "FAILED" && status.amount_cents > 0 && (
               <p className="mt-1 text-red-500">A full refund has been issued to your card.</p>
             )}
             {status.status === "REFUND_FAILED" && (

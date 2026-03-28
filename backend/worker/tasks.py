@@ -56,13 +56,26 @@ def run_mesh(self, job_id: str) -> dict:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = Path(tmpdir)
 
-            # 1. Download STL
+            mesh_s3_key = f"meshes/{job_id}/mesh.zip"
+
             stl_path = tmpdir / "input.stl"
             _download_s3(job.stl_s3_key, stl_path)
-
-            # 2. Generate mesh (snappyHexMesh → fallback pytetwild+gmshToFoam)
             mesh_dir = tmpdir / "case"
-            stats = generate_mesh(stl_path, mesh_dir)  # MeshGenerationError는 RuntimeError 서브클래스
+
+            if settings.dev_mode:
+                from mesh.dev_pipeline import generate_mesh_dev
+                stats = generate_mesh_dev(
+                    stl_path, mesh_dir,
+                    target_cells=job.target_cells or 500_000,
+                    mesh_purpose=job.mesh_purpose or "cfd",
+                )
+            else:
+                # 2. Generate mesh (snappyHexMesh → fallback pytetwild+gmshToFoam)
+                stats = generate_mesh(
+                    stl_path, mesh_dir,
+                    target_cells=job.target_cells or 500_000,
+                    mesh_purpose=job.mesh_purpose or "cfd",
+                )  # MeshGenerationError는 RuntimeError 서브클래스
 
             if not stats.get("passed", True):
                 raise RuntimeError(
@@ -73,7 +86,6 @@ def run_mesh(self, job_id: str) -> dict:
             # 3. Zip and upload
             zip_path = tmpdir / "mesh.zip"
             _zip_mesh(mesh_dir, zip_path)
-            mesh_s3_key = f"meshes/{job_id}/mesh.zip"
             _upload_s3(zip_path, mesh_s3_key)
 
             # 4. Mark done
@@ -117,11 +129,21 @@ def _s3_client():
 
 
 def _download_s3(s3_key: str, dest: Path) -> None:
-    _s3_client().download_file(settings.s3_bucket, s3_key, str(dest))
+    if settings.dev_mode:
+        import shutil
+        shutil.copy2(s3_key, dest)
+    else:
+        _s3_client().download_file(settings.s3_bucket, s3_key, str(dest))
 
 
 def _upload_s3(src: Path, s3_key: str) -> None:
-    _s3_client().upload_file(str(src), settings.s3_bucket, s3_key)
+    if settings.dev_mode:
+        import shutil
+        dest = Path(settings.dev_storage_path) / s3_key
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+    else:
+        _s3_client().upload_file(str(src), settings.s3_bucket, s3_key)
 
 
 

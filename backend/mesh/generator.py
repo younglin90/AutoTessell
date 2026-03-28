@@ -76,6 +76,7 @@ def generate_mesh(
     stl_path: Path,
     case_dir: Path,
     target_cells: int = 500_000,
+    mesh_purpose: str = "cfd",
 ) -> dict:
     """
     STL → OpenFOAM polyMesh 생성.
@@ -88,13 +89,16 @@ def generate_mesh(
     """
     case_dir.mkdir(parents=True, exist_ok=True)
     bbox = get_bbox(stl_path)
-    logger.info("STL bbox: %s", bbox)
+    logger.info("STL bbox: %s, purpose: %s, target_cells: %d", bbox, mesh_purpose, target_cells)
 
     # 공통 전처리: pyACVD 균일 remeshing (optional)
     clean_stl = _maybe_remesh_surface(stl_path, case_dir, bbox)
 
     errors: list[str] = []
     tessell_skipped = False
+
+    # FEA: 사면체 메쉬 목적 — tessell/netgen/pytetwild만 시도, snappyHexMesh 건너뜀
+    skip_snappy = (mesh_purpose == "fea")
 
     # --- Tier 0: tessell_mesh / geogram ---
     try:
@@ -119,14 +123,17 @@ def generate_mesh(
         errors.append(f"netgen: {e}")
         _reset_case(case_dir)
 
-    # --- Tier 1: snappyHexMesh (수리된 STL 사용 — 수밀성이 castellated mesh 품질에 직결) ---
-    try:
-        result = _snappy_pipeline(clean_stl, case_dir, bbox, target_cells)
-        return {"tier": "snappy", **result}
-    except Exception as e:
-        logger.warning("Tier 1 (snappy) 실패: %s", e)
-        errors.append(f"snappy: {e}")
-        _reset_case(case_dir)
+    # --- Tier 1: snappyHexMesh (CFD 전용 — FEA 목적이면 건너뜀) ---
+    if skip_snappy:
+        logger.info("mesh_purpose=fea — snappyHexMesh 건너뜀")
+    else:
+        try:
+            result = _snappy_pipeline(clean_stl, case_dir, bbox, target_cells)
+            return {"tier": "snappy", **result}
+        except Exception as e:
+            logger.warning("Tier 1 (snappy) 실패: %s", e)
+            errors.append(f"snappy: {e}")
+            _reset_case(case_dir)
 
     # --- Tier 2: pytetwild + MMG 후처리 ---
     try:

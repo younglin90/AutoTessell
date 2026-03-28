@@ -8,14 +8,15 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 from sqlalchemy import (
-    Column, DateTime, Enum, ForeignKey, Integer, String, Text, create_engine,
+    Column, DateTime, Enum, Integer, String, Text, create_engine,
 )
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from config import settings
 
-engine = create_engine(settings.database_url)
+# SQLite needs check_same_thread=False; ignored for other DBs
+connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
+engine = create_engine(settings.database_url, connect_args=connect_args)
 SessionLocal = sessionmaker(bind=engine)
 
 
@@ -35,7 +36,7 @@ class JobStatus(str, enum.Enum):
 class Job(Base):
     __tablename__ = "jobs"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String(255), nullable=False, index=True)  # Stripe customer or session id
     status = Column(Enum(JobStatus), nullable=False, default=JobStatus.PENDING)
 
@@ -46,6 +47,10 @@ class Job(Base):
     # Stripe
     stripe_payment_intent_id = Column(String(255), nullable=True, unique=True)
     amount_cents = Column(Integer, nullable=True)
+
+    # Mesh parameters
+    target_cells = Column(Integer, nullable=False, default=500_000)
+    mesh_purpose = Column(String(10), nullable=False, default="cfd")  # "cfd" | "fea"
 
     # Meta
     stl_filename = Column(String(255), nullable=True)
