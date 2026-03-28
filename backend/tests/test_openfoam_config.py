@@ -134,6 +134,26 @@ class TestBuildDomain:
         assert small.ny == large.ny
         assert small.nz == large.nz
 
+    def test_location_y_inside_domain(self):
+        """locationInMesh y must be within [ymin, ymax]."""
+        L = 2.0
+        d = build_domain(BBox(0, 0, 0, L, L, L), "shape.stl")
+        assert d.ymin < d.location_y < d.ymax
+
+    def test_location_z_inside_domain(self):
+        """locationInMesh z must be within [zmin, zmax]."""
+        L = 2.0
+        d = build_domain(BBox(0, 0, 0, L, L, L), "shape.stl")
+        assert d.zmin < d.location_z < d.zmax
+
+    def test_location_y_offset_from_center(self):
+        """location_y = cy + 0.1*L (small offset ensures point is off the symmetry plane)."""
+        L = 4.0
+        bbox = BBox(0, 0, 0, L, L, L)
+        d = build_domain(bbox, "shape.stl")
+        cy = bbox.center_y
+        assert d.location_y == pytest.approx(cy + 0.1 * L)
+
 
 # ---------------------------------------------------------------------------
 # block_mesh_dict
