@@ -197,6 +197,7 @@ export default function NewMeshPage() {
         targetCells,
         meshPurpose,
         createdAt: new Date().toISOString(),
+        hasProParams: proMode && Object.keys(buildMeshParams() ?? {}).length > 0,
       });
       router.push(`/mesh/${res.job_id}`);
     } catch (e: unknown) {
@@ -328,6 +329,13 @@ export default function NewMeshPage() {
 
           {proMode && (
             <div className="flex flex-col gap-3">
+              <button
+                type="button"
+                onClick={() => setPro(DEFAULT_PRO)}
+                className="self-end text-xs text-gray-400 hover:text-gray-600 underline"
+              >
+                Reset to defaults
+              </button>
 
               {/* pytetwild */}
               <ProSection

@@ -12,6 +12,7 @@ export interface StoredJob {
   targetCells: number;
   meshPurpose: string;
   createdAt: string;
+  hasProParams?: boolean;
 }
 
 export function saveJob(job: StoredJob): void {

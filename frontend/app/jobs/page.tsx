@@ -37,7 +37,12 @@ export default function JobsPage() {
                 className="bg-white border rounded-xl p-4 hover:border-blue-300 transition-colors flex items-center justify-between gap-4"
               >
                 <div className="flex flex-col gap-1 min-w-0">
-                  <span className="font-medium text-gray-800 truncate">{job.filename}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-gray-800 truncate">{job.filename}</span>
+                    {job.hasProParams && (
+                      <span className="inline-block px-1.5 py-0.5 bg-purple-100 text-purple-700 text-xs font-medium rounded shrink-0">Pro</span>
+                    )}
+                  </div>
                   <span className="text-xs text-gray-400">
                     {job.targetCells.toLocaleString()} cells · {job.meshPurpose.toUpperCase()} · {new Date(job.createdAt).toLocaleString()}
                   </span>
