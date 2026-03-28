@@ -12,7 +12,6 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-import boto3
 import stripe
 from celery import Task
 from celery.exceptions import SoftTimeLimitExceeded
@@ -108,6 +107,7 @@ def run_mesh(self, job_id: str) -> dict:
 # ---------------------------------------------------------------------------
 
 def _s3_client():
+    import boto3  # lazy import — not needed in test environments without AWS deps
     return boto3.client(
         "s3",
         region_name=settings.s3_region,
