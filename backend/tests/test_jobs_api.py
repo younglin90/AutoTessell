@@ -1,8 +1,10 @@
 """
 Unit tests for api/jobs.py pure functions.
 
-Focus: _delete_job_files S3 prod-mode path — never exercised by integration
-tests (which always run with dev_mode=True).
+Focus:
+  _delete_job_files S3 prod-mode path  — never exercised by integration tests
+                                          (which always run with dev_mode=True)
+  _delete_job_files dev-mode path      — local shutil.rmtree removal
 """
 
 import sys
@@ -95,3 +97,54 @@ class TestDeleteJobFilesProdMode:
         job = _make_job("stl/j/file.stl", "meshes/j/mesh.zip")
         # Should not raise despite S3 error
         self._call_prod(job, mock_s3)
+
+
+# ---------------------------------------------------------------------------
+# dev-mode path: local shutil.rmtree removal
+# ---------------------------------------------------------------------------
+
+class TestDeleteJobFilesDevMode:
+    """_delete_job_files dev-mode path — removes stl/ and meshes/ subdirs locally."""
+
+    def _call_dev(self, job, storage_root, dirs_to_create=()):
+        for subdir in dirs_to_create:
+            d = storage_root / subdir / job.id
+            d.mkdir(parents=True, exist_ok=True)
+            (d / "dummy.file").write_text("data")
+
+        mock_settings = MagicMock()
+        mock_settings.dev_mode = True
+        mock_settings.dev_storage_path = str(storage_root)
+
+        with patch("api.jobs.settings", mock_settings):
+            _delete_job_files(job)
+
+    def test_stl_dir_removed_when_exists(self, tmp_path):
+        """stl/{job_id}/ must be removed when it exists."""
+        job = _make_job()
+        self._call_dev(job, tmp_path, dirs_to_create=["stl"])
+        assert not (tmp_path / "stl" / job.id).exists()
+
+    def test_meshes_dir_removed_when_exists(self, tmp_path):
+        """meshes/{job_id}/ must be removed when it exists."""
+        job = _make_job()
+        self._call_dev(job, tmp_path, dirs_to_create=["meshes"])
+        assert not (tmp_path / "meshes" / job.id).exists()
+
+    def test_nonexistent_dirs_skipped_silently(self, tmp_path):
+        """If neither stl nor meshes dir exists, must complete without raising."""
+        job = _make_job()
+        self._call_dev(job, tmp_path)   # no dirs created
+
+    def test_rmtree_failure_is_swallowed(self, tmp_path):
+        """shutil.rmtree errors must be swallowed — best-effort cleanup."""
+        job = _make_job()
+        (tmp_path / "stl" / job.id).mkdir(parents=True)
+
+        mock_settings = MagicMock()
+        mock_settings.dev_mode = True
+        mock_settings.dev_storage_path = str(tmp_path)
+
+        with patch("api.jobs.settings", mock_settings), \
+             patch("api.jobs.shutil.rmtree", side_effect=PermissionError("locked")):
+            _delete_job_files(job)   # must not raise
