@@ -50,6 +50,15 @@ async def upload_stl(
     mesh_params: str = "",          # JSON-encoded MeshParams (pro mode, optional)
     db: Session = Depends(get_db),
 ):
+    # 0. Validate pro params JSON if provided
+    if mesh_params:
+        try:
+            from mesh.params import MeshParams
+            import json as _json
+            MeshParams.from_json(mesh_params).validated()  # raises on bad JSON
+        except (ValueError, TypeError, _json.JSONDecodeError) as e:
+            raise HTTPException(status_code=400, detail=f"Invalid mesh_params: {e}")
+
     # 1. Read and validate STL before charging the user
     content = await file.read()
     try:

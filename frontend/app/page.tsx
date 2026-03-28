@@ -6,7 +6,7 @@ export default function Home() {
       <div className="text-center max-w-xl">
         <h1 className="text-4xl font-bold text-gray-900 mb-3">auto-tessell</h1>
         <p className="text-lg text-gray-600">
-          Upload an STL file and get a CFD-ready OpenFOAM mesh in minutes.
+          Upload an STL file and get a CFD or FEA-ready OpenFOAM mesh in minutes.
         </p>
       </div>
 
@@ -32,11 +32,11 @@ export default function Home() {
         </div>
         <div>
           <div className="font-semibold text-gray-800 mb-1">Auto-Mesh</div>
-          <div>SDF + Octree → OpenFOAM polyMesh</div>
+          <div>5-tier pipeline → OpenFOAM polyMesh</div>
         </div>
         <div>
           <div className="font-semibold text-gray-800 mb-1">Download</div>
-          <div>checkMesh-validated ZIP in &lt; 10 min</div>
+          <div>polyMesh ZIP, checkMesh-validated in prod</div>
         </div>
       </div>
     </main>

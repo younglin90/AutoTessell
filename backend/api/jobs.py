@@ -17,6 +17,11 @@ class JobStatusResponse(BaseModel):
     error_message: str | None = None
     download_ready: bool = False
     amount_cents: int = 0
+    # Input parameters (echo back for display)
+    target_cells: int = 500_000
+    mesh_purpose: str = "cfd"
+    mesh_params_json: str | None = None
+    # Result stats (filled on DONE)
     result_num_cells: int | None = None
     result_tier: str | None = None
 
@@ -37,6 +42,9 @@ def get_job_status(
         error_message=job.error_message,
         download_ready=job.status == JobStatus.DONE,
         amount_cents=job.amount_cents or 0,
+        target_cells=job.target_cells or 500_000,
+        mesh_purpose=job.mesh_purpose or "cfd",
+        mesh_params_json=job.mesh_params_json,
         result_num_cells=job.result_num_cells,
         result_tier=job.result_tier,
     )
