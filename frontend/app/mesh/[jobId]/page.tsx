@@ -10,6 +10,15 @@ function getUserId(): string {
   return localStorage.getItem("tessell_user_id") ?? "anon";
 }
 
+/** Returns a human-readable relative time string (e.g. "3 min ago"). */
+function relativeTime(isoString: string): string {
+  const diff = Math.floor((Date.now() - new Date(isoString).getTime()) / 1000);
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  return `${Math.floor(diff / 86400)}d ago`;
+}
+
 /** Returns a rough time estimate string based on target cell count. */
 function estimateTime(cells: number): string {
   if (cells <= 100_000) return "~30 sec";
@@ -141,7 +150,12 @@ export default function JobPage() {
           <h1 className="text-xl font-semibold text-gray-800">
             {status.stl_filename ?? "Mesh Job"}
           </h1>
-          <p className="text-xs text-gray-400 mt-0.5 font-mono">{jobId.slice(0, 8)}…</p>
+          <p className="text-xs text-gray-400 mt-0.5 font-mono">
+            {jobId.slice(0, 8)}…
+            {status.created_at && (
+              <span className="ml-2">· submitted {relativeTime(status.created_at)}</span>
+            )}
+          </p>
         </div>
 
         {/* Status indicator */}

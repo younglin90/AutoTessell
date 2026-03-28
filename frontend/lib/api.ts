@@ -18,6 +18,7 @@ export interface JobStatus {
   mesh_params_json: string | null;
   result_num_cells: number | null;
   result_tier: string | null;
+  created_at: string | null;
 }
 
 export interface DownloadResponse {

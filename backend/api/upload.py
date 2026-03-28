@@ -92,6 +92,7 @@ async def upload_stl(
         raise HTTPException(
             status_code=429,
             detail=f"You already have {settings.max_jobs_per_user} active jobs. Wait for them to finish.",
+            headers={"Retry-After": "300"},
         )
 
     job_id = str(uuid.uuid4())

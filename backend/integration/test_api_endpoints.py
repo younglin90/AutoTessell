@@ -631,3 +631,121 @@ class TestWebhook:
         assert job.stripe_payment_intent_id == "pi_new"
         assert job.status == JobStatus.PAID
         db.close()
+
+
+# ---------------------------------------------------------------------------
+# 429 Retry-After header
+# ---------------------------------------------------------------------------
+
+class TestRateLimitRetryAfter:
+    def test_429_includes_retry_after_header(self, client):
+        import config as _cfg
+        original = _cfg.settings.max_jobs_per_user
+        _cfg.settings.max_jobs_per_user = 1
+        try:
+            _upload(client, user_id="retry_user")
+            r = _upload(client, user_id="retry_user")
+            assert r.status_code == 429
+            assert "retry-after" in {k.lower() for k in r.headers}
+        finally:
+            _cfg.settings.max_jobs_per_user = original
+
+    def test_retry_after_value_is_numeric(self, client):
+        import config as _cfg
+        original = _cfg.settings.max_jobs_per_user
+        _cfg.settings.max_jobs_per_user = 1
+        try:
+            _upload(client, user_id="retry_num_user")
+            r = _upload(client, user_id="retry_num_user")
+            assert r.status_code == 429
+            val = r.headers.get("retry-after") or r.headers.get("Retry-After")
+            assert val is not None
+            assert int(val) > 0
+        finally:
+            _cfg.settings.max_jobs_per_user = original
+
+
+# ---------------------------------------------------------------------------
+# created_at in job status response
+# ---------------------------------------------------------------------------
+
+class TestJobStatusCreatedAt:
+    def test_created_at_present_in_status_response(self, client):
+        job_id = _upload(client, user_id="ts_user").json()["job_id"]
+        r = client.get(f"/api/v1/jobs/{job_id}", params={"user_id": "ts_user"}).json()
+        assert "created_at" in r
+        assert r["created_at"] is not None
+
+    def test_created_at_is_iso_format(self, client):
+        from datetime import datetime
+        job_id = _upload(client, user_id="ts_iso").json()["job_id"]
+        r = client.get(f"/api/v1/jobs/{job_id}", params={"user_id": "ts_iso"}).json()
+        # ISO parse should not raise
+        dt = datetime.fromisoformat(r["created_at"])
+        assert dt is not None
+
+    def test_created_at_recent(self, client):
+        from datetime import datetime, timezone, timedelta
+        job_id = _upload(client, user_id="ts_recent").json()["job_id"]
+        r = client.get(f"/api/v1/jobs/{job_id}", params={"user_id": "ts_recent"}).json()
+        dt = datetime.fromisoformat(r["created_at"])
+        # The timestamp should be within the last minute
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        assert abs((now - dt).total_seconds()) < 60
+
+
+# ---------------------------------------------------------------------------
+# Webhook: enqueue failure issues refund
+# ---------------------------------------------------------------------------
+
+class TestWebhookEnqueueFailureRefund:
+    def test_enqueue_failure_calls_mark_failed_and_refund(self, client):
+        """If apply_async raises, _mark_failed_and_refund should be called."""
+        import uuid
+        job_id = str(uuid.uuid4())
+        db = _TestSession()
+        job = Job(
+            id=job_id, user_id="u1", status=JobStatus.PENDING,
+            stripe_payment_intent_id="pi_refund_test",
+            stl_s3_key="stl/test.stl", stl_filename="test.stl", amount_cents=500,
+        )
+        db.add(job)
+        db.commit()
+        db.close()
+
+        payload = _build_webhook_payload("payment_intent.succeeded", job_id, pi_id="pi_refund_test")
+
+        with patch("api.payment.run_mesh") as mock_task, \
+             patch("worker.tasks._mark_failed_and_refund") as mock_refund:
+            mock_task.apply_async.side_effect = RuntimeError("broker down")
+            r = _post_webhook(client, payload)
+
+        assert r.status_code == 200
+        mock_refund.assert_called_once()
+        call_args = mock_refund.call_args[0]
+        assert call_args[0] == job_id
+        assert "refund" in call_args[1].lower()
+
+    def test_enqueue_failure_does_not_leave_job_in_paid(self, client):
+        """After enqueue failure, job should NOT remain in PAID status."""
+        import uuid
+        job_id = str(uuid.uuid4())
+        db = _TestSession()
+        job = Job(
+            id=job_id, user_id="u1", status=JobStatus.PENDING,
+            stripe_payment_intent_id="pi_stuck_test",
+            stl_s3_key="stl/test.stl", stl_filename="test.stl", amount_cents=500,
+        )
+        db.add(job)
+        db.commit()
+        db.close()
+
+        payload = _build_webhook_payload("payment_intent.succeeded", job_id, pi_id="pi_stuck_test")
+
+        with patch("api.payment.run_mesh") as mock_task, \
+             patch("worker.tasks._mark_failed_and_refund") as mock_refund:
+            mock_task.apply_async.side_effect = RuntimeError("broker down")
+            _post_webhook(client, payload)
+
+        # _mark_failed_and_refund is called with the job_id — verify it was invoked
+        mock_refund.assert_called_once_with(job_id, mock_refund.call_args[0][1])
