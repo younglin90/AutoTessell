@@ -462,3 +462,127 @@ class TestGetJobStatusRouteGuards:
         with pytest.raises(HTTPException) as exc_info:
             get_job_status(job_id="missing-id", user_id="u1", db=mock_db)
         assert "not found" in exc_info.value.detail.lower()
+
+
+# ---------------------------------------------------------------------------
+# get_job_status — updated_at non-None path
+# ---------------------------------------------------------------------------
+
+class TestGetJobStatusUpdatedAt:
+    """get_job_status: updated_at non-None branch produces ISO string with Z."""
+
+    def _make_job(self, **kwargs):
+        from db import JobStatus
+        from datetime import datetime
+        job = MagicMock()
+        job.id = "job-ts-test"
+        job.status = JobStatus.DONE
+        job.error_message = None
+        job.amount_cents = 0
+        job.stl_filename = "model.stl"
+        job.target_cells = 500_000
+        job.mesh_purpose = "cfd"
+        job.mesh_params_json = None
+        job.result_num_cells = None
+        job.result_tier = None
+        job.created_at = kwargs.get("created_at", datetime(2026, 1, 1, 12, 0, 0))
+        job.updated_at = kwargs.get("updated_at", datetime(2026, 1, 1, 13, 0, 0))
+        return job
+
+    def _call(self, job):
+        from api.jobs import get_job_status
+        mock_db = MagicMock()
+        mock_db.query.return_value.filter.return_value.first.return_value = job
+        return get_job_status(job_id=str(job.id), user_id="u1", db=mock_db)
+
+    def test_updated_at_set_returns_iso_with_z(self):
+        """job.updated_at set → ISO string with 'Z' suffix."""
+        from datetime import datetime
+        job = self._make_job(updated_at=datetime(2026, 3, 28, 10, 30, 0))
+        result = self._call(job)
+        assert result.updated_at == "2026-03-28T10:30:00Z"
+
+    def test_updated_at_differs_from_created_at(self):
+        """updated_at must reflect the update timestamp, not the create timestamp."""
+        from datetime import datetime
+        job = self._make_job(
+            created_at=datetime(2026, 3, 28, 8, 0, 0),
+            updated_at=datetime(2026, 3, 28, 9, 0, 0),
+        )
+        result = self._call(job)
+        assert result.created_at != result.updated_at
+        assert result.updated_at == "2026-03-28T09:00:00Z"
+
+
+# ---------------------------------------------------------------------------
+# _zip_mesh — directory entries excluded from zip
+# ---------------------------------------------------------------------------
+
+class TestZipMeshDirectoryExclusion:
+    """_zip_mesh must not add directory entries to the zip — only files."""
+
+    def test_directories_not_added_to_zip(self, tmp_path):
+        """rglob('*') yields dirs too; if f.is_file() must exclude them."""
+        import zipfile as _zipfile
+        from worker.tasks import _zip_mesh
+
+        mesh_dir = tmp_path / "case"
+        subdir = mesh_dir / "constant" / "polyMesh"
+        subdir.mkdir(parents=True)
+        (subdir / "points").write_text("point data")
+
+        zip_path = tmp_path / "mesh.zip"
+        _zip_mesh(mesh_dir, zip_path)
+
+        with _zipfile.ZipFile(zip_path) as zf:
+            names = zf.namelist()
+
+        # File should be present; directory entries must NOT appear
+        assert "constant/polyMesh/points" in names
+        assert "constant/" not in names
+        assert "constant/polyMesh/" not in names
+
+    def test_nested_subdirectory_files_still_included(self, tmp_path):
+        """Files nested under excluded directories must still be zipped."""
+        import zipfile as _zipfile
+        from worker.tasks import _zip_mesh
+
+        mesh_dir = tmp_path / "case"
+        (mesh_dir / "a" / "b" / "c").mkdir(parents=True)
+        (mesh_dir / "a" / "b" / "c" / "data.txt").write_text("abc")
+        (mesh_dir / "a" / "file.txt").write_text("top")
+
+        zip_path = tmp_path / "out.zip"
+        _zip_mesh(mesh_dir, zip_path)
+
+        with _zipfile.ZipFile(zip_path) as zf:
+            names = set(zf.namelist())
+
+        assert "a/b/c/data.txt" in names
+        assert "a/file.txt" in names
+
+
+# ---------------------------------------------------------------------------
+# list_jobs — limit=0 boundary
+# ---------------------------------------------------------------------------
+
+class TestListJobsLimitZero:
+    """list_jobs: limit=0 must be preserved (query returns empty, no crash)."""
+
+    def test_limit_zero_passes_zero_to_query(self):
+        """limit=0 → max(0, min(0, 100)) = 0; .limit(0) must be called."""
+        mock_query = MagicMock()
+        mock_query.filter.return_value = mock_query
+        mock_query.order_by.return_value = mock_query
+        mock_query.all.return_value = []
+        mock_query.limit.return_value = mock_query
+
+        mock_db = MagicMock()
+        mock_db.query.return_value = mock_query
+
+        from api.jobs import list_jobs
+        result = list_jobs(user_id="u1", limit=0, db=mock_db)
+
+        limit_arg = mock_query.limit.call_args[0][0]
+        assert limit_arg == 0
+        assert result == []
