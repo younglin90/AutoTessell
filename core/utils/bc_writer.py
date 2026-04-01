@@ -75,8 +75,45 @@ def write_boundary_conditions(
                  _build_nut_bc(patches), "0")
     files_written.append("0/nut")
 
+    # constant/ 설정 파일
+    _write_transport_properties(case_dir)
+    files_written.append("constant/transportProperties")
+
+    _write_turbulence_properties(case_dir, turbulence_model)
+    files_written.append("constant/turbulenceProperties")
+
     log.info("boundary_conditions_written", files=files_written)
     return files_written
+
+
+def _write_transport_properties(case_dir: Path) -> None:
+    """constant/transportProperties 파일 생성."""
+    path = case_dir / "constant" / "transportProperties"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    header = _FOAM_HEADER.format(foam_class="dictionary", object_name="transportProperties")
+    path.write_text(
+        header
+        + "transportModel  Newtonian;\n\n"
+        + "nu              [0 2 -1 0 0 0 0] 1e-06;\n\n"
+        + "// ************************************************************************* //\n"
+    )
+
+
+def _write_turbulence_properties(case_dir: Path, model: str = "kOmegaSST") -> None:
+    """constant/turbulenceProperties 파일 생성."""
+    path = case_dir / "constant" / "turbulenceProperties"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    header = _FOAM_HEADER.format(foam_class="dictionary", object_name="turbulenceProperties")
+    path.write_text(
+        header
+        + "simulationType  RAS;\n\n"
+        + "RAS\n{\n"
+        + f"    RASModel        {model};\n"
+        + "    turbulence      on;\n"
+        + "    printCoeffs     on;\n"
+        + "}\n\n"
+        + "// ************************************************************************* //\n"
+    )
 
 
 def _write_field(
