@@ -725,15 +725,15 @@ class TestTierOrderByQualityLevel:
         assert order[2] == "tier2_tetwild"
 
     def test_fine_tier_order(self) -> None:
-        """fine → snappy 우선, cfMesh, Netgen, TetWild 순."""
+        """fine → cfMesh 우선(대용량 안전), snappy, Netgen, TetWild 순."""
         from core.generator.pipeline import MeshGenerator
 
         gen = MeshGenerator()
         strategy = _make_strategy_with_quality(QualityLevel.FINE)
         order = gen._get_tier_order(strategy)
 
-        assert order[0] == "tier1_snappy", "Fine: snappy가 첫 번째여야 합니다"
-        assert order[1] == "tier15_cfmesh"
+        assert order[0] == "tier15_cfmesh", "Fine: cfMesh가 첫 번째(blockMesh int32 안전)"
+        assert order[1] == "tier1_snappy"
         assert order[2] == "tier05_netgen"
         assert order[3] == "tier2_tetwild"
 
@@ -886,10 +886,10 @@ class TestTierOrderByQualityLevel:
 
         assert called_tiers[0] == "tier2_tetwild"
 
-    def test_fine_pipeline_starts_with_snappy(
+    def test_fine_pipeline_starts_with_cfmesh(
         self, tmp_path: Path, dummy_stl: Path
     ) -> None:
-        """Fine pipeline → snappy가 첫 번째로 실행되는지 확인."""
+        """Fine pipeline → cfMesh가 첫 번째 (blockMesh int32 안전)."""
         from core.generator.pipeline import MeshGenerator
 
         gen = MeshGenerator()
@@ -904,7 +904,7 @@ class TestTierOrderByQualityLevel:
         with patch("core.generator.pipeline._run_tier", side_effect=mock_run_tier):
             gen.run(strategy, dummy_stl, tmp_path)
 
-        assert called_tiers[0] == "tier1_snappy"
+        assert called_tiers[0] == "tier15_cfmesh"
 
 
 # ---------------------------------------------------------------------------

@@ -23,10 +23,13 @@ _DOMAIN_FACTORS: dict[str, tuple[float, float, float]] = {
 }
 
 # 최대 배경 셀 수 제한 (메모리 보호)
+# Note: blockMesh (snappy)는 OpenFOAM label=32일 때 ~2B 셀 한계.
+# cfMesh는 자체 배경 메쉬라 이 제한 없음.
+# Python 코드(PolyMeshWriter, NativeMeshChecker)는 int64로 제한 없음.
 _MAX_BG_CELLS: dict[str, int] = {
     "draft": 500_000,
     "standard": 5_000_000,
-    "fine": 50_000_000,
+    "fine": 200_000_000,  # 2억 (cfMesh 사용 시 가능, snappy는 label=64 필요)
 }
 
 # Legacy defaults (backward compatibility)

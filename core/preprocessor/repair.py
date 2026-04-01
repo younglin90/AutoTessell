@@ -167,7 +167,7 @@ class SurfaceRepairer:
         try:
             meshfix = pymeshfix.MeshFix(
                 np.array(mesh.vertices, dtype=np.float64),
-                np.array(mesh.faces, dtype=np.int32),
+                np.array(mesh.faces, dtype=np.int64),
             )
             meshfix.repair()
             repaired = trimesh.Trimesh(

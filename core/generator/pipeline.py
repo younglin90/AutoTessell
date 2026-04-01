@@ -162,8 +162,10 @@ class MeshGenerator:
             # 속도 우선: TetWild coarse → Netgen
             tier_names = ["tier2_tetwild", "tier05_netgen"]
         elif quality_level == "fine":
-            # 품질 우선: snappy → cfMesh → Netgen → TetWild
-            tier_names = ["tier1_snappy", "tier15_cfmesh", "tier05_netgen", "tier2_tetwild"]
+            # 품질 우선: cfMesh(대용량 안전) → snappy(BL) → Netgen → TetWild
+            # cfMesh는 자체 배경 메쉬 → blockMesh int32 제한 없음
+            # snappy는 blockMesh 필요 → OpenFOAM label=32일 때 ~2B 셀 한계
+            tier_names = ["tier15_cfmesh", "tier1_snappy", "tier05_netgen", "tier2_tetwild"]
         else:  # standard
             # 균형: Netgen → cfMesh → TetWild
             tier_names = ["tier05_netgen", "tier15_cfmesh", "tier2_tetwild"]

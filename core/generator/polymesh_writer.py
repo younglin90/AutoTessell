@@ -167,8 +167,8 @@ class PolyMeshWriter:
             Keys: ``num_cells``, ``num_points``, ``num_faces``,
             ``num_internal_faces``.
         """
-        vertices = np.asarray(vertices, dtype=float)
-        tets = np.asarray(tets, dtype=int)
+        vertices = np.asarray(vertices, dtype=np.float64)
+        tets = np.asarray(tets, dtype=np.int64)
 
         # Step 0: normalise tet winding so all cells have positive volume.
         # Tets from external tools (pytetwild, Netgen …) may have inconsistent

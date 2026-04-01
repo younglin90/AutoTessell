@@ -31,6 +31,23 @@ class OpenFOAMError(RuntimeError):
         )
 
 
+def get_openfoam_label_size() -> int:
+    """OpenFOAM의 label 크기(비트)를 감지한다. 32 또는 64 반환. 미설치 시 0."""
+    bashrc = _find_openfoam_bashrc()
+    if bashrc is None:
+        return 0
+    # platforms 디렉터리에서 Int32/Int64 확인
+    of_dir = bashrc.parent.parent
+    platforms = of_dir / "platforms"
+    if platforms.exists():
+        for d in platforms.iterdir():
+            if "Int64" in d.name:
+                return 64
+            if "Int32" in d.name:
+                return 32
+    return 32  # default assumption
+
+
 def _find_openfoam_bashrc() -> Path | None:
     """OpenFOAM bashrc 경로를 자동 탐색한다.
 

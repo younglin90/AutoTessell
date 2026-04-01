@@ -130,7 +130,7 @@ def _load_via_cadquery(path: Path, fmt: str) -> trimesh.Trimesh:
         raise ValueError(f"cadquery 테셀레이션 결과가 비어 있습니다: {path}")
 
     vertices_np = np.array([(v.x, v.y, v.z) for v in vertices_cq], dtype=np.float64)
-    faces_np = np.array(faces_list, dtype=np.int32)
+    faces_np = np.array(faces_list, dtype=np.int64)
 
     mesh = trimesh.Trimesh(vertices=vertices_np, faces=faces_np, process=True)
 
