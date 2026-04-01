@@ -269,7 +269,7 @@ relaxationFactors
         "    " * (indent + 1)
 
         if isinstance(data, dict):
-            lines = []
+            lines: list[str] = []
             for key, value in data.items():
                 if isinstance(value, dict):
                     lines.append(f"{pad}{key}")
@@ -277,8 +277,25 @@ relaxationFactors
                     lines.append(self._dict_to_foam(value, indent + 1))
                     lines.append(f"{pad}}}")
                 elif isinstance(value, list):
-                    rendered = " ".join(str(v) for v in value)
-                    lines.append(f"{pad}{key}    ({rendered});")
+                    # Check if list contains dicts (e.g. features)
+                    if value and isinstance(value[0], dict):
+                        lines.append(f"{pad}{key}")
+                        lines.append(f"{pad}(")
+                        for item in value:
+                            inner = "  ".join(
+                                f'{k} {self._format_foam_value(v)};'
+                                for k, v in item.items()
+                            )
+                            lines.append(f"{pad}    {{ {inner} }}")
+                        lines.append(f"{pad});")
+                    else:
+                        rendered = " ".join(str(v) for v in value)
+                        lines.append(f"{pad}{key}    ({rendered});")
+                elif isinstance(value, str) and (" " in value or "/" in value):
+                    # Strings with spaces or paths need quoting
+                    lines.append(f'{pad}{key}    "{value}";')
+                elif isinstance(value, bool):
+                    lines.append(f"{pad}{key}    {'true' if value else 'false'};")
                 else:
                     lines.append(f"{pad}{key}    {value};")
             return "\n".join(lines) + "\n"
@@ -287,3 +304,15 @@ relaxationFactors
             return f"{pad}({rendered})\n"
         else:
             return f"{pad}{data}\n"
+
+    @staticmethod
+    def _format_foam_value(value: Any) -> str:
+        """OpenFOAM 값 포맷팅."""
+        if isinstance(value, str):
+            return f'"{value}"'
+        elif isinstance(value, bool):
+            return "true" if value else "false"
+        elif isinstance(value, list):
+            return "(" + " ".join(str(v) for v in value) + ")"
+        else:
+            return str(value)

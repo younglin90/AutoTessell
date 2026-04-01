@@ -94,10 +94,18 @@ def generate_snappy_dict(strategy: MeshStrategy) -> dict[str, Any]:
     qt = strategy.quality_targets
     domain = strategy.domain
 
+    stl_name = sm.input_file.replace(".stl", "").replace(".STL", "") if sm.input_file else "surface"
+
     return {
         "castellatedMesh": True,
         "snap": True,
         "addLayers": bl.enabled,
+        "geometry": {
+            "surface.stl": {
+                "type": "triSurfaceMesh",
+                "name": stl_name,
+            }
+        },
         "castellatedMeshControls": {
             "maxLocalCells": params.get("snappy_max_local_cells", 1_000_000),
             "maxGlobalCells": params.get("snappy_max_global_cells", 10_000_000),
@@ -117,6 +125,7 @@ def generate_snappy_dict(strategy: MeshStrategy) -> dict[str, Any]:
                 }
             },
             "refinementRegions": {},
+            "allowFreeStandingZoneFaces": True,
         },
         "snapControls": {
             "nSmoothPatch": params.get("snappy_snap_smooth_patch", 3),
@@ -147,6 +156,10 @@ def generate_snappy_dict(strategy: MeshStrategy) -> dict[str, Any]:
             "nRelaxIter": 5,
             "nLayerIter": 50,
             "nRelaxedIter": 20,
+            "nBufferCellsNoExtrude": 0,
+            "minMedialAxisAngle": 90,
+            "maxThicknessToMedialRatio": 0.3,
+            "nMedialAxisIter": 10,
         },
         "meshQualityControls": {
             "maxNonOrtho": qt.max_non_orthogonality,
@@ -154,9 +167,15 @@ def generate_snappy_dict(strategy: MeshStrategy) -> dict[str, Any]:
             "maxInternalSkewness": qt.max_skewness,
             "maxConcave": 80,
             "minVol": 1e-30,
+            "minTetQuality": 1e-30,
             "minArea": -1,
+            "minTwist": 0.02,
             "minDeterminant": qt.min_determinant,
             "minFaceWeight": 0.05,
+            "minVolRatio": 0.01,
+            "minTriangleTwist": -1,
+            "nSmoothScale": 4,
+            "errorReduction": 0.75,
         },
         "debug": 0,
         "mergeTolerance": 1e-6,
