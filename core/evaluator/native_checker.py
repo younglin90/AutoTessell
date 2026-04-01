@@ -176,10 +176,8 @@ class NativeMeshChecker:
         # Note: divergence theorem 볼륨 계산은 부동소수점 오차로 인해
         # 매우 작은 음수값(-1e-15 등)이 발생할 수 있다. 의미있는 negative volume
         # 검출을 위해 상대 임계값을 사용한다.
-        _VOL_TOL = 1e-20  # 이 미만의 음수 볼륨은 수치 오차로 간주
-        meaningful_neg_volumes = int(
-            (cell_volumes < -_VOL_TOL).sum()
-        ) if len(cell_volumes) > 0 else 0
+        # negative_volumes는 _compute_cell_volumes에서 이미 상대 tolerance로 카운트
+        meaningful_neg_volumes = negative_volumes
 
         failed_checks = 0
         if meaningful_neg_volumes > 0:
@@ -436,9 +434,13 @@ class NativeMeshChecker:
 
         volumes /= 3.0
 
-        # 부동소수점 오차(-1e-20 등)를 의미있는 negative volume과 구분
-        _VOL_TOL = 1e-20
-        negative_count = int(np.sum(volumes < -_VOL_TOL))
+        # Divergence theorem은 distorted 셀에서 작은 음수를 반환할 수 있다.
+        # 의미있는 negative volume은 mean volume 대비 상대적으로 큰 음수만 카운트.
+        if len(volumes) > 0 and volumes.max() > 0:
+            vol_threshold = -volumes.max() * 1e-6  # mean이 아닌 max 대비 1e-6
+        else:
+            vol_threshold = -1e-30
+        negative_count = int(np.sum(volumes < vol_threshold))
         return volumes, negative_count
 
     # ------------------------------------------------------------------

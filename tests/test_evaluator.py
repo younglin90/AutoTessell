@@ -293,13 +293,15 @@ class TestEvaluationVerdict:
         hard_criteria = [f.criterion for f in report.evaluation_summary.hard_fails]
         assert "min_determinant" in hard_criteria
 
-    def test_hard_fail_failed_checks(self) -> None:
-        """failed_checks > 0 → Hard FAIL."""
+    def test_failed_checks_not_hard_fail(self) -> None:
+        """failed_checks > 0 alone does NOT cause hard fail.
+
+        Individual metrics (negative_volumes, min_determinant) handle quality.
+        """
         cm = _make_checkmesh(failed_checks=1, mesh_ok=False)
         report = _make_report(cm)
-        assert report.evaluation_summary.verdict == Verdict.FAIL
         hard_criteria = [f.criterion for f in report.evaluation_summary.hard_fails]
-        assert "failed_checks" in hard_criteria
+        assert "failed_checks" not in hard_criteria
 
     def test_soft_fail_two_conditions(self) -> None:
         """Soft FAIL 2개 이상 → Verdict.FAIL."""

@@ -82,12 +82,9 @@ _HARD_FAIL_FIXED: dict[str, dict[str, Any]] = {
         "label": "Negative Volumes",
         "location_hint": "negative volume 셀 발생 (checkMesh 로그 참조)",
     },
-    "failed_checks": {
-        "threshold": 0,
-        "op": "gt",
-        "label": "checkMesh Failed Checks",
-        "location_hint": "checkMesh 자체 검사 실패",
-    },
+    # Note: failed_checks는 개별 지표(negative_volumes, min_determinant 등)로
+    # 이미 커버되므로 hard fail에서 제거. OpenFOAM checkMesh의 "Failed N mesh checks"는
+    # small determinant 등 draft에서 허용 가능한 항목도 포함하기 때문.
     "min_cell_volume": {
         "threshold": 0.0,
         "op": "le",
