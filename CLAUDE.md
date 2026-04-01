@@ -79,7 +79,7 @@ auto-tessell/
 ├── desktop/                   # Windows 데스크톱 서버 (FastAPI + WebSocket)
 ├── godot/                     # Godot 4.3 GUI (3D 뷰어 + 메쉬 생성 UI)
 ├── auto_tessell_core/         # C++/pybind11 확장 (Tier 0, 추후)
-├── tests/                     # pytest 331+ 테스트 + 벤치마크 STL
+├── tests/                     # pytest 458+ 테스트 + 벤치마크 STL/STEP
 ├── backend/                   # Phase 2: FastAPI 백엔드 (기존 Web SaaS)
 ├── frontend/                  # Phase 2: Next.js 프론트엔드
 └── infra/                     # 인프라 설정
@@ -87,8 +87,12 @@ auto-tessell/
 
 ## 개발 환경
 
-Python 3.12+, C++23, OpenFOAM 13, Node.js 24 (Phase 2)
-핵심: trimesh, meshio, pyvista, pyacvd, pymeshfix, pymeshlab, open3d, click, rich, pydantic
+Python 3.12+, C++23, OpenFOAM 2406, Node.js 24 (Phase 2)
+핵심: trimesh, meshio, pyvista, pyacvd, pymeshfix, pymeshlab, click, rich, pydantic
+볼륨: pytetwild, netgen-mesher, OpenFOAM(snappyHexMesh/cfMesh)
+후처리: MMG3D, geogram(vorpalite)
+CAD: cadquery, gmsh
+데스크톱: FastAPI, Godot 4.3
 
 ## 컨벤션
 
@@ -98,7 +102,7 @@ Python 3.12+, C++23, OpenFOAM 13, Node.js 24 (Phase 2)
 - 로깅: structlog JSON
 - CLI 파라미터 상세: `agents/specs/generator.md` 참조
 
-## 현재 구현 상태 (310 tests)
+## 현재 구현 상태 (458+ tests)
 
 ```bash
 auto-tessell run input.stl -o ./case --quality draft     # ~1초, TetWild
