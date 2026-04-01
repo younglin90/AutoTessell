@@ -22,7 +22,6 @@ dependencies = [
     "pyacvd>=0.3",
     "pyvista>=0.44",
     "pymeshlab>=2023.12",
-    "open3d>=0.18",
 ]
 
 [project.optional-dependencies]
