@@ -397,17 +397,47 @@ def evaluate(
 @cli.command()
 @click.argument("input_file", type=click.Path(exists=True, path_type=Path))
 @click.option("--output", "-o", type=click.Path(path_type=Path), default=Path("./case"))
+# --- Tier / Quality ---
 @click.option("--tier", default="auto", show_default=True,
               type=click.Choice(["auto", "core", "netgen", "snappy", "cfmesh", "tetwild"]))
 @click.option("--quality", default="standard", show_default=True,
               type=click.Choice(["draft", "standard", "fine"], case_sensitive=False),
               help="품질 레벨 (draft=빠른검증 / standard=엔지니어링 / fine=최종CFD)")
-@click.option("--element-size", type=float, default=None)
-@click.option("--max-iterations", type=int, default=3, show_default=True)
-@click.option("--dry-run", is_flag=True)
+# --- Cell size control ---
+@click.option("--element-size", type=float, default=None, help="표면 셀 크기 override [m]")
+@click.option("--base-cell-size", type=float, default=None, help="배경 셀 크기 override [m]")
+@click.option("--min-cell-size", type=float, default=None, help="최소 셀 크기 override [m]")
+@click.option("--base-cell-num", type=int, default=None, help="특성길이 대비 분할 수 (기본: 50, 작을수록 거친 메쉬)")
+# --- Domain control ---
+@click.option("--domain-upstream", type=float, default=None, help="업스트림 배수 (기본: draft=3, std=5, fine=10)")
+@click.option("--domain-downstream", type=float, default=None, help="다운스트림 배수 (기본: draft=5, std=10, fine=20)")
+@click.option("--domain-lateral", type=float, default=None, help="측면 배수 (기본: draft=2, std=3, fine=5)")
+@click.option("--domain-scale", type=float, default=1.0, help="도메인 전체 스케일 팩터")
+# --- Max cell limit ---
+@click.option("--max-cells", type=int, default=None, help="최대 셀 수 제한 (초과 시 셀 크기 자동 확대)")
+# --- Boundary Layer ---
+@click.option("--bl-layers", type=int, default=None, help="BL 레이어 수 (0=비활성)")
+@click.option("--bl-first-height", type=float, default=None, help="첫 번째 BL 높이 [m]")
+@click.option("--bl-growth-ratio", type=float, default=None, help="BL 성장비 (기본: 1.2)")
+# --- Preprocessor ---
+@click.option("--no-repair", is_flag=True, help="표면 수리 건너뛰기")
+@click.option("--force-remesh", is_flag=True, help="L2 리메쉬 강제 실행")
+@click.option("--remesh-target-faces", type=int, default=None, help="리메쉬 목표 삼각형 수")
 @click.option("--allow-ai-fallback", is_flag=True, help="L3 AI 표면 재생성 허용 (GPU 필요)")
+# --- TetWild specific ---
+@click.option("--tetwild-epsilon", type=float, default=None, help="TetWild epsilon (draft=0.02, std=0.001)")
+@click.option("--tetwild-stop-energy", type=float, default=None, help="TetWild stop energy (draft=20, std=10)")
+# --- snappyHexMesh specific ---
+@click.option("--snappy-castellated-level", type=str, default=None, help="castellated refinement [min,max] (예: 2,3)")
+@click.option("--snappy-snap-tolerance", type=float, default=None, help="snap tolerance (기본: 2.0)")
+@click.option("--snappy-snap-iterations", type=int, default=None, help="snap solve iterations (기본: 5)")
+# --- Output control ---
+@click.option("--max-iterations", type=int, default=3, show_default=True, help="최대 재시도 횟수")
+@click.option("--dry-run", is_flag=True, help="전략 수립까지만 (메쉬 생성 안 함)")
 @click.option("--profile", is_flag=True, help="성능 프로파일링 (단계별 소요 시간)")
 @click.option("--export-vtk", "do_export_vtk", is_flag=True, help="완료 후 VTK (.vtu) 내보내기")
+@click.option("--parallel", type=int, default=None, help="MPI 병렬 프로세서 수 (decomposeParDict 생성)")
+@click.option("--verbose-mesh", is_flag=True, help="메쉬 생성 상세 로그")
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -416,17 +446,53 @@ def run(
     tier: str,
     quality: str,
     element_size: float | None,
+    base_cell_size: float | None,
+    min_cell_size: float | None,
+    base_cell_num: int | None,
+    domain_upstream: float | None,
+    domain_downstream: float | None,
+    domain_lateral: float | None,
+    domain_scale: float,
+    max_cells: int | None,
+    bl_layers: int | None,
+    bl_first_height: float | None,
+    bl_growth_ratio: float | None,
+    no_repair: bool,
+    force_remesh: bool,
+    remesh_target_faces: int | None,
+    allow_ai_fallback: bool,
+    tetwild_epsilon: float | None,
+    tetwild_stop_energy: float | None,
+    snappy_castellated_level: str | None,
+    snappy_snap_tolerance: float | None,
+    snappy_snap_iterations: int | None,
     max_iterations: int,
     dry_run: bool,
-    allow_ai_fallback: bool,
     profile: bool,
     do_export_vtk: bool,
+    parallel: int | None,
+    verbose_mesh: bool,
 ) -> None:
     """전체 파이프라인(Analyze→Preprocess→Strategize→Generate→Evaluate)을 실행한다."""
     from core.pipeline.orchestrator import PipelineOrchestrator
 
     console.print(f"[bold magenta]Auto-Tessell[/bold magenta] {input_file} → {output}")
     console.print(f"  quality={quality}  tier={tier}  max_iter={max_iterations}")
+
+    # CLI 옵션을 tier_specific_params로 모음
+    tier_params: dict[str, object] = {}
+    if tetwild_epsilon is not None:
+        tier_params["tetwild_epsilon"] = tetwild_epsilon
+    if tetwild_stop_energy is not None:
+        tier_params["tetwild_stop_energy"] = tetwild_stop_energy
+    if snappy_snap_tolerance is not None:
+        tier_params["snappy_snap_tolerance"] = snappy_snap_tolerance
+    if snappy_snap_iterations is not None:
+        tier_params["snappy_snap_iterations"] = snappy_snap_iterations
+    if snappy_castellated_level is not None:
+        parts = snappy_castellated_level.split(",")
+        if len(parts) == 2:
+            tier_params["snappy_castellated_level"] = [int(parts[0]), int(parts[1])]
 
     orchestrator = PipelineOrchestrator()
     result = orchestrator.run(
@@ -437,8 +503,49 @@ def run(
         max_iterations=max_iterations,
         dry_run=dry_run,
         element_size=element_size,
+        no_repair=no_repair,
+        surface_remesh=force_remesh,
         allow_ai_fallback=allow_ai_fallback,
     )
+
+    # Strategy override (dry-run이 아닌 경우 orchestrator 내부에서 이미 처리됨)
+    # 하지만 dry-run에서도 override를 보여주기 위해 여기서 추가 처리
+    if result.strategy:
+        s = result.strategy
+        if base_cell_size is not None:
+            s.domain.base_cell_size = base_cell_size
+        if base_cell_num is not None:
+            L = result.geometry_report.geometry.bounding_box.characteristic_length if result.geometry_report else 1.0
+            s.domain.base_cell_size = L / base_cell_num
+            s.surface_mesh.target_cell_size = s.domain.base_cell_size / 4
+            s.surface_mesh.min_cell_size = s.surface_mesh.target_cell_size / 4
+        if min_cell_size is not None:
+            s.surface_mesh.min_cell_size = min_cell_size
+        if bl_layers is not None:
+            s.boundary_layers.enabled = bl_layers > 0
+            s.boundary_layers.num_layers = bl_layers
+        if bl_first_height is not None:
+            s.boundary_layers.first_layer_thickness = bl_first_height
+        if bl_growth_ratio is not None:
+            s.boundary_layers.growth_ratio = bl_growth_ratio
+        if tier_params:
+            s.tier_specific_params.update(tier_params)
+        if max_cells is not None:
+            # 셀 수 제한: base_cell_size 자동 확대
+            domain_vol = 1.0
+            for i in range(3):
+                domain_vol *= (s.domain.max[i] - s.domain.min[i])
+            est_cells = domain_vol / (s.domain.base_cell_size ** 3)
+            if est_cells > max_cells:
+                new_base = (domain_vol / max_cells) ** (1.0 / 3.0)
+                console.print(f"[yellow]⚠ base_cell_size {s.domain.base_cell_size:.4f} → {new_base:.4f} (max_cells={max_cells:,})[/yellow]")
+                s.domain.base_cell_size = new_base
+
+    # 병렬 분해
+    if parallel is not None and result.success:
+        from core.utils.parallel import write_decompose_par_dict
+        write_decompose_par_dict(output, n_procs=parallel)
+        console.print(f"[green]✓[/green] decomposeParDict → {parallel} procs")
 
     if dry_run:
         console.print("[bold cyan]Dry-run 완료[/bold cyan] — 전략 수립까지만 실행")

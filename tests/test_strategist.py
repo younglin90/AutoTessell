@@ -316,7 +316,7 @@ class TestParamOptimizer:
         self.optimizer = ParamOptimizer()
 
     def test_domain_external_proportions(self):
-        """외부 유동: upstream = 10L, downstream = 20L."""
+        """외부 유동 standard: upstream = 5L, downstream = 10L."""
         report = _make_geometry_report(characteristic_length=2.0)
         domain = self.optimizer.compute_domain(report, "external")
 
@@ -324,13 +324,12 @@ class TestParamOptimizer:
         bbox_min_x = -1.0
         bbox_max_x = 1.0
 
-        # upstream: bbox_min_x - 10*L = -1 - 20 = -21
-        assert abs(domain.min[0] - (bbox_min_x - 10 * L)) < 1e-9
-        # downstream: bbox_max_x + 20*L = 1 + 40 = 41
-        assert abs(domain.max[0] - (bbox_max_x + 20 * L)) < 1e-9
+        # standard: upstream=5L, downstream=10L
+        assert abs(domain.min[0] - (bbox_min_x - 5 * L)) < 1e-9
+        assert abs(domain.max[0] - (bbox_max_x + 10 * L)) < 1e-9
 
     def test_domain_lateral(self):
-        """외부 유동: lateral = 5L."""
+        """외부 유동 standard: lateral = 3L."""
         report = _make_geometry_report(characteristic_length=2.0)
         domain = self.optimizer.compute_domain(report, "external")
 
@@ -338,8 +337,9 @@ class TestParamOptimizer:
         bbox_min_y = -1.0
         bbox_max_y = 1.0
 
-        assert abs(domain.min[1] - (bbox_min_y - 5 * L)) < 1e-9
-        assert abs(domain.max[1] - (bbox_max_y + 5 * L)) < 1e-9
+        # standard: lateral=3L
+        assert abs(domain.min[1] - (bbox_min_y - 3 * L)) < 1e-9
+        assert abs(domain.max[1] - (bbox_max_y + 3 * L)) < 1e-9
 
     def test_domain_internal_tight(self):
         """내부 유동: 도메인이 BBox보다 약간 크기만 해야 한다."""

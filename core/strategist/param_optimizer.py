@@ -14,10 +14,25 @@ from core.utils.logging import get_logger
 
 log = get_logger(__name__)
 
-# 도메인 배율 기본값 (외부 유동)
-_UPSTREAM_FACTOR = 10.0
-_DOWNSTREAM_FACTOR = 20.0
-_LATERAL_FACTOR = 5.0
+# 도메인 배율 기본값 (외부 유동) — quality_level별
+_DOMAIN_FACTORS: dict[str, tuple[float, float, float]] = {
+    # (upstream, downstream, lateral)
+    "draft": (3.0, 5.0, 2.0),       # 빠른 검증용, 작은 도메인
+    "standard": (5.0, 10.0, 3.0),   # 엔지니어링, 중간 도메인
+    "fine": (10.0, 20.0, 5.0),      # 최종 CFD, 표준 도메인
+}
+
+# 최대 배경 셀 수 제한 (메모리 보호)
+_MAX_BG_CELLS: dict[str, int] = {
+    "draft": 500_000,
+    "standard": 5_000_000,
+    "fine": 50_000_000,
+}
+
+# Legacy defaults (backward compatibility)
+_UPSTREAM_FACTOR = 5.0
+_DOWNSTREAM_FACTOR = 10.0
+_LATERAL_FACTOR = 3.0
 
 # BL 기본값
 _BL_LAYERS = 5
@@ -67,28 +82,32 @@ class ParamOptimizer:
         report: GeometryReport,
         flow_type: str,
         *,
-        upstream: float = _UPSTREAM_FACTOR,
-        downstream: float = _DOWNSTREAM_FACTOR,
-        lateral: float = _LATERAL_FACTOR,
+        upstream: float | None = None,
+        downstream: float | None = None,
+        lateral: float | None = None,
         domain_scale: float = 1.0,
         quality_level: QualityLevel | str = QualityLevel.STANDARD,
     ) -> DomainConfig:
         """외부/내부 유동 도메인 박스를 계산한다.
 
-        외부 유동:
-            upstream  = 10 L (x 방향 업스트림)
-            downstream = 20 L (x 방향 다운스트림)
-            lateral   = 5 L  (y±, z±)
+        quality_level에 따라 도메인 크기가 달라진다:
+          draft:    upstream=3L, downstream=5L, lateral=2L
+          standard: upstream=5L, downstream=10L, lateral=3L
+          fine:     upstream=10L, downstream=20L, lateral=5L
 
         내부 유동은 지오메트리 BBox 그대로 사용.
         """
         bbox = report.geometry.bounding_box
         L = bbox.characteristic_length
 
+        # Quality level에 따른 도메인 배율
+        ql_str = quality_level.value if hasattr(quality_level, "value") else str(quality_level)
+        factors = _DOMAIN_FACTORS.get(ql_str, _DOMAIN_FACTORS["standard"])
+
         if flow_type == "external":
-            us = upstream * L * domain_scale
-            ds = downstream * L * domain_scale
-            lat = lateral * L * domain_scale
+            us = (upstream if upstream is not None else factors[0]) * L * domain_scale
+            ds = (downstream if downstream is not None else factors[1]) * L * domain_scale
+            lat = (lateral if lateral is not None else factors[2]) * L * domain_scale
 
             domain_min = [
                 bbox.min[0] - us,
