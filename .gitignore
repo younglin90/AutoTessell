@@ -38,3 +38,26 @@ backend/__tracked_surface.stl
 
 # bkit
 .bkit/
+
+# Auto-Tessell temp files
+__tracked_surface.stl
+mesh_strategy.json
+_plan.md
+_blocked.md
+uv.lock
+
+# Generated reports
+tests/benchmarks/*.geometry_report.json
+
+# Generated benchmark STLs (large, reproducible)
+tests/benchmarks/sphere_20k.stl
+tests/benchmarks/wing.stl
+tests/benchmarks/sphere.obj
+tests/benchmarks/sphere.ply
+
+# Godot
+godot/.godot/
+godot/export_presets.cfg
+
+# OpenFOAM case output
+/case/

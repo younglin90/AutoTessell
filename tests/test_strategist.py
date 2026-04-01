@@ -1,0 +1,943 @@
+"""Strategist 모듈 테스트."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import pytest
+
+from core.schemas import (
+    BoundingBox,
+    BoundaryLayerConfig,
+    BoundaryLayerStats,
+    CheckMeshResult,
+    DomainConfig,
+    EvaluationSummary,
+    FailCriterion,
+    FeatureStats,
+    FileInfo,
+    FlowEstimation,
+    Geometry,
+    GeometryReport,
+    MeshStrategy,
+    QualityLevel,
+    QualityReport,
+    QualityTargets,
+    SurfaceMeshConfig,
+    SurfaceQualityLevel,
+    SurfaceStats,
+    TierCompatibility,
+    TierCompatibilityMap,
+    Verdict,
+)
+from core.strategist.param_optimizer import ParamOptimizer
+from core.strategist.strategy_planner import StrategyPlanner
+from core.strategist.tier_selector import TierSelector
+
+BENCHMARKS_DIR = Path(__file__).parent / "benchmarks"
+
+
+# ---------------------------------------------------------------------------
+# 픽스처 헬퍼
+# ---------------------------------------------------------------------------
+
+def _make_geometry_report(
+    *,
+    is_cad_brep: bool = False,
+    flow_type: str = "external",
+    is_watertight: bool = True,
+    is_manifold: bool = True,
+    has_degenerate_faces: bool = False,
+    num_sharp_edges: int = 0,
+    genus: int = 0,
+    num_connected_components: int = 1,
+    characteristic_length: float = 2.0,
+    curvature_max: float = 1.0,
+) -> GeometryReport:
+    bbox = BoundingBox(
+        min=[-1.0, -1.0, -1.0],
+        max=[1.0, 1.0, 1.0],
+        center=[0.0, 0.0, 0.0],
+        diagonal=3.464,
+        characteristic_length=characteristic_length,
+    )
+    surface = SurfaceStats(
+        num_vertices=642,
+        num_faces=1280,
+        surface_area=12.5,
+        is_watertight=is_watertight,
+        is_manifold=is_manifold,
+        num_connected_components=num_connected_components,
+        euler_number=2,
+        genus=genus,
+        has_degenerate_faces=has_degenerate_faces,
+        num_degenerate_faces=1 if has_degenerate_faces else 0,
+        min_face_area=0.009,
+        max_face_area=0.012,
+        face_area_std=0.001,
+        min_edge_length=0.14,
+        max_edge_length=0.17,
+        edge_length_ratio=1.2,
+    )
+    features = FeatureStats(
+        has_sharp_edges=num_sharp_edges > 0,
+        num_sharp_edges=num_sharp_edges,
+        has_thin_walls=False,
+        min_wall_thickness_estimate=2.0,
+        has_small_features=False,
+        smallest_feature_size=0.14,
+        feature_to_bbox_ratio=0.07,
+        curvature_max=curvature_max,
+        curvature_mean=0.5,
+    )
+    tier_compat = TierCompatibilityMap(
+        tier0_core=TierCompatibility(compatible=True, notes="ok"),
+        tier05_netgen=TierCompatibility(compatible=True, notes="ok"),
+        tier1_snappy=TierCompatibility(compatible=True, notes="ok"),
+        tier15_cfmesh=TierCompatibility(compatible=True, notes="ok"),
+        tier2_tetwild=TierCompatibility(compatible=True, notes="ok"),
+    )
+    return GeometryReport(
+        file_info=FileInfo(
+            path="/tmp/test.stl",
+            format="STL",
+            file_size_bytes=64084,
+            detected_encoding="binary",
+            is_cad_brep=is_cad_brep,
+            is_surface_mesh=True,
+            is_volume_mesh=False,
+        ),
+        geometry=Geometry(
+            bounding_box=bbox,
+            surface=surface,
+            features=features,
+        ),
+        flow_estimation=FlowEstimation(
+            type=flow_type,
+            confidence=0.85,
+            reasoning="test",
+            alternatives=[],
+        ),
+        issues=[],
+        tier_compatibility=tier_compat,
+    )
+
+
+def _make_quality_report(
+    *,
+    verdict: Verdict = Verdict.FAIL,
+    tier: str = "tier1_snappy",
+    max_non_orthogonality: float = 65.0,
+    max_skewness: float = 4.0,
+    negative_volumes: int = 0,
+    cells: int = 1_000_000,
+    mesh_ok: bool = True,
+) -> QualityReport:
+    cm = CheckMeshResult(
+        cells=cells,
+        faces=5_000_000,
+        points=1_200_000,
+        max_non_orthogonality=max_non_orthogonality,
+        avg_non_orthogonality=30.0,
+        max_skewness=max_skewness,
+        max_aspect_ratio=20.0,
+        min_face_area=1e-8,
+        min_cell_volume=1e-9,
+        min_determinant=0.01,
+        negative_volumes=negative_volumes,
+        severely_non_ortho_faces=0,
+        failed_checks=1 if verdict == Verdict.FAIL else 0,
+        mesh_ok=mesh_ok,
+    )
+    summary = EvaluationSummary(
+        verdict=verdict,
+        iteration=1,
+        tier_evaluated=tier,
+        evaluation_time_seconds=5.0,
+        checkmesh=cm,
+    )
+    return QualityReport(evaluation_summary=summary)
+
+
+# ---------------------------------------------------------------------------
+# TierSelector 테스트
+# ---------------------------------------------------------------------------
+
+class TestTierSelector:
+    def setup_method(self):
+        self.selector = TierSelector()
+
+    def test_tier_select_external_watertight(self):
+        """external + watertight → tier1_snappy (standard)."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        tier, fallbacks = self.selector.select(report)
+        assert tier == "tier1_snappy"
+        assert "tier1_snappy" not in fallbacks
+        assert len(fallbacks) > 0
+
+    def test_tier_select_cad_brep(self):
+        """is_cad_brep → tier05_netgen."""
+        report = _make_geometry_report(is_cad_brep=True)
+        tier, fallbacks = self.selector.select(report)
+        assert tier == "tier05_netgen"
+        assert "tier05_netgen" not in fallbacks
+
+    def test_tier_select_hint_override(self):
+        """--tier snappy → tier1_snappy (hint override)."""
+        report = _make_geometry_report(is_cad_brep=True)  # normally netgen
+        tier, fallbacks = self.selector.select(report, tier_hint="snappy")
+        assert tier == "tier1_snappy"
+
+    def test_tier_select_internal_watertight(self):
+        """internal + watertight → tier15_cfmesh."""
+        report = _make_geometry_report(flow_type="internal", is_watertight=True)
+        tier, _ = self.selector.select(report)
+        assert tier == "tier15_cfmesh"
+
+    def test_tier_select_bad_surface(self):
+        """non-manifold → tier2_tetwild."""
+        report = _make_geometry_report(
+            is_watertight=False,
+            is_manifold=False,
+            flow_type="unknown",
+        )
+        tier, _ = self.selector.select(report)
+        assert tier == "tier2_tetwild"
+
+    def test_tier_select_watertight_simple(self):
+        """watertight + simple (few sharp edges, genus=0) → tier0_core."""
+        report = _make_geometry_report(
+            flow_type="unknown",
+            is_watertight=True,
+            num_sharp_edges=10,
+            genus=0,
+        )
+        tier, _ = self.selector.select(report)
+        assert tier == "tier0_core"
+
+    def test_fallback_excludes_selected(self):
+        """fallback_tiers에 selected tier가 포함되지 않아야 한다."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        tier, fallbacks = self.selector.select(report)
+        assert tier not in fallbacks
+
+    def test_hint_canonical_name(self):
+        """canonical tier name을 hint로 직접 사용할 수 있다."""
+        report = _make_geometry_report()
+        tier, _ = self.selector.select(report, tier_hint="tier2_tetwild")
+        assert tier == "tier2_tetwild"
+
+    # ── QualityLevel 연동 테스트 ─────────────────────────────────────
+
+    def test_draft_quality_forces_tetwild(self):
+        """draft 품질 레벨 → tier2_tetwild (coarse)."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        tier, fallbacks = self.selector.select(report, quality_level=QualityLevel.DRAFT)
+        assert tier == "tier2_tetwild"
+
+    def test_draft_fallbacks(self):
+        """draft fallback에 tier05_netgen이 포함되어야 한다."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        tier, fallbacks = self.selector.select(report, quality_level=QualityLevel.DRAFT)
+        assert "tier05_netgen" in fallbacks
+
+    def test_standard_external_watertight(self):
+        """standard + external + watertight → tier1_snappy."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        tier, _ = self.selector.select(report, quality_level=QualityLevel.STANDARD)
+        assert tier == "tier1_snappy"
+
+    def test_standard_internal_watertight(self):
+        """standard + internal + watertight → tier15_cfmesh."""
+        report = _make_geometry_report(flow_type="internal", is_watertight=True)
+        tier, _ = self.selector.select(report, quality_level=QualityLevel.STANDARD)
+        assert tier == "tier15_cfmesh"
+
+    def test_fine_external_watertight(self):
+        """fine + external + watertight → tier1_snappy (BL 자동)."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        tier, fallbacks = self.selector.select(report, quality_level=QualityLevel.FINE)
+        assert tier == "tier1_snappy"
+        assert "tier05_netgen" in fallbacks
+
+    def test_fine_internal_watertight(self):
+        """fine + internal + watertight → tier15_cfmesh."""
+        report = _make_geometry_report(flow_type="internal", is_watertight=True)
+        tier, _ = self.selector.select(report, quality_level=QualityLevel.FINE)
+        assert tier == "tier15_cfmesh"
+
+    def test_fine_cad_brep(self):
+        """fine + CAD B-Rep → tier05_netgen."""
+        report = _make_geometry_report(is_cad_brep=True)
+        tier, _ = self.selector.select(report, quality_level=QualityLevel.FINE)
+        assert tier == "tier05_netgen"
+
+    def test_l3_ai_forces_tetwild(self):
+        """surface_quality_level=l3_ai → tier2_tetwild 강제."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        tier, _ = self.selector.select(
+            report,
+            quality_level=QualityLevel.FINE,
+            surface_quality_level=SurfaceQualityLevel.L3_AI,
+        )
+        assert tier == "tier2_tetwild"
+
+    def test_l3_ai_string_also_forces_tetwild(self):
+        """surface_quality_level='l3_ai' (문자열)도 tier2_tetwild를 강제해야 한다."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        tier, _ = self.selector.select(
+            report,
+            quality_level="fine",
+            surface_quality_level="l3_ai",
+        )
+        assert tier == "tier2_tetwild"
+
+    def test_quality_level_string_accepted(self):
+        """quality_level을 문자열로 전달해도 동작해야 한다."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        tier, _ = self.selector.select(report, quality_level="draft")
+        assert tier == "tier2_tetwild"
+
+
+# ---------------------------------------------------------------------------
+# ParamOptimizer 테스트
+# ---------------------------------------------------------------------------
+
+class TestParamOptimizer:
+    def setup_method(self):
+        self.optimizer = ParamOptimizer()
+
+    def test_domain_external_proportions(self):
+        """외부 유동: upstream = 10L, downstream = 20L."""
+        report = _make_geometry_report(characteristic_length=2.0)
+        domain = self.optimizer.compute_domain(report, "external")
+
+        L = 2.0
+        bbox_min_x = -1.0
+        bbox_max_x = 1.0
+
+        # upstream: bbox_min_x - 10*L = -1 - 20 = -21
+        assert abs(domain.min[0] - (bbox_min_x - 10 * L)) < 1e-9
+        # downstream: bbox_max_x + 20*L = 1 + 40 = 41
+        assert abs(domain.max[0] - (bbox_max_x + 20 * L)) < 1e-9
+
+    def test_domain_lateral(self):
+        """외부 유동: lateral = 5L."""
+        report = _make_geometry_report(characteristic_length=2.0)
+        domain = self.optimizer.compute_domain(report, "external")
+
+        L = 2.0
+        bbox_min_y = -1.0
+        bbox_max_y = 1.0
+
+        assert abs(domain.min[1] - (bbox_min_y - 5 * L)) < 1e-9
+        assert abs(domain.max[1] - (bbox_max_y + 5 * L)) < 1e-9
+
+    def test_domain_internal_tight(self):
+        """내부 유동: 도메인이 BBox보다 약간 크기만 해야 한다."""
+        report = _make_geometry_report(flow_type="internal", characteristic_length=2.0)
+        domain = self.optimizer.compute_domain(report, "internal")
+
+        # 내부 유동은 BBox + 작은 margin
+        assert domain.min[0] < -1.0
+        assert domain.max[0] > 1.0
+        assert domain.max[0] - domain.min[0] < 10.0  # 훨씬 좁아야 함
+
+    def test_cell_sizes_base_standard(self):
+        """standard: base_cell_size = (characteristic_length / 50) * 2.0."""
+        report = _make_geometry_report(characteristic_length=2.0)
+        sizes = self.optimizer.compute_cell_sizes(report, quality_level=QualityLevel.STANDARD)
+        expected = (2.0 / 50) * 2.0
+        assert abs(sizes["base_cell_size"] - expected) < 1e-12
+
+    def test_cell_sizes_base_draft(self):
+        """draft: base_cell_size = (characteristic_length / 50) * 4.0."""
+        report = _make_geometry_report(characteristic_length=2.0)
+        sizes = self.optimizer.compute_cell_sizes(report, quality_level=QualityLevel.DRAFT)
+        expected = (2.0 / 50) * 4.0
+        assert abs(sizes["base_cell_size"] - expected) < 1e-12
+
+    def test_cell_sizes_base_fine(self):
+        """fine: base_cell_size = (characteristic_length / 50) * 1.0."""
+        report = _make_geometry_report(characteristic_length=2.0)
+        sizes = self.optimizer.compute_cell_sizes(report, quality_level=QualityLevel.FINE)
+        expected = (2.0 / 50) * 1.0
+        assert abs(sizes["base_cell_size"] - expected) < 1e-12
+
+    def test_cell_sizes_factor_ordering(self):
+        """draft > standard > fine 순서로 셀 크기가 커야 한다."""
+        report = _make_geometry_report(characteristic_length=2.0)
+        draft = self.optimizer.compute_cell_sizes(report, quality_level=QualityLevel.DRAFT)
+        std = self.optimizer.compute_cell_sizes(report, quality_level=QualityLevel.STANDARD)
+        fine = self.optimizer.compute_cell_sizes(report, quality_level=QualityLevel.FINE)
+        assert draft["base_cell_size"] > std["base_cell_size"] > fine["base_cell_size"]
+
+    def test_cell_sizes_base(self):
+        """base_cell_size 후방호환 — 기본(standard) 배율로 계산된다."""
+        report = _make_geometry_report(characteristic_length=2.0)
+        sizes = self.optimizer.compute_cell_sizes(report)
+        # standard factor=2.0: (2.0/50)*2.0 = 0.08
+        assert abs(sizes["base_cell_size"] - (2.0 / 50) * 2.0) < 1e-12
+
+    def test_cell_sizes_hierarchy(self):
+        """surface < base, min < surface."""
+        report = _make_geometry_report(characteristic_length=2.0)
+        sizes = self.optimizer.compute_cell_sizes(report)
+
+        assert sizes["surface_cell_size"] < sizes["base_cell_size"]
+        assert sizes["min_cell_size"] < sizes["surface_cell_size"]
+
+    def test_cell_sizes_high_curvature_fine_only(self):
+        """고곡률(>20) 보정은 fine에서만 적용된다."""
+        report_high = _make_geometry_report(curvature_max=25.0)
+
+        sizes_std_normal = self.optimizer.compute_cell_sizes(report_high, quality_level=QualityLevel.STANDARD)
+        sizes_fine_high = self.optimizer.compute_cell_sizes(report_high, quality_level=QualityLevel.FINE)
+        sizes_fine_normal_curv = self.optimizer.compute_cell_sizes(
+            _make_geometry_report(curvature_max=5.0), quality_level=QualityLevel.FINE
+        )
+
+        # fine + high curvature: surface_cell_size 절반
+        assert abs(sizes_fine_high["surface_cell_size"] - sizes_fine_normal_curv["surface_cell_size"] * 0.5) < 1e-12
+
+        # standard: 고곡률 보정 없음 → fine-normal보다 클 수 있음 (배율 차이)
+        # 핵심: standard에서는 curvature 보정이 적용되지 않아야 한다
+        sizes_std_low_curv = self.optimizer.compute_cell_sizes(
+            _make_geometry_report(curvature_max=5.0), quality_level=QualityLevel.STANDARD
+        )
+        assert sizes_std_normal["surface_cell_size"] == sizes_std_low_curv["surface_cell_size"]
+
+    def test_cell_sizes_high_curvature(self):
+        """고곡률(>20) 시 fine에서는 surface_cell_size가 절반으로 줄어든다."""
+        report_normal = _make_geometry_report(curvature_max=5.0)
+        report_high = _make_geometry_report(curvature_max=25.0)
+
+        sizes_normal = self.optimizer.compute_cell_sizes(report_normal, quality_level=QualityLevel.FINE)
+        sizes_high = self.optimizer.compute_cell_sizes(report_high, quality_level=QualityLevel.FINE)
+
+        assert sizes_high["surface_cell_size"] < sizes_normal["surface_cell_size"]
+        assert abs(sizes_high["surface_cell_size"] - sizes_normal["surface_cell_size"] * 0.5) < 1e-12
+
+    def test_boundary_layers_fine_enabled(self):
+        """fine: BL 활성화 — 5 layers, growth_ratio=1.2."""
+        report = _make_geometry_report()
+        bl = self.optimizer.compute_boundary_layers(report, quality_level=QualityLevel.FINE)
+
+        assert bl.enabled is True
+        assert bl.num_layers == 5
+        assert abs(bl.growth_ratio - 1.2) < 1e-9
+        assert bl.first_layer_thickness > 0
+        assert bl.max_total_thickness > bl.first_layer_thickness
+
+    def test_boundary_layers_standard_disabled(self):
+        """standard: BL 비활성화."""
+        report = _make_geometry_report()
+        bl = self.optimizer.compute_boundary_layers(report, quality_level=QualityLevel.STANDARD)
+
+        assert bl.enabled is False
+        assert bl.num_layers == 0
+
+    def test_boundary_layers_draft_disabled(self):
+        """draft: BL 비활성화."""
+        report = _make_geometry_report()
+        bl = self.optimizer.compute_boundary_layers(report, quality_level=QualityLevel.DRAFT)
+
+        assert bl.enabled is False
+        assert bl.num_layers == 0
+
+    def test_boundary_layers_defaults(self):
+        """BL 기본값: fine 레벨 동작 확인 (후방호환)."""
+        report = _make_geometry_report()
+        bl = self.optimizer.compute_boundary_layers(report, quality_level=QualityLevel.FINE)
+
+        assert bl.enabled is True
+        assert bl.num_layers == 5
+        assert abs(bl.growth_ratio - 1.2) < 1e-9
+        assert bl.first_layer_thickness > 0
+        assert bl.max_total_thickness > bl.first_layer_thickness
+
+    def test_boundary_layers_type(self):
+        """BoundaryLayerConfig 타입을 반환해야 한다."""
+        report = _make_geometry_report()
+        bl = self.optimizer.compute_boundary_layers(report, quality_level=QualityLevel.FINE)
+        assert isinstance(bl, BoundaryLayerConfig)
+
+    def test_domain_config_type(self):
+        """DomainConfig 타입을 반환해야 한다."""
+        report = _make_geometry_report()
+        domain = self.optimizer.compute_domain(report, "external")
+        assert isinstance(domain, DomainConfig)
+        assert domain.type == "box"
+        assert len(domain.min) == 3
+        assert len(domain.max) == 3
+
+    # ── Quality Targets 테스트 ──────────────────────────────────────
+
+    def test_quality_targets_draft(self):
+        """draft: non_ortho=85, skewness=8.0, aspect_ratio=500, min_det=0.0001."""
+        qt = self.optimizer.compute_quality_targets(QualityLevel.DRAFT)
+        assert qt.max_non_orthogonality == 85.0
+        assert qt.max_skewness == 8.0
+        assert qt.max_aspect_ratio == 500.0
+        assert qt.min_determinant == 0.0001
+        assert qt.target_y_plus is None
+
+    def test_quality_targets_standard(self):
+        """standard: non_ortho=70, skewness=6.0, aspect_ratio=200, min_det=0.001."""
+        qt = self.optimizer.compute_quality_targets(QualityLevel.STANDARD)
+        assert qt.max_non_orthogonality == 70.0
+        assert qt.max_skewness == 6.0
+        assert qt.max_aspect_ratio == 200.0
+        assert qt.min_determinant == 0.001
+        assert qt.target_y_plus is None
+
+    def test_quality_targets_fine(self):
+        """fine: non_ortho=65, skewness=4.0, aspect_ratio=100, min_det=0.001, y+=1.0."""
+        qt = self.optimizer.compute_quality_targets(QualityLevel.FINE)
+        assert qt.max_non_orthogonality == 65.0
+        assert qt.max_skewness == 4.0
+        assert qt.max_aspect_ratio == 100.0
+        assert qt.min_determinant == 0.001
+        assert qt.target_y_plus == 1.0
+
+    def test_quality_targets_type(self):
+        """QualityTargets 타입을 반환해야 한다."""
+        qt = self.optimizer.compute_quality_targets(QualityLevel.STANDARD)
+        assert isinstance(qt, QualityTargets)
+
+    def test_quality_targets_string_accepted(self):
+        """문자열 quality_level도 허용된다."""
+        qt = self.optimizer.compute_quality_targets("fine")
+        assert qt.max_non_orthogonality == 65.0
+
+
+# ---------------------------------------------------------------------------
+# StrategyPlanner 테스트
+# ---------------------------------------------------------------------------
+
+class TestStrategyPlanner:
+    def setup_method(self):
+        self.planner = StrategyPlanner()
+
+    def test_mesh_strategy_schema(self):
+        """MeshStrategy Pydantic 검증 — 필수 필드가 모두 채워져야 한다."""
+        report = _make_geometry_report()
+        strategy = self.planner.plan(report)
+
+        # Pydantic 검증 통과 확인 (재직렬화)
+        dumped = strategy.model_dump_json()
+        restored = MeshStrategy.model_validate_json(dumped)
+        assert restored.selected_tier == strategy.selected_tier
+        assert restored.strategy_version == 2
+
+    def test_strategy_from_sphere(self):
+        """sphere.geometry_report.json으로 전략을 수립한다."""
+        report_path = BENCHMARKS_DIR / "sphere.geometry_report.json"
+        assert report_path.exists(), f"sphere report 없음: {report_path}"
+
+        report = GeometryReport.model_validate_json(report_path.read_text())
+        strategy = self.planner.plan(report)
+
+        # sphere는 external + watertight → tier1_snappy (standard)
+        assert strategy.selected_tier == "tier1_snappy"
+        assert strategy.flow_type == "external"
+        assert strategy.iteration == 1
+        assert strategy.previous_attempt is None
+
+    def test_strategy_has_domain(self):
+        """전략에 도메인 설정이 포함되어야 한다."""
+        report = _make_geometry_report()
+        strategy = self.planner.plan(report)
+
+        assert strategy.domain is not None
+        assert len(strategy.domain.min) == 3
+        assert len(strategy.domain.max) == 3
+
+    def test_strategy_has_surface_mesh(self):
+        """전략에 표면 메쉬 설정이 포함되어야 한다."""
+        report = _make_geometry_report()
+        strategy = self.planner.plan(report)
+
+        assert strategy.surface_mesh is not None
+        assert strategy.surface_mesh.target_cell_size > 0
+        assert strategy.surface_mesh.min_cell_size > 0
+
+    def test_strategy_external_has_refinement(self):
+        """외부 유동 전략에는 리파인먼트 영역이 있어야 한다."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        strategy = self.planner.plan(report)
+
+        assert len(strategy.refinement_regions) > 0
+        names = [r.name for r in strategy.refinement_regions]
+        assert "body" in names
+        assert "wake" in names
+
+    def test_strategy_internal_no_wake(self):
+        """내부 유동 전략에는 wake 리파인먼트 영역이 없어야 한다."""
+        report = _make_geometry_report(flow_type="internal", is_watertight=True)
+        strategy = self.planner.plan(report)
+
+        names = [r.name for r in strategy.refinement_regions]
+        assert "wake" not in names
+
+    def test_strategy_tier_hint(self):
+        """tier_hint가 반영되어야 한다."""
+        report = _make_geometry_report(is_cad_brep=True)  # normally netgen
+        strategy = self.planner.plan(report, tier_hint="cfmesh")
+        assert strategy.selected_tier == "tier15_cfmesh"
+
+    def test_retry_adjusts_params(self):
+        """quality_report FAIL 시 iteration=2, previous_attempt 기록."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        quality = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            max_non_orthogonality=75.0,  # > 70 → snap 조정 트리거
+        )
+
+        strategy = self.planner.plan(
+            report,
+            quality_report=quality,
+            iteration=2,
+        )
+
+        assert strategy.iteration == 2
+        assert strategy.previous_attempt is not None
+        assert strategy.previous_attempt.tier == "tier1_snappy"
+        assert len(strategy.previous_attempt.failure_reason) > 0
+        assert len(strategy.previous_attempt.evaluator_recommendation) > 0
+
+    def test_retry_negative_volumes(self):
+        """negative_volumes > 0 → BL 파라미터 완화 기록."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        quality = _make_quality_report(
+            verdict=Verdict.FAIL,
+            negative_volumes=5,
+        )
+
+        strategy = self.planner.plan(report, quality_report=quality, iteration=2)
+
+        assert strategy.previous_attempt is not None
+        assert "negative_volumes" in strategy.previous_attempt.failure_reason
+
+    def test_retry_checkmesh_complete_failure_fallback(self):
+        """checkMesh 완전 실패(cells=0, mesh_ok=False) → fallback Tier로 전환."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        quality = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            cells=0,
+            mesh_ok=False,
+        )
+
+        strategy = self.planner.plan(
+            report,
+            quality_report=quality,
+            iteration=2,
+            tier_hint="snappy",
+        )
+
+        # tier1_snappy에서 fallback으로 전환되어야 함
+        assert strategy.selected_tier != "tier1_snappy"
+        assert strategy.previous_attempt is not None
+
+    def test_strategy_iteration_default(self):
+        """기본 iteration은 1이어야 한다."""
+        report = _make_geometry_report()
+        strategy = self.planner.plan(report)
+        assert strategy.iteration == 1
+
+    def test_strategy_preprocessed_report_input_file(self):
+        """preprocessed_report가 있으면 output_file이 surface_mesh.input_file로 사용된다."""
+        from core.schemas import (
+            FinalValidation,
+            PreprocessedReport,
+            PreprocessStep,
+            PreprocessingSummary,
+        )
+
+        report = _make_geometry_report()
+        final_val = FinalValidation(
+            is_watertight=True,
+            is_manifold=True,
+            num_faces=1280,
+            min_face_area=0.009,
+            max_edge_length_ratio=1.2,
+        )
+        prep_summary = PreprocessingSummary(
+            input_file="/tmp/test.stl",
+            input_format="STL",
+            output_file="/tmp/preprocessed.stl",
+            passthrough_cad=False,
+            total_time_seconds=1.2,
+            steps_performed=[],
+            final_validation=final_val,
+        )
+        pre_report = PreprocessedReport(preprocessing_summary=prep_summary)
+
+        strategy = self.planner.plan(report, preprocessed_report=pre_report)
+        assert strategy.surface_mesh.input_file == "/tmp/preprocessed.stl"
+
+    def test_strategy_fallback_tiers_not_empty(self):
+        """fallback_tiers가 비어있지 않아야 한다."""
+        report = _make_geometry_report()
+        strategy = self.planner.plan(report)
+        assert len(strategy.fallback_tiers) > 0
+        assert strategy.selected_tier not in strategy.fallback_tiers
+
+    # ── QualityLevel 연동 테스트 ─────────────────────────────────────
+
+    def test_plan_draft_quality_level(self):
+        """draft 품질 레벨로 전략 수립 시 quality_level 필드가 설정된다."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        strategy = self.planner.plan(report, quality_level=QualityLevel.DRAFT)
+
+        assert strategy.quality_level == QualityLevel.DRAFT
+        assert strategy.selected_tier == "tier2_tetwild"
+
+    def test_plan_fine_quality_level(self):
+        """fine 품질 레벨로 전략 수립 시 quality_level 필드가 설정된다."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        strategy = self.planner.plan(report, quality_level=QualityLevel.FINE)
+
+        assert strategy.quality_level == QualityLevel.FINE
+        assert strategy.selected_tier == "tier1_snappy"
+
+    def test_plan_standard_quality_level_default(self):
+        """기본 quality_level은 standard이어야 한다."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        strategy = self.planner.plan(report)
+
+        assert strategy.quality_level == QualityLevel.STANDARD
+
+    def test_plan_draft_bl_disabled(self):
+        """draft: BL이 비활성화되어야 한다."""
+        report = _make_geometry_report()
+        strategy = self.planner.plan(report, quality_level=QualityLevel.DRAFT)
+
+        assert strategy.boundary_layers.enabled is False
+
+    def test_plan_fine_bl_enabled(self):
+        """fine: BL이 활성화되어야 한다."""
+        report = _make_geometry_report()
+        strategy = self.planner.plan(report, quality_level=QualityLevel.FINE)
+
+        assert strategy.boundary_layers.enabled is True
+
+    def test_plan_standard_bl_disabled(self):
+        """standard: BL이 비활성화되어야 한다."""
+        report = _make_geometry_report()
+        strategy = self.planner.plan(report, quality_level=QualityLevel.STANDARD)
+
+        assert strategy.boundary_layers.enabled is False
+
+    def test_plan_quality_targets_by_level(self):
+        """quality_level에 따라 quality_targets 값이 달라진다."""
+        report = _make_geometry_report()
+        draft = self.planner.plan(report, quality_level=QualityLevel.DRAFT)
+        standard = self.planner.plan(report, quality_level=QualityLevel.STANDARD)
+        fine = self.planner.plan(report, quality_level=QualityLevel.FINE)
+
+        assert draft.quality_targets.max_non_orthogonality == 85.0
+        assert standard.quality_targets.max_non_orthogonality == 70.0
+        assert fine.quality_targets.max_non_orthogonality == 65.0
+
+        assert draft.quality_targets.max_skewness == 8.0
+        assert standard.quality_targets.max_skewness == 6.0
+        assert fine.quality_targets.max_skewness == 4.0
+
+    def test_plan_cell_size_by_quality_level(self):
+        """quality_level에 따라 셀 크기가 달라진다 (draft > standard > fine)."""
+        report = _make_geometry_report()
+        draft = self.planner.plan(report, quality_level=QualityLevel.DRAFT)
+        standard = self.planner.plan(report, quality_level=QualityLevel.STANDARD)
+        fine = self.planner.plan(report, quality_level=QualityLevel.FINE)
+
+        assert draft.surface_mesh.target_cell_size > standard.surface_mesh.target_cell_size
+        assert standard.surface_mesh.target_cell_size > fine.surface_mesh.target_cell_size
+
+    def test_plan_draft_tetwild_epsilon_coarse(self):
+        """draft + tetwild: epsilon이 coarse (1e-2) 이어야 한다."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        strategy = self.planner.plan(report, quality_level=QualityLevel.DRAFT)
+
+        assert strategy.selected_tier == "tier2_tetwild"
+        assert strategy.tier_specific_params.get("tw_epsilon") == 1e-2
+
+    def test_plan_surface_quality_level_default(self):
+        """기본 surface_quality_level은 l1_repair이어야 한다."""
+        report = _make_geometry_report()
+        strategy = self.planner.plan(report)
+
+        assert strategy.surface_quality_level == SurfaceQualityLevel.L1_REPAIR
+
+    def test_plan_l3ai_preprocessed_report_forces_tetwild(self):
+        """preprocessed_report에 surface_quality_level=l3_ai가 있으면 tetwild를 강제한다."""
+        from core.schemas import (
+            FinalValidation,
+            PreprocessedReport,
+            PreprocessingSummary,
+        )
+
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        final_val = FinalValidation(
+            is_watertight=True,
+            is_manifold=True,
+            num_faces=1280,
+            min_face_area=0.009,
+            max_edge_length_ratio=1.2,
+        )
+        prep_summary = PreprocessingSummary(
+            input_file="/tmp/test.stl",
+            input_format="STL",
+            output_file="/tmp/preprocessed.stl",
+            passthrough_cad=False,
+            total_time_seconds=1.2,
+            steps_performed=[],
+            final_validation=final_val,
+            surface_quality_level="l3_ai",
+        )
+        pre_report = PreprocessedReport(preprocessing_summary=prep_summary)
+
+        strategy = self.planner.plan(
+            report,
+            preprocessed_report=pre_report,
+            quality_level=QualityLevel.FINE,
+        )
+        assert strategy.selected_tier == "tier2_tetwild"
+        assert strategy.surface_quality_level == SurfaceQualityLevel.L3_AI
+
+    def test_plan_strategy_version_is_2(self):
+        """strategy_version은 2이어야 한다."""
+        report = _make_geometry_report()
+        strategy = self.planner.plan(report)
+        assert strategy.strategy_version == 2
+
+    def test_plan_quality_level_string(self):
+        """quality_level을 문자열로 전달해도 동작해야 한다."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        strategy = self.planner.plan(report, quality_level="draft")
+        assert strategy.quality_level == QualityLevel.DRAFT
+        assert strategy.selected_tier == "tier2_tetwild"
+
+
+# ---------------------------------------------------------------------------
+# Schema 테스트
+# ---------------------------------------------------------------------------
+
+class TestSchemas:
+    def test_quality_level_enum_values(self):
+        """QualityLevel enum 값 검증."""
+        assert QualityLevel.DRAFT.value == "draft"
+        assert QualityLevel.STANDARD.value == "standard"
+        assert QualityLevel.FINE.value == "fine"
+
+    def test_surface_quality_level_enum_values(self):
+        """SurfaceQualityLevel enum 값 검증."""
+        assert SurfaceQualityLevel.L1_REPAIR.value == "l1_repair"
+        assert SurfaceQualityLevel.L2_REMESH.value == "l2_remesh"
+        assert SurfaceQualityLevel.L3_AI.value == "l3_ai"
+
+    def test_mesh_strategy_default_quality_level(self):
+        """MeshStrategy 기본 quality_level은 standard이다."""
+        # Minimal MeshStrategy construction requires mandatory fields
+        from core.schemas import BoundaryLayerConfig, DomainConfig, SurfaceMeshConfig
+
+        strategy = MeshStrategy(
+            selected_tier="tier1_snappy",
+            flow_type="external",
+            domain=DomainConfig(
+                min=[-10.0, -5.0, -5.0],
+                max=[20.0, 5.0, 5.0],
+                base_cell_size=0.04,
+                location_in_mesh=[-9.0, 0.0, 0.0],
+            ),
+            surface_mesh=SurfaceMeshConfig(
+                input_file="test.stl",
+                target_cell_size=0.01,
+                min_cell_size=0.0025,
+            ),
+            boundary_layers=BoundaryLayerConfig(
+                enabled=False,
+                num_layers=0,
+                first_layer_thickness=0.0,
+                growth_ratio=1.2,
+                max_total_thickness=0.0,
+                min_thickness_ratio=0.1,
+            ),
+        )
+        assert strategy.quality_level == QualityLevel.STANDARD
+        assert strategy.surface_quality_level == SurfaceQualityLevel.L1_REPAIR
+        assert strategy.strategy_version == 2
+
+    def test_mesh_strategy_roundtrip_with_quality_level(self):
+        """MeshStrategy 직렬화/역직렬화 시 quality_level 보존."""
+        from core.schemas import BoundaryLayerConfig, DomainConfig, SurfaceMeshConfig
+
+        strategy = MeshStrategy(
+            quality_level=QualityLevel.FINE,
+            surface_quality_level=SurfaceQualityLevel.L2_REMESH,
+            selected_tier="tier1_snappy",
+            flow_type="external",
+            domain=DomainConfig(
+                min=[-10.0, -5.0, -5.0],
+                max=[20.0, 5.0, 5.0],
+                base_cell_size=0.04,
+                location_in_mesh=[-9.0, 0.0, 0.0],
+            ),
+            surface_mesh=SurfaceMeshConfig(
+                input_file="test.stl",
+                target_cell_size=0.01,
+                min_cell_size=0.0025,
+            ),
+            boundary_layers=BoundaryLayerConfig(
+                enabled=True,
+                num_layers=5,
+                first_layer_thickness=1e-5,
+                growth_ratio=1.2,
+                max_total_thickness=1e-4,
+                min_thickness_ratio=0.1,
+            ),
+        )
+
+        dumped = strategy.model_dump_json()
+        restored = MeshStrategy.model_validate_json(dumped)
+        assert restored.quality_level == QualityLevel.FINE
+        assert restored.surface_quality_level == SurfaceQualityLevel.L2_REMESH
+
+    def test_quality_targets_defaults_standard(self):
+        """QualityTargets 기본값이 standard 레벨과 일치해야 한다."""
+        qt = QualityTargets()
+        assert qt.max_non_orthogonality == 70.0
+        assert qt.max_skewness == 6.0
+        assert qt.max_aspect_ratio == 200.0
+        assert qt.min_determinant == 0.001
+        assert qt.target_y_plus is None
+
+    def test_evaluation_summary_quality_level_optional(self):
+        """EvaluationSummary.quality_level은 선택적이다 (기존 테스트 호환)."""
+        cm = CheckMeshResult(
+            cells=100,
+            faces=500,
+            points=120,
+            max_non_orthogonality=30.0,
+            avg_non_orthogonality=15.0,
+            max_skewness=2.0,
+            max_aspect_ratio=10.0,
+            min_face_area=1e-6,
+            min_cell_volume=1e-8,
+            min_determinant=0.01,
+            negative_volumes=0,
+            severely_non_ortho_faces=0,
+            failed_checks=0,
+            mesh_ok=True,
+        )
+        summary = EvaluationSummary(
+            verdict=Verdict.PASS,
+            iteration=1,
+            tier_evaluated="tier1_snappy",
+            evaluation_time_seconds=1.0,
+            checkmesh=cm,
+        )
+        assert summary.quality_level is None

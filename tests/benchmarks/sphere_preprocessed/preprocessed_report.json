@@ -1,0 +1,31 @@
+{
+  "preprocessing_summary": {
+    "input_file": "tests/benchmarks/sphere.stl",
+    "input_format": "STL",
+    "output_file": "tests/benchmarks/sphere_preprocessed/preprocessed.stl",
+    "passthrough_cad": false,
+    "total_time_seconds": 0.0263,
+    "steps_performed": [
+      {
+        "step": "l1_repair",
+        "method": "skipped",
+        "params": {
+          "reason": "no critical/warning issues"
+        },
+        "input_faces": 1280,
+        "output_faces": 1280,
+        "time_seconds": 0.0,
+        "gate_passed": true
+      }
+    ],
+    "final_validation": {
+      "is_watertight": true,
+      "is_manifold": true,
+      "num_faces": 1280,
+      "min_face_area": 0.009082838806991374,
+      "max_edge_length_ratio": 1.1906526495925893
+    },
+    "surface_quality_level": "l1_repair"
+  },
+  "surface_quality_level": "l1_repair"
+}

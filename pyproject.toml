@@ -1,0 +1,83 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "auto-tessell"
+version = "0.1.0"
+description = "CAD/메쉬 파일 → OpenFOAM polyMesh 자동 생성 CLI 도구"
+requires-python = ">=3.12"
+dependencies = [
+    # 핵심 CLI
+    "click>=8.1",
+    "rich>=13.0",
+    "pydantic>=2.0",
+    "structlog>=24.0",
+    # 메쉬 처리
+    "trimesh>=4.5",
+    "meshio>=5.3",
+    "numpy>=2.0",
+    # 표면 전처리
+    "pymeshfix>=0.16",
+    "pyacvd>=0.3",
+    "pyvista>=0.44",
+    "pymeshlab>=2023.12",
+    "open3d>=0.18",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-mock>=3.14",
+    "black>=24.0",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+cad = [
+    "cadquery>=2.4",
+]
+netgen = [
+    "netgen-mesher>=6.2",
+]
+desktop = [
+    "fastapi>=0.100",
+    "uvicorn[standard]>=0.20",
+    "python-multipart>=0.0.6",
+    "websockets>=12.0",
+]
+volume = [
+    "pytetwild>=0.2",
+]
+ai = [
+    "torch>=2.0",
+    "meshgpt-pytorch>=1.0",
+]
+
+[project.scripts]
+auto-tessell = "cli.main:cli"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["cli*", "core*", "desktop*"]
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+]
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
