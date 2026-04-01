@@ -296,10 +296,17 @@ class PolyMeshWriter:
                 _header("dictionary", "system", "fvSchemes")
                 + "ddtSchemes { default steadyState; }\n"
                 + "gradSchemes { default Gauss linear; }\n"
-                + "divSchemes { default none; }\n"
+                + "divSchemes\n{\n"
+                + "    default none;\n"
+                + "    div(phi,U) bounded Gauss linearUpwind grad(U);\n"
+                + "    div(phi,k) bounded Gauss upwind;\n"
+                + "    div(phi,omega) bounded Gauss upwind;\n"
+                + "    div((nuEff*dev2(T(grad(U))))) Gauss linear;\n"
+                + "}\n"
                 + "laplacianSchemes { default Gauss linear corrected; }\n"
                 + "interpolationSchemes { default linear; }\n"
                 + "snGradSchemes { default corrected; }\n"
+                + "wallDist { method meshWave; }\n"
                 + _FOOTER
             )
 
@@ -307,7 +314,22 @@ class PolyMeshWriter:
         if not fv_solution.exists():
             fv_solution.write_text(
                 _header("dictionary", "system", "fvSolution")
-                + "solvers { }\n"
+                + "solvers\n{\n"
+                + "    p { solver GAMG; smoother GaussSeidel; tolerance 1e-06; relTol 0.1; }\n"
+                + "    U { solver smoothSolver; smoother GaussSeidel; tolerance 1e-06; relTol 0.1; }\n"
+                + "    k { solver smoothSolver; smoother GaussSeidel; tolerance 1e-06; relTol 0.1; }\n"
+                + "    omega { solver smoothSolver; smoother GaussSeidel; tolerance 1e-06; relTol 0.1; }\n"
+                + "}\n\n"
+                + "SIMPLE\n{\n"
+                + "    nNonOrthogonalCorrectors 1;\n"
+                + "    consistent yes;\n"
+                + "    pRefCell 0;\n"
+                + "    pRefValue 0;\n"
+                + "}\n\n"
+                + "relaxationFactors\n{\n"
+                + "    fields { p 0.3; }\n"
+                + "    equations { U 0.7; k 0.7; omega 0.7; }\n"
+                + "}\n"
                 + _FOOTER
             )
 

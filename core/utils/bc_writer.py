@@ -116,6 +116,15 @@ def _write_turbulence_properties(case_dir: Path, model: str = "kOmegaSST") -> No
     )
 
 
+_DIMENSIONS = {
+    "p": "[0 2 -2 0 0 0 0]",   # m^2/s^2 (kinematic)
+    "U": "[0 1 -1 0 0 0 0]",   # m/s
+    "k": "[0 2 -2 0 0 0 0]",   # m^2/s^2
+    "omega": "[0 0 -1 0 0 0 0]",  # 1/s
+    "nut": "[0 2 -1 0 0 0 0]",   # m^2/s
+}
+
+
 def _write_field(
     path: Path,
     foam_class: str,
@@ -125,9 +134,10 @@ def _write_field(
 ) -> None:
     """OpenFOAM field 파일을 쓴다."""
     header = _FOAM_HEADER.format(foam_class=foam_class, object_name=object_name)
+    dims = _DIMENSIONS.get(object_name, "[0 0 0 0 0 0 0]")
     content = (
         header
-        + f"dimensions      [0 0 0 0 0 0 0];\n\n"  # 단위는 단순화
+        + f"dimensions      {dims};\n\n"
         + f"internalField   uniform {internal_field};\n\n"
         + f"boundaryField\n{{\n{boundary_field}}}\n\n"
         + "// ************************************************************************* //\n"
