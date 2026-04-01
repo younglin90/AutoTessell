@@ -12,21 +12,23 @@ import time
 
 import trimesh
 
+from typing import Any
+
 from core.schemas import GeometryReport
 from core.utils.logging import get_logger
 
 log = get_logger(__name__)
 
 try:
-    import pyacvd  # type: ignore[import]
-    import pyvista as pv  # type: ignore[import]
+    import pyacvd
+    import pyvista as pv
     _PYACVD_AVAILABLE = True
 except ImportError:
     _PYACVD_AVAILABLE = False
     log.info("pyacvd_unavailable", msg="pyacvd/pyvista 미설치 — 리메쉬 패스스루")
 
 try:
-    import pymeshlab  # type: ignore[import]
+    import pymeshlab
     _PYMESHLAB_AVAILABLE = True
 except ImportError:
     _PYMESHLAB_AVAILABLE = False
@@ -45,7 +47,7 @@ class SurfaceRemesher:
         mesh: trimesh.Trimesh,
         target_faces: int | None = None,
         element_size: float | None = None,
-    ) -> tuple[trimesh.Trimesh, bool, dict]:
+    ) -> tuple[trimesh.Trimesh, bool, dict[str, Any]]:
         """L2 리메쉬 수행 후 gate 검사.
 
         pyACVD로 1차 균일 리메쉬 후 pymeshlab isotropic remeshing을 선택 적용한다.
@@ -146,10 +148,11 @@ class SurfaceRemesher:
             )
             ms.save_current_mesh(str(out_stl))
 
-            result = trimesh.load(str(out_stl), force="mesh")
-            if isinstance(result, trimesh.Scene):
-                meshes = list(result.geometry.values())
-                result = trimesh.util.concatenate(meshes)
+            loaded = trimesh.load(str(out_stl), force="mesh")
+            if isinstance(loaded, trimesh.Scene):
+                meshes = list(loaded.geometry.values())
+                loaded = trimesh.util.concatenate(meshes)
+            result: trimesh.Trimesh = loaded  # type: ignore[assignment]
 
         log.info(
             "pymeshlab_isotropic_done",

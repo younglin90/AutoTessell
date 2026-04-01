@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +115,7 @@ def parse_foam_labels(label_file: Path) -> list[int]:
     return labels
 
 
-def parse_foam_boundary(boundary_file: Path) -> list[dict]:
+def parse_foam_boundary(boundary_file: Path) -> list[dict[str, Any]]:
     """Parse polyMesh/boundary and return patch info dicts.
 
     Each dict has keys: ``name``, ``nFaces``, ``startFace``.
@@ -122,7 +123,7 @@ def parse_foam_boundary(boundary_file: Path) -> list[dict]:
     text = boundary_file.read_text()
     text = _strip_foam_comments(text)
 
-    patches: list[dict] = []
+    patches: list[dict[str, Any]] = []
     # Match named patch blocks: name { ... nFaces N; startFace M; ... }
     # We also want to capture the patch name
     patch_blocks = re.findall(

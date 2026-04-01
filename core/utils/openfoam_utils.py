@@ -66,7 +66,7 @@ def run_openfoam(
     utility: str,
     case_dir: Path,
     args: list[str] | None = None,
-) -> subprocess.CompletedProcess:
+) -> subprocess.CompletedProcess[str]:
     """OpenFOAM 유틸리티를 실행한다.
 
     OpenFOAM 설치 경로를 자동 탐색하여 bashrc를 source한 뒤 실행한다.

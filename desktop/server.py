@@ -19,6 +19,7 @@ from typing import Any
 
 from fastapi import FastAPI, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.responses import Response
 
 from core.utils.logging import get_logger
 
@@ -58,7 +59,7 @@ def _create_job(input_filename: str) -> dict[str, Any]:
 
 
 @app.get("/health")
-async def health() -> dict:
+async def health() -> dict[str, str]:
     """서버 상태 확인."""
     return {"status": "ok", "version": "0.1.0"}
 
@@ -89,7 +90,7 @@ async def upload_file(file: UploadFile) -> JSONResponse:
 
 
 @app.get("/jobs")
-async def list_jobs() -> list[dict]:
+async def list_jobs() -> list[dict[str, Any]]:
     """모든 작업 목록."""
     return [
         {
@@ -121,7 +122,7 @@ async def get_job(job_id: str) -> JSONResponse:
 
 
 @app.get("/jobs/{job_id}/download/{filename}")
-async def download_file(job_id: str, filename: str) -> FileResponse:
+async def download_file(job_id: str, filename: str) -> Response:
     """결과 파일 다운로드."""
     job = _jobs.get(job_id)
     if not job:
@@ -228,7 +229,7 @@ async def _run_mesh_pipeline(
         work_dir = output_dir / "_work"
         work_dir.mkdir(parents=True, exist_ok=True)
 
-        def _preprocess():
+        def _preprocess() -> tuple[Path, Any]:
             return orchestrator._preprocessor.run(
                 input_path=input_path,
                 geometry_report=geometry_report,
@@ -240,7 +241,7 @@ async def _run_mesh_pipeline(
         # 3. Strategize
         await send_progress("strategize", 0.4, f"전략 수립 중... (quality={quality})")
 
-        def _strategize():
+        def _strategize() -> Any:
             return orchestrator._planner.plan(
                 geometry_report=geometry_report,
                 preprocessed_report=preprocessed_report,
@@ -266,7 +267,7 @@ async def _run_mesh_pipeline(
                 f"메쉬 생성 중... (iteration {iteration}/{max_iterations})",
             )
 
-            def _generate():
+            def _generate() -> Any:
                 return orchestrator._generator.run(strategy, preprocessed_path, output_dir)
 
             generator_log = await loop.run_in_executor(None, _generate)
@@ -290,7 +291,7 @@ async def _run_mesh_pipeline(
                 f"품질 검증 중... ({successful_tier})",
             )
 
-            def _evaluate():
+            def _evaluate() -> Any:
                 return orchestrator._evaluate(
                     case_dir=output_dir,
                     strategy=strategy,
@@ -386,7 +387,7 @@ async def get_mesh_data(job_id: str) -> JSONResponse:
                     boundary_faces.append(faces[i])
 
         return JSONResponse({
-            "points": points.tolist(),
+            "points": points,
             "boundary_faces": boundary_faces,
             "patches": boundary,
             "num_cells": int(max(
@@ -398,7 +399,7 @@ async def get_mesh_data(job_id: str) -> JSONResponse:
 
 
 @app.get("/jobs/{job_id}/surface")
-async def get_surface_stl(job_id: str) -> FileResponse:
+async def get_surface_stl(job_id: str) -> Response:
     """전처리된 표면 STL 파일 반환 (Godot 3D 뷰어용)."""
     job = _jobs.get(job_id)
     if not job:

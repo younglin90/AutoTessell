@@ -80,7 +80,7 @@ class Tier0CoreGenerator:
                 max_vertices=max_vertices,
             )
 
-            result = atc.tetrahedralize_stl(  # type: ignore[name-defined]
+            result = atc.tetrahedralize_stl(
                 input_path=str(preprocessed_path),
                 quality=quality,
                 max_vertices=max_vertices,

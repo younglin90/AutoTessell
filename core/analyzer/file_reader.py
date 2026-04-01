@@ -104,7 +104,7 @@ def _load_via_cad(path: Path, fmt: str) -> trimesh.Trimesh:
 def _load_via_cadquery(path: Path, fmt: str) -> trimesh.Trimesh:
     """cadquery를 사용한 CAD 로딩 및 테셀레이션."""
     try:
-        import cadquery as cq  # type: ignore[import]
+        import cadquery as cq
     except ImportError as exc:
         raise ImportError(
             "cadquery가 설치되지 않았습니다. `pip install cadquery`를 실행하세요."
@@ -124,7 +124,7 @@ def _load_via_cadquery(path: Path, fmt: str) -> trimesh.Trimesh:
         raise ValueError(f"cadquery에서 지원하지 않는 CAD 확장자: {fmt}")
 
     shape = wp.val()
-    vertices_cq, faces_list = shape.tessellate(tolerance=0.001, angularTolerance=0.1)
+    vertices_cq, faces_list = shape.tessellate(tolerance=0.001, angularTolerance=0.1)  # type: ignore[union-attr]
 
     if not vertices_cq or not faces_list:
         raise ValueError(f"cadquery 테셀레이션 결과가 비어 있습니다: {path}")
@@ -149,7 +149,7 @@ def _load_via_cadquery(path: Path, fmt: str) -> trimesh.Trimesh:
 def _load_via_gmsh(path: Path, fmt: str) -> trimesh.Trimesh:
     """gmsh를 사용한 CAD 로딩 및 표면 메쉬 추출."""
     try:
-        import gmsh  # type: ignore[import]
+        import gmsh
     except ImportError as exc:
         raise ImportError(
             "gmsh가 설치되지 않았습니다. `pip install gmsh`를 실행하세요."
@@ -240,7 +240,7 @@ def _load_via_trimesh(path: Path, fmt: str) -> trimesh.Trimesh:
 def _load_via_meshio(path: Path, fmt: str) -> trimesh.Trimesh:
     """meshio.read() → 표면 삼각 메쉬 추출."""
     try:
-        import meshio  # type: ignore[import]
+        import meshio
     except ImportError as exc:
         raise ImportError(
             "meshio가 설치되지 않았습니다. `pip install meshio`를 실행하세요."
@@ -263,7 +263,7 @@ def _load_via_meshio(path: Path, fmt: str) -> trimesh.Trimesh:
             f"포함된 셀 타입: {[c.type for c in mesh.cells]}"
         )
 
-    import numpy as np  # type: ignore[import]
+    import numpy as np
 
     faces = np.vstack([c.data for c in tri_cells])
     result = trimesh.Trimesh(vertices=mesh.points[:, :3], faces=faces, process=False)

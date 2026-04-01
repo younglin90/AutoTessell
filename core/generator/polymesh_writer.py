@@ -148,7 +148,7 @@ class PolyMeshWriter:
         vertices: np.ndarray,
         tets: np.ndarray,
         case_dir: Path,
-    ) -> dict:
+    ) -> dict[str, int]:
         """Write OpenFOAM polyMesh from tet mesh arrays.
 
         Parameters

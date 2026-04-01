@@ -357,7 +357,7 @@ class GeometryAnalyzer:
         # 2. non-manifold edges
         if not surface.is_manifold:
             try:
-                nm_edges = trimesh.grouping.group_rows(
+                nm_edges = trimesh.grouping.group_rows(  # type: ignore[no-untyped-call]
                     mesh.edges_sorted, require_count=3
                 )
                 nm_count = int(len(nm_edges))

@@ -6,8 +6,10 @@ import shutil
 import time
 from pathlib import Path
 
+from typing import Any
+
 from core.generator.openfoam_writer import OpenFOAMWriter
-from core.schemas import MeshStrategy, TierAttempt
+from core.schemas import GeneratorStep, MeshStrategy, TierAttempt
 from core.utils.logging import get_logger
 from core.utils.openfoam_utils import OpenFOAMError, run_openfoam
 
@@ -16,7 +18,7 @@ logger = get_logger(__name__)
 TIER_NAME = "tier1_snappy"
 
 
-def generate_block_mesh_dict(strategy: MeshStrategy) -> dict:
+def generate_block_mesh_dict(strategy: MeshStrategy) -> dict[str, Any]:
     """blockMeshDict 내용을 Python dict로 생성한다.
 
     도메인 설정에 따라 8개 꼭짓점과 블록 분할 수를 계산한다.
@@ -76,7 +78,7 @@ def generate_block_mesh_dict(strategy: MeshStrategy) -> dict:
     }
 
 
-def generate_snappy_dict(strategy: MeshStrategy) -> dict:
+def generate_snappy_dict(strategy: MeshStrategy) -> dict[str, Any]:
     """snappyHexMeshDict 내용을 Python dict로 생성한다.
 
     Args:
@@ -161,7 +163,7 @@ def generate_snappy_dict(strategy: MeshStrategy) -> dict:
     }
 
 
-def _generate_surface_feature_extract_dict(stl_name: str) -> dict:
+def _generate_surface_feature_extract_dict(stl_name: str) -> dict[str, Any]:
     """surfaceFeatureExtractDict를 생성한다."""
     return {
         stl_name: {
@@ -204,7 +206,7 @@ class Tier1SnappyGenerator:
             실행 결과를 담은 TierAttempt.
         """
         t_start = time.monotonic()
-        steps = []
+        steps: list[GeneratorStep] = []
         logger.info("tier1_snappy_start", case_dir=str(case_dir))
 
         try:
@@ -225,19 +227,18 @@ class Tier1SnappyGenerator:
             try:
                 run_openfoam("blockMesh", case_dir)
                 step_elapsed = time.monotonic() - t_step
-                steps.append({"name": "blockMesh", "status": "success", "time": step_elapsed})
+                steps.append(GeneratorStep(name="blockMesh", status="success", time=step_elapsed))
                 logger.info("blockmesh_success", elapsed=step_elapsed)
             except OpenFOAMError as exc:
                 step_elapsed = time.monotonic() - t_step
-                steps.append({"name": "blockMesh", "status": "failed", "time": step_elapsed})
+                steps.append(GeneratorStep(name="blockMesh", status="failed", time=step_elapsed))
                 elapsed = time.monotonic() - t_start
                 logger.warning("blockmesh_failed", error=str(exc))
-                from core.schemas import GeneratorStep
                 return TierAttempt(
                     tier=TIER_NAME,
                     status="failed",
                     time_seconds=elapsed,
-                    steps=[GeneratorStep(**s) for s in steps],
+                    steps=steps,
                     error_message=f"blockMesh 실패: {exc}",
                 )
 
@@ -246,19 +247,18 @@ class Tier1SnappyGenerator:
             try:
                 run_openfoam("surfaceFeatureExtract", case_dir)
                 step_elapsed = time.monotonic() - t_step
-                steps.append({"name": "surfaceFeatureExtract", "status": "success", "time": step_elapsed})
+                steps.append(GeneratorStep(name="surfaceFeatureExtract", status="success", time=step_elapsed))
                 logger.info("surface_feature_extract_success", elapsed=step_elapsed)
             except OpenFOAMError as exc:
                 step_elapsed = time.monotonic() - t_step
-                steps.append({"name": "surfaceFeatureExtract", "status": "failed", "time": step_elapsed})
+                steps.append(GeneratorStep(name="surfaceFeatureExtract", status="failed", time=step_elapsed))
                 elapsed = time.monotonic() - t_start
                 logger.warning("surface_feature_extract_failed", error=str(exc))
-                from core.schemas import GeneratorStep
                 return TierAttempt(
                     tier=TIER_NAME,
                     status="failed",
                     time_seconds=elapsed,
-                    steps=[GeneratorStep(**s) for s in steps],
+                    steps=steps,
                     error_message=f"surfaceFeatureExtract 실패: {exc}",
                 )
 
@@ -267,41 +267,38 @@ class Tier1SnappyGenerator:
             try:
                 run_openfoam("snappyHexMesh", case_dir, args=["-overwrite"])
                 step_elapsed = time.monotonic() - t_step
-                steps.append({"name": "snappyHexMesh", "status": "success", "time": step_elapsed})
+                steps.append(GeneratorStep(name="snappyHexMesh", status="success", time=step_elapsed))
                 logger.info("snappy_success", elapsed=step_elapsed)
             except OpenFOAMError as exc:
                 step_elapsed = time.monotonic() - t_step
-                steps.append({"name": "snappyHexMesh", "status": "failed", "time": step_elapsed})
+                steps.append(GeneratorStep(name="snappyHexMesh", status="failed", time=step_elapsed))
                 elapsed = time.monotonic() - t_start
                 logger.warning("snappy_failed", error=str(exc))
-                from core.schemas import GeneratorStep
                 return TierAttempt(
                     tier=TIER_NAME,
                     status="failed",
                     time_seconds=elapsed,
-                    steps=[GeneratorStep(**s) for s in steps],
+                    steps=steps,
                     error_message=f"snappyHexMesh 실패: {exc}",
                 )
 
             elapsed = time.monotonic() - t_start
-            from core.schemas import GeneratorStep
             logger.info("tier1_snappy_success", elapsed=elapsed)
             return TierAttempt(
                 tier=TIER_NAME,
                 status="success",
                 time_seconds=elapsed,
-                steps=[GeneratorStep(**s) for s in steps],
+                steps=steps,
             )
 
         except Exception as exc:
             elapsed = time.monotonic() - t_start
             logger.exception("tier1_snappy_unexpected_error", error=str(exc))
-            from core.schemas import GeneratorStep
             return TierAttempt(
                 tier=TIER_NAME,
                 status="failed",
                 time_seconds=elapsed,
-                steps=[GeneratorStep(**s) for s in steps],
+                steps=steps,
                 error_message=f"Tier 1 예상치 못한 오류: {exc}",
             )
 
@@ -338,7 +335,7 @@ class Tier1SnappyGenerator:
             location="system", object_name="surfaceFeatureExtractDict"
         )
 
-    def _render_block_mesh_dict(self, bmd: dict) -> str:
+    def _render_block_mesh_dict(self, bmd: dict[str, Any]) -> str:
         """blockMeshDict를 OpenFOAM 형식 문자열로 렌더링한다."""
         from core.generator.openfoam_writer import _foam_header
         header = _foam_header(

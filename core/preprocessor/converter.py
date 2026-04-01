@@ -96,7 +96,7 @@ class FormatConverter:
 
         # cadquery 시도
         try:
-            import cadquery as cq  # type: ignore[import]
+            import cadquery as cq
 
             if suffix in (".step", ".stp"):
                 shape = cq.importers.importStep(str(path))
@@ -143,12 +143,13 @@ class FormatConverter:
         """OBJ/PLY/OFF 등 trimesh 직접 변환."""
         log.info("convert_trimesh_start", path=str(path))
         try:
-            result = trimesh.load(str(path), force="mesh")
-            if isinstance(result, trimesh.Scene):
-                if len(result.geometry) == 0:
+            loaded = trimesh.load(str(path), force="mesh")
+            if isinstance(loaded, trimesh.Scene):
+                if len(loaded.geometry) == 0:
                     raise ValueError("빈 Scene")
-                meshes = list(result.geometry.values())
-                result = trimesh.util.concatenate(meshes)
+                meshes = list(loaded.geometry.values())
+                loaded = trimesh.util.concatenate(meshes)
+            result: trimesh.Trimesh = loaded  # type: ignore[assignment]
             result.export(str(out_path))
             log.info(
                 "convert_trimesh_done",
@@ -165,7 +166,7 @@ class FormatConverter:
         """meshio 기반 변환 (볼륨 메쉬 → 표면 추출 → STL)."""
         log.info("convert_meshio_start", path=str(path))
         try:
-            import meshio  # type: ignore[import]
+            import meshio
             import numpy as np
 
             mesh = meshio.read(str(path))

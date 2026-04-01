@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from core.schemas import (
+    BoundaryLayerConfig,
     GeometryReport,
     MeshStrategy,
     PreviousAttempt,
@@ -23,7 +24,7 @@ from core.utils.logging import get_logger
 log = get_logger(__name__)
 
 # Tier-specific 파라미터 기본값
-_TIER_PARAMS: dict[str, dict] = {
+_TIER_PARAMS: dict[str, dict[str, object]] = {
     "tier1_snappy": {
         "snappy_castellated_level": [2, 3],
         "snappy_snap_tolerance": 2.0,
@@ -465,15 +466,13 @@ class StrategyPlanner:
         self,
         adj: _StrategyAdjustments,
         cell_sizes: dict[str, float],
-        bl_config: object,
+        bl_config: BoundaryLayerConfig,
         geometry_report: GeometryReport,
-    ) -> tuple[dict[str, float], object]:
+    ) -> tuple[dict[str, float], BoundaryLayerConfig]:
         """Apply computed adjustments to cell sizes and BL config.
 
         Returns modified copies. Values are bounded to sensible ranges.
         """
-        from core.schemas import BoundaryLayerConfig
-
         L = geometry_report.geometry.bounding_box.characteristic_length
         min_allowed_cell = max(L * _MIN_CELL_SIZE_FACTOR, _MIN_CELL_SIZE_ABS)
 
@@ -493,7 +492,6 @@ class StrategyPlanner:
         )
 
         # -- BL adjustments --
-        assert isinstance(bl_config, BoundaryLayerConfig)
         new_bl = bl_config.model_copy()
 
         if adj.bl_disable or (new_bl.num_layers + adj.bl_layers_add <= _MIN_BL_LAYERS):
@@ -529,19 +527,19 @@ class StrategyPlanner:
 
     def _apply_tier_param_adjustments(
         self,
-        tier_params: dict,
+        tier_params: dict[str, object],
         tier: str,
         adj: _StrategyAdjustments,
     ) -> None:
         """Apply snap/castellated adjustments to tier-specific params in-place."""
         if tier == "tier1_snappy":
             # Snap tolerance: multiply, bounded
-            old_tol = tier_params.get("snappy_snap_tolerance", 2.0)
+            old_tol = float(tier_params.get("snappy_snap_tolerance", 2.0))  # type: ignore[arg-type]
             new_tol = min(old_tol * adj.snap_tolerance_factor, _MAX_SNAP_TOLERANCE)
             tier_params["snappy_snap_tolerance"] = new_tol
 
             # Snap iterations: add, bounded
-            old_iters = tier_params.get("snappy_snap_iterations", 5)
+            old_iters = int(tier_params.get("snappy_snap_iterations", 5))  # type: ignore[call-overload]
             new_iters = min(old_iters + adj.snap_iterations_add, _MAX_SNAP_ITERATIONS)
             tier_params["snappy_snap_iterations"] = new_iters
 
@@ -581,7 +579,7 @@ class StrategyPlanner:
 
     @staticmethod
     def _fill_runtime_params(
-        params: dict,
+        params: dict[str, object],
         tier: str,
         cell_sizes: dict[str, float],
         quality_level: QualityLevel = QualityLevel.STANDARD,

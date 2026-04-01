@@ -7,6 +7,11 @@ import subprocess
 import time
 from pathlib import Path
 
+from typing import Any
+
+import numpy as np
+import numpy.typing as npt
+
 from core.generator.polymesh_writer import PolyMeshWriter
 from core.schemas import MeshStrategy, TierAttempt
 from core.utils.logging import get_logger
@@ -41,7 +46,7 @@ def _try_gmsh_to_foam(mesh_path: Path, case_dir: Path) -> bool:
         return False
 
 
-def _convert_to_openfoam(vertices, tets, mesh_path: Path, case_dir: Path) -> dict:
+def _convert_to_openfoam(vertices: npt.NDArray[Any], tets: npt.NDArray[Any], mesh_path: Path, case_dir: Path) -> dict[str, int]:
     """tet 메쉬를 OpenFOAM polyMesh로 변환한다.
 
     먼저 gmshToFoam (OpenFOAM 설치 시)을 시도하고, 없으면 PolyMeshWriter를 사용한다.
@@ -149,17 +154,17 @@ class Tier2TetWildGenerator:
             import trimesh as _trimesh
             import pytetwild
 
-            surf = _trimesh.load(str(preprocessed_path))
+            surf: _trimesh.Trimesh = _trimesh.load(str(preprocessed_path), force="mesh")  # type: ignore[assignment]
             vertices = surf.vertices
             faces = surf.faces
 
-            tetra_kwargs: dict = {
+            tetra_kwargs: dict[str, Any] = {
                 "stop_energy": stop_energy,
             }
             if edge_length is not None:
                 tetra_kwargs["edge_len_r"] = edge_length
 
-            tet_v, tet_f = pytetwild.tetrahedralize(vertices, faces, **tetra_kwargs)
+            tet_v, tet_f = pytetwild.tetrahedralize(vertices, faces, **tetra_kwargs)  # type: ignore[attr-defined]
 
             # meshio로 .msh 저장 (gmshToFoam 경로에서 사용)
             import meshio as _meshio
@@ -215,7 +220,7 @@ class Tier2TetWildGenerator:
         self,
         input_msh: Path,
         case_dir: Path,
-        params: dict,
+        params: dict[str, Any],
     ) -> Path:
         """MMG3D를 사용해 메쉬 품질을 향상시킨다.
 

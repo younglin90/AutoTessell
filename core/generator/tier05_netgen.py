@@ -96,9 +96,9 @@ class Tier05NetgenGenerator:
             )
 
             if is_cad:
-                geo = OCCGeometry(str(preprocessed_path))  # type: ignore[name-defined]
+                geo = OCCGeometry(str(preprocessed_path))
             else:
-                geo = STLGeometry(str(preprocessed_path))  # type: ignore[name-defined]
+                geo = STLGeometry(str(preprocessed_path))
 
             mesh = geo.GenerateMesh(
                 maxh=maxh,

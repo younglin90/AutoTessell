@@ -118,15 +118,12 @@ def _run_tier(
     logger.info("running_tier", tier=tier_name)
     generator = generator_class()
 
-    # Tier 0은 preprocessed_path가 필요없는 경우도 있음 (strategy만 사용)
-    if tier_name == "tier0_core":
-        return generator.run(strategy=strategy, preprocessed_path=preprocessed_path, case_dir=case_dir)
-
-    return generator.run(
+    result: TierAttempt = generator.run(
         strategy=strategy,
         preprocessed_path=preprocessed_path,
         case_dir=case_dir,
     )
+    return result
 
 
 class MeshGenerator:

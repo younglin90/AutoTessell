@@ -108,14 +108,14 @@ def _parse_foam_faces(faces_file: Path) -> "list[list[int]]":
     return faces
 
 
-def _parse_foam_boundary(boundary_file: Path) -> list[dict]:
+def _parse_foam_boundary(boundary_file: Path) -> list[dict[str, int]]:
     """polyMesh/boundary 파일을 파싱해 패치 정보(nFaces, startFace)를 반환한다."""
     text = boundary_file.read_text()
     # 주석 제거
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
     text = re.sub(r"//[^\n]*", "", text)
 
-    patches: list[dict] = []
+    patches: list[dict[str, int]] = []
     # 각 패치 블록: patchName\n{\n ... nFaces N; startFace M; ... \n}
     patch_blocks = re.findall(
         r"\w[\w\s]*?\{([^}]+)\}",

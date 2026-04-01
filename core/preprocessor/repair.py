@@ -11,13 +11,15 @@ import time
 
 import trimesh
 
+from typing import Any
+
 from core.schemas import Issue, Severity
 from core.utils.logging import get_logger
 
 log = get_logger(__name__)
 
 try:
-    import pymeshfix  # type: ignore[import]
+    import pymeshfix
     _PYMESHFIX_AVAILABLE = True
 except ImportError:
     _PYMESHFIX_AVAILABLE = False
@@ -57,7 +59,7 @@ class SurfaceRepairer:
         self,
         mesh: trimesh.Trimesh,
         issues: list[Issue],
-    ) -> tuple[trimesh.Trimesh, bool, dict]:
+    ) -> tuple[trimesh.Trimesh, bool, dict[str, Any]]:
         """L1 수리 수행 후 gate 검사.
 
         Args:

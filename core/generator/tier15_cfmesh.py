@@ -6,6 +6,8 @@ import shutil
 import time
 from pathlib import Path
 
+from typing import Any
+
 from core.generator.openfoam_writer import OpenFOAMWriter
 from core.schemas import MeshStrategy, TierAttempt
 from core.utils.logging import get_logger
@@ -16,7 +18,7 @@ logger = get_logger(__name__)
 TIER_NAME = "tier15_cfmesh"
 
 
-def generate_cfmesh_dict(strategy: MeshStrategy) -> dict:
+def generate_cfmesh_dict(strategy: MeshStrategy) -> dict[str, Any]:
     """cfMesh용 meshDict 내용을 Python dict로 생성한다.
 
     Args:
@@ -35,7 +37,7 @@ def generate_cfmesh_dict(strategy: MeshStrategy) -> dict:
         sm.target_cell_size * 4,
     )
 
-    result: dict = {
+    result: dict[str, Any] = {
         "surfaceFile": "constant/triSurface/surface.stl",
         "maxCellSize": max_cell_size,
         "minCellSize": sm.min_cell_size,

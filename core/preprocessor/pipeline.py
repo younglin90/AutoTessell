@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import trimesh
 
@@ -205,7 +205,7 @@ class Preprocessor:
         self,
         mesh: trimesh.Trimesh,
         geometry_report: GeometryReport,
-    ) -> tuple[trimesh.Trimesh, bool, dict]:
+    ) -> tuple[trimesh.Trimesh, bool, dict[str, Any]]:
         """L1 표면 수리 수행.
 
         geometry_report의 issues를 참조하여 pymeshfix + trimesh 수리를 수행한다.
@@ -243,7 +243,7 @@ class Preprocessor:
         self,
         mesh: trimesh.Trimesh,
         target_faces: int | None,
-    ) -> tuple[trimesh.Trimesh, bool, dict]:
+    ) -> tuple[trimesh.Trimesh, bool, dict[str, Any]]:
         """L2 표면 리메쉬 수행.
 
         pyACVD + 선택적 pymeshlab isotropic remeshing.
@@ -259,7 +259,7 @@ class Preprocessor:
         mesh: trimesh.Trimesh,
         *,
         allow_ai_fallback: bool = False,
-    ) -> tuple[trimesh.Trimesh, bool, dict | None]:
+    ) -> tuple[trimesh.Trimesh, bool, dict[str, Any] | None]:
         """L3 AI 표면 재생성 (최후 수단).
 
         meshgpt-pytorch → MeshAnythingV2 순서로 시도한다.
@@ -337,7 +337,7 @@ class Preprocessor:
     def _try_meshgpt(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh | None:
         """meshgpt-pytorch 추론 시도. 실패 시 None 반환."""
         try:
-            from meshgpt_pytorch import MeshTransformer  # type: ignore[import]
+            from meshgpt_pytorch import MeshTransformer
             import torch
             import numpy as np
 
@@ -386,7 +386,7 @@ class Preprocessor:
                 sys.path.insert(0, ma_dir)
 
             import numpy as np
-            from main import load_model  # type: ignore[import]
+            from main import load_model
 
             model = load_model()
 

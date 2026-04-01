@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from core.utils.logging import get_logger
 
@@ -212,7 +213,7 @@ relaxationFactors
     def write_foam_dict(
         self,
         path: Path,
-        data: dict,
+        data: dict[str, Any],
         foam_class: str = "dictionary",
         location: str = "system",
         object_name: str | None = None,
@@ -231,7 +232,7 @@ relaxationFactors
         path.write_text(header + body + footer)
         logger.info("wrote_foam_dict", path=str(path))
 
-    def _dict_to_foam(self, data: dict | list | str | int | float | bool, indent: int = 0) -> str:
+    def _dict_to_foam(self, data: dict[str, Any] | list[Any] | str | int | float | bool, indent: int = 0) -> str:
         """Python データ構造をOpenFOAM形式にシリアライズする。"""
         pad = "    " * indent
         "    " * (indent + 1)
