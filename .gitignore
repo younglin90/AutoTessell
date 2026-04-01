@@ -62,3 +62,4 @@ godot/export_presets.cfg
 
 # OpenFOAM case output
 /case/
+case_fine/

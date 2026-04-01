@@ -133,6 +133,21 @@ class ParamOptimizer:
         else:
             loc = list(bbox.center)
 
+        # 최대 셀 수 제한 — blockMesh int32 오버플로 방지
+        max_bg = _MAX_BG_CELLS.get(ql_str, _MAX_BG_CELLS["standard"])
+        domain_vol = 1.0
+        for i in range(3):
+            domain_vol *= domain_max[i] - domain_min[i]
+        est_cells = domain_vol / (base_cell_size ** 3) if base_cell_size > 0 else 0
+        if est_cells > max_bg:
+            base_cell_size = (domain_vol / max_bg) ** (1.0 / 3.0)
+            log.warning(
+                "base_cell_enlarged_for_max_cells",
+                est_cells=int(est_cells),
+                max_bg=max_bg,
+                new_base_cell=base_cell_size,
+            )
+
         cfg = DomainConfig(
             type="box",
             min=domain_min,

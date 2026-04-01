@@ -87,7 +87,14 @@ class AdditionalMetricsComputer:
     def _find_vtk_file(self, vtk_dir: Path) -> Path | None:
         if not vtk_dir.exists():
             return None
-        candidates = sorted(vtk_dir.glob("**/*.vtk"))
+        # foamToVTK outputs .vtk (legacy) or .vtm/.vtu (modern)
+        candidates = sorted(
+            vtk_dir.glob("**/*.vtk")
+        ) or sorted(
+            vtk_dir.glob("**/*.vtu")
+        ) or sorted(
+            vtk_dir.glob("**/*.vtm")
+        )
         if not candidates:
             return None
         # 타임스텝 0 (또는 가장 이른 파일) 우선
