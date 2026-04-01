@@ -406,6 +406,8 @@ def evaluate(
 @click.option("--max-iterations", type=int, default=3, show_default=True)
 @click.option("--dry-run", is_flag=True)
 @click.option("--allow-ai-fallback", is_flag=True, help="L3 AI 표면 재생성 허용 (GPU 필요)")
+@click.option("--profile", is_flag=True, help="성능 프로파일링 (단계별 소요 시간)")
+@click.option("--export-vtk", "do_export_vtk", is_flag=True, help="완료 후 VTK (.vtu) 내보내기")
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -417,11 +419,12 @@ def run(
     max_iterations: int,
     dry_run: bool,
     allow_ai_fallback: bool,
+    profile: bool,
+    do_export_vtk: bool,
 ) -> None:
     """전체 파이프라인(Analyze→Preprocess→Strategize→Generate→Evaluate)을 실행한다."""
     from core.pipeline.orchestrator import PipelineOrchestrator
 
-    ctx.obj.get("verbose", False) if ctx.obj else False
     console.print(f"[bold magenta]Auto-Tessell[/bold magenta] {input_file} → {output}")
     console.print(f"  quality={quality}  tier={tier}  max_iter={max_iterations}")
 
@@ -458,9 +461,146 @@ def run(
 
     if result.success:
         console.print(f"[bold green]✓ PASS[/bold green] ({result.iterations} iteration, {result.total_time_seconds:.1f}s)")
+
+        # VTK 내보내기
+        if do_export_vtk:
+            from core.utils.vtk_exporter import export_vtk
+            vtk_path = export_vtk(output)
+            if vtk_path:
+                console.print(f"[green]✓[/green] VTK → {vtk_path}")
     else:
         console.print(f"[bold red]✗ FAIL[/bold red] — {result.error}")
         sys.exit(1)
+
+    # 프로파일링 출력
+    if profile:
+        console.print(f"\n[bold]Performance Profile[/bold]")
+        console.print(f"  Total: {result.total_time_seconds:.2f}s")
+        console.print(f"  Iterations: {result.iterations}")
+        if result.generator_log:
+            for t in result.generator_log.execution_summary.tiers_attempted:
+                console.print(f"  {t.tier}: {t.time_seconds:.2f}s ({t.status})")
+
+
+# ---------------------------------------------------------------------------
+# export-vtk
+# ---------------------------------------------------------------------------
+
+
+@cli.command("export-vtk")
+@click.argument("case_dir", type=click.Path(exists=True, path_type=Path))
+@click.option("--output", "-o", type=click.Path(path_type=Path), default=None)
+@click.option("--no-quality", is_flag=True, help="품질 필드 제외")
+def export_vtk_cmd(case_dir: Path, output: Path | None, no_quality: bool) -> None:
+    """생성된 메쉬를 VTK (.vtu) 포맷으로 내보낸다. ParaView에서 품질 컬러맵 시각화 가능."""
+    from core.utils.vtk_exporter import export_vtk
+
+    console.print(f"[bold cyan]Exporting VTK[/bold cyan] {case_dir}")
+    result = export_vtk(case_dir, output, include_quality=not no_quality)
+    if result:
+        console.print(f"[bold green]✓[/bold green] VTK 파일 → {result}")
+    else:
+        console.print("[bold red]✗ VTK 내보내기 실패[/bold red]")
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
+# interactive
+# ---------------------------------------------------------------------------
+
+
+@cli.command()
+@click.argument("input_file", type=click.Path(exists=True, path_type=Path))
+@click.option("--output", "-o", type=click.Path(path_type=Path), default=Path("./case"))
+@click.pass_context
+def interactive(ctx: click.Context, input_file: Path, output: Path) -> None:
+    """대화형 모드 — 각 단계를 확인하며 진행한다."""
+    from core.analyzer.geometry_analyzer import GeometryAnalyzer
+    from core.preprocessor.pipeline import Preprocessor
+    from core.strategist.strategy_planner import StrategyPlanner
+    from core.generator.pipeline import MeshGenerator
+    from core.evaluator.quality_checker import MeshQualityChecker
+    from core.evaluator.native_checker import NativeMeshChecker
+    from core.evaluator.report import EvaluationReporter, render_terminal
+    from core.evaluator.metrics import AdditionalMetricsComputer
+    from core.utils.boundary_classifier import classify_boundaries
+    from core.utils.bc_writer import write_boundary_conditions
+    from core.utils.vtk_exporter import export_vtk
+
+    console.print(f"[bold magenta]Auto-Tessell Interactive[/bold magenta] {input_file}")
+    console.print()
+
+    # 1. Analyze
+    console.print("[bold]Step 1/6: 지오메트리 분석[/bold]")
+    analyzer = GeometryAnalyzer()
+    report = analyzer.analyze(input_file)
+    g = report.geometry
+    console.print(f"  {g.bounding_box.characteristic_length:.3f}L  {g.surface.num_faces} faces  "
+                  f"watertight={'✓' if g.surface.is_watertight else '✗'}  flow={report.flow_estimation.type}")
+    if not click.confirm("  계속 진행할까요?", default=True):
+        return
+
+    # 2. Preprocess
+    console.print("\n[bold]Step 2/6: 표면 전처리[/bold]")
+    work_dir = output / "_work"
+    work_dir.mkdir(parents=True, exist_ok=True)
+    pp_path, pp_report = Preprocessor().run(input_file, report, work_dir)
+    sq = pp_report.preprocessing_summary.surface_quality_level or "l1_repair"
+    console.print(f"  surface_quality={sq}  faces={pp_report.preprocessing_summary.final_validation.num_faces}")
+    if not click.confirm("  계속 진행할까요?", default=True):
+        return
+
+    # 3. Quality selection
+    console.print("\n[bold]Step 3/6: 품질 레벨 선택[/bold]")
+    console.print("  1) draft    — 빠른 검증 (~1초)")
+    console.print("  2) standard — 엔지니어링 (~수분)")
+    console.print("  3) fine     — 최종 CFD (~30분+)")
+    choice = click.prompt("  선택", type=click.Choice(["1", "2", "3"]), default="1")
+    quality = {"1": "draft", "2": "standard", "3": "fine"}[choice]
+
+    # 4. Strategize
+    console.print(f"\n[bold]Step 4/6: 전략 수립 (quality={quality})[/bold]")
+    strategy = StrategyPlanner().plan(report, pp_report, quality_level=quality)
+    console.print(f"  Tier: {strategy.selected_tier}  Cell size: {strategy.surface_mesh.target_cell_size}")
+    console.print(f"  Fallback: {strategy.fallback_tiers}")
+    if not click.confirm("  메쉬 생성을 시작할까요?", default=True):
+        return
+
+    # 5. Generate
+    console.print(f"\n[bold]Step 5/6: 메쉬 생성 ({strategy.selected_tier})[/bold]")
+    gen_log = MeshGenerator().run(strategy, pp_path, output)
+    for t in gen_log.execution_summary.tiers_attempted:
+        icon = "✓" if t.status == "success" else "✗"
+        console.print(f"  {icon} {t.tier}: {t.status} ({t.time_seconds:.1f}s)")
+
+    # 6. Evaluate
+    console.print("\n[bold]Step 6/6: 품질 평가[/bold]")
+    try:
+        cm = MeshQualityChecker().run(output)
+    except FileNotFoundError:
+        cm = NativeMeshChecker().run(output)
+    metrics = AdditionalMetricsComputer().compute(output)
+    qr = EvaluationReporter().evaluate(cm, strategy, metrics, None, 1,
+                                       strategy.selected_tier, 0.0, quality)
+    render_terminal(qr)
+
+    # Post-processing
+    if qr.evaluation_summary.verdict in ("PASS", "PASS_WITH_WARNINGS"):
+        console.print("\n[bold]후처리[/bold]")
+        patches = classify_boundaries(output)
+        if patches:
+            for p in patches:
+                console.print(f"  {p['name']:20s} → {p['type']}")
+            if click.confirm("  경계 조건을 자동 생성할까요?", default=True):
+                write_boundary_conditions(output, patches)
+                console.print("  [green]✓[/green] 0/p, U, k, omega, nut 생성 완료")
+
+        if click.confirm("  VTK 파일을 내보낼까요?", default=True):
+            vtk_path = export_vtk(output)
+            if vtk_path:
+                console.print(f"  [green]✓[/green] {vtk_path}")
+
+    console.print(f"\n[bold green]완료![/bold green] Case: {output}")
 
 
 if __name__ == "__main__":

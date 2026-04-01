@@ -51,6 +51,7 @@ tests/benchmarks/*.geometry_report.json
 
 # Generated benchmark STLs (large, reproducible)
 tests/benchmarks/sphere_20k.stl
+tests/benchmarks/sphere_100k.stl
 tests/benchmarks/wing.stl
 tests/benchmarks/sphere.obj
 tests/benchmarks/sphere.ply
