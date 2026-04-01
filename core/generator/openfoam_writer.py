@@ -129,8 +129,10 @@ gradSchemes
 divSchemes
 {
     default         none;
-    div(phi,U)      Gauss linearUpwind grad(U);
-    div((nuEff*dev(T(grad(U)))) ) Gauss linear;
+    div(phi,U)      bounded Gauss linearUpwind grad(U);
+    div(phi,k)      bounded Gauss upwind;
+    div(phi,omega)  bounded Gauss upwind;
+    "div((nuEff*dev2(T(grad(U)))))" Gauss linear;
 }
 
 laplacianSchemes
@@ -146,6 +148,11 @@ interpolationSchemes
 snGradSchemes
 {
     default         corrected;
+}
+
+wallDist
+{
+    method          meshWave;
 }
 
 // ************************************************************************* //
@@ -174,29 +181,53 @@ solvers
     U
     {
         solver          smoothSolver;
-        smoother        symGaussSeidel;
-        tolerance       1e-05;
+        smoother        GaussSeidel;
+        tolerance       1e-06;
+        relTol          0.1;
+    }
+    k
+    {
+        solver          smoothSolver;
+        smoother        GaussSeidel;
+        tolerance       1e-06;
+        relTol          0.1;
+    }
+    omega
+    {
+        solver          smoothSolver;
+        smoother        GaussSeidel;
+        tolerance       1e-06;
         relTol          0.1;
     }
 }
 
 SIMPLE
 {
-    nNonOrthogonalCorrectors 0;
+    nNonOrthogonalCorrectors 1;
     consistent      yes;
+    pRefCell        0;
+    pRefValue       0;
 
     residualControl
     {
         p               1e-4;
         U               1e-4;
+        k               1e-4;
+        omega           1e-4;
     }
 }
 
 relaxationFactors
 {
+    fields
+    {
+        p               0.3;
+    }
     equations
     {
-        U               0.9;
+        U               0.7;
+        k               0.7;
+        omega           0.7;
     }
 }
 

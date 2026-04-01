@@ -20,11 +20,10 @@ extends Control
 @onready var status_label: Label = $VBoxContainer/StatusBar/HBoxContainer/StatusLabel
 @onready var server_status: Label = $VBoxContainer/StatusBar/HBoxContainer/ServerStatus
 @onready var file_dialog: FileDialog = $FileDialog
-## Reference to the 3D viewport Control node used as drag-and-drop target.
-## Assign in the scene editor or leave null to disable drop support.
-@onready var viewport_area: Control = $VBoxContainer/HSplitContainer/ViewportArea if has_node("$VBoxContainer/HSplitContainer/ViewportArea") else null
-## MeshViewer Node3D used to display results.
-@onready var mesh_viewer = $VBoxContainer/HSplitContainer/ViewportArea/MeshViewer if has_node("$VBoxContainer/HSplitContainer/ViewportArea/MeshViewer") else null
+## Reference to the 3D viewport container.
+@onready var viewport_area: Control = $VBoxContainer/HSplitContainer/ViewerContainer if has_node("VBoxContainer/HSplitContainer/ViewerContainer") else null
+## MeshViewer Node3D inside the SubViewport.
+@onready var mesh_viewer = $VBoxContainer/HSplitContainer/ViewerContainer/SubViewport/MeshViewer if has_node("VBoxContainer/HSplitContainer/ViewerContainer/SubViewport/MeshViewer") else null
 
 var _selected_file_path: String = ""
 var _quality_map := ["draft", "standard", "fine"]

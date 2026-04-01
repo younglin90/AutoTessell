@@ -1238,3 +1238,368 @@ class TestNativeMeshChecker:
         recovered = CheckMeshResult.model_validate_json(json_str)
         assert recovered.cells == result.cells
         assert recovered.faces == result.faces
+
+
+# ---------------------------------------------------------------------------
+# Edge case tests
+# ---------------------------------------------------------------------------
+
+
+class TestEdgeCases:
+    """에지 케이스 시나리오 — empty mesh, single tet, boundary threshold values."""
+
+    def test_empty_polymesh_graceful_error(self) -> None:
+        """polyMesh 디렉터리는 있지만 필수 파일이 없으면 FileNotFoundError (crash 아님)."""
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            # 빈 polyMesh 디렉터리 생성 (파일 없음)
+            poly_dir = case_dir / "constant" / "polyMesh"
+            poly_dir.mkdir(parents=True)
+
+            with pytest.raises(FileNotFoundError):
+                NativeMeshChecker().run(case_dir)
+
+    def test_single_cell_mesh_all_metrics_valid(self) -> None:
+        """단일 tet 메쉬 → 모든 CheckMeshResult 필드가 유효한 값을 가진다."""
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            _write_single_tet_polymesh(case_dir)
+            result = NativeMeshChecker().run(case_dir)
+
+        # 기본 카운트 유효성
+        assert result.cells >= 1
+        assert result.faces >= 4
+        assert result.points >= 4
+
+        # 지표가 NaN/inf가 아닌지 확인
+        assert not np.isnan(result.max_non_orthogonality)
+        assert not np.isinf(result.max_non_orthogonality)
+        assert not np.isnan(result.max_skewness)
+        assert not np.isinf(result.max_skewness)
+        assert not np.isnan(result.max_aspect_ratio)
+        assert not np.isinf(result.max_aspect_ratio)
+        assert not np.isnan(result.min_determinant)
+
+        # 볼륨 양수
+        assert result.min_cell_volume > 0.0
+        assert result.negative_volumes == 0
+
+        # 면적 양수
+        assert result.min_face_area > 0.0
+
+    def test_large_non_ortho_84_draft_pass(self) -> None:
+        """non_ortho = 84° → no hard FAIL for draft (hard threshold 85°)."""
+        cm = _make_checkmesh(max_non_orthogonality=84.0)
+        report = _make_report(cm, quality_level="draft")
+        hard_criteria = [f.criterion for f in report.evaluation_summary.hard_fails]
+        assert "max_non_orthogonality" not in hard_criteria
+        # 84 > soft_non_ortho(80) → soft fail but not hard fail
+        # verdict may be PASS_WITH_WARNINGS but not FAIL due to non_ortho alone
+        hard_fails_non_ortho = [
+            f for f in report.evaluation_summary.hard_fails
+            if f.criterion == "max_non_orthogonality"
+        ]
+        assert len(hard_fails_non_ortho) == 0
+
+    def test_large_non_ortho_standard_fail(self) -> None:
+        """non_ortho = 72° → hard FAIL for standard (hard threshold 70°)."""
+        cm = _make_checkmesh(max_non_orthogonality=72.0)
+        report = _make_report(cm, quality_level="standard")
+        hard_criteria = [f.criterion for f in report.evaluation_summary.hard_fails]
+        assert "max_non_orthogonality" in hard_criteria
+        assert report.evaluation_summary.verdict == Verdict.FAIL
+
+    def test_hausdorff_zero_for_identical_meshes(self) -> None:
+        """동일 메쉬의 Hausdorff 거리 ≈ 0."""
+        pytest.importorskip("trimesh")
+        pytest.importorskip("scipy")
+        from core.evaluator.fidelity import GeometryFidelityChecker  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            stl = tmp_path / "sphere.stl"
+            _make_sphere_stl(stl, radius=1.0)
+            _make_minimal_polymesh(tmp_path, stl)
+
+            checker = GeometryFidelityChecker()
+            result = checker.compute(
+                original_stl=stl,
+                case_dir=tmp_path,
+                diagonal=2.0 * (3 ** 0.5),
+            )
+
+        assert result is not None
+        # 동일 메쉬 → Hausdorff ≈ 0 (이산화 오차 허용, 5% 이내)
+        assert result.hausdorff_relative < 0.05
+
+    def test_quality_level_in_report_matches_input(self) -> None:
+        """quality_level 파라미터가 EvaluationSummary에 올바르게 전파된다."""
+        cm = _make_checkmesh()
+        for level in ("draft", "standard", "fine"):
+            report = _make_report(cm, quality_level=level)
+            assert report.evaluation_summary.quality_level == level
+
+    def test_render_terminal_pass_no_crash(self) -> None:
+        """render_terminal — PASS 리포트에서 예외가 발생하지 않는다."""
+        from core.evaluator.report import render_terminal  # noqa: PLC0415
+        from io import StringIO  # noqa: PLC0415
+        from rich.console import Console  # noqa: PLC0415
+        import core.evaluator.report as report_mod  # noqa: PLC0415
+
+        cm = _make_checkmesh()
+        report = _make_report(cm)
+        # Rich 출력을 StringIO로 리디렉트해서 터미널 출력 억제
+        buf = StringIO()
+        old_console = report_mod._CONSOLE
+        report_mod._CONSOLE = Console(file=buf, highlight=False)
+        try:
+            render_terminal(report)
+        finally:
+            report_mod._CONSOLE = old_console
+        output = buf.getvalue()
+        assert len(output) > 0
+
+    def test_render_terminal_fail_no_crash(self) -> None:
+        """render_terminal — FAIL 리포트에서 예외가 발생하지 않는다."""
+        from core.evaluator.report import render_terminal  # noqa: PLC0415
+        from io import StringIO  # noqa: PLC0415
+        from rich.console import Console  # noqa: PLC0415
+        import core.evaluator.report as report_mod  # noqa: PLC0415
+
+        cm = _make_checkmesh(
+            max_non_orthogonality=75.0,
+            negative_volumes=3,
+            mesh_ok=False,
+        )
+        fidelity = GeometryFidelity(
+            hausdorff_distance=0.2,
+            hausdorff_relative=0.08,
+            surface_area_deviation_percent=15.0,
+        )
+        metrics = AdditionalMetrics(
+            cell_volume_stats=CellVolumeStats(
+                min=1e-15, max=1e-8, mean=1e-11, std=1e-11, ratio_max_min=1e7
+            ),
+            boundary_layer=BoundaryLayerStats(
+                bl_coverage_percent=40.0,
+                avg_first_layer_height=0.001,
+                min_first_layer_height=0.0005,
+                max_first_layer_height=0.002,
+            ),
+        )
+        report = _make_report(
+            cm,
+            metrics=metrics,
+            quality_level="standard",
+            geometry_fidelity=fidelity,
+        )
+
+        buf = StringIO()
+        old_console = report_mod._CONSOLE
+        report_mod._CONSOLE = Console(file=buf, highlight=False)
+        try:
+            render_terminal(report)
+        finally:
+            report_mod._CONSOLE = old_console
+        # 출력이 비지 않아야 한다
+        assert len(buf.getvalue()) > 0
+
+    def test_render_terminal_pass_with_warnings_no_crash(self) -> None:
+        """render_terminal — PASS_WITH_WARNINGS 리포트에서 예외가 발생하지 않는다."""
+        from core.evaluator.report import render_terminal  # noqa: PLC0415
+        from io import StringIO  # noqa: PLC0415
+        from rich.console import Console  # noqa: PLC0415
+        import core.evaluator.report as report_mod  # noqa: PLC0415
+
+        # 소프트 FAIL 1개만 → PASS_WITH_WARNINGS
+        cm = _make_checkmesh(max_non_orthogonality=66.0)
+        report = _make_report(cm, quality_level="standard")
+        assert report.evaluation_summary.verdict == Verdict.PASS_WITH_WARNINGS
+
+        buf = StringIO()
+        old_console = report_mod._CONSOLE
+        report_mod._CONSOLE = Console(file=buf, highlight=False)
+        try:
+            render_terminal(report)
+        finally:
+            report_mod._CONSOLE = old_console
+        assert len(buf.getvalue()) > 0
+
+    def test_render_terminal_all_quality_levels(self) -> None:
+        """render_terminal이 draft/standard/fine 세 레벨 모두에서 크래시 없이 동작한다."""
+        from core.evaluator.report import render_terminal  # noqa: PLC0415
+        from io import StringIO  # noqa: PLC0415
+        from rich.console import Console  # noqa: PLC0415
+        import core.evaluator.report as report_mod  # noqa: PLC0415
+
+        cm = _make_checkmesh(max_non_orthogonality=63.0)
+        for level in ("draft", "standard", "fine"):
+            report = _make_report(cm, quality_level=level)
+            buf = StringIO()
+            old_console = report_mod._CONSOLE
+            report_mod._CONSOLE = Console(file=buf, highlight=False)
+            try:
+                render_terminal(report)
+            finally:
+                report_mod._CONSOLE = old_console
+            assert len(buf.getvalue()) > 0, f"No output for quality_level={level}"
+
+    def test_render_terminal_with_geometry_fidelity(self) -> None:
+        """render_terminal — geometry_fidelity 필드 포함 시 크래시 없이 동작한다."""
+        from core.evaluator.report import render_terminal  # noqa: PLC0415
+        from io import StringIO  # noqa: PLC0415
+        from rich.console import Console  # noqa: PLC0415
+        import core.evaluator.report as report_mod  # noqa: PLC0415
+
+        cm = _make_checkmesh()
+        fidelity = GeometryFidelity(
+            hausdorff_distance=0.001,
+            hausdorff_relative=0.0005,
+            surface_area_deviation_percent=0.3,
+        )
+        report = _make_report(cm, geometry_fidelity=fidelity)
+
+        buf = StringIO()
+        old_console = report_mod._CONSOLE
+        report_mod._CONSOLE = Console(file=buf, highlight=False)
+        try:
+            render_terminal(report)
+        finally:
+            report_mod._CONSOLE = old_console
+        assert "Hausdorff" in buf.getvalue()
+
+    def test_quality_report_roundtrip_json_preserves_quality_level(self) -> None:
+        """QualityReport JSON 직렬화/역직렬화 후 quality_level이 보존된다."""
+        cm = _make_checkmesh()
+        for level in ("draft", "standard", "fine"):
+            report = _make_report(cm, quality_level=level)
+            json_str = report.model_dump_json()
+            recovered = QualityReport.model_validate_json(json_str)
+            assert recovered.evaluation_summary.quality_level == level
+
+    def test_fail_criterion_value_matches_checkmesh_field(self) -> None:
+        """FailCriterion.value가 실제 CheckMeshResult 필드값과 일치한다."""
+        non_ortho = 72.5
+        cm = _make_checkmesh(max_non_orthogonality=non_ortho)
+        report = _make_report(cm, quality_level="standard")
+
+        hard_non_ortho = [
+            f for f in report.evaluation_summary.hard_fails
+            if f.criterion == "max_non_orthogonality"
+        ]
+        assert len(hard_non_ortho) == 1
+        assert hard_non_ortho[0].value == pytest.approx(non_ortho)
+
+
+# ---------------------------------------------------------------------------
+# NativeMeshChecker 정확도 테스트
+# ---------------------------------------------------------------------------
+
+
+def _write_sphere_polymesh(case_dir: Path, subdivisions: int = 3) -> None:
+    """trimesh 구 메쉬 → PolyMeshWriter로 polyMesh 생성."""
+    import trimesh  # noqa: PLC0415
+    from core.generator.polymesh_writer import PolyMeshWriter  # noqa: PLC0415
+
+    sphere = trimesh.creation.icosphere(subdivisions=subdivisions, radius=1.0)
+    # trimesh Trimesh → tet 메쉬 생성 불가, surface만 존재.
+    # PolyMeshWriter는 tet 배열을 필요로 하므로 최소 tet mesh로 대체.
+    # icosphere의 각 삼각면을 원점과 이어 tet를 만든다.
+    verts = np.vstack([sphere.vertices, [[0.0, 0.0, 0.0]]])
+    apex = len(verts) - 1
+    tets = np.column_stack([
+        sphere.faces[:, 0],
+        sphere.faces[:, 1],
+        sphere.faces[:, 2],
+        np.full(len(sphere.faces), apex, dtype=np.int64),
+    ]).astype(np.int64)
+    PolyMeshWriter().write(verts, tets, case_dir)
+
+
+class TestNativeCheckerAccuracy:
+    """NativeMeshChecker 정확도 검증 — 구 메쉬 기반."""
+
+    def test_sphere_non_ortho_reasonable(self) -> None:
+        """구 메쉬 → 최대 비직교성 < 90° (건전성 검사)."""
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            _write_sphere_polymesh(case_dir, subdivisions=2)
+            result = NativeMeshChecker().run(case_dir)
+
+        # 건전한 tet 메쉬에서 max non-ortho < 90° 이어야 한다
+        assert result.max_non_orthogonality < 90.0
+        assert result.max_non_orthogonality >= 0.0
+
+    def test_sphere_all_positive_volumes(self) -> None:
+        """구 기반 tet 메쉬 → 음수 볼륨 없음."""
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            _write_sphere_polymesh(case_dir, subdivisions=2)
+            result = NativeMeshChecker().run(case_dir)
+
+        assert result.negative_volumes == 0
+        assert result.min_cell_volume > 0.0
+
+    def test_checker_consistent_across_runs(self) -> None:
+        """동일 polyMesh → 두 번 실행해도 동일한 결과를 반환한다."""
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            _write_single_tet_polymesh(case_dir)
+
+            checker = NativeMeshChecker()
+            r1 = checker.run(case_dir)
+            r2 = checker.run(case_dir)
+
+        assert r1.cells == r2.cells
+        assert r1.faces == r2.faces
+        assert r1.points == r2.points
+        assert r1.max_non_orthogonality == pytest.approx(r2.max_non_orthogonality)
+        assert r1.max_skewness == pytest.approx(r2.max_skewness)
+        assert r1.min_cell_volume == pytest.approx(r2.min_cell_volume)
+        assert r1.negative_volumes == r2.negative_volumes
+
+    def test_sphere_mesh_ok_no_negative_volumes(self) -> None:
+        """구 tet 메쉬 → mesh_ok=True (negative volume이 없으면 failed_checks=0)."""
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            _write_sphere_polymesh(case_dir, subdivisions=2)
+            result = NativeMeshChecker().run(case_dir)
+
+        assert result.failed_checks == 0
+        assert result.mesh_ok is True
+
+    def test_sphere_min_determinant_positive(self) -> None:
+        """구 tet 메쉬 → min_determinant > 0 (정상 셀 형상)."""
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            _write_sphere_polymesh(case_dir, subdivisions=2)
+            result = NativeMeshChecker().run(case_dir)
+
+        assert result.min_determinant > 0.0
+
+    def test_two_sphere_runs_same_cell_count(self) -> None:
+        """동일 입력으로 두 번 실행 → 셀 카운트 일치."""
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            _write_sphere_polymesh(case_dir, subdivisions=2)
+            r1 = NativeMeshChecker().run(case_dir)
+            r2 = NativeMeshChecker().run(case_dir)
+
+        assert r1.cells == r2.cells
+        assert r1.points == r2.points

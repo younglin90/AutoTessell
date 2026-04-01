@@ -414,3 +414,264 @@ class TestStepWatertight:
         report = analyzer.analyze(box_step_path)
         bb = report.geometry.bounding_box
         assert abs(bb.diagonal - math.sqrt(3)) < 0.1
+
+
+# ---------------------------------------------------------------------------
+# 에지 케이스 및 실세계 시나리오 테스트
+# ---------------------------------------------------------------------------
+
+
+BROKEN_SPHERE_PATH = BENCHMARKS_DIR / "broken_sphere.stl"
+SPHERE_OBJ_PATH = BENCHMARKS_DIR / "sphere.obj"
+SPHERE_PLY_PATH = BENCHMARKS_DIR / "sphere.ply"
+
+
+class TestEdgeCases:
+    """파일 포맷 다양성, 에러 처리, 실세계 메쉬 시나리오."""
+
+    # ------------------------------------------------------------------
+    # OBJ / PLY 포맷 테스트
+    # ------------------------------------------------------------------
+
+    def test_analyze_obj_format(self) -> None:
+        """sphere.obj → 올바른 분석 결과 반환."""
+        if not SPHERE_OBJ_PATH.exists():
+            pytest.skip("sphere.obj 벤치마크 파일이 없습니다.")
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(SPHERE_OBJ_PATH)
+
+        assert isinstance(report, GeometryReport)
+        assert report.file_info.format == "OBJ"
+        assert report.file_info.is_cad_brep is False
+        assert report.geometry.surface.num_faces > 0
+        assert report.geometry.surface.num_vertices > 0
+        assert report.geometry.bounding_box.diagonal > 0.0
+        assert report.geometry.surface.surface_area > 0.0
+
+    def test_analyze_obj_is_surface_mesh(self) -> None:
+        """OBJ 파일은 is_surface_mesh=True 이어야 한다."""
+        if not SPHERE_OBJ_PATH.exists():
+            pytest.skip("sphere.obj 벤치마크 파일이 없습니다.")
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(SPHERE_OBJ_PATH)
+        assert report.file_info.is_surface_mesh is True
+
+    def test_analyze_obj_flow_estimation_valid(self) -> None:
+        """OBJ 구 → flow_estimation이 유효한 타입과 confidence를 반환한다."""
+        if not SPHERE_OBJ_PATH.exists():
+            pytest.skip("sphere.obj 벤치마크 파일이 없습니다.")
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(SPHERE_OBJ_PATH)
+        fe = report.flow_estimation
+        assert fe.type in ("external", "internal", "unknown")
+        assert 0.0 <= fe.confidence <= 1.0
+
+    def test_analyze_ply_format(self) -> None:
+        """sphere.ply → 올바른 분석 결과 반환."""
+        if not SPHERE_PLY_PATH.exists():
+            pytest.skip("sphere.ply 벤치마크 파일이 없습니다.")
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(SPHERE_PLY_PATH)
+
+        assert isinstance(report, GeometryReport)
+        assert report.file_info.format == "PLY"
+        assert report.geometry.surface.num_faces > 0
+        assert report.geometry.surface.num_vertices > 0
+        assert report.geometry.bounding_box.diagonal > 0.0
+
+    def test_analyze_ply_is_surface_mesh(self) -> None:
+        """PLY 파일은 is_surface_mesh=True 이어야 한다."""
+        if not SPHERE_PLY_PATH.exists():
+            pytest.skip("sphere.ply 벤치마크 파일이 없습니다.")
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(SPHERE_PLY_PATH)
+        assert report.file_info.is_surface_mesh is True
+
+    def test_analyze_ply_roundtrip_json(self) -> None:
+        """PLY 분석 결과가 Pydantic JSON 왕복 검증을 통과한다."""
+        if not SPHERE_PLY_PATH.exists():
+            pytest.skip("sphere.ply 벤치마크 파일이 없습니다.")
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(SPHERE_PLY_PATH)
+        data = report.model_dump()
+        report2 = GeometryReport.model_validate(data)
+        assert report2.file_info.format == "PLY"
+        assert report2.geometry.surface.num_faces == report.geometry.surface.num_faces
+
+    # ------------------------------------------------------------------
+    # 존재하지 않는 파일 / 빈 파일 에러 처리
+    # ------------------------------------------------------------------
+
+    def test_analyze_nonexistent_file(self, tmp_path: Path) -> None:
+        """존재하지 않는 파일 → FileNotFoundError, 명확한 에러 메시지."""
+        missing = tmp_path / "does_not_exist.stl"
+        analyzer = GeometryAnalyzer()
+        with pytest.raises(FileNotFoundError) as exc_info:
+            analyzer.analyze(missing)
+        # 에러 메시지에 파일 경로가 포함되어야 한다
+        assert str(missing) in str(exc_info.value) or "does_not_exist" in str(exc_info.value)
+
+    def test_load_nonexistent_file_error_message(self, tmp_path: Path) -> None:
+        """load_mesh() 존재하지 않는 파일 → 에러 메시지가 파일명 포함."""
+        from core.analyzer.file_reader import load_mesh  # noqa: PLC0415
+        missing = tmp_path / "ghost.stl"
+        with pytest.raises(FileNotFoundError) as exc_info:
+            load_mesh(missing)
+        assert "ghost.stl" in str(exc_info.value)
+
+    def test_analyze_empty_file(self, tmp_path: Path) -> None:
+        """빈 STL 파일 → 명확한 에러 (crash 없이 적절한 예외 발생)."""
+        empty_stl = tmp_path / "empty.stl"
+        empty_stl.write_bytes(b"")
+        analyzer = GeometryAnalyzer()
+        # 빈 파일은 ValueError 또는 FileNotFoundError 또는 그 하위 예외를 발생시켜야 한다
+        with pytest.raises((ValueError, FileNotFoundError, Exception)):
+            analyzer.analyze(empty_stl)
+
+    def test_analyze_corrupted_stl(self, tmp_path: Path) -> None:
+        """손상된 STL 파일 → 예외 발생 (crash 없이 적절한 예외)."""
+        corrupt_stl = tmp_path / "corrupt.stl"
+        # 잘못된 STL: 헤더만 있고 나머지는 랜덤 바이트
+        corrupt_stl.write_bytes(b"\x00" * 80 + b"\x05\x00\x00\x00" + b"\xde\xad\xbe\xef")
+        analyzer = GeometryAnalyzer()
+        with pytest.raises(Exception):
+            analyzer.analyze(corrupt_stl)
+
+    # ------------------------------------------------------------------
+    # STEP box.step watertight 테스트
+    # ------------------------------------------------------------------
+
+    def test_step_watertight_box(self) -> None:
+        """box.step (cadquery 생성) → watertight 판정."""
+        pytest.importorskip("cadquery")
+        if not BENCHMARKS_DIR.joinpath("box.step").exists():
+            pytest.skip("box.step 벤치마크 파일이 없습니다.")
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(BENCHMARKS_DIR / "box.step")
+        assert report.geometry.surface.is_watertight is True
+
+    def test_step_box_is_cad_brep(self) -> None:
+        """box.step → is_cad_brep=True."""
+        pytest.importorskip("cadquery")
+        if not BENCHMARKS_DIR.joinpath("box.step").exists():
+            pytest.skip("box.step 벤치마크 파일이 없습니다.")
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(BENCHMARKS_DIR / "box.step")
+        assert report.file_info.is_cad_brep is True
+
+    # ------------------------------------------------------------------
+    # 불량 STL (broken_sphere.stl) 이슈 감지
+    # ------------------------------------------------------------------
+
+    def test_broken_sphere_has_issues(self) -> None:
+        """broken_sphere.stl → 이슈 목록이 비어 있지 않아야 한다."""
+        if not BROKEN_SPHERE_PATH.exists():
+            pytest.skip("broken_sphere.stl 벤치마크 파일이 없습니다.")
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(BROKEN_SPHERE_PATH)
+        # 불량 메쉬는 최소 하나 이상의 이슈를 가져야 한다
+        assert len(report.issues) > 0
+
+    def test_broken_sphere_not_watertight(self) -> None:
+        """broken_sphere.stl → is_watertight=False 이어야 한다."""
+        if not BROKEN_SPHERE_PATH.exists():
+            pytest.skip("broken_sphere.stl 벤치마크 파일이 없습니다.")
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(BROKEN_SPHERE_PATH)
+        assert report.geometry.surface.is_watertight is False
+
+    def test_broken_sphere_non_watertight_issue_detected(self) -> None:
+        """broken_sphere.stl → issues에 non_watertight 타입 이슈가 포함되어야 한다."""
+        if not BROKEN_SPHERE_PATH.exists():
+            pytest.skip("broken_sphere.stl 벤치마크 파일이 없습니다.")
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(BROKEN_SPHERE_PATH)
+        issue_types = [i.type for i in report.issues]
+        assert "non_watertight" in issue_types
+
+    def test_broken_sphere_tier0_not_compatible(self) -> None:
+        """broken_sphere.stl (non-watertight) → Tier 0과 비호환."""
+        if not BROKEN_SPHERE_PATH.exists():
+            pytest.skip("broken_sphere.stl 벤치마크 파일이 없습니다.")
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(BROKEN_SPHERE_PATH)
+        # non-watertight 메쉬는 Tier 0과 비호환이어야 한다
+        assert report.tier_compatibility.tier0_core.compatible is False
+
+    def test_broken_sphere_tier2_always_compatible(self) -> None:
+        """broken_sphere.stl → Tier 2 (TetWild)는 항상 호환되어야 한다."""
+        if not BROKEN_SPHERE_PATH.exists():
+            pytest.skip("broken_sphere.stl 벤치마크 파일이 없습니다.")
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(BROKEN_SPHERE_PATH)
+        assert report.tier_compatibility.tier2_tetwild.compatible is True
+
+    def test_broken_sphere_geometry_report_schema_valid(self) -> None:
+        """broken_sphere.stl → GeometryReport Pydantic 스키마가 여전히 유효해야 한다."""
+        if not BROKEN_SPHERE_PATH.exists():
+            pytest.skip("broken_sphere.stl 벤치마크 파일이 없습니다.")
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(BROKEN_SPHERE_PATH)
+        assert isinstance(report, GeometryReport)
+        # JSON 왕복 검증
+        data = report.model_dump()
+        report2 = GeometryReport.model_validate(data)
+        assert report2.geometry.surface.is_watertight is False
+
+    # ------------------------------------------------------------------
+    # 추가: 분석 결과 일관성 테스트
+    # ------------------------------------------------------------------
+
+    def test_sphere_stl_analysis_idempotent(self) -> None:
+        """동일 STL 파일을 두 번 분석하면 동일한 결과를 반환한다."""
+        p = BENCHMARKS_DIR / "sphere.stl"
+        if not p.exists():
+            pytest.skip("sphere.stl 벤치마크 파일이 없습니다.")
+        analyzer = GeometryAnalyzer()
+        r1 = analyzer.analyze(p)
+        r2 = analyzer.analyze(p)
+        assert r1.geometry.surface.num_faces == r2.geometry.surface.num_faces
+        assert r1.geometry.surface.num_vertices == r2.geometry.surface.num_vertices
+        assert r1.geometry.bounding_box.diagonal == pytest.approx(
+            r2.geometry.bounding_box.diagonal, rel=1e-6
+        )
+
+    def test_feature_stats_all_fields_finite(self) -> None:
+        """sphere.stl → FeatureStats의 모든 float 필드가 유한값이다."""
+        import math as _math  # noqa: PLC0415
+        p = BENCHMARKS_DIR / "sphere.stl"
+        if not p.exists():
+            pytest.skip("sphere.stl 벤치마크 파일이 없습니다.")
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(p)
+        fs = report.geometry.features
+        assert _math.isfinite(fs.curvature_max)
+        assert _math.isfinite(fs.curvature_mean)
+        assert _math.isfinite(fs.min_wall_thickness_estimate)
+        assert _math.isfinite(fs.smallest_feature_size)
+        assert _math.isfinite(fs.feature_to_bbox_ratio)
+
+    def test_surface_stats_edge_lengths_consistent(self) -> None:
+        """sphere.stl → min_edge_length <= max_edge_length."""
+        p = BENCHMARKS_DIR / "sphere.stl"
+        if not p.exists():
+            pytest.skip("sphere.stl 벤치마크 파일이 없습니다.")
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(p)
+        ss = report.geometry.surface
+        assert ss.min_edge_length <= ss.max_edge_length
+        assert ss.edge_length_ratio >= 1.0
+
+    def test_bounding_box_diagonal_matches_extents(self) -> None:
+        """bounding_box.diagonal = ||max - min||₂ 를 직접 검증한다."""
+        import math as _math  # noqa: PLC0415
+        import numpy as np  # noqa: PLC0415
+        p = BENCHMARKS_DIR / "sphere.stl"
+        if not p.exists():
+            pytest.skip("sphere.stl 벤치마크 파일이 없습니다.")
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(p)
+        bb = report.geometry.bounding_box
+        extents = np.array(bb.max) - np.array(bb.min)
+        expected_diag = float(np.linalg.norm(extents))
+        assert abs(bb.diagonal - expected_diag) < 1e-6

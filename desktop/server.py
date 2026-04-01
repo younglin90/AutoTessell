@@ -11,21 +11,63 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import io
+import shutil
 import tempfile
 import time
 import uuid
+import zipfile
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, UploadFile, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.responses import Response
 
 from core.utils.logging import get_logger
 
 log = get_logger(__name__)
 
-app = FastAPI(title="Auto-Tessell Desktop", version="0.1.0")
+
+@asynccontextmanager
+async def _lifespan(application: FastAPI):  # type: ignore[type-arg]
+    """Start background tasks on startup."""
+    task = asyncio.create_task(_cleanup_old_jobs())
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+
+app = FastAPI(title="Auto-Tessell Desktop", version="0.1.0", lifespan=_lifespan)
+
+# ---------------------------------------------------------------------------
+# CORS — allow browser-based and Godot HTML5 clients
+# ---------------------------------------------------------------------------
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ---------------------------------------------------------------------------
+# Upload limits and allowed extensions
+# ---------------------------------------------------------------------------
+MAX_UPLOAD_SIZE = 100 * 1024 * 1024  # 100 MB
+ALLOWED_EXTENSIONS = {
+    ".stl", ".obj", ".ply", ".off", ".3mf",
+    ".step", ".stp", ".iges", ".igs", ".brep",
+    ".msh", ".cas",
+}
+
+# Jobs are auto-deleted after this many seconds of inactivity.
+JOB_TTL_SECONDS = 3600  # 1 hour
 
 # ---------------------------------------------------------------------------
 # 상태 관리
@@ -48,9 +90,41 @@ def _create_job(input_filename: str) -> dict[str, Any]:
         "result": None,
         "error": None,
         "created_at": time.time(),
+        "updated_at": time.time(),
     }
     _jobs[job_id] = job
     return job
+
+
+def _touch_job(job: dict[str, Any]) -> None:
+    """Update the last-activity timestamp so TTL is measured from last use."""
+    job["updated_at"] = time.time()
+
+
+# ---------------------------------------------------------------------------
+# Background cleanup task
+# ---------------------------------------------------------------------------
+
+async def _cleanup_old_jobs() -> None:
+    """Periodically delete temp dirs and job entries older than JOB_TTL_SECONDS."""
+    while True:
+        await asyncio.sleep(300)  # check every 5 minutes
+        now = time.time()
+        expired = [
+            job_id
+            for job_id, job in list(_jobs.items())
+            if now - job.get("updated_at", job.get("created_at", now)) > JOB_TTL_SECONDS
+        ]
+        for job_id in expired:
+            job = _jobs.pop(job_id, None)
+            if job:
+                work_dir = Path(job.get("work_dir", ""))
+                if work_dir.exists():
+                    try:
+                        shutil.rmtree(work_dir)
+                    except Exception as exc:
+                        log.warning("cleanup_failed", job_id=job_id, error=str(exc))
+                log.info("job_expired", job_id=job_id)
 
 
 # ---------------------------------------------------------------------------
@@ -66,18 +140,48 @@ async def health() -> dict[str, str]:
 
 @app.post("/upload")
 async def upload_file(file: UploadFile) -> JSONResponse:
-    """CAD/메쉬 파일 업로드 → job 생성."""
+    """CAD/메쉬 파일 업로드 → job 생성.
+
+    Validation:
+    - Filename must be non-empty.
+    - Extension must be in ALLOWED_EXTENSIONS.
+    - File size must not exceed MAX_UPLOAD_SIZE (100 MB).
+    """
     if not file.filename:
         return JSONResponse({"error": "파일명 없음"}, status_code=400)
+
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_EXTENSIONS:
+        return JSONResponse(
+            {
+                "error": f"지원하지 않는 파일 형식: {ext}",
+                "allowed": sorted(ALLOWED_EXTENSIONS),
+            },
+            status_code=400,
+        )
+
+    # Read in chunks to enforce size limit without loading everything at once
+    content = b""
+    chunk_size = 64 * 1024  # 64 KB
+    while True:
+        chunk = await file.read(chunk_size)
+        if not chunk:
+            break
+        content += chunk
+        if len(content) > MAX_UPLOAD_SIZE:
+            return JSONResponse(
+                {
+                    "error": f"파일 크기 초과: 최대 {MAX_UPLOAD_SIZE // (1024 * 1024)} MB",
+                    "max_bytes": MAX_UPLOAD_SIZE,
+                },
+                status_code=413,
+            )
 
     job = _create_job(file.filename)
     work_dir = Path(job["work_dir"])
 
-    # 파일 저장
     input_path = work_dir / file.filename
-    with open(input_path, "wb") as f:
-        content = await file.read()
-        f.write(content)
+    input_path.write_bytes(content)
 
     job["input_path"] = str(input_path)
     log.info("file_uploaded", job_id=job["id"], filename=file.filename, size=len(content))
@@ -110,6 +214,7 @@ async def get_job(job_id: str) -> JSONResponse:
     job = _jobs.get(job_id)
     if not job:
         return JSONResponse({"error": "Job not found"}, status_code=404)
+    _touch_job(job)
     return JSONResponse({
         "id": job["id"],
         "status": job["status"],
@@ -121,15 +226,51 @@ async def get_job(job_id: str) -> JSONResponse:
     })
 
 
+@app.get("/jobs/{job_id}/download/polyMesh.zip")
+async def download_polymesh_zip(job_id: str) -> Response:
+    """polyMesh 디렉터리 전체를 ZIP으로 묶어 반환한다."""
+    job = _jobs.get(job_id)
+    if not job:
+        return JSONResponse({"error": "Job not found"}, status_code=404)
+
+    poly_dir = Path(job["work_dir"]) / "case" / "constant" / "polyMesh"
+    if not poly_dir.exists():
+        return JSONResponse(
+            {"error": "polyMesh directory not found — mesh not yet generated"},
+            status_code=404,
+        )
+
+    _touch_job(job)
+
+    # Build ZIP in-memory
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for fp in sorted(poly_dir.rglob("*")):
+            if fp.is_file():
+                zf.write(fp, fp.relative_to(poly_dir.parent.parent))
+    buf.seek(0)
+
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="polyMesh_{job_id}.zip"'},
+    )
+
+
 @app.get("/jobs/{job_id}/download/{filename}")
 async def download_file(job_id: str, filename: str) -> Response:
-    """결과 파일 다운로드."""
+    """결과 파일 다운로드 (단일 파일).
+
+    Note: must be defined AFTER download_polymesh_zip so the specific
+    'polyMesh.zip' route takes precedence over this catch-all.
+    """
     job = _jobs.get(job_id)
     if not job:
         return JSONResponse({"error": "Job not found"}, status_code=404)
     file_path = Path(job["work_dir"]) / filename
     if not file_path.exists():
         return JSONResponse({"error": "File not found"}, status_code=404)
+    _touch_job(job)
     return FileResponse(file_path, filename=filename)
 
 
@@ -194,6 +335,7 @@ async def _run_mesh_pipeline(
     from core.pipeline.orchestrator import PipelineOrchestrator
 
     job["status"] = "running"
+    _touch_job(job)
     input_path = Path(job["input_path"])
     output_dir = Path(job["work_dir"]) / "case"
 
@@ -201,6 +343,7 @@ async def _run_mesh_pipeline(
         job["stage"] = stage
         job["progress"] = progress
         job["message"] = message
+        _touch_job(job)
         await ws.send_json({
             "type": "progress",
             "stage": stage,
@@ -213,10 +356,8 @@ async def _run_mesh_pipeline(
     # 동기 파이프라인을 별도 스레드에서 실행
     loop = asyncio.get_event_loop()
 
-    # 진행 콜백을 위한 단계별 실행
     orchestrator = PipelineOrchestrator()
 
-    # 각 단계를 개별 실행하여 진행상황 전달
     try:
         # 1. Analyze
         await send_progress("analyze", 0.1, "지오메트리 분석 중...")
@@ -254,7 +395,9 @@ async def _run_mesh_pipeline(
         await ws.send_json({
             "type": "strategy",
             "selected_tier": strategy.selected_tier,
-            "quality_level": str(strategy.quality_level),
+            "quality_level": strategy.quality_level.value
+            if hasattr(strategy.quality_level, "value")
+            else str(strategy.quality_level),
             "cell_size": strategy.surface_mesh.target_cell_size,
         })
 
@@ -282,6 +425,7 @@ async def _run_mesh_pipeline(
                 })
                 job["status"] = "failed"
                 job["error"] = "All tiers failed"
+                _touch_job(job)
                 return
 
             # Evaluate
@@ -305,19 +449,20 @@ async def _run_mesh_pipeline(
             quality_report = await loop.run_in_executor(None, _evaluate)
 
             verdict = quality_report.evaluation_summary.verdict
+            # Verdict is a str-Enum: use .value for wire-safe serialisation
+            verdict_str: str = verdict.value if hasattr(verdict, "value") else str(verdict)
             cm = quality_report.evaluation_summary.checkmesh
 
             await ws.send_json({
                 "type": "evaluation",
                 "iteration": iteration,
-                "verdict": verdict.value if hasattr(verdict, 'value') else str(verdict),
+                "verdict": verdict_str,
                 "tier": successful_tier,
                 "cells": cm.cells,
                 "max_non_ortho": cm.max_non_orthogonality,
                 "max_skewness": cm.max_skewness,
             })
 
-            verdict_str = verdict.value if hasattr(verdict, 'value') else str(verdict)
             if verdict_str in ("PASS", "PASS_WITH_WARNINGS"):
                 await send_progress("done", 1.0, f"완료! {verdict_str}")
                 job["status"] = "completed"
@@ -328,6 +473,7 @@ async def _run_mesh_pipeline(
                     "tier": successful_tier,
                     "output_dir": str(output_dir),
                 }
+                _touch_job(job)
 
                 await ws.send_json({
                     "type": "result",
@@ -349,11 +495,13 @@ async def _run_mesh_pipeline(
         })
         job["status"] = "failed"
         job["error"] = f"Failed after {max_iterations} iterations"
+        _touch_job(job)
 
     except Exception as exc:
         log.error("pipeline_error", error=str(exc))
         job["status"] = "failed"
         job["error"] = str(exc)
+        _touch_job(job)
         await ws.send_json({"type": "error", "message": str(exc)})
 
 
@@ -369,9 +517,15 @@ async def get_mesh_data(job_id: str) -> JSONResponse:
     if not job:
         return JSONResponse({"error": "Job not found"}, status_code=404)
 
+    _touch_job(job)
     case_dir = Path(job["work_dir"]) / "case"
     try:
-        from core.utils.polymesh_reader import parse_foam_points, parse_foam_faces, parse_foam_boundary, parse_foam_labels
+        from core.utils.polymesh_reader import (
+            parse_foam_boundary,
+            parse_foam_faces,
+            parse_foam_labels,
+            parse_foam_points,
+        )
 
         poly_dir = case_dir / "constant" / "polyMesh"
         points = parse_foam_points(poly_dir / "points")
@@ -406,6 +560,7 @@ async def get_surface_stl(job_id: str) -> Response:
     if not job:
         return JSONResponse({"error": "Job not found"}, status_code=404)
 
+    _touch_job(job)
     work_dir = Path(job["work_dir"])
     stl_path = work_dir / "case" / "_work" / "preprocessed.stl"
     if not stl_path.exists():
@@ -422,8 +577,9 @@ async def get_surface_stl(job_id: str) -> Response:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    import uvicorn
     import sys
+
+    import uvicorn
 
     port = 9720
     for i, arg in enumerate(sys.argv):
