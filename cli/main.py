@@ -451,6 +451,11 @@ def run(
         from core.evaluator.report import render_terminal
         render_terminal(result.quality_report)
 
+    if result.boundary_patches:
+        console.print("\n[bold]Boundary patches:[/bold]")
+        for p in result.boundary_patches:
+            console.print(f"  {p['name']:20s} → {p['type']:15s} ({p['nFaces']} faces)")
+
     if result.success:
         console.print(f"[bold green]✓ PASS[/bold green] ({result.iterations} iteration, {result.total_time_seconds:.1f}s)")
     else:

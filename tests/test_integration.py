@@ -793,3 +793,85 @@ class TestNativeCheckerOnly:
         )
         assert result.max_non_orthogonality >= 0.0
         assert result.negative_volumes == 0
+
+
+# ---------------------------------------------------------------------------
+# 11. TestBoundaryClassifier — boundary patch classification
+# ---------------------------------------------------------------------------
+
+
+class TestBoundaryClassifier:
+    """Integration tests for classify_boundaries()."""
+
+    @pytest.fixture(scope="class")
+    def sphere_polymesh_dir(self, tmp_path_factory) -> Path:
+        """Generate a real polyMesh from sphere.stl via pytetwild + PolyMeshWriter."""
+        sphere = BENCHMARKS_DIR / "sphere.stl"
+        if not sphere.exists():
+            pytest.skip("sphere.stl not found — run from project root")
+
+        td = tmp_path_factory.mktemp("bc_polymesh")
+        case_dir = td / "case"
+
+        from core.pipeline.orchestrator import PipelineOrchestrator  # noqa: PLC0415
+
+        result = PipelineOrchestrator().run(
+            input_path=sphere,
+            output_dir=case_dir,
+            quality_level="draft",
+            max_iterations=1,
+        )
+
+        poly_dir = case_dir / "constant" / "polyMesh"
+        if not poly_dir.exists():
+            pytest.skip(
+                f"polyMesh generation failed (cannot test classifier): {result.error}"
+            )
+
+        return case_dir
+
+    def test_classify_sphere_default_wall(self, sphere_polymesh_dir):
+        """Sphere polyMesh boundary → the default patch should be classified as 'wall'."""
+        from core.utils.boundary_classifier import classify_boundaries  # noqa: PLC0415
+
+        patches = classify_boundaries(sphere_polymesh_dir)
+
+        assert len(patches) >= 1, "Expected at least one boundary patch"
+
+        # Every patch name containing 'default' must map to 'wall'
+        default_patches = [p for p in patches if "default" in p["name"].lower()]
+        assert len(default_patches) >= 1, (
+            "Expected at least one 'default*' patch on sphere polyMesh"
+        )
+        for p in default_patches:
+            assert p["type"] == "wall", (
+                f"default patch '{p['name']}' should be 'wall', got '{p['type']}'"
+            )
+
+    def test_classify_returns_list(self, sphere_polymesh_dir):
+        """classify_boundaries() must return a list of dicts with name, type, nFaces keys."""
+        from core.utils.boundary_classifier import classify_boundaries  # noqa: PLC0415
+
+        result = classify_boundaries(sphere_polymesh_dir)
+
+        assert isinstance(result, list), "classify_boundaries must return a list"
+        for entry in result:
+            assert isinstance(entry, dict), f"Each entry must be a dict, got {type(entry)}"
+            assert "name" in entry, f"Missing 'name' key in {entry}"
+            assert "type" in entry, f"Missing 'type' key in {entry}"
+            assert "nFaces" in entry, f"Missing 'nFaces' key in {entry}"
+            assert isinstance(entry["name"], str)
+            assert isinstance(entry["type"], str)
+            assert isinstance(entry["nFaces"], int)
+            assert entry["nFaces"] >= 0
+
+    def test_classify_empty_case(self, tmp_path):
+        """Non-existent case_dir → classify_boundaries returns empty list (no exception)."""
+        from core.utils.boundary_classifier import classify_boundaries  # noqa: PLC0415
+
+        non_existent = tmp_path / "no_such_case"
+        result = classify_boundaries(non_existent)
+
+        assert result == [], (
+            f"Expected [] for non-existent case_dir, got {result}"
+        )

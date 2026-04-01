@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import shutil
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from core.analyzer.geometry_analyzer import GeometryAnalyzer
@@ -26,6 +26,7 @@ from core.schemas import (
     QualityReport,
 )
 from core.strategist.strategy_planner import StrategyPlanner
+from core.utils.boundary_classifier import classify_boundaries
 from core.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -44,6 +45,7 @@ class PipelineResult:
     iterations: int = 0
     total_time_seconds: float = 0.0
     error: str | None = None
+    boundary_patches: list[dict] = field(default_factory=list)
 
 
 class PipelineOrchestrator:
@@ -225,6 +227,18 @@ class PipelineOrchestrator:
                 if verdict in ("PASS", "PASS_WITH_WARNINGS"):
                     log.info("Pipeline PASS", verdict=verdict, iteration=iteration)
                     result.success = True
+                    # Classify boundary patches on success
+                    try:
+                        flow_type = strategy.flow_type if strategy else "external"
+                        patches = classify_boundaries(case_dir, flow_type=flow_type)
+                        result.boundary_patches = patches
+                        log.info(
+                            "boundary_patches_classified",
+                            count=len(patches),
+                            patches=[(p["name"], p["type"]) for p in patches],
+                        )
+                    except Exception as exc:
+                        log.warning("boundary_classification_skipped", error=str(exc))
                     break
                 else:
                     log.warning(
