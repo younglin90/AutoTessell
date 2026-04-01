@@ -301,7 +301,7 @@ class PolyMeshWriter:
                 + "    div(phi,U) bounded Gauss linearUpwind grad(U);\n"
                 + "    div(phi,k) bounded Gauss upwind;\n"
                 + "    div(phi,omega) bounded Gauss upwind;\n"
-                + "    div((nuEff*dev2(T(grad(U))))) Gauss linear;\n"
+                + "    \"div((nuEff*dev2(T(grad(U)))))\" Gauss linear;\n"
                 + "}\n"
                 + "laplacianSchemes { default Gauss linear corrected; }\n"
                 + "interpolationSchemes { default linear; }\n"
