@@ -6,6 +6,9 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+if TYPE_CHECKING:
+    import trimesh
+
 from core.schemas import GeometryFidelity
 from core.utils.logging import get_logger
 
@@ -34,7 +37,6 @@ def _read_foam_list(text: str) -> list[str]:
 
 def _parse_foam_points(points_file: Path) -> "list[list[float]]":
     """polyMesh/points 파일을 파싱해 좌표 목록으로 반환한다."""
-    import numpy as np  # noqa: PLC0415
 
     text = points_file.read_text()
     tokens = _read_foam_list(text)

@@ -234,7 +234,7 @@ relaxationFactors
     def _dict_to_foam(self, data: dict | list | str | int | float | bool, indent: int = 0) -> str:
         """Python データ構造をOpenFOAM形式にシリアライズする。"""
         pad = "    " * indent
-        inner_pad = "    " * (indent + 1)
+        "    " * (indent + 1)
 
         if isinstance(data, dict):
             lines = []

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -277,7 +276,7 @@ def generate(
         console.print(f"[bold red]ERROR[/bold red] Generator 예상치 못한 오류: {exc}")
         sys.exit(1)
 
-    elapsed = time.monotonic() - t0
+    time.monotonic() - t0
     summary = log.execution_summary
 
     # 결과 출력
@@ -335,7 +334,7 @@ def evaluate(
     from core.evaluator.metrics import AdditionalMetricsComputer
     from core.evaluator.quality_checker import MeshQualityChecker
     from core.evaluator.report import EvaluationReporter, render_terminal
-    from core.schemas import GeometryFidelity, MeshStrategy, QualityReport
+    from core.schemas import GeometryFidelity, MeshStrategy
 
     console.print(f"[bold cyan]Evaluating[/bold cyan] {case}")
 
@@ -422,7 +421,7 @@ def run(
     """전체 파이프라인(Analyze→Preprocess→Strategize→Generate→Evaluate)을 실행한다."""
     from core.pipeline.orchestrator import PipelineOrchestrator
 
-    verbose = ctx.obj.get("verbose", False) if ctx.obj else False
+    ctx.obj.get("verbose", False) if ctx.obj else False
     console.print(f"[bold magenta]Auto-Tessell[/bold magenta] {input_file} → {output}")
     console.print(f"  quality={quality}  tier={tier}  max_iter={max_iterations}")
 

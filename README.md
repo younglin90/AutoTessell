@@ -1,123 +1,155 @@
-# auto-tessell
+# Auto-Tessell
 
-STL → OpenFOAM polyMesh SaaS. Upload a `.stl` file, get a CFD or FEA-ready
-mesh back as a ZIP.
-
----
-
-## Quick start (dev mode — no Docker, no Stripe, no S3)
+CAD/메쉬 파일 → OpenFOAM polyMesh 자동 생성 도구.
+오픈소스 메쉬 라이브러리 총동원, 사용자 개입 최소화.
 
 ```bash
-# 1. Backend
-cd backend
-pip install -r requirements.txt
-cp ../.env.example .env       # DEV_MODE=true already set
-uvicorn main:app --reload     # http://localhost:8000
-
-# 2. Frontend
-cd frontend
-cp .env.local.example .env.local
-npm install
-npm run dev                   # http://localhost:3000
+auto-tessell run model.stl -o ./case --quality draft      # ~1초, 빠른 검증
+auto-tessell run model.stl -o ./case --quality standard    # ~수분, 엔지니어링
+auto-tessell run model.step -o ./case --quality fine        # ~30분+, 최종 CFD
 ```
 
-Or use `make dev` (backend) + `make frontend` (frontend) from the project root.
+## 주요 기능
 
----
+- **2-Phase Progressive 파이프라인**: 표면 메쉬(L1→L2→L3) + 볼륨 메쉬(Draft→Standard→Fine)
+- **5-Agent 아키텍처**: Analyzer → Preprocessor → Strategist → Generator ↔ Evaluator
+- **Windows 네이티브 지원**: OpenFOAM 없이도 메쉬 생성 + 품질 검증 가능
+- **다양한 입력 포맷**: STL, OBJ, PLY, STEP, IGES, BREP, Gmsh .msh, VTK 등
+- **자동 품질 검증**: NativeMeshChecker + Hausdorff 거리 기반 표면 충실도
+- **Godot 4.3 데스크톱 GUI**: 3D 메쉬 뷰어 + WebSocket 실시간 진행상황
+- **331+ 테스트**: 단위 + 통합 + 벤치마크
 
-## Architecture
-
-```
-frontend (Next.js 14)
-    │  REST  /api/v1/*
-    ▼
-backend/main.py (FastAPI)
-    ├── POST /upload          STL validation → job create → queue mesh task
-    ├── POST /webhook         Stripe payment_intent.succeeded → start task
-    ├── GET  /jobs            List recent jobs for a user
-    ├── GET  /jobs/{id}       Poll job status
-    ├── DELETE /jobs/{id}     Remove a terminal job
-    └── GET  /jobs/{id}/download  Presigned S3 URL (or local in dev mode)
-
-worker/tasks.py (Celery + Redis)
-    └── run_mesh(job_id)
-        ├── Download STL (local in dev, S3 in prod)
-        ├── generate_mesh() → 5-tier pipeline
-        ├── Upload polyMesh ZIP (local in dev, S3 in prod)
-        └── On failure: Stripe refund + FAILED/REFUND_FAILED status
-
-mesh/generator.py
-    └── 5-tier pipeline (Tier 0 → Tier 2, first success wins)
-```
-
-### 5-tier mesh pipeline
-
-| Tier | Engine | License | Notes |
-|------|--------|---------|-------|
-| 0 | tessell_mesh / geogram | BSD-3-Clause | C++/pybind11, fastest; `./build.sh` in `tessell-mesh/` |
-| 0.5 | Netgen | LGPL-2.1 | `pip install netgen-mesher` |
-| 1 | snappyHexMesh | GPL (OpenFOAM) | CFD only; requires OpenFOAM 12 Docker |
-| 2 | pytetwild + MMG | MPL-2.0 + LGPL-3.0 | Final fallback; MMG optional quality pass |
-
-Dev mode uses pytetwild directly (no Docker needed).
-
----
-
-## Pro mode parameters
-
-Users can override per-tier mesh quality knobs in the UI:
-
-| Parameter | Tier | Range | Effect |
-|-----------|------|-------|--------|
-| `tet_stop_energy` | pytetwild | 0.5–100 | Quality vs speed (lower = better) |
-| `tet_edge_length_fac` | pytetwild | 0.02–0.20 | Cell size relative to bbox diagonal |
-| `snappy_refine_min/max` | snappyHexMesh | 0–6 | Surface refinement levels |
-| `snappy_n_layers` | snappyHexMesh | 0–12 | Boundary layer cells |
-| `snappy_expansion_ratio` | snappyHexMesh | 1.05–2.0 | Layer growth ratio |
-| `snappy_max_non_ortho` | snappyHexMesh | 50–85° | Quality gate |
-| `netgen_maxh_ratio` | Netgen | 2–100 | maxh = L / ratio |
-| `mmg_enabled` | MMG | bool | Enable/disable post-processing |
-| `mmg_hausd` | MMG | 1e-6–1.0 | Surface fidelity |
-| `mmg_hgrad` | MMG | 1.0–5.0 | Size gradation |
-
----
-
-## Testing
+## 설치
 
 ```bash
-# Unit tests (no external services needed)
-make test               # 128 tests
+# 기본 설치
+pip install -e .
 
-# Integration tests (real FastAPI + in-memory SQLite)
-make test-integration   # 48 tests
-
-# Both
-make test-all
+# 선택 의존성
+pip install -e ".[cad]"       # STEP/IGES 지원 (cadquery)
+pip install -e ".[netgen]"    # Netgen 볼륨 메쉬
+pip install -e ".[volume]"    # TetWild 볼륨 메쉬
+pip install -e ".[desktop]"   # Godot GUI 백엔드 서버
+pip install -e ".[dev]"       # 개발 도구 (pytest, ruff, mypy)
 ```
 
----
+## 빠른 시작
 
-## Full stack (Docker Compose)
+### CLI
 
 ```bash
-cp .env.example .env    # fill in STRIPE_*, AWS_*, DEV_MODE=false
-make up                 # starts db + redis + api + worker
+# 분석만
+auto-tessell analyze model.stl
+
+# 전체 파이프라인 (자동)
+auto-tessell run model.stl -o ./case --quality draft
+
+# 전략만 확인 (dry-run)
+auto-tessell run model.stl -o ./case --quality standard --dry-run
+
+# 특정 Tier 강제
+auto-tessell run model.stl -o ./case --tier tetwild --quality draft
 ```
 
----
+### 데스크톱 GUI (Godot)
 
-## Job state machine
+```bash
+# 1. Python 백엔드 서버 실행
+python -m desktop.server
+
+# 2. Godot 4.3에서 godot/project.godot 열기
+# 3. F5 (Play) → 파일 선택 → 메쉬 생성
+```
+
+## 아키텍처
 
 ```
-PENDING → PAID → PROCESSING → DONE
-                             ↘ FAILED → (Stripe refund attempt)
-                                       → REFUND_FAILED
+┌─────────────────────────────────────────────┐
+│  Godot GUI (.exe)                           │  ← MIT, Windows 네이티브
+│  ↕ WebSocket (ws://localhost:9720)          │
+├─────────────────────────────────────────────┤
+│  desktop/server.py (FastAPI)                │  ← 실시간 진행상황 스트리밍
+├─────────────────────────────────────────────┤
+│  core/ (Python Backend)                     │
+│                                             │
+│  Analyzer → Preprocessor → Strategist       │
+│                ↓                             │
+│           Generator ↔ Evaluator (재시도)     │
+│                ↓                             │
+│         OpenFOAM polyMesh                   │
+└─────────────────────────────────────────────┘
 ```
 
----
+### 2-Phase Progressive 파이프라인
 
-## License summary (SaaS-safe)
+**Phase 1: 표면 메쉬 (Surface)**
 
-All mesh libraries used are MIT/BSD/MPL/LGPL — safe for SaaS without
-source disclosure. OpenFOAM runs server-side only (not distributed).
-See `CLAUDE.md` for full table.
+| 레벨 | 엔진 | 소요 시간 |
+|------|------|----------|
+| L1 (Repair) | pymeshfix + trimesh | 초 |
+| L2 (Remesh) | pyACVD + pymeshlab | 초~분 |
+| L3 (AI fix) | meshgpt-pytorch | 분 (GPU) |
+
+**Phase 2: 볼륨 메쉬 (Volume)**
+
+| 품질 | 엔진 | 소요 시간 |
+|------|------|----------|
+| Draft | TetWild | ~1초 |
+| Standard | Netgen / cfMesh | ~수분 |
+| Fine | snappyHexMesh + BL | ~30분+ |
+
+## 품질 레벨
+
+| 지표 | Draft | Standard | Fine |
+|------|-------|---------|------|
+| Max Non-orthogonality | < 85° | < 70° | < 65° |
+| Max Skewness | < 8.0 | < 6.0 | < 4.0 |
+| Max Aspect Ratio | < 500 | < 200 | < 100 |
+| Hausdorff Relative | < 10% | < 5% | < 2% |
+
+## 테스트
+
+```bash
+# 전체 테스트
+pytest tests/ -v
+
+# 모듈별
+pytest tests/test_analyzer.py -v
+pytest tests/test_evaluator.py -v
+pytest tests/test_generator.py -v
+
+# 벤치마크 (실제 메쉬 생성)
+pytest tests/test_integration.py -v
+```
+
+## 프로젝트 구조
+
+```
+auto-tessell/
+├── cli/                    # CLI (click + rich)
+├── core/
+│   ├── analyzer/           # 파일 로딩 + 지오메트리 분석
+│   ├── preprocessor/       # L1→L2→L3 표면 전처리
+│   ├── strategist/         # QualityLevel별 전략 수립
+│   ├── generator/          # 볼륨 메쉬 + PolyMeshWriter
+│   ├── evaluator/          # checkMesh + NativeMeshChecker
+│   ├── pipeline/           # Orchestrator
+│   └── utils/              # OpenFOAM 래퍼, 로깅
+├── desktop/                # FastAPI WebSocket 서버
+├── godot/                  # Godot 4.3 GUI
+├── tests/                  # 331+ 테스트
+└── agents/specs/           # 에이전트 스펙 문서
+```
+
+## 라이선스 요약
+
+| 라이브러리 | 라이선스 | 상업 사용 |
+|-----------|---------|----------|
+| trimesh, pyACVD, pymeshfix | MIT/BSD | ✅ |
+| TetWild (pytetwild) | MPL-2.0 | ✅ |
+| Netgen | LGPL-2.1 | ✅ (동적 링크) |
+| OpenFOAM | GPL | ✅ (서버 내부) |
+| MMG | LGPL-3.0 | ✅ (동적 링크) |
+| Godot | MIT | ✅ |
+| meshgpt-pytorch | MIT | ✅ |
+| MeshAnythingV2 | S-Lab 1.0 | ❌ (비상업, 허가 필요) |

@@ -209,7 +209,6 @@ class SurfaceRepairer:
         - remove_duplicate_faces() 없음 → unique_faces() 인덱스 사용
         - is_manifold 없음 → is_watertight / is_volume 사용
         """
-        import numpy as np
 
         actions: list[str] = []
 

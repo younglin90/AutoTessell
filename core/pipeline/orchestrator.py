@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 import shutil
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from core.analyzer.geometry_analyzer import GeometryAnalyzer
@@ -23,7 +23,6 @@ from core.schemas import (
     GeometryReport,
     MeshStrategy,
     PreprocessedReport,
-    QualityLevel,
     QualityReport,
 )
 from core.strategist.strategy_planner import StrategyPlanner

@@ -20,7 +20,6 @@ Metrics computed
 
 from __future__ import annotations
 
-from collections import defaultdict
 from pathlib import Path
 
 import numpy as np
@@ -82,7 +81,7 @@ class NativeMeshChecker:
         raw_faces = parse_foam_faces(faces_file)
         owner_list = parse_foam_labels(owner_file)
         neighbour_list = parse_foam_labels(neighbour_file)
-        boundary_patches = parse_foam_boundary(boundary_file)
+        parse_foam_boundary(boundary_file)
 
         if not raw_points or not raw_faces or not owner_list:
             log.warning("Empty polyMesh — returning degenerate CheckMeshResult")
@@ -159,10 +158,9 @@ class NativeMeshChecker:
         # ------------------------------------------------------------------
         if len(cell_volumes) > 0:
             min_cell_volume = float(cell_volumes.min())
-            max_cell_volume = float(cell_volumes.max())
+            float(cell_volumes.max())
         else:
             min_cell_volume = 0.0
-            max_cell_volume = 0.0
 
         # ------------------------------------------------------------------
         # 10. Min determinant (conservative: scaled volume ratio per cell)

@@ -11,8 +11,6 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import json
-import shutil
 import tempfile
 import time
 import uuid
@@ -371,7 +369,7 @@ async def get_mesh_data(job_id: str) -> JSONResponse:
 
     case_dir = Path(job["work_dir"]) / "case"
     try:
-        from core.utils.polymesh_reader import parse_foam_points, parse_foam_faces, parse_foam_boundary
+        from core.utils.polymesh_reader import parse_foam_points, parse_foam_faces, parse_foam_boundary, parse_foam_labels
 
         poly_dir = case_dir / "constant" / "polyMesh"
         points = parse_foam_points(poly_dir / "points")

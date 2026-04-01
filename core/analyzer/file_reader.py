@@ -83,15 +83,12 @@ def _load_via_cad(path: Path, fmt: str) -> trimesh.Trimesh:
     cadquery 실패 시 gmsh로 폴백한다.
     """
     # --- cadquery 시도 ---
+    cq_error: str = ""
     try:
         return _load_via_cadquery(path, fmt)
     except Exception as cq_exc:
-        log.warning(
-            "cadquery_load_failed",
-            path=str(path),
-            fmt=fmt,
-            error=str(cq_exc),
-        )
+        cq_error = str(cq_exc)
+        log.warning("cadquery_load_failed", path=str(path), fmt=fmt, error=cq_error)
 
     # --- gmsh 폴백 ---
     try:
@@ -99,7 +96,7 @@ def _load_via_cad(path: Path, fmt: str) -> trimesh.Trimesh:
     except Exception as gmsh_exc:
         raise ValueError(
             f"CAD 파일 로딩 실패 [{fmt}]: {path}\n"
-            f"cadquery 오류: {cq_exc}\n"
+            f"cadquery 오류: {cq_error}\n"
             f"gmsh 오류: {gmsh_exc}"
         ) from gmsh_exc
 

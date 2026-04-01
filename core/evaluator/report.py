@@ -454,10 +454,9 @@ class EvaluationReporter:
 
         # high non-orthogonality
         if "max_non_orthogonality" in criteria_names:
-            value = checkmesh.max_non_orthogonality
             # derive threshold from the first matching fail entry
             matching = [f for f in all_fails if f.criterion == "max_non_orthogonality"]
-            threshold = matching[0].threshold if matching else 70.0
+            matching[0].threshold if matching else 70.0
             rule = RECOMMENDATION_RULES["high_non_orthogonality"]
             snap_tol = strategy.tier_specific_params.get("snap_tolerance", 2.0) if strategy else 2.0
             snap_iter = strategy.tier_specific_params.get("snap_iterations", 5) if strategy else 5

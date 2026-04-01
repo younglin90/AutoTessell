@@ -132,7 +132,6 @@ class SurfaceRemesher:
     ) -> trimesh.Trimesh:
         """pymeshlab isotropic explicit remeshing 수행."""
         import tempfile
-        import numpy as np
         from pathlib import Path
 
         with tempfile.TemporaryDirectory() as tmp:

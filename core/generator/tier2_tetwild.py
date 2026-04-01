@@ -227,7 +227,6 @@ class Tier2TetWildGenerator:
         Returns:
             최적화된 메쉬 파일 경로. 실패 시 input_msh 반환.
         """
-        sm = None
         # hmin/hmax 기본값 계산 (strategy 없이도 동작)
         hmin = params.get("mmg_hmin", None)
         hmax = params.get("mmg_hmax", None)
