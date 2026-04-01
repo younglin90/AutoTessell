@@ -1,6 +1,11 @@
 ## 3D 메쉬 뷰어
 ## STL/OBJ 파일 또는 서버에서 받은 메쉬 데이터를 3D로 표시한다.
 ## 마우스로 회전/줌/패닝 가능.
+##
+## 추가 키보드 단축키:
+##   F — 현재 메쉬 Bounding Box에 카메라를 자동 맞춤 (fit to view)
+##   W — 와이어프레임 모드 토글
+##   R — 카메라를 초기 위치로 리셋
 extends Node3D
 
 # -----------------------------------------------------------------------
@@ -25,6 +30,15 @@ const PAN_SPEED := 0.005
 const ZOOM_SPEED := 0.1
 const MIN_DISTANCE := 0.5
 const MAX_DISTANCE := 100.0
+
+# Default camera state (used by reset view)
+const DEFAULT_YAW := 0.0
+const DEFAULT_PITCH := -30.0
+const DEFAULT_DISTANCE := 5.0
+const DEFAULT_TARGET := Vector3.ZERO
+
+# Wireframe state
+var _wireframe_enabled: bool = false
 
 # -----------------------------------------------------------------------
 # Lifecycle
@@ -70,6 +84,21 @@ func _unhandled_input(event: InputEvent) -> void:
 			_orbit_target += up * delta.y * PAN_SPEED * _orbit_distance
 			_update_camera()
 
+	elif event is InputEventKey:
+		var ke := event as InputEventKey
+		if ke.pressed and not ke.echo:
+			match ke.keycode:
+				KEY_F:
+					get_viewport().set_input_as_handled()
+					fit_to_view()
+				KEY_W:
+					get_viewport().set_input_as_handled()
+					_wireframe_enabled = not _wireframe_enabled
+					toggle_wireframe(_wireframe_enabled)
+				KEY_R:
+					get_viewport().set_input_as_handled()
+					reset_view()
+
 
 func _update_camera() -> void:
 	var yaw_rad := deg_to_rad(_orbit_yaw)
@@ -83,6 +112,34 @@ func _update_camera() -> void:
 
 	camera.global_position = _orbit_target + offset
 	camera.look_at(_orbit_target, Vector3.UP)
+
+
+# -----------------------------------------------------------------------
+# Camera controls
+# -----------------------------------------------------------------------
+
+## Fit the camera to the current mesh bounding box.
+## Centers the orbit target on the mesh center and sets the distance so
+## the entire mesh is visible.  Does nothing if no mesh is loaded.
+func fit_to_view() -> void:
+	if mesh_instance.mesh == null:
+		return
+
+	var aabb := mesh_instance.mesh.get_aabb()
+	_orbit_target = aabb.get_center()
+	_orbit_distance = clamp(aabb.size.length() * 1.5, MIN_DISTANCE, MAX_DISTANCE)
+	_update_camera()
+	print("[MeshViewer] Fit to view: center=%s distance=%.3f" % [_orbit_target, _orbit_distance])
+
+
+## Reset the camera to its default position regardless of loaded mesh.
+func reset_view() -> void:
+	_orbit_yaw = DEFAULT_YAW
+	_orbit_pitch = DEFAULT_PITCH
+	_orbit_distance = DEFAULT_DISTANCE
+	_orbit_target = DEFAULT_TARGET
+	_update_camera()
+	print("[MeshViewer] View reset to default")
 
 
 # -----------------------------------------------------------------------
@@ -146,13 +203,14 @@ func load_stl(file_path: String) -> void:
 	mesh_instance.mesh = array_mesh
 	mesh_instance.material_override = material
 
-	# 카메라를 메쉬 중심으로 이동
-	var aabb := array_mesh.get_aabb()
-	_orbit_target = aabb.get_center()
-	_orbit_distance = aabb.size.length() * 1.5
-	_update_camera()
+	# Re-apply wireframe state to the new material
+	if _wireframe_enabled:
+		toggle_wireframe(true)
 
-	print("STL loaded: %d triangles, bounds=%s" % [num_triangles, aabb])
+	# 카메라를 메쉬 중심으로 이동
+	fit_to_view()
+
+	print("STL loaded: %d triangles, bounds=%s" % [num_triangles, array_mesh.get_aabb()])
 
 
 ## 서버에서 메쉬 데이터 로드 (JSON)
@@ -203,14 +261,17 @@ func _build_mesh_from_json(data: Dictionary) -> void:
 	mesh_instance.mesh = array_mesh
 	mesh_instance.material_override = material
 
-	var aabb := array_mesh.get_aabb()
-	_orbit_target = aabb.get_center()
-	_orbit_distance = aabb.size.length() * 1.5
-	_update_camera()
+	# Re-apply wireframe state to the new material
+	if _wireframe_enabled:
+		toggle_wireframe(true)
+
+	fit_to_view()
 
 
 ## 와이어프레임 오버레이 토글
+## W 키 또는 외부에서 직접 호출 가능.
 func toggle_wireframe(enabled: bool) -> void:
+	_wireframe_enabled = enabled
 	if mesh_instance.material_override:
 		var mat := mesh_instance.material_override as StandardMaterial3D
 		if enabled:
@@ -219,8 +280,10 @@ func toggle_wireframe(enabled: bool) -> void:
 		else:
 			mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
 			mat.albedo_color = Color(0.3, 0.6, 0.9, 1.0)
+	print("[MeshViewer] Wireframe: %s" % ("on" if enabled else "off"))
 
 
 ## 메쉬 초기화
 func clear_mesh() -> void:
 	mesh_instance.mesh = null
+	_wireframe_enabled = false

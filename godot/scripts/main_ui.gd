@@ -1,5 +1,10 @@
 ## 메인 UI 컨트롤러
 ## 파일 선택 → 업로드 → 메쉬 생성 → 결과 표시 플로우를 관리한다.
+##
+## 추가 기능:
+##   - 3D 뷰포트 영역에 파일 드래그 앤 드롭 지원
+##   - Ctrl+O 단축키로 파일 열기
+##   - 메쉬 완료 후 서버에서 STL 자동 요청 → MeshViewer에 로드
 extends Control
 
 # -----------------------------------------------------------------------
@@ -15,6 +20,11 @@ extends Control
 @onready var status_label: Label = $VBoxContainer/StatusBar/HBoxContainer/StatusLabel
 @onready var server_status: Label = $VBoxContainer/StatusBar/HBoxContainer/ServerStatus
 @onready var file_dialog: FileDialog = $FileDialog
+## Reference to the 3D viewport Control node used as drag-and-drop target.
+## Assign in the scene editor or leave null to disable drop support.
+@onready var viewport_area: Control = $VBoxContainer/HSplitContainer/ViewportArea if has_node("$VBoxContainer/HSplitContainer/ViewportArea") else null
+## MeshViewer Node3D used to display results.
+@onready var mesh_viewer = $VBoxContainer/HSplitContainer/ViewportArea/MeshViewer if has_node("$VBoxContainer/HSplitContainer/ViewportArea/MeshViewer") else null
 
 var _selected_file_path: String = ""
 var _quality_map := ["draft", "standard", "fine"]
@@ -37,6 +47,10 @@ func _ready() -> void:
 	WebSocketClient.mesh_completed.connect(_on_mesh_completed)
 	WebSocketClient.error_occurred.connect(_on_error)
 
+	# 드래그 앤 드롭 지원 활성화
+	if viewport_area != null:
+		viewport_area.mouse_filter = Control.MOUSE_FILTER_STOP
+
 	# 서버 헬스 체크
 	_check_server()
 
@@ -51,6 +65,46 @@ func _check_server() -> void:
 			server_status.text = "서버: 연결 실패"
 			server_status.add_theme_color_override("font_color", Color.RED)
 	)
+
+
+# -----------------------------------------------------------------------
+# Keyboard shortcuts
+# -----------------------------------------------------------------------
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey:
+		var ke := event as InputEventKey
+		if ke.pressed and not ke.echo:
+			# Ctrl+O — open file dialog
+			if ke.keycode == KEY_O and ke.ctrl_pressed:
+				get_viewport().set_input_as_handled()
+				file_dialog.popup_centered()
+
+
+# -----------------------------------------------------------------------
+# Drag and drop (viewport area)
+# -----------------------------------------------------------------------
+
+## Called by the viewport Control node's _can_drop_data virtual.
+func _viewport_can_drop_data(_at_position: Vector2, data: Variant) -> bool:
+	if data is Dictionary:
+		var d: Dictionary = data as Dictionary
+		if d.get("type") == "files":
+			var files: Array = d.get("files", [])
+			for f in files:
+				var ext: String = str(f).get_extension().to_lower()
+				if ext in ["stl", "obj", "ply", "off", "step", "iges", "msh"]:
+					return true
+	return false
+
+
+## Called by the viewport Control node's _drop_data virtual.
+func _viewport_drop_data(_at_position: Vector2, data: Variant) -> void:
+	if data is Dictionary:
+		var d: Dictionary = data as Dictionary
+		if d.get("type") == "files":
+			var files: Array = d.get("files", [])
+			if files.size() > 0:
+				_on_file_selected(str(files[0]))
 
 
 # -----------------------------------------------------------------------
@@ -157,8 +211,8 @@ func _on_mesh_completed(success: bool, data: Dictionary) -> void:
 		progress_label.text = "완료!"
 		status_label.text = "메쉬 생성 완료: %s" % verdict
 
-		# 3D 뷰어에 메쉬 로드 요청
-		# TODO: MeshViewer.load_from_server(AppState.current_job_id)
+		# 3D 뷰어에 서버 STL 자동 로드
+		_load_mesh_into_viewer(AppState.current_job_id)
 
 	else:
 		AppState.current_state = AppState.State.FAILED
@@ -174,6 +228,40 @@ func _on_error(message: String) -> void:
 	generate_button.disabled = false
 	progress_bar.visible = false
 	AppState.current_state = AppState.State.FAILED
+
+
+# -----------------------------------------------------------------------
+# MeshViewer integration
+# -----------------------------------------------------------------------
+
+## Fetch the preprocessed STL from the server and load it into MeshViewer.
+func _load_mesh_into_viewer(job_id: String) -> void:
+	if mesh_viewer == null:
+		return
+
+	# Download the surface STL to a local temp file then hand to mesh_viewer
+	var http := HTTPRequest.new()
+	add_child(http)
+	http.request_completed.connect(
+		func(_result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
+			http.queue_free()
+			if code != 200:
+				status_label.text = "뷰어 로드 실패: HTTP %d" % code
+				return
+
+			# Write to a temp file so load_stl can read it
+			var tmp_path := "user://autotessell_surface_%s.stl" % job_id
+			var f := FileAccess.open(tmp_path, FileAccess.WRITE)
+			if f == null:
+				status_label.text = "임시 파일 쓰기 실패"
+				return
+			f.store_buffer(body)
+			f.close()
+
+			mesh_viewer.load_stl(tmp_path)
+			status_label.text = "3D 뷰어에 메쉬 로드 완료"
+	)
+	http.request(WebSocketClient.base_url + "/jobs/%s/surface" % job_id)
 
 
 # -----------------------------------------------------------------------
