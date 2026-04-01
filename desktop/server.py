@@ -310,19 +310,20 @@ async def _run_mesh_pipeline(
             await ws.send_json({
                 "type": "evaluation",
                 "iteration": iteration,
-                "verdict": str(verdict),
+                "verdict": verdict.value if hasattr(verdict, 'value') else str(verdict),
                 "tier": successful_tier,
                 "cells": cm.cells,
                 "max_non_ortho": cm.max_non_orthogonality,
                 "max_skewness": cm.max_skewness,
             })
 
-            if verdict in ("PASS", "PASS_WITH_WARNINGS"):
-                await send_progress("done", 1.0, f"완료! {verdict}")
+            verdict_str = verdict.value if hasattr(verdict, 'value') else str(verdict)
+            if verdict_str in ("PASS", "PASS_WITH_WARNINGS"):
+                await send_progress("done", 1.0, f"완료! {verdict_str}")
                 job["status"] = "completed"
                 job["result"] = {
                     "success": True,
-                    "verdict": str(verdict),
+                    "verdict": verdict_str,
                     "cells": cm.cells,
                     "tier": successful_tier,
                     "output_dir": str(output_dir),
@@ -331,7 +332,7 @@ async def _run_mesh_pipeline(
                 await ws.send_json({
                     "type": "result",
                     "success": True,
-                    "verdict": str(verdict),
+                    "verdict": verdict_str,
                     "cells": cm.cells,
                     "tier": successful_tier,
                     "max_non_ortho": cm.max_non_orthogonality,
