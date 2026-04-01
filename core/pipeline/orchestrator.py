@@ -26,6 +26,7 @@ from core.schemas import (
     QualityReport,
 )
 from core.strategist.strategy_planner import StrategyPlanner
+from core.utils.bc_writer import write_boundary_conditions
 from core.utils.boundary_classifier import classify_boundaries
 from core.utils.logging import get_logger
 
@@ -237,6 +238,10 @@ class PipelineOrchestrator:
                             count=len(patches),
                             patches=[(p["name"], p["type"]) for p in patches],
                         )
+                        # 경계 조건 자동 생성
+                        if patches:
+                            bc_files = write_boundary_conditions(case_dir, patches)
+                            log.info("boundary_conditions_generated", files=bc_files)
                     except Exception as exc:
                         log.warning("boundary_classification_skipped", error=str(exc))
                     break
