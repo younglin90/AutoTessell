@@ -222,8 +222,10 @@ class QualityTargets(BaseModel):
 
 class PreviousAttempt(BaseModel):
     tier: str
+    quality_level: str = ""
     failure_reason: str
     evaluator_recommendation: str
+    modifications: list[str] = Field(default_factory=list)
 
 
 class MeshStrategy(BaseModel):

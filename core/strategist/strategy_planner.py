@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+
 from core.schemas import (
     GeometryReport,
     MeshStrategy,
@@ -61,6 +63,49 @@ _QUALITY_DOWNGRADE: dict[str, str | None] = {
     "draft": None,
 }
 
+# Bounds for parameter adjustments to avoid nonsensical values
+_MIN_CELL_SIZE_ABS = 0.001  # absolute minimum cell size [m]
+_MIN_CELL_SIZE_FACTOR = 0.001  # cell size won't go below 0.1% of characteristic_length
+_MIN_BL_LAYERS = 0
+_MIN_BL_GROWTH_RATIO = 1.0
+_MAX_SNAP_TOLERANCE = 10.0
+_MAX_SNAP_ITERATIONS = 30
+_MAX_CASTELLATED_LEVEL_BUMP = 5
+
+
+@dataclass
+class _StrategyAdjustments:
+    """Accumulated parameter adjustments from evaluator feedback."""
+
+    # Cell size multipliers (applied multiplicatively)
+    surface_cell_size_factor: float = 1.0
+    base_cell_size_factor: float = 1.0
+
+    # Snap parameters (additive)
+    snap_tolerance_factor: float = 1.0
+    snap_iterations_add: int = 0
+    castellated_level_add: int = 0
+
+    # Surface mesh adjustments
+    feature_extract_level_add: int = 0
+
+    # BL adjustments
+    bl_layers_add: int = 0
+    bl_growth_ratio_factor: float = 1.0
+    bl_disable: bool = False
+
+    # Tier change
+    switch_tier: str | None = None
+    switch_fallbacks: list[str] = field(default_factory=list)
+
+    # Quality level downgrade
+    downgrade_quality: QualityLevel | None = None
+
+    # Tracking
+    modifications: list[str] = field(default_factory=list)
+    failure_reasons: list[str] = field(default_factory=list)
+    evaluator_recs: list[str] = field(default_factory=list)
+
 
 class StrategyPlanner:
     """Analyzer/Preprocessor 출력과 Evaluator 피드백을 종합해 MeshStrategy를 수립한다."""
@@ -119,18 +164,27 @@ class StrategyPlanner:
 
         # 2. quality_report FAIL 피드백 반영
         previous_attempt: PreviousAttempt | None = None
-        modifications: list[str] = []
+        adjustments: _StrategyAdjustments | None = None
 
         if quality_report is not None:
             summary = quality_report.evaluation_summary
             if summary.verdict == Verdict.FAIL:
-                selected_tier, fallback_tiers, previous_attempt, modifications, ql = (
-                    self._apply_fail_feedback(
-                        quality_report,
-                        selected_tier,
-                        fallback_tiers,
-                        ql,
-                    )
+                adjustments = self._compute_adjustments(
+                    quality_report, selected_tier, fallback_tiers, ql
+                )
+                # Apply tier/quality changes from adjustments
+                if adjustments.switch_tier is not None:
+                    selected_tier = adjustments.switch_tier
+                    fallback_tiers = adjustments.switch_fallbacks
+                if adjustments.downgrade_quality is not None:
+                    ql = adjustments.downgrade_quality
+
+                previous_attempt = PreviousAttempt(
+                    tier=quality_report.evaluation_summary.tier_evaluated,
+                    quality_level=ql.value,
+                    failure_reason="; ".join(adjustments.failure_reasons) if adjustments.failure_reasons else "quality_fail",
+                    evaluator_recommendation="; ".join(adjustments.evaluator_recs) if adjustments.evaluator_recs else "adjust parameters",
+                    modifications=list(adjustments.modifications),
                 )
 
         # 3. 유동 타입 결정
@@ -144,26 +198,40 @@ class StrategyPlanner:
         bl_config = self._optimizer.compute_boundary_layers(geometry_report, quality_level=ql)
         quality_targets = self._optimizer.compute_quality_targets(quality_level=ql)
 
-        # 5. 입력 파일 결정
+        # 5. Apply adjustments to computed parameters
+        if adjustments is not None:
+            cell_sizes, bl_config = self._apply_adjustments(
+                adjustments, cell_sizes, bl_config, geometry_report
+            )
+
+        # 6. 입력 파일 결정
         if preprocessed_report is not None:
             input_file = preprocessed_report.preprocessing_summary.output_file
         else:
             input_file = geometry_report.file_info.path
 
-        # 6. SurfaceMeshConfig
+        # 7. SurfaceMeshConfig
+        feature_extract_level = 1
+        if adjustments is not None:
+            feature_extract_level = max(1, feature_extract_level + adjustments.feature_extract_level_add)
+
         surface_mesh = SurfaceMeshConfig(
             input_file=input_file,
             target_cell_size=cell_sizes["surface_cell_size"],
             min_cell_size=cell_sizes["min_cell_size"],
             feature_angle=150.0,
-            feature_extract_level=1,
+            feature_extract_level=feature_extract_level,
         )
 
-        # 7. Tier-specific params (deep copy + 런타임 값 채우기)
+        # 8. Tier-specific params (deep copy + 런타임 값 채우기)
         tier_params = dict(_TIER_PARAMS.get(selected_tier, {}))
         self._fill_runtime_params(tier_params, selected_tier, cell_sizes, ql)
 
-        # 8. 외부 유동이면 wake 리파인먼트 영역 추가
+        # 9. Apply tier-specific adjustments (snap tolerance, castellated level, etc.)
+        if adjustments is not None:
+            self._apply_tier_param_adjustments(tier_params, selected_tier, adjustments)
+
+        # 10. 외부 유동이면 wake 리파인먼트 영역 추가
         refinement_regions = self._build_refinement_regions(
             geometry_report, flow_type, cell_sizes
         )
@@ -185,11 +253,11 @@ class StrategyPlanner:
             previous_attempt=previous_attempt,
         )
 
-        if modifications:
+        if adjustments and adjustments.modifications:
             log.info(
                 "strategy_modifications_applied",
                 iteration=iteration,
-                modifications=modifications,
+                modifications=adjustments.modifications,
             )
 
         log.info(
@@ -202,88 +270,289 @@ class StrategyPlanner:
         return strategy
 
     # ------------------------------------------------------------------
-    # Evaluator FAIL 피드백 반영
+    # Evaluator FAIL feedback -> structured adjustments
     # ------------------------------------------------------------------
 
-    def _apply_fail_feedback(
+    def _compute_adjustments(
         self,
         quality_report: QualityReport,
         selected_tier: str,
         fallback_tiers: list[str],
         quality_level: QualityLevel,
-    ) -> tuple[str, list[str], PreviousAttempt, list[str], QualityLevel]:
-        """Evaluator FAIL 피드백을 바탕으로 전략을 수정한다."""
+    ) -> _StrategyAdjustments:
+        """Analyze evaluator FAIL feedback and compute structured adjustments."""
+        adj = _StrategyAdjustments()
         summary = quality_report.evaluation_summary
         cm = summary.checkmesh
-        modifications: list[str] = []
 
-        failure_reasons: list[str] = []
-        evaluator_recs: list[str] = []
-
-        # checkMesh 완전 실패 → 다음 fallback Tier로 전환
+        # ----------------------------------------------------------
+        # checkMesh complete failure (cells=0) -> fallback tier
+        # ----------------------------------------------------------
         if not cm.mesh_ok and cm.cells == 0:
-            failure_reasons.append("checkMesh complete failure")
-            evaluator_recs.append("fallback to next tier")
+            adj.failure_reasons.append("checkMesh complete failure")
+            adj.evaluator_recs.append("fallback to next tier")
             if fallback_tiers:
                 new_tier = fallback_tiers[0]
                 new_fallbacks = fallback_tiers[1:]
-                modifications.append(f"tier: {selected_tier} → {new_tier} (checkMesh complete failure)")
-                log.warning("tier_fallback_on_checkmesh_failure", from_tier=selected_tier, to_tier=new_tier)
-                previous = PreviousAttempt(
-                    tier=selected_tier,
-                    failure_reason="; ".join(failure_reasons),
-                    evaluator_recommendation="; ".join(evaluator_recs),
+                adj.switch_tier = new_tier
+                adj.switch_fallbacks = new_fallbacks
+                adj.modifications.append(
+                    f"tier: {selected_tier} -> {new_tier} (checkMesh complete failure)"
                 )
-                return new_tier, new_fallbacks, previous, modifications, quality_level
+                log.warning(
+                    "tier_fallback_on_checkmesh_failure",
+                    from_tier=selected_tier,
+                    to_tier=new_tier,
+                )
             else:
-                # 모든 Tier 실패 → quality level 다운그레이드
-                downgraded_ql = self._downgrade_quality(quality_level, failure_reasons, evaluator_recs, modifications)
-                previous = PreviousAttempt(
-                    tier=selected_tier,
-                    failure_reason="; ".join(failure_reasons),
-                    evaluator_recommendation="; ".join(evaluator_recs),
+                # All tiers failed -> downgrade quality level
+                new_ql = self._downgrade_quality(
+                    quality_level, adj.failure_reasons, adj.evaluator_recs, adj.modifications
                 )
-                return selected_tier, [], previous, modifications, downgraded_ql
+                adj.downgrade_quality = new_ql
+            return adj
 
-        # 개별 품질 지표 기반 수정 (Tier 유지, 파라미터 조정 — 상위 strategy_planner에서 tier_specific_params에 반영)
-        # 이 함수는 tier 유지 경우에도 previous_attempt를 기록한다.
+        # ----------------------------------------------------------
+        # failed_checks > 0 but cells > 0 -> try different tier
+        # ----------------------------------------------------------
+        if cm.failed_checks > 0 and not cm.mesh_ok and cm.cells > 0:
+            adj.failure_reasons.append(f"checkMesh hard fail (failed_checks={cm.failed_checks})")
+            adj.evaluator_recs.append("switch to different tier")
+            if fallback_tiers:
+                new_tier = fallback_tiers[0]
+                new_fallbacks = fallback_tiers[1:]
+                adj.switch_tier = new_tier
+                adj.switch_fallbacks = new_fallbacks
+                adj.modifications.append(
+                    f"tier: {selected_tier} -> {new_tier} (checkMesh hard fail)"
+                )
+                log.warning(
+                    "tier_switch_on_checkmesh_hard_fail",
+                    from_tier=selected_tier,
+                    to_tier=new_tier,
+                    failed_checks=cm.failed_checks,
+                )
+            # Continue to also apply parameter adjustments below
+
+        # ----------------------------------------------------------
+        # high_non_orthogonality
+        # ----------------------------------------------------------
         if cm.max_non_orthogonality > 70.0:
-            failure_reasons.append(f"max_non_orthogonality={cm.max_non_orthogonality:.1f}")
-            evaluator_recs.append("snap tolerance 증가, castellated level 상향")
-            modifications.append("snappy_snap_tolerance: +1.0")
-            modifications.append("snappy_snap_iterations: +3")
+            adj.failure_reasons.append(
+                f"max_non_orthogonality={cm.max_non_orthogonality:.1f}"
+            )
+            adj.evaluator_recs.append("snap tolerance increase, castellated level up")
+            adj.snap_tolerance_factor = 1.5
+            adj.snap_iterations_add = 3
+            adj.castellated_level_add = 1
+            adj.modifications.append(
+                f"snappy_snap_tolerance: x1.5 (non_ortho={cm.max_non_orthogonality:.1f})"
+            )
+            adj.modifications.append("snappy_snap_iterations: +3")
+            adj.modifications.append("snappy_castellated_level: +1")
+            log.info(
+                "retry_adjust_non_orthogonality",
+                max_non_ortho=cm.max_non_orthogonality,
+                snap_tolerance_factor=1.5,
+                snap_iterations_add=3,
+            )
 
+        # ----------------------------------------------------------
+        # high_skewness
+        # ----------------------------------------------------------
         if cm.max_skewness > 6.0:
-            failure_reasons.append(f"max_skewness={cm.max_skewness:.1f}")
-            evaluator_recs.append("셀 크기 축소, 리파인먼트 추가")
-            modifications.append("surface_cell_size: *0.8")
+            adj.failure_reasons.append(f"max_skewness={cm.max_skewness:.1f}")
+            adj.evaluator_recs.append("decrease cell size, add refinement")
+            adj.surface_cell_size_factor = 0.7
+            adj.modifications.append(
+                f"surface_cell_size: x0.7 (skewness={cm.max_skewness:.1f})"
+            )
+            log.info(
+                "retry_adjust_skewness",
+                max_skewness=cm.max_skewness,
+                cell_size_factor=0.7,
+            )
 
+        # ----------------------------------------------------------
+        # negative_volumes
+        # ----------------------------------------------------------
         if cm.negative_volumes > 0:
-            failure_reasons.append(f"negative_volumes={cm.negative_volumes}")
-            evaluator_recs.append("BL 파라미터 완화 (층수 감소, 성장비 축소)")
-            modifications.append("boundary_layers.num_layers: -1")
-            modifications.append("boundary_layers.growth_ratio: -0.05")
+            adj.failure_reasons.append(f"negative_volumes={cm.negative_volumes}")
+            adj.evaluator_recs.append("disable BL or reduce layers, reduce growth ratio")
+            adj.bl_layers_add = -2
+            adj.bl_growth_ratio_factor = 0.8
+            adj.modifications.append(
+                f"boundary_layers.num_layers: -2 (neg_vols={cm.negative_volumes})"
+            )
+            adj.modifications.append("boundary_layers.growth_ratio: x0.8")
+            log.info(
+                "retry_adjust_negative_volumes",
+                negative_volumes=cm.negative_volumes,
+                bl_layers_add=-2,
+                bl_growth_ratio_factor=0.8,
+            )
 
+        # ----------------------------------------------------------
+        # high_aspect_ratio
+        # ----------------------------------------------------------
+        if cm.max_aspect_ratio > 200.0:
+            adj.failure_reasons.append(f"max_aspect_ratio={cm.max_aspect_ratio:.1f}")
+            adj.evaluator_recs.append("decrease cell size for better aspect ratio")
+            # Compound with skewness adjustment if both triggered
+            adj.surface_cell_size_factor *= 0.8
+            adj.modifications.append(
+                f"surface_cell_size: x0.8 (aspect_ratio={cm.max_aspect_ratio:.1f})"
+            )
+            log.info(
+                "retry_adjust_aspect_ratio",
+                max_aspect_ratio=cm.max_aspect_ratio,
+                cell_size_factor=0.8,
+            )
+
+        # ----------------------------------------------------------
+        # hausdorff_high (geometry fidelity)
+        # ----------------------------------------------------------
+        if summary.geometry_fidelity is not None:
+            if summary.geometry_fidelity.hausdorff_relative > 0.05:
+                adj.failure_reasons.append(
+                    f"hausdorff_relative={summary.geometry_fidelity.hausdorff_relative:.4f}"
+                )
+                adj.evaluator_recs.append(
+                    "increase castellated level, decrease cell size for surface resolution"
+                )
+                adj.castellated_level_add += 1
+                adj.feature_extract_level_add += 1
+                adj.surface_cell_size_factor *= 0.8
+                adj.modifications.append(
+                    f"castellated_level: +1 (hausdorff={summary.geometry_fidelity.hausdorff_relative:.4f})"
+                )
+                adj.modifications.append("feature_extract_level: +1 (hausdorff)")
+                adj.modifications.append("surface_cell_size: x0.8 (hausdorff)")
+                log.info(
+                    "retry_adjust_hausdorff",
+                    hausdorff_relative=summary.geometry_fidelity.hausdorff_relative,
+                    feature_extract_level_add=1,
+                )
+
+        # ----------------------------------------------------------
+        # Excessive cell count
+        # ----------------------------------------------------------
         if cm.cells > 10_000_000:
-            failure_reasons.append(f"cell_count={cm.cells}")
-            evaluator_recs.append("셀 크기 확대, 리파인먼트 영역 축소")
-            modifications.append("base_cell_size: *1.3")
+            adj.failure_reasons.append(f"cell_count={cm.cells}")
+            adj.evaluator_recs.append("increase cell size, reduce refinement")
+            adj.base_cell_size_factor = 1.3
+            adj.modifications.append("base_cell_size: x1.3")
 
-        # hard fails의 BL 관련 항목
+        # ----------------------------------------------------------
+        # BL-related hard fails
+        # ----------------------------------------------------------
         for fail in summary.hard_fails:
             if "bl" in fail.criterion.lower() or "layer" in fail.criterion.lower():
-                failure_reasons.append(f"{fail.criterion}={fail.value:.3f}")
-                evaluator_recs.append("BL feature angle 완화, min thickness 축소")
-                modifications.append("boundary_layers.feature_angle: -30")
-                modifications.append("boundary_layers.min_thickness_ratio: +0.2")
+                adj.failure_reasons.append(f"{fail.criterion}={fail.value:.3f}")
+                adj.evaluator_recs.append("BL feature angle relax, min thickness decrease")
+                adj.modifications.append("boundary_layers.feature_angle: -30")
+                adj.modifications.append("boundary_layers.min_thickness_ratio: +0.2")
                 break
 
-        previous = PreviousAttempt(
-            tier=selected_tier,
-            failure_reason="; ".join(failure_reasons) if failure_reasons else "quality_fail",
-            evaluator_recommendation="; ".join(evaluator_recs) if evaluator_recs else "adjust parameters",
+        # If no specific failure was identified, record generic quality fail
+        if not adj.failure_reasons:
+            adj.failure_reasons.append("quality_fail")
+            adj.evaluator_recs.append("adjust parameters")
+
+        return adj
+
+    def _apply_adjustments(
+        self,
+        adj: _StrategyAdjustments,
+        cell_sizes: dict[str, float],
+        bl_config: object,
+        geometry_report: GeometryReport,
+    ) -> tuple[dict[str, float], object]:
+        """Apply computed adjustments to cell sizes and BL config.
+
+        Returns modified copies. Values are bounded to sensible ranges.
+        """
+        from core.schemas import BoundaryLayerConfig
+
+        L = geometry_report.geometry.bounding_box.characteristic_length
+        min_allowed_cell = max(L * _MIN_CELL_SIZE_FACTOR, _MIN_CELL_SIZE_ABS)
+
+        # -- Cell size adjustments --
+        new_sizes = dict(cell_sizes)
+        new_sizes["surface_cell_size"] = max(
+            new_sizes["surface_cell_size"] * adj.surface_cell_size_factor,
+            min_allowed_cell,
         )
-        return selected_tier, fallback_tiers, previous, modifications, quality_level
+        new_sizes["min_cell_size"] = max(
+            new_sizes["surface_cell_size"] / 4.0,
+            min_allowed_cell / 4.0,
+        )
+        new_sizes["base_cell_size"] = max(
+            new_sizes["base_cell_size"] * adj.base_cell_size_factor,
+            min_allowed_cell,
+        )
+
+        # -- BL adjustments --
+        assert isinstance(bl_config, BoundaryLayerConfig)
+        new_bl = bl_config.model_copy()
+
+        if adj.bl_disable or (new_bl.num_layers + adj.bl_layers_add <= _MIN_BL_LAYERS):
+            # Disable BL entirely
+            new_bl = BoundaryLayerConfig(
+                enabled=False,
+                num_layers=0,
+                first_layer_thickness=0.0,
+                growth_ratio=bl_config.growth_ratio,
+                max_total_thickness=0.0,
+                min_thickness_ratio=bl_config.min_thickness_ratio,
+                feature_angle=bl_config.feature_angle,
+            )
+            if adj.bl_layers_add < 0:
+                log.info("retry_bl_disabled", reason="layers reduced to zero or below")
+        else:
+            new_layers = max(new_bl.num_layers + adj.bl_layers_add, _MIN_BL_LAYERS)
+            new_growth = max(
+                new_bl.growth_ratio * adj.bl_growth_ratio_factor,
+                _MIN_BL_GROWTH_RATIO,
+            )
+            new_bl = BoundaryLayerConfig(
+                enabled=new_bl.enabled and new_layers > 0,
+                num_layers=new_layers,
+                first_layer_thickness=new_bl.first_layer_thickness,
+                growth_ratio=new_growth,
+                max_total_thickness=new_bl.max_total_thickness,
+                min_thickness_ratio=new_bl.min_thickness_ratio,
+                feature_angle=new_bl.feature_angle,
+            )
+
+        return new_sizes, new_bl
+
+    def _apply_tier_param_adjustments(
+        self,
+        tier_params: dict,
+        tier: str,
+        adj: _StrategyAdjustments,
+    ) -> None:
+        """Apply snap/castellated adjustments to tier-specific params in-place."""
+        if tier == "tier1_snappy":
+            # Snap tolerance: multiply, bounded
+            old_tol = tier_params.get("snappy_snap_tolerance", 2.0)
+            new_tol = min(old_tol * adj.snap_tolerance_factor, _MAX_SNAP_TOLERANCE)
+            tier_params["snappy_snap_tolerance"] = new_tol
+
+            # Snap iterations: add, bounded
+            old_iters = tier_params.get("snappy_snap_iterations", 5)
+            new_iters = min(old_iters + adj.snap_iterations_add, _MAX_SNAP_ITERATIONS)
+            tier_params["snappy_snap_iterations"] = new_iters
+
+            # Castellated level: bump both min and max
+            old_level = tier_params.get("snappy_castellated_level", [2, 3])
+            if isinstance(old_level, list) and len(old_level) == 2:
+                bump = min(adj.castellated_level_add, _MAX_CASTELLATED_LEVEL_BUMP)
+                tier_params["snappy_castellated_level"] = [
+                    old_level[0] + bump,
+                    old_level[1] + bump,
+                ]
 
     @staticmethod
     def _downgrade_quality(
@@ -292,17 +561,17 @@ class StrategyPlanner:
         evaluator_recs: list[str],
         modifications: list[str],
     ) -> QualityLevel:
-        """Quality level을 한 단계 낮춘다 (fine→standard→draft)."""
+        """Quality level을 한 단계 낮춘다 (fine->standard->draft)."""
         downgrade_map = {
             QualityLevel.FINE: QualityLevel.STANDARD,
             QualityLevel.STANDARD: QualityLevel.DRAFT,
-            QualityLevel.DRAFT: QualityLevel.DRAFT,  # 최저 → 유지
+            QualityLevel.DRAFT: QualityLevel.DRAFT,  # 최저 -> 유지
         }
         new_ql = downgrade_map.get(quality_level, QualityLevel.DRAFT)
         if new_ql != quality_level:
             failure_reasons.append(f"all_tiers_failed_at_{quality_level.value}")
-            evaluator_recs.append(f"downgrade quality: {quality_level.value} → {new_ql.value}")
-            modifications.append(f"quality_level: {quality_level.value} → {new_ql.value}")
+            evaluator_recs.append(f"downgrade quality: {quality_level.value} -> {new_ql.value}")
+            modifications.append(f"quality_level: {quality_level.value} -> {new_ql.value}")
             log.warning("quality_level_downgraded", from_ql=quality_level.value, to_ql=new_ql.value)
         return new_ql
 

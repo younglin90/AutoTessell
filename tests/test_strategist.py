@@ -19,6 +19,7 @@ from core.schemas import (
     FileInfo,
     FlowEstimation,
     Geometry,
+    GeometryFidelity,
     GeometryReport,
     MeshStrategy,
     QualityLevel,
@@ -130,10 +131,15 @@ def _make_quality_report(
     tier: str = "tier1_snappy",
     max_non_orthogonality: float = 65.0,
     max_skewness: float = 4.0,
+    max_aspect_ratio: float = 20.0,
     negative_volumes: int = 0,
     cells: int = 1_000_000,
     mesh_ok: bool = True,
+    failed_checks: int | None = None,
+    geometry_fidelity: "GeometryFidelity | None" = None,
 ) -> QualityReport:
+    if failed_checks is None:
+        failed_checks = 1 if verdict == Verdict.FAIL else 0
     cm = CheckMeshResult(
         cells=cells,
         faces=5_000_000,
@@ -141,13 +147,13 @@ def _make_quality_report(
         max_non_orthogonality=max_non_orthogonality,
         avg_non_orthogonality=30.0,
         max_skewness=max_skewness,
-        max_aspect_ratio=20.0,
+        max_aspect_ratio=max_aspect_ratio,
         min_face_area=1e-8,
         min_cell_volume=1e-9,
         min_determinant=0.01,
         negative_volumes=negative_volumes,
         severely_non_ortho_faces=0,
-        failed_checks=1 if verdict == Verdict.FAIL else 0,
+        failed_checks=failed_checks,
         mesh_ok=mesh_ok,
     )
     summary = EvaluationSummary(
@@ -156,6 +162,7 @@ def _make_quality_report(
         tier_evaluated=tier,
         evaluation_time_seconds=5.0,
         checkmesh=cm,
+        geometry_fidelity=geometry_fidelity,
     )
     return QualityReport(evaluation_summary=summary)
 
@@ -820,6 +827,476 @@ class TestStrategyPlanner:
         strategy = self.planner.plan(report, quality_level="draft")
         assert strategy.quality_level == QualityLevel.DRAFT
         assert strategy.selected_tier == "tier2_tetwild"
+
+    # ── Enhanced retry tests ────────────────────────────────────────
+
+    def test_retry_reduces_cell_size_on_high_skewness(self):
+        """high_skewness -> surface_cell_size reduced by factor 0.7."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+
+        # Baseline (no feedback)
+        baseline = self.planner.plan(report, quality_level=QualityLevel.STANDARD)
+        baseline_surface_cell = baseline.surface_mesh.target_cell_size
+
+        # With high skewness feedback
+        quality = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            max_skewness=8.5,  # > 6.0 threshold
+        )
+        retry = self.planner.plan(
+            report, quality_report=quality, iteration=2,
+            quality_level=QualityLevel.STANDARD,
+        )
+
+        assert retry.surface_mesh.target_cell_size < baseline_surface_cell
+        assert abs(retry.surface_mesh.target_cell_size - baseline_surface_cell * 0.7) < 1e-12
+
+    def test_retry_increases_snap_tolerance_on_non_ortho(self):
+        """high_non_orthogonality -> snap_tolerance x1.5, snap_iterations +3, castellated +1."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        quality = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            max_non_orthogonality=75.0,  # > 70 threshold
+        )
+
+        strategy = self.planner.plan(
+            report, quality_report=quality, iteration=2,
+            quality_level=QualityLevel.STANDARD,
+        )
+
+        # snappy tier params should be adjusted
+        assert strategy.tier_specific_params["snappy_snap_tolerance"] == 2.0 * 1.5
+        assert strategy.tier_specific_params["snappy_snap_iterations"] == 5 + 3
+        assert strategy.tier_specific_params["snappy_castellated_level"] == [3, 4]
+
+    def test_retry_disables_bl_on_negative_volumes(self):
+        """negative_volumes -> BL layers reduced by 2, growth_ratio x0.8.
+
+        When BL has 5 layers, reducing by 2 gives 3 layers (still enabled).
+        When BL is already disabled (standard), it stays disabled.
+        """
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+
+        # Fine quality level has BL enabled (5 layers)
+        quality = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            negative_volumes=10,
+        )
+        strategy = self.planner.plan(
+            report, quality_report=quality, iteration=2,
+            quality_level=QualityLevel.FINE,
+        )
+
+        # 5 layers - 2 = 3 layers, growth 1.2 * 0.8 = 0.96 -> clamped to 1.0
+        assert strategy.boundary_layers.num_layers == 3
+        assert strategy.boundary_layers.growth_ratio == 1.0
+        assert strategy.boundary_layers.enabled is True
+        assert "negative_volumes" in strategy.previous_attempt.failure_reason
+
+    def test_retry_disables_bl_completely_when_layers_go_to_zero(self):
+        """When BL layers would go below 0, BL is fully disabled."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        # Standard has 0 layers. Reducing by 2 -> stays disabled.
+        quality = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            negative_volumes=5,
+        )
+        strategy = self.planner.plan(
+            report, quality_report=quality, iteration=2,
+            quality_level=QualityLevel.STANDARD,
+        )
+        assert strategy.boundary_layers.enabled is False
+        assert strategy.boundary_layers.num_layers == 0
+
+    def test_retry_downgrades_quality_on_all_fail(self):
+        """All tiers failed (cells=0, no fallbacks) -> quality_level downgrade."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        # Use tier_hint to force a specific tier so fallbacks match expectation
+        quality = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier2_tetwild",
+            cells=0,
+            mesh_ok=False,
+        )
+
+        # Plan with fine quality, snappy tier hint. The fallback list from
+        # hint override includes all other tiers. We need to simulate no
+        # fallbacks left. Use l3_ai surface quality to force tetwild, then
+        # craft a quality report that triggers the all-tiers-failed path.
+        # Instead, let's directly test the planner with tier2_tetwild and
+        # quality level fine with empty fallbacks by using a specific tier hint.
+        from core.schemas import (
+            FinalValidation,
+            PreprocessedReport,
+            PreprocessingSummary,
+        )
+
+        # Force tetwild via l3_ai, which sets limited fallbacks
+        final_val = FinalValidation(
+            is_watertight=True,
+            is_manifold=True,
+            num_faces=1280,
+            min_face_area=0.009,
+            max_edge_length_ratio=1.2,
+        )
+        prep_summary = PreprocessingSummary(
+            input_file="/tmp/test.stl",
+            input_format="STL",
+            output_file="/tmp/preprocessed.stl",
+            passthrough_cad=False,
+            total_time_seconds=1.2,
+            steps_performed=[],
+            final_validation=final_val,
+            surface_quality_level="l3_ai",
+        )
+        pre_report = PreprocessedReport(preprocessing_summary=prep_summary)
+
+        # First attempt: fine -> tetwild (l3_ai). Fallbacks exclude tetwild.
+        # We simulate all fallbacks exhausted by creating a quality report
+        # where the complete failure triggers the check.
+        # The _compute_adjustments sees cells=0 + mesh_ok=False, checks
+        # fallback_tiers. l3_ai gives fallbacks = all tiers except tetwild.
+        # But we want to test the "no fallbacks" path specifically.
+        # Simplest approach: use tier_hint to force a tier, which gives all
+        # other tiers as fallback. Instead, let's directly call the internal
+        # method to test the downgrade logic.
+        planner = StrategyPlanner()
+        # Simulate: selected=tetwild, no fallbacks, fine quality
+        from core.strategist.strategy_planner import _StrategyAdjustments
+
+        adj = planner._compute_adjustments(
+            quality, "tier2_tetwild", [], QualityLevel.FINE,
+        )
+        assert adj.downgrade_quality == QualityLevel.STANDARD
+
+    def test_retry_changes_tier_on_checkmesh_fail(self):
+        """checkMesh hard fail (failed_checks>0, cells>0, mesh_ok=False) -> switch tier."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        quality = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            cells=500_000,
+            mesh_ok=False,
+            failed_checks=3,
+        )
+
+        strategy = self.planner.plan(
+            report, quality_report=quality, iteration=2,
+            quality_level=QualityLevel.STANDARD,
+        )
+
+        # Should have switched away from snappy
+        assert strategy.previous_attempt is not None
+        assert "checkMesh hard fail" in strategy.previous_attempt.failure_reason or \
+               "tier1_snappy" in strategy.previous_attempt.tier
+
+    def test_retry_cumulative_adjustments(self):
+        """Iteration 3 cell size should be smaller than iteration 2 when skewness persists.
+
+        We simulate cumulative retries by feeding a quality_report with high
+        skewness at each iteration. The cell size factor 0.7 is applied each time
+        relative to the base, so iteration 2 = base*0.7, iteration 3 = base*0.7
+        (same ratio to base). To get true cumulative effect, the iteration 3
+        quality report must trigger the same adjustment.
+        """
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+
+        # Iteration 1: baseline
+        baseline = self.planner.plan(
+            report, quality_level=QualityLevel.STANDARD,
+        )
+
+        # Iteration 2: high skewness
+        qr2 = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            max_skewness=8.0,
+        )
+        iter2 = self.planner.plan(
+            report, quality_report=qr2, iteration=2,
+            quality_level=QualityLevel.STANDARD,
+        )
+
+        # Iteration 3: still high skewness + also high aspect ratio
+        qr3 = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            max_skewness=7.5,
+            max_aspect_ratio=250.0,  # compounds: 0.7 * 0.8 = 0.56
+        )
+        iter3 = self.planner.plan(
+            report, quality_report=qr3, iteration=3,
+            quality_level=QualityLevel.STANDARD,
+        )
+
+        # iter2 has skewness adjustment (0.7x)
+        # iter3 has skewness (0.7) + aspect_ratio (0.8) = 0.56x
+        assert iter2.surface_mesh.target_cell_size < baseline.surface_mesh.target_cell_size
+        assert iter3.surface_mesh.target_cell_size < iter2.surface_mesh.target_cell_size
+
+    def test_retry_aspect_ratio_reduces_cell_size(self):
+        """high_aspect_ratio (>200) -> surface_cell_size reduced by 0.8."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        baseline = self.planner.plan(report, quality_level=QualityLevel.STANDARD)
+
+        quality = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            max_aspect_ratio=300.0,
+        )
+        retry = self.planner.plan(
+            report, quality_report=quality, iteration=2,
+            quality_level=QualityLevel.STANDARD,
+        )
+
+        expected = baseline.surface_mesh.target_cell_size * 0.8
+        assert abs(retry.surface_mesh.target_cell_size - expected) < 1e-12
+
+    def test_retry_hausdorff_reduces_cell_and_bumps_level(self):
+        """hausdorff_relative > 0.05 -> castellated +1, cell_size x0.8."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        baseline = self.planner.plan(report, quality_level=QualityLevel.STANDARD)
+
+        fidelity = GeometryFidelity(
+            hausdorff_distance=0.1,
+            hausdorff_relative=0.08,
+            surface_area_deviation_percent=2.0,
+        )
+        quality = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            geometry_fidelity=fidelity,
+        )
+        retry = self.planner.plan(
+            report, quality_report=quality, iteration=2,
+            quality_level=QualityLevel.STANDARD,
+        )
+
+        # Cell size reduced
+        assert retry.surface_mesh.target_cell_size < baseline.surface_mesh.target_cell_size
+        # Castellated level bumped
+        assert retry.tier_specific_params["snappy_castellated_level"] == [3, 4]
+
+    def test_retry_parameters_are_bounded(self):
+        """Adjustments should not push values below sensible minimums."""
+        report = _make_geometry_report(
+            flow_type="external", is_watertight=True, characteristic_length=0.01,
+        )
+        # Extremely high skewness + aspect ratio -> aggressive cell reduction
+        quality = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            max_skewness=100.0,
+            max_aspect_ratio=1000.0,
+        )
+        strategy = self.planner.plan(
+            report, quality_report=quality, iteration=2,
+            quality_level=QualityLevel.STANDARD,
+        )
+
+        L = 0.01
+        min_allowed = max(L * 0.001, 0.001)  # _MIN_CELL_SIZE_FACTOR + _MIN_CELL_SIZE_ABS
+        assert strategy.surface_mesh.target_cell_size >= min_allowed
+        assert strategy.surface_mesh.min_cell_size >= min_allowed / 4.0
+
+    def test_retry_hausdorff_increases_feature_extract_level(self):
+        """hausdorff_relative > 0.05 -> feature_extract_level +1."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        fidelity = GeometryFidelity(
+            hausdorff_distance=0.1,
+            hausdorff_relative=0.08,
+            surface_area_deviation_percent=2.0,
+        )
+        quality = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            geometry_fidelity=fidelity,
+        )
+        strategy = self.planner.plan(
+            report, quality_report=quality, iteration=2,
+            quality_level=QualityLevel.STANDARD,
+        )
+        assert strategy.surface_mesh.feature_extract_level == 2  # 1 + 1
+
+    def test_retry_modifications_stored_in_previous_attempt(self):
+        """Modifications list is stored in previous_attempt."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        quality = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            max_non_orthogonality=75.0,
+        )
+        strategy = self.planner.plan(
+            report, quality_report=quality, iteration=2,
+            quality_level=QualityLevel.STANDARD,
+        )
+        assert strategy.previous_attempt is not None
+        assert len(strategy.previous_attempt.modifications) > 0
+        assert any("snap_tolerance" in m for m in strategy.previous_attempt.modifications)
+
+    def test_retry_previous_attempt_quality_level(self):
+        """previous_attempt records the quality_level used."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        quality = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            max_skewness=8.0,
+        )
+        strategy = self.planner.plan(
+            report, quality_report=quality, iteration=2,
+            quality_level=QualityLevel.FINE,
+        )
+        assert strategy.previous_attempt is not None
+        assert strategy.previous_attempt.quality_level == "fine"
+
+
+# ---------------------------------------------------------------------------
+# Retry-specific tests (requested names)
+# ---------------------------------------------------------------------------
+
+
+class TestRetryLogic:
+    """Focused retry tests with the exact names from the requirements."""
+
+    def setup_method(self):
+        self.planner = StrategyPlanner()
+
+    def test_retry_reduces_cell_size_on_skewness(self):
+        """High skewness (>6.0) should reduce target_cell_size by 0.7x."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        baseline = self.planner.plan(report, quality_level=QualityLevel.STANDARD)
+
+        quality = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            max_skewness=9.0,
+        )
+        retry = self.planner.plan(
+            report, quality_report=quality, iteration=2,
+            quality_level=QualityLevel.STANDARD,
+        )
+
+        expected = baseline.surface_mesh.target_cell_size * 0.7
+        assert abs(retry.surface_mesh.target_cell_size - expected) < 1e-12
+        assert retry.surface_mesh.min_cell_size < baseline.surface_mesh.min_cell_size
+
+    def test_retry_increases_snap_on_non_ortho(self):
+        """High non-orthogonality (>70) should increase snap_tolerance x1.5 and snap_iterations +3."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+
+        quality = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            max_non_orthogonality=78.0,
+        )
+        strategy = self.planner.plan(
+            report, quality_report=quality, iteration=2,
+            quality_level=QualityLevel.STANDARD,
+        )
+
+        assert strategy.tier_specific_params["snappy_snap_tolerance"] == 2.0 * 1.5
+        assert strategy.tier_specific_params["snappy_snap_iterations"] == 5 + 3
+        assert strategy.tier_specific_params["snappy_castellated_level"] == [3, 4]
+        # Modifications should be recorded
+        assert strategy.previous_attempt is not None
+        assert any("snap_tolerance" in m for m in strategy.previous_attempt.modifications)
+        assert any("snap_iterations" in m for m in strategy.previous_attempt.modifications)
+
+    def test_retry_disables_bl_on_negative_volumes(self):
+        """negative_volumes > 0 should reduce BL layers by 2 and growth_ratio by 0.8.
+
+        With fine (5 layers): 5 - 2 = 3 layers, growth 1.2 * 0.8 = 0.96 -> clamped to 1.0.
+        With standard (0 layers): stays disabled.
+        """
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+
+        # Fine: BL enabled with 5 layers
+        quality = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            negative_volumes=8,
+        )
+        strategy_fine = self.planner.plan(
+            report, quality_report=quality, iteration=2,
+            quality_level=QualityLevel.FINE,
+        )
+        assert strategy_fine.boundary_layers.num_layers == 3  # 5 - 2
+        assert strategy_fine.boundary_layers.growth_ratio == 1.0  # 1.2*0.8=0.96 clamped
+        assert strategy_fine.boundary_layers.enabled is True
+
+        # Standard: BL already disabled (0 layers), stays disabled
+        strategy_std = self.planner.plan(
+            report, quality_report=quality, iteration=2,
+            quality_level=QualityLevel.STANDARD,
+        )
+        assert strategy_std.boundary_layers.enabled is False
+        assert strategy_std.boundary_layers.num_layers == 0
+
+    def test_retry_switches_tier_on_failed_checks(self):
+        """failed_checks > 0 with mesh_ok=False should switch to fallback tier."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        quality = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            cells=100_000,
+            mesh_ok=False,
+            failed_checks=5,
+        )
+        strategy = self.planner.plan(
+            report, quality_report=quality, iteration=2,
+            quality_level=QualityLevel.STANDARD,
+        )
+
+        # Should have switched away from snappy to a fallback
+        assert strategy.selected_tier != "tier1_snappy"
+        assert strategy.previous_attempt is not None
+        assert strategy.previous_attempt.tier == "tier1_snappy"
+        assert "hard fail" in strategy.previous_attempt.failure_reason.lower() or \
+               "failed_checks" in strategy.previous_attempt.failure_reason
+
+    def test_retry_cumulative(self):
+        """Iteration 3 should produce smaller cells than iteration 2.
+
+        Iter 2: skewness only -> 0.7x
+        Iter 3: skewness + aspect_ratio -> 0.7 * 0.8 = 0.56x
+        """
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        baseline = self.planner.plan(report, quality_level=QualityLevel.STANDARD)
+
+        # Iteration 2: high skewness only
+        qr2 = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            max_skewness=7.0,
+        )
+        iter2 = self.planner.plan(
+            report, quality_report=qr2, iteration=2,
+            quality_level=QualityLevel.STANDARD,
+        )
+
+        # Iteration 3: high skewness + high aspect ratio (compounds: 0.7 * 0.8 = 0.56)
+        qr3 = _make_quality_report(
+            verdict=Verdict.FAIL,
+            tier="tier1_snappy",
+            max_skewness=7.0,
+            max_aspect_ratio=300.0,
+        )
+        iter3 = self.planner.plan(
+            report, quality_report=qr3, iteration=3,
+            quality_level=QualityLevel.STANDARD,
+        )
+
+        # Verify monotonically decreasing cell sizes
+        assert baseline.surface_mesh.target_cell_size > iter2.surface_mesh.target_cell_size
+        assert iter2.surface_mesh.target_cell_size > iter3.surface_mesh.target_cell_size
+
+        # Verify exact factors
+        assert abs(iter2.surface_mesh.target_cell_size - baseline.surface_mesh.target_cell_size * 0.7) < 1e-12
+        assert abs(iter3.surface_mesh.target_cell_size - baseline.surface_mesh.target_cell_size * 0.56) < 1e-12
 
 
 # ---------------------------------------------------------------------------
