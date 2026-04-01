@@ -173,11 +173,16 @@ class NativeMeshChecker:
         # NativeMeshChecker는 OpenFOAM checkMesh의 "Failed N mesh checks"를
         # 모방한다. OpenFOAM은 negative volumes/zero volumes만 failed check으로
         # 카운트하고, non-ortho/skewness 등은 warning으로 처리한다.
+        # Note: divergence theorem 볼륨 계산은 부동소수점 오차로 인해
+        # 매우 작은 음수값(-1e-15 등)이 발생할 수 있다. 의미있는 negative volume
+        # 검출을 위해 상대 임계값을 사용한다.
+        _VOL_TOL = 1e-20  # 이 미만의 음수 볼륨은 수치 오차로 간주
+        meaningful_neg_volumes = int(
+            (cell_volumes < -_VOL_TOL).sum()
+        ) if len(cell_volumes) > 0 else 0
+
         failed_checks = 0
-        if negative_volumes > 0:
-            failed_checks += 1
-        if min_cell_volume <= 0.0 and negative_volumes == 0:
-            # min_cell_volume이 0 이하이지만 negative_volumes가 따로 집계되지 않은 경우
+        if meaningful_neg_volumes > 0:
             failed_checks += 1
 
         mesh_ok = failed_checks == 0
@@ -193,7 +198,7 @@ class NativeMeshChecker:
             min_face_area=float(min_face_area),
             min_cell_volume=float(min_cell_volume),
             min_determinant=float(min_determinant),
-            negative_volumes=int(negative_volumes),
+            negative_volumes=meaningful_neg_volumes,
             severely_non_ortho_faces=int(severe_count),
             failed_checks=int(failed_checks),
             mesh_ok=mesh_ok,
@@ -431,7 +436,9 @@ class NativeMeshChecker:
 
         volumes /= 3.0
 
-        negative_count = int(np.sum(volumes < 0))
+        # 부동소수점 오차(-1e-20 등)를 의미있는 negative volume과 구분
+        _VOL_TOL = 1e-20
+        negative_count = int(np.sum(volumes < -_VOL_TOL))
         return volumes, negative_count
 
     # ------------------------------------------------------------------
