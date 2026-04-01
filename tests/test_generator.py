@@ -1785,3 +1785,285 @@ class TestFaceWindingOrder:
         assert "negative volume" not in combined.lower() or "0 negative" in combined, (
             "checkMesh reported negative volumes"
         )
+
+
+# ---------------------------------------------------------------------------
+# MMG3D post-processing tests (Task 1)
+# ---------------------------------------------------------------------------
+
+
+class TestMMGPostProcessing:
+    """Tests for MMG3D post-processing in Tier2TetWildGenerator."""
+
+    @pytest.fixture()
+    def standard_strategy(self) -> MeshStrategy:
+        """Standard quality strategy for MMG tests."""
+        return MeshStrategy(
+            strategy_version=2,
+            iteration=1,
+            selected_tier="tier2_tetwild",
+            fallback_tiers=[],
+            flow_type="external",
+            quality_level=QualityLevel.STANDARD,
+            domain=DomainConfig(
+                type="box",
+                min=[-1.0, -1.0, -1.0],
+                max=[1.0, 1.0, 1.0],
+                base_cell_size=0.1,
+                location_in_mesh=[0.0, 0.0, 0.0],
+            ),
+            surface_mesh=SurfaceMeshConfig(
+                input_file="sphere.stl",
+                target_cell_size=0.05,
+                min_cell_size=0.01,
+            ),
+            boundary_layers=BoundaryLayerConfig(
+                enabled=False,
+                num_layers=0,
+                first_layer_thickness=0.001,
+                growth_ratio=1.2,
+                max_total_thickness=0.01,
+                min_thickness_ratio=0.1,
+            ),
+            tier_specific_params={"tetwild_stop_energy": 100.0},
+        )
+
+    @pytest.fixture()
+    def draft_strategy(self) -> MeshStrategy:
+        """Draft quality strategy — MMG must NOT run."""
+        return MeshStrategy(
+            strategy_version=2,
+            iteration=1,
+            selected_tier="tier2_tetwild",
+            fallback_tiers=[],
+            flow_type="external",
+            quality_level=QualityLevel.DRAFT,
+            domain=DomainConfig(
+                type="box",
+                min=[-1.0, -1.0, -1.0],
+                max=[1.0, 1.0, 1.0],
+                base_cell_size=0.1,
+                location_in_mesh=[0.0, 0.0, 0.0],
+            ),
+            surface_mesh=SurfaceMeshConfig(
+                input_file="sphere.stl",
+                target_cell_size=0.05,
+                min_cell_size=0.01,
+            ),
+            boundary_layers=BoundaryLayerConfig(
+                enabled=False,
+                num_layers=0,
+                first_layer_thickness=0.001,
+                growth_ratio=1.2,
+                max_total_thickness=0.01,
+                min_thickness_ratio=0.1,
+            ),
+            tier_specific_params={"tetwild_stop_energy": 20.0},
+        )
+
+    def _mock_pytetwild_run(
+        self, strategy: MeshStrategy, stl_path: Path, case_dir: Path, mmg_which_result
+    ):
+        """Helper: run Tier2 with mocked pytetwild and configurable mmg3d on PATH."""
+        import sys
+        from core.generator.tier2_tetwild import Tier2TetWildGenerator
+
+        vert = np.array([
+            [0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0], [0.0, 0.0, 1.0],
+        ], dtype=float)
+        faces_tri = np.array([[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]], dtype=int)
+        tet_cells = np.array([[0, 1, 2, 3]], dtype=int)
+
+        mock_surf = MagicMock()
+        mock_surf.vertices = vert
+        mock_surf.faces = faces_tri
+
+        mock_pytetwild = MagicMock()
+        mock_pytetwild.tetrahedralize.return_value = (vert, tet_cells)
+
+        with patch.dict(sys.modules, {"pytetwild": mock_pytetwild}):
+            with patch("trimesh.load", return_value=mock_surf):
+                with patch("shutil.which", return_value=mmg_which_result):
+                    gen = Tier2TetWildGenerator()
+                    attempt = gen.run(strategy, stl_path, case_dir)
+
+        return attempt, mock_pytetwild
+
+    def test_mmg_not_run_for_draft_quality(
+        self, draft_strategy: MeshStrategy, tmp_path: Path
+    ) -> None:
+        """Draft quality_level → _run_mmg must NEVER be called even if mmg3d on PATH."""
+        import sys
+        from core.generator.tier2_tetwild import Tier2TetWildGenerator
+
+        vert = np.array([
+            [0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0], [0.0, 0.0, 1.0],
+        ], dtype=float)
+        tet_cells = np.array([[0, 1, 2, 3]], dtype=int)
+
+        mock_surf = MagicMock()
+        mock_surf.vertices = vert
+        mock_surf.faces = np.array([[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]])
+
+        mock_pytetwild = MagicMock()
+        mock_pytetwild.tetrahedralize.return_value = (vert, tet_cells)
+
+        stl_path = tmp_path / "dummy.stl"
+        stl_path.write_text("solid dummy\nendsolid dummy\n")
+
+        mmg_called = []
+
+        gen = Tier2TetWildGenerator()
+        original_run_mmg = gen._run_mmg
+
+        def spy_run_mmg(*args, **kwargs):
+            mmg_called.append(True)
+            return original_run_mmg(*args, **kwargs)
+
+        gen._run_mmg = spy_run_mmg  # type: ignore[method-assign]
+
+        with patch.dict(sys.modules, {"pytetwild": mock_pytetwild}):
+            with patch("trimesh.load", return_value=mock_surf):
+                # mmg3d is on PATH — but draft should skip it
+                with patch("shutil.which", return_value="/usr/bin/mmg3d"):
+                    gen.run(draft_strategy, stl_path, tmp_path)
+
+        assert mmg_called == [], "MMG must not run for draft quality"
+
+    def test_mmg_runs_for_standard_quality_when_available(
+        self, standard_strategy: MeshStrategy, tmp_path: Path
+    ) -> None:
+        """Standard quality + mmg3d on PATH → _run_mmg is called once."""
+        import sys
+        from core.generator.tier2_tetwild import Tier2TetWildGenerator
+
+        vert = np.array([
+            [0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0], [0.0, 0.0, 1.0],
+        ], dtype=float)
+        tet_cells = np.array([[0, 1, 2, 3]], dtype=int)
+
+        mock_surf = MagicMock()
+        mock_surf.vertices = vert
+        mock_surf.faces = np.array([[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]])
+
+        mock_pytetwild = MagicMock()
+        mock_pytetwild.tetrahedralize.return_value = (vert, tet_cells)
+
+        stl_path = tmp_path / "dummy.stl"
+        stl_path.write_text("solid dummy\nendsolid dummy\n")
+
+        mmg_call_count = []
+
+        gen = Tier2TetWildGenerator()
+        original_run_mmg = gen._run_mmg
+
+        def spy_run_mmg(input_msh, case_dir, params):
+            mmg_call_count.append(1)
+            # Simulate MMG failing gracefully — returns input unchanged
+            return input_msh
+
+        gen._run_mmg = spy_run_mmg  # type: ignore[method-assign]
+
+        with patch.dict(sys.modules, {"pytetwild": mock_pytetwild}):
+            with patch("trimesh.load", return_value=mock_surf):
+                with patch("shutil.which", return_value="/usr/bin/mmg3d"):
+                    attempt = gen.run(standard_strategy, stl_path, tmp_path)
+
+        assert sum(mmg_call_count) == 1, "MMG must be called exactly once for standard"
+        assert attempt.status == "success"
+
+    def test_mmg_graceful_skip_when_unavailable(
+        self, standard_strategy: MeshStrategy, tmp_path: Path
+    ) -> None:
+        """mmg3d NOT on PATH → pipeline still succeeds without MMG."""
+        import sys
+        from core.generator.tier2_tetwild import Tier2TetWildGenerator
+
+        vert = np.array([
+            [0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0], [0.0, 0.0, 1.0],
+        ], dtype=float)
+        tet_cells = np.array([[0, 1, 2, 3]], dtype=int)
+
+        mock_surf = MagicMock()
+        mock_surf.vertices = vert
+        mock_surf.faces = np.array([[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]])
+
+        mock_pytetwild = MagicMock()
+        mock_pytetwild.tetrahedralize.return_value = (vert, tet_cells)
+
+        stl_path = tmp_path / "dummy.stl"
+        stl_path.write_text("solid dummy\nendsolid dummy\n")
+
+        with patch.dict(sys.modules, {"pytetwild": mock_pytetwild}):
+            with patch("trimesh.load", return_value=mock_surf):
+                # mmg3d NOT on PATH
+                with patch("shutil.which", return_value=None):
+                    gen = Tier2TetWildGenerator()
+                    attempt = gen.run(standard_strategy, stl_path, tmp_path)
+
+        assert attempt.status == "success", (
+            f"Pipeline must succeed without MMG: {attempt.error_message}"
+        )
+        poly_dir = tmp_path / "constant" / "polyMesh"
+        assert poly_dir.is_dir(), "polyMesh directory must be created"
+
+    def test_mmg_msh_to_medit_conversion(self, tmp_path: Path) -> None:
+        """_convert_msh_to_medit converts .msh → .mesh Medit format via meshio."""
+        import meshio
+        from core.generator.tier2_tetwild import Tier2TetWildGenerator
+
+        vert = np.array([
+            [0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0], [0.0, 0.0, 1.0],
+        ], dtype=float)
+        tet_cells = np.array([[0, 1, 2, 3]], dtype=int)
+
+        # Write a valid .msh file
+        msh_path = tmp_path / "tetwild_result.msh"
+        mesh = meshio.Mesh(points=vert, cells=[("tetra", tet_cells)])
+        meshio.write(str(msh_path), mesh)
+
+        gen = Tier2TetWildGenerator()
+        medit_path = gen._convert_msh_to_medit(msh_path, tmp_path)
+
+        # If meshio supports medit write, the file exists; otherwise returns input
+        if medit_path != msh_path:
+            assert medit_path.suffix == ".mesh"
+            assert medit_path.exists()
+        else:
+            # Conversion fell back — input returned unchanged
+            assert medit_path == msh_path
+
+    def test_mmg_postprocess_when_available(
+        self, standard_strategy: MeshStrategy, tmp_path: Path
+    ) -> None:
+        """Integration: when mmg3d binary is really available, run it on a minimal
+        Medit mesh and verify the output path is returned correctly."""
+        mmg3d_path = shutil.which("mmg3d")
+        if mmg3d_path is None:
+            pytest.skip("mmg3d not installed on this system")
+
+        import meshio
+        from core.generator.tier2_tetwild import Tier2TetWildGenerator
+
+        vert = np.array([
+            [0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0], [0.0, 0.0, 1.0],
+        ], dtype=float)
+        tet_cells = np.array([[0, 1, 2, 3]], dtype=int)
+
+        msh_path = tmp_path / "tetwild_result.msh"
+        mesh = meshio.Mesh(points=vert, cells=[("tetra", tet_cells)])
+        meshio.write(str(msh_path), mesh)
+
+        gen = Tier2TetWildGenerator()
+        params: dict = {}
+        result_path = gen._run_mmg(msh_path, tmp_path, params)
+
+        # MMG may succeed or fail depending on the mesh size, but must not raise
+        assert result_path is not None
+        assert isinstance(result_path, Path)

@@ -1,14 +1,20 @@
 """표면 리메쉬 모듈 (L2 단계).
 
-pyacvd가 설치된 경우 Voronoi 기반 균일 리메쉬를 수행한다.
+vorpalite(geogram) → pyACVD → pymeshlab 순서로 시도한다.
+vorpalite가 PATH에 있으면 최우선으로 사용 (특징 보존 고품질 리메쉬).
+없을 경우 pyACVD Voronoi 기반 균일 리메쉬를 수행한다.
 추가로 pymeshlab isotropic remeshing을 선택적으로 적용한다.
-없을 경우 trimesh 패스스루.
+어떤 도구도 없으면 trimesh 패스스루.
 L2 리메쉬 완료 후 gate 검사(watertight + manifold)를 수행한다.
 """
 
 from __future__ import annotations
 
+import shutil
+import subprocess
+import tempfile
 import time
+from pathlib import Path
 
 import trimesh
 
@@ -35,10 +41,70 @@ except ImportError:
     log.info("pymeshlab_unavailable", msg="pymeshlab 미설치 — isotropic remesh 건너뜀")
 
 
+def _run_vorpalite_remesh(
+    input_stl: Path, output_stl: Path, target_edge_length: float
+) -> bool:
+    """geogram vorpalite로 고품질 특징 보존 표면 리메쉬를 수행한다.
+
+    vorpalite가 PATH에 없으면 즉시 False를 반환한다.
+
+    Args:
+        input_stl: 입력 STL 파일 경로.
+        output_stl: 출력 STL 파일 경로.
+        target_edge_length: 목표 엣지 길이.
+
+    Returns:
+        성공 여부.
+    """
+    if not shutil.which("vorpalite"):
+        log.debug("vorpalite_not_found")
+        return False
+
+    # 목표 점 수 추정: 메쉬 면적 / (target_edge_length^2) * 0.5
+    # vorpalite는 점 수(nb_pts)로 제어
+    try:
+        surf = trimesh.load(str(input_stl), force="mesh")
+        if isinstance(surf, trimesh.Scene):
+            meshes = list(surf.geometry.values())
+            surf = trimesh.util.concatenate(meshes)
+        surface_area = float(surf.area)
+        target_pts = max(1000, int(surface_area / (target_edge_length ** 2) * 0.5))
+    except Exception:
+        target_pts = 50_000
+
+    cmd = [
+        "vorpalite",
+        str(input_stl),
+        str(output_stl),
+        "profile=repair",
+        f"remesh:nb_pts={target_pts}",
+    ]
+
+    log.info("running_vorpalite", cmd=" ".join(cmd), target_pts=target_pts)
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        if result.returncode == 0 and output_stl.exists():
+            log.info("vorpalite_success", output=str(output_stl))
+            return True
+        log.warning(
+            "vorpalite_failed",
+            returncode=result.returncode,
+            stderr=result.stderr[:300],
+        )
+        return False
+    except subprocess.TimeoutExpired:
+        log.warning("vorpalite_timeout")
+        return False
+    except Exception as exc:
+        log.warning("vorpalite_exception", error=str(exc))
+        return False
+
+
 class SurfaceRemesher:
     """표면 리메쉬기 (L2).
 
-    pyACVD Voronoi 기반 균일 리메쉬를 수행하여 삼각형 품질을 향상시킨다.
+    vorpalite(geogram) → pyACVD → pymeshlab 순서로 시도한다.
     remesh_l2()는 (mesh, gate_passed, step_record) 튜플을 반환한다.
     """
 
@@ -50,7 +116,9 @@ class SurfaceRemesher:
     ) -> tuple[trimesh.Trimesh, bool, dict[str, Any]]:
         """L2 리메쉬 수행 후 gate 검사.
 
-        pyACVD로 1차 균일 리메쉬 후 pymeshlab isotropic remeshing을 선택 적용한다.
+        1. vorpalite(geogram) — PATH에 있으면 최우선 사용 (특징 보존)
+        2. pyACVD Voronoi 균일 리메쉬
+        3. pymeshlab isotropic remesh (선택적 추가 개선)
 
         Args:
             mesh: 입력 trimesh.Trimesh 객체.
@@ -67,26 +135,47 @@ class SurfaceRemesher:
         methods_used: list[str] = []
 
         remeshed = mesh
-        # pyACVD 리메쉬
         computed_target = target_faces or self._compute_target_faces(mesh)
-        if _PYACVD_AVAILABLE:
-            try:
-                remeshed = self._run_pyacvd(remeshed, computed_target)
-                methods_used.append("pyacvd")
-            except Exception as exc:
-                log.warning("l2_pyacvd_failed", error=str(exc))
-        else:
-            log.info("l2_pyacvd_skipped", reason="pyacvd unavailable")
 
-        # pymeshlab isotropic remesh (선택적 추가 개선)
+        # 1) vorpalite — 특징 보존 고품질 리메쉬 (최우선)
+        target_edge = element_size or self._estimate_element_size(mesh)
+        vorpalite_succeeded = False
+        with tempfile.TemporaryDirectory() as tmp:
+            in_stl = Path(tmp) / "in.stl"
+            out_stl = Path(tmp) / "vorpalite_out.stl"
+            try:
+                mesh.export(str(in_stl))
+                if _run_vorpalite_remesh(in_stl, out_stl, target_edge):
+                    loaded = trimesh.load(str(out_stl), force="mesh")
+                    if isinstance(loaded, trimesh.Scene):
+                        meshes = list(loaded.geometry.values())
+                        loaded = trimesh.util.concatenate(meshes)
+                    remeshed = loaded  # type: ignore[assignment]
+                    methods_used.append("vorpalite")
+                    vorpalite_succeeded = True
+            except Exception as exc:
+                log.warning("l2_vorpalite_failed", error=str(exc))
+
+        # 2) pyACVD (vorpalite 없거나 실패 시)
+        if not vorpalite_succeeded:
+            if _PYACVD_AVAILABLE:
+                try:
+                    remeshed = self._run_pyacvd(remeshed, computed_target)
+                    methods_used.append("pyacvd")
+                except Exception as exc:
+                    log.warning("l2_pyacvd_failed", error=str(exc))
+            else:
+                log.info("l2_pyacvd_skipped", reason="pyacvd unavailable")
+
+        # 3) pymeshlab isotropic remesh (선택적 추가 개선)
         if _PYMESHLAB_AVAILABLE and element_size is not None:
             try:
                 remeshed = self._run_pymeshlab_isotropic(remeshed, element_size)
                 methods_used.append("pymeshlab")
             except Exception as exc:
                 log.warning("l2_pymeshlab_failed", error=str(exc))
-        elif _PYMESHLAB_AVAILABLE and not _PYACVD_AVAILABLE:
-            # pyACVD 없을 때 pymeshlab만으로 대체 시도
+        elif _PYMESHLAB_AVAILABLE and not _PYACVD_AVAILABLE and not vorpalite_succeeded:
+            # pyACVD/vorpalite 모두 없을 때 pymeshlab만으로 대체 시도
             try:
                 auto_size = self._estimate_element_size(remeshed)
                 remeshed = self._run_pymeshlab_isotropic(remeshed, auto_size)

@@ -176,11 +176,11 @@ class Tier2TetWildGenerator:
             _meshio.write(str(result_msh), tet_mesh)
             logger.info("tetwild_msh_saved", path=str(result_msh))
 
-            # MMG 품질 후처리 (선택적)
+            # MMG 품질 후처리 (standard/fine 전용 — draft는 속도 우선이므로 건너뜀)
             mmg_mesh_path = result_msh
             mmg_verts = tet_v
             mmg_tets = tet_f
-            if shutil.which("mmg3d"):
+            if quality_level in ("standard", "fine") and shutil.which("mmg3d"):
                 mmg_mesh_path = self._run_mmg(result_msh, case_dir, params)
                 # Re-read MMG output so we have updated arrays for PolyMeshWriter
                 if mmg_mesh_path != result_msh:
@@ -216,6 +216,27 @@ class Tier2TetWildGenerator:
                 error_message=f"Tier 2 실행 실패: {exc}",
             )
 
+    def _convert_msh_to_medit(self, input_msh: Path, case_dir: Path) -> Path:
+        """Gmsh .msh 파일을 MMG가 읽을 수 있는 Medit .mesh 형식으로 변환한다.
+
+        Args:
+            input_msh: Gmsh .msh 파일 경로.
+            case_dir: 출력 디렉터리.
+
+        Returns:
+            변환된 .mesh 파일 경로. 실패 시 input_msh 반환.
+        """
+        medit_path = case_dir / "tetwild_result.mesh"
+        try:
+            import meshio as _meshio
+            mesh = _meshio.read(str(input_msh))
+            _meshio.write(str(medit_path), mesh, file_format="medit")
+            logger.info("msh_to_medit_done", src=str(input_msh), dst=str(medit_path))
+            return medit_path
+        except Exception as exc:
+            logger.warning("msh_to_medit_failed", error=str(exc), fallback=str(input_msh))
+            return input_msh
+
     def _run_mmg(
         self,
         input_msh: Path,
@@ -223,6 +244,8 @@ class Tier2TetWildGenerator:
         params: dict[str, Any],
     ) -> Path:
         """MMG3D를 사용해 메쉬 품질을 향상시킨다.
+
+        MMG는 Medit (.mesh) 형식을 요구하므로 Gmsh .msh 파일은 먼저 변환한다.
 
         Args:
             input_msh: TetWild 결과 .msh 파일.
@@ -238,9 +261,15 @@ class Tier2TetWildGenerator:
         hgrad = params.get("mmg_hgrad", 1.3)
         hausd = params.get("mmg_hausd", 0.01)
 
+        # MMG는 Medit .mesh 형식을 입력으로 요구 — .msh이면 변환
+        if input_msh.suffix == ".msh":
+            medit_input = self._convert_msh_to_medit(input_msh, case_dir)
+        else:
+            medit_input = input_msh
+
         optimized = case_dir / "mmg_optimized.mesh"
 
-        cmd = ["mmg3d", str(input_msh)]
+        cmd = ["mmg3d", str(medit_input)]
         if hmin is not None:
             cmd += ["-hmin", str(hmin)]
         if hmax is not None:

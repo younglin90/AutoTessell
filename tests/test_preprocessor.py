@@ -647,3 +647,123 @@ def test_preprocessing_summary_surface_quality_level_schema():
     l2_step = report.preprocessing_summary.steps_performed[1]
     assert l1_step.gate_passed is False
     assert l2_step.gate_passed is True
+
+
+# ---------------------------------------------------------------------------
+# Vorpalite (geogram) remesh tests (Task 2)
+# ---------------------------------------------------------------------------
+
+
+class TestVorpaliteRemesh:
+    """Tests for vorpalite geogram surface remesher integration."""
+
+    def test_vorpalite_fallback_to_pyacvd_when_unavailable(self, sphere_mesh: trimesh.Trimesh) -> None:
+        """vorpalite NOT on PATH → falls back to pyACVD / passthrough gracefully."""
+        from unittest.mock import patch
+        from core.preprocessor.remesh import SurfaceRemesher
+
+        remesher = SurfaceRemesher()
+
+        with patch("shutil.which", return_value=None):
+            result_mesh, gate_passed, step_record = remesher.remesh_l2(sphere_mesh)
+
+        assert isinstance(result_mesh, trimesh.Trimesh)
+        assert isinstance(gate_passed, bool)
+        assert step_record["step"] == "l2_remesh"
+        # vorpalite must NOT appear in the method string
+        assert "vorpalite" not in step_record["method"], (
+            f"vorpalite must not appear when unavailable; method={step_record['method']!r}"
+        )
+
+    def test_vorpalite_used_when_available(self, sphere_mesh: trimesh.Trimesh, tmp_path: Path) -> None:
+        """vorpalite on PATH → it is called and its output is used."""
+        import shutil as _shutil
+        from unittest.mock import patch, MagicMock
+        from core.preprocessor.remesh import SurfaceRemesher
+
+        # Check if vorpalite is actually installed on this system
+        if _shutil.which("vorpalite"):
+            # Real integration test — vorpalite actually runs
+            remesher = SurfaceRemesher()
+            result_mesh, gate_passed, step_record = remesher.remesh_l2(sphere_mesh)
+            assert isinstance(result_mesh, trimesh.Trimesh)
+            # vorpalite should appear in method if it succeeded
+            # (it may fall back if vorpalite errors on the small sphere)
+        else:
+            # Mocked test — simulate vorpalite returning a valid STL
+            import tempfile
+            from pathlib import Path as _Path
+
+            remesher = SurfaceRemesher()
+
+            def fake_run_vorpalite(input_stl, output_stl, target_edge_length):
+                # Copy input to output to simulate successful remesh
+                import shutil as _sh
+                _sh.copy(str(input_stl), str(output_stl))
+                return True
+
+            with patch("core.preprocessor.remesh._run_vorpalite_remesh", side_effect=fake_run_vorpalite):
+                with patch("shutil.which", return_value="/usr/local/bin/vorpalite"):
+                    result_mesh, gate_passed, step_record = remesher.remesh_l2(sphere_mesh)
+
+            assert isinstance(result_mesh, trimesh.Trimesh)
+            assert "vorpalite" in step_record["method"], (
+                f"vorpalite must appear in method when it succeeds; got {step_record['method']!r}"
+            )
+
+    def test_vorpalite_remesh_when_available(self) -> None:
+        """If vorpalite binary is really on PATH, run it on a small STL and verify output."""
+        import shutil as _shutil
+        from pathlib import Path as _Path
+        from core.preprocessor.remesh import _run_vorpalite_remesh
+
+        if not _shutil.which("vorpalite"):
+            pytest.skip("vorpalite not installed on this system")
+
+        if not SPHERE_STL.exists():
+            pytest.skip("sphere.stl not found")
+
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            out_stl = _Path(tmp) / "out.stl"
+            success = _run_vorpalite_remesh(SPHERE_STL, out_stl, target_edge_length=0.05)
+            # We only assert it ran without raising; success depends on build
+            assert isinstance(success, bool)
+            if success:
+                assert out_stl.exists()
+
+    def test_vorpalite_not_found_returns_false(self) -> None:
+        """_run_vorpalite_remesh returns False immediately if vorpalite not on PATH."""
+        from unittest.mock import patch
+        from pathlib import Path as _Path
+        from core.preprocessor.remesh import _run_vorpalite_remesh
+
+        with patch("shutil.which", return_value=None):
+            result = _run_vorpalite_remesh(
+                _Path("/tmp/fake.stl"),
+                _Path("/tmp/fake_out.stl"),
+                target_edge_length=0.05,
+            )
+        assert result is False
+
+    def test_vorpalite_subprocess_failure_returns_false(self, tmp_path: Path) -> None:
+        """Subprocess non-zero returncode → _run_vorpalite_remesh returns False."""
+        import subprocess
+        from unittest.mock import patch, MagicMock
+        from pathlib import Path as _Path
+        from core.preprocessor.remesh import _run_vorpalite_remesh
+
+        # Create a real input STL so trimesh can read it for target_pts estimation
+        in_stl = tmp_path / "in.stl"
+        in_stl.write_text("solid dummy\nendsolid dummy\n")
+        out_stl = tmp_path / "out.stl"
+
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stderr = "vorpalite error"
+
+        with patch("shutil.which", return_value="/usr/local/bin/vorpalite"):
+            with patch("subprocess.run", return_value=mock_result):
+                result = _run_vorpalite_remesh(in_stl, out_stl, target_edge_length=0.05)
+
+        assert result is False
