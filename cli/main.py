@@ -399,10 +399,30 @@ def evaluate(
 @click.option("--output", "-o", type=click.Path(path_type=Path), default=Path("./case"))
 # --- Tier / Quality ---
 @click.option("--tier", default="auto", show_default=True,
-              type=click.Choice(["auto", "core", "netgen", "snappy", "cfmesh", "tetwild"]))
+              type=click.Choice(["auto", "core", "netgen", "snappy", "cfmesh", "tetwild"]),
+              help="볼륨 메쉬 엔진 (auto=품질레벨에 따라 자동)")
 @click.option("--quality", default="standard", show_default=True,
               type=click.Choice(["draft", "standard", "fine"], case_sensitive=False),
               help="품질 레벨 (draft=빠른검증 / standard=엔지니어링 / fine=최종CFD)")
+# --- Library selection ---
+@click.option("--repair-engine", default="auto", show_default=True,
+              type=click.Choice(["auto", "pymeshfix", "trimesh", "none"]),
+              help="L1 표면 수리 라이브러리")
+@click.option("--remesh-engine", default="auto", show_default=True,
+              type=click.Choice(["auto", "vorpalite", "pyacvd", "pymeshlab", "none"]),
+              help="L2 표면 리메쉬 라이브러리 (vorpalite=geogram, 최고 품질)")
+@click.option("--volume-engine", default="auto", show_default=True,
+              type=click.Choice(["auto", "tetwild", "netgen", "snappy", "cfmesh"]),
+              help="볼륨 메쉬 엔진 (--tier와 동일, 더 명시적 이름)")
+@click.option("--checker-engine", default="auto", show_default=True,
+              type=click.Choice(["auto", "openfoam", "native"]),
+              help="품질 검증 엔진 (auto=OpenFOAM 우선, native=OpenFOAM 불필요)")
+@click.option("--cad-engine", default="auto", show_default=True,
+              type=click.Choice(["auto", "cadquery", "gmsh"]),
+              help="CAD 파일(STEP/IGES) 변환 라이브러리")
+@click.option("--postprocess-engine", default="auto", show_default=True,
+              type=click.Choice(["auto", "mmg", "none"]),
+              help="볼륨 메쉬 후처리 (mmg=MMG3D 품질 개선)")
 # --- Cell size control ---
 @click.option("--element-size", type=float, default=None, help="표면 셀 크기 override [m]")
 @click.option("--base-cell-size", type=float, default=None, help="배경 셀 크기 override [m]")
@@ -445,6 +465,12 @@ def run(
     output: Path,
     tier: str,
     quality: str,
+    repair_engine: str,
+    remesh_engine: str,
+    volume_engine: str,
+    checker_engine: str,
+    cad_engine: str,
+    postprocess_engine: str,
     element_size: float | None,
     base_cell_size: float | None,
     min_cell_size: float | None,
@@ -476,11 +502,41 @@ def run(
     """전체 파이프라인(Analyze→Preprocess→Strategize→Generate→Evaluate)을 실행한다."""
     from core.pipeline.orchestrator import PipelineOrchestrator
 
+    # volume_engine이 지정되면 tier를 override
+    effective_tier = tier
+    if volume_engine != "auto":
+        tier_map = {"tetwild": "tetwild", "netgen": "netgen", "snappy": "snappy", "cfmesh": "cfmesh"}
+        effective_tier = tier_map.get(volume_engine, tier)
+
+    # repair_engine=none이면 no_repair 강제
+    if repair_engine == "none":
+        no_repair = True
+
     console.print(f"[bold magenta]Auto-Tessell[/bold magenta] {input_file} → {output}")
-    console.print(f"  quality={quality}  tier={tier}  max_iter={max_iterations}")
+    console.print(f"  quality={quality}  tier={effective_tier}  max_iter={max_iterations}")
+    if any(e != "auto" for e in [repair_engine, remesh_engine, volume_engine, checker_engine, cad_engine, postprocess_engine]):
+        engines = []
+        if repair_engine != "auto":
+            engines.append(f"repair={repair_engine}")
+        if remesh_engine != "auto":
+            engines.append(f"remesh={remesh_engine}")
+        if volume_engine != "auto":
+            engines.append(f"volume={volume_engine}")
+        if checker_engine != "auto":
+            engines.append(f"checker={checker_engine}")
+        if cad_engine != "auto":
+            engines.append(f"cad={cad_engine}")
+        if postprocess_engine != "auto":
+            engines.append(f"postprocess={postprocess_engine}")
+        console.print(f"  engines: {', '.join(engines)}")
 
     # CLI 옵션을 tier_specific_params로 모음
     tier_params: dict[str, object] = {}
+    tier_params["repair_engine"] = repair_engine
+    tier_params["remesh_engine"] = remesh_engine
+    tier_params["checker_engine"] = checker_engine
+    tier_params["cad_engine"] = cad_engine
+    tier_params["postprocess_engine"] = postprocess_engine
     if tetwild_epsilon is not None:
         tier_params["tetwild_epsilon"] = tetwild_epsilon
     if tetwild_stop_energy is not None:
@@ -499,7 +555,7 @@ def run(
         input_path=input_file,
         output_dir=output,
         quality_level=quality,
-        tier_hint=tier,
+        tier_hint=effective_tier,
         max_iterations=max_iterations,
         dry_run=dry_run,
         element_size=element_size,
