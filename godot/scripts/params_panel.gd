@@ -77,20 +77,9 @@ func _ready() -> void:
 
 
 func _apply_style() -> void:
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.13, 0.12, 0.15, 1.0)
-	style.border_color = Color(0.22, 0.20, 0.28, 0.3)
-	style.border_width_top = 1
-	style.border_width_bottom = 1
-	style.corner_radius_top_left = 4
-	style.corner_radius_top_right = 4
-	style.corner_radius_bottom_left = 4
-	style.corner_radius_bottom_right = 4
-	style.content_margin_left = 8
-	style.content_margin_right = 8
-	style.content_margin_top = 6
-	style.content_margin_bottom = 6
-	add_theme_stylebox_override("panel", style)
+	# Theme이 PanelContainer 스타일을 자동 적용하므로 추가 override 불필요.
+	# 필요 시 미세 조정만:
+	pass
 
 
 # -----------------------------------------------------------------------

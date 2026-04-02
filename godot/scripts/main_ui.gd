@@ -31,6 +31,9 @@ var _selected_file_path: String = ""
 # Lifecycle
 # -----------------------------------------------------------------------
 func _ready() -> void:
+	# 토큰 기반 테마 적용
+	theme = AppTheme.create("dark")
+
 	# 시그널 연결
 	file_button.pressed.connect(_on_file_button_pressed)
 	file_dialog.file_selected.connect(_on_file_selected)
