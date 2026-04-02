@@ -308,8 +308,12 @@ async def websocket_mesh(websocket: WebSocket, job_id: str) -> None:
             tier = data.get("tier", "auto")
             max_iterations = data.get("max_iterations", 3)
 
+            # 추가 파라미터 (params_panel에서 전달)
+            extra_params = {k: v for k, v in data.items()
+                          if k not in ("action", "quality", "tier", "max_iterations")}
+
             await _run_mesh_pipeline(
-                websocket, job, quality, tier, max_iterations
+                websocket, job, quality, tier, max_iterations, extra_params
             )
         else:
             await websocket.send_json({"type": "error", "message": f"Unknown action: {action}"})
@@ -330,6 +334,7 @@ async def _run_mesh_pipeline(
     quality: str,
     tier: str,
     max_iterations: int,
+    extra_params: dict[str, Any] | None = None,
 ) -> None:
     """메쉬 생성 파이프라인을 실행하며 진행상황을 WebSocket으로 전달한다."""
     from core.pipeline.orchestrator import PipelineOrchestrator
@@ -391,6 +396,33 @@ async def _run_mesh_pipeline(
             )
 
         strategy = await loop.run_in_executor(None, _strategize)
+
+        # extra_params로 strategy override (GUI에서 설정한 값)
+        if extra_params:
+            ep = extra_params
+            if ep.get("element_size", 0) > 0:
+                strategy.surface_mesh.target_cell_size = ep["element_size"]
+                strategy.surface_mesh.min_cell_size = ep["element_size"] / 4
+            if ep.get("base_cell_size", 0) > 0:
+                strategy.domain.base_cell_size = ep["base_cell_size"]
+            if ep.get("max_cells", 0) > 0:
+                domain_vol = 1.0
+                for i in range(3):
+                    domain_vol *= strategy.domain.max[i] - strategy.domain.min[i]
+                est = domain_vol / (strategy.domain.base_cell_size ** 3)
+                if est > ep["max_cells"]:
+                    strategy.domain.base_cell_size = (domain_vol / ep["max_cells"]) ** (1/3)
+            if "bl_layers" in ep and ep["bl_layers"] > 0:
+                strategy.boundary_layers.enabled = True
+                strategy.boundary_layers.num_layers = ep["bl_layers"]
+            if ep.get("tetwild_epsilon", 0) > 0:
+                strategy.tier_specific_params["tetwild_epsilon"] = ep["tetwild_epsilon"]
+            if ep.get("tetwild_stop_energy", 0) > 0:
+                strategy.tier_specific_params["tetwild_stop_energy"] = ep["tetwild_stop_energy"]
+            if ep.get("snappy_snap_tolerance", 0) > 0:
+                strategy.tier_specific_params["snappy_snap_tolerance"] = ep["snappy_snap_tolerance"]
+            if ep.get("snappy_snap_iterations", 0) > 0:
+                strategy.tier_specific_params["snappy_snap_iterations"] = ep["snappy_snap_iterations"]
 
         await ws.send_json({
             "type": "strategy",

@@ -48,9 +48,7 @@ var _http_request: HTTPRequest
 
 # Reconnection state
 var _reconnect_attempts := 0
-var _reconnect_pending_quality := "standard"
-var _reconnect_pending_tier := "auto"
-var _reconnect_pending_max_iter := 3
+var _reconnect_pending_payload: Dictionary = {"action": "start", "quality": "standard", "tier": "auto", "max_iterations": 3}
 
 # Timeout tracking
 var _mesh_start_time := 0.0
@@ -160,12 +158,17 @@ func upload_file(file_path: String) -> void:
 
 ## 메쉬 생성 시작 (WebSocket). 연결 실패 시 MAX_RECONNECT_ATTEMPTS회까지 재시도한다.
 func start_mesh(job_id: String, quality: String = "standard", tier: String = "auto", max_iterations: int = 3) -> void:
+	var payload := {"action": "start", "quality": quality, "tier": tier, "max_iterations": max_iterations}
+	start_mesh_with_params(job_id, payload)
+
+
+## 전체 파라미터 payload로 메쉬 생성 시작.
+## payload는 params_panel.get_ws_start_payload()에서 생성된 Dictionary.
+func start_mesh_with_params(job_id: String, payload: Dictionary) -> void:
 	_current_job_id = job_id
 	_reconnect_attempts = 0
-	_reconnect_pending_quality = quality
-	_reconnect_pending_tier = tier
-	_reconnect_pending_max_iter = max_iterations
-	_do_connect_mesh(job_id, quality, tier, max_iterations)
+	_reconnect_pending_payload = payload
+	_do_connect_mesh_with_payload(job_id, payload)
 
 
 ## 현재 작업 ID
@@ -177,21 +180,15 @@ func get_current_job_id() -> String:
 # Internal connection / reconnection
 # -----------------------------------------------------------------------
 
-func _do_connect_mesh(
-	job_id: String,
-	quality: String,
-	tier: String,
-	max_iterations: int,
-) -> void:
+func _do_connect_mesh_with_payload(job_id: String, payload: Dictionary) -> void:
 	var url := "%s/ws/mesh/%s" % [ws_url, job_id]
 	print("[WS] Connecting to %s (attempt %d/%d)" % [url, _reconnect_attempts + 1, MAX_RECONNECT_ATTEMPTS])
+	print("[WS] Params: %s" % JSON.stringify(payload))
 
-	# Reset the peer for a fresh connection
 	_ws = WebSocketPeer.new()
 	var err := _ws.connect_to_url(url)
 	if err != OK:
-		_on_connect_failed(job_id, quality, tier, max_iterations,
-			"WebSocket 연결 실패: %d" % err)
+		_on_connect_failed(job_id, payload, "WebSocket 연결 실패: %d" % err)
 		return
 
 	_ws_connected = true
@@ -199,45 +196,31 @@ func _do_connect_mesh(
 	_mesh_start_time = 0.0
 	set_process(true)
 
-	# Wait for handshake then send start command
 	await get_tree().create_timer(0.5).timeout
 
-	# Double-check the connection is still open after the brief wait
 	_ws.poll()
 	if _ws.get_ready_state() != WebSocketPeer.STATE_OPEN:
-		_on_connect_failed(job_id, quality, tier, max_iterations,
-			"WebSocket 연결 끊김 (handshake 실패)")
+		_on_connect_failed(job_id, payload, "WebSocket 연결 끊김 (handshake 실패)")
 		return
 
-	var cmd := JSON.stringify({
-		"action": "start",
-		"quality": quality,
-		"tier": tier,
-		"max_iterations": max_iterations,
-	})
+	# 전체 payload 전송 (quality, tier, max_iterations + 모든 파라미터)
+	payload["action"] = "start"
+	var cmd := JSON.stringify(payload)
 	_ws.send_text(cmd)
 
-	# Arm the mesh timeout counter
 	_mesh_running = true
 	_mesh_start_time = 0.0
-
 	connected.emit()
 
 
-func _on_connect_failed(
-	job_id: String,
-	quality: String,
-	tier: String,
-	max_iterations: int,
-	reason: String,
-) -> void:
+func _on_connect_failed(job_id: String, payload: Dictionary, reason: String) -> void:
 	_reconnect_attempts += 1
 	if _reconnect_attempts < MAX_RECONNECT_ATTEMPTS:
 		print("[WS] %s — retrying in %.0fs (%d/%d)" % [
 			reason, RECONNECT_DELAY_SECONDS, _reconnect_attempts + 1, MAX_RECONNECT_ATTEMPTS
 		])
 		await get_tree().create_timer(RECONNECT_DELAY_SECONDS).timeout
-		_do_connect_mesh(job_id, quality, tier, max_iterations)
+		_do_connect_mesh_with_payload(job_id, payload)
 	else:
 		error_occurred.emit("%s (최대 재시도 횟수 초과)" % reason)
 

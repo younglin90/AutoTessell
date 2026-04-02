@@ -8,28 +8,24 @@
 extends Control
 
 # -----------------------------------------------------------------------
-# Node references
+# Node references (paths match main.tscn)
 # -----------------------------------------------------------------------
-@onready var file_button: Button = %FileButton if has_node("%FileButton") else $VBoxContainer/HSplitContainer/Sidebar/SidebarContent/FileSection/FileButton
-@onready var file_info: RichTextLabel = $VBoxContainer/HSplitContainer/Sidebar/SidebarContent/FileSection/FileInfo
-@onready var quality_options: OptionButton = $VBoxContainer/HSplitContainer/Sidebar/SidebarContent/QualitySection/QualityOptions
-@onready var generate_button: Button = $VBoxContainer/HSplitContainer/Sidebar/SidebarContent/ActionSection/GenerateButton
-@onready var progress_bar: ProgressBar = $VBoxContainer/HSplitContainer/Sidebar/SidebarContent/ActionSection/ProgressBar
-@onready var progress_label: Label = $VBoxContainer/HSplitContainer/Sidebar/SidebarContent/ActionSection/ProgressLabel
-@onready var result_info: RichTextLabel = $VBoxContainer/HSplitContainer/Sidebar/SidebarContent/ResultSection/ResultInfo
+const _SB := "VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent"
+
+@onready var file_button: Button = get_node(_SB + "/FileSection/FileButton")
+@onready var file_info: RichTextLabel = get_node(_SB + "/FileSection/FileInfo")
+@onready var params_panel: PanelContainer = get_node(_SB + "/ParamsPanel")
+@onready var generate_button: Button = get_node(_SB + "/ActionSection/GenerateButton")
+@onready var progress_bar: ProgressBar = get_node(_SB + "/ActionSection/ProgressBar")
+@onready var progress_label: Label = get_node(_SB + "/ActionSection/ProgressLabel")
+@onready var result_info: RichTextLabel = get_node(_SB + "/ResultSection/ResultInfo")
 @onready var status_label: Label = $VBoxContainer/StatusBar/HBoxContainer/StatusLabel
 @onready var server_status: Label = $VBoxContainer/StatusBar/HBoxContainer/ServerStatus
 @onready var file_dialog: FileDialog = $FileDialog
-## Reference to the 3D viewport container.
 @onready var viewport_area: Control = $VBoxContainer/HSplitContainer/ViewerContainer if has_node("VBoxContainer/HSplitContainer/ViewerContainer") else null
-## MeshViewer Node3D inside the SubViewport.
 @onready var mesh_viewer = $VBoxContainer/HSplitContainer/ViewerContainer/SubViewport/MeshViewer if has_node("VBoxContainer/HSplitContainer/ViewerContainer/SubViewport/MeshViewer") else null
 
 var _selected_file_path: String = ""
-var _quality_map := ["draft", "standard", "fine"]
-
-## 파라미터 패널 (동적 생성 또는 씬에서 연결)
-var _params_panel: RefCounted = null
 
 # -----------------------------------------------------------------------
 # Lifecycle
@@ -39,7 +35,6 @@ func _ready() -> void:
 	file_button.pressed.connect(_on_file_button_pressed)
 	file_dialog.file_selected.connect(_on_file_selected)
 	generate_button.pressed.connect(_on_generate_pressed)
-	quality_options.item_selected.connect(_on_quality_selected)
 
 	# WebSocket 시그널
 	WebSocketClient.upload_completed.connect(_on_upload_completed)
@@ -133,14 +128,6 @@ func _on_file_selected(path: String) -> void:
 
 
 # -----------------------------------------------------------------------
-# Quality selection
-# -----------------------------------------------------------------------
-func _on_quality_selected(index: int) -> void:
-	AppState.quality_level = _quality_map[index]
-	status_label.text = "품질: %s" % AppState.quality_level
-
-
-# -----------------------------------------------------------------------
 # Mesh generation
 # -----------------------------------------------------------------------
 func _on_generate_pressed() -> void:
@@ -164,13 +151,19 @@ func _on_upload_completed(job_id: String) -> void:
 	AppState.current_state = AppState.State.MESHING
 	progress_label.text = "메쉬 생성 시작..."
 
-	# WebSocket으로 메쉬 생성 시작
-	WebSocketClient.start_mesh(
-		job_id,
-		AppState.quality_level,
-		AppState.tier_hint,
-		AppState.max_iterations,
-	)
+	# ParamsPanel에서 모든 파라미터를 가져와 WebSocket으로 전달
+	if params_panel and params_panel.has_method("get_ws_start_payload"):
+		var payload: Dictionary = params_panel.get_ws_start_payload()
+		# start_mesh에 전체 payload 전달
+		WebSocketClient.start_mesh_with_params(job_id, payload)
+	else:
+		# fallback: 기본 파라미터
+		WebSocketClient.start_mesh(
+			job_id,
+			AppState.quality_level,
+			AppState.tier_hint,
+			AppState.max_iterations,
+		)
 
 
 # -----------------------------------------------------------------------

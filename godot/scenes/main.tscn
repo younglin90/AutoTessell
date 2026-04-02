@@ -1,9 +1,10 @@
-[gd_scene load_steps=6 format=3]
+[gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/main_ui.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/mesh_viewer.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/sidebar.gd" id="3"]
 [ext_resource type="Script" path="res://scripts/status_bar.gd" id="4"]
+[ext_resource type="Script" path="res://scripts/params_panel.gd" id="5"]
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_grid"]
 size = Vector2(10, 10)
@@ -45,93 +46,86 @@ item_3/id = 2
 [node name="HSplitContainer" type="HSplitContainer" parent="VBoxContainer"]
 layout_mode = 2
 size_flags_vertical = 3
-split_offset = 320
+split_offset = 350
 
 [node name="Sidebar" type="PanelContainer" parent="VBoxContainer/HSplitContainer"]
 layout_mode = 2
-custom_minimum_size = Vector2(300, 0)
+custom_minimum_size = Vector2(340, 0)
 script = ExtResource("3")
 
-[node name="SidebarContent" type="VBoxContainer" parent="VBoxContainer/HSplitContainer/Sidebar"]
+[node name="SidebarScroll" type="ScrollContainer" parent="VBoxContainer/HSplitContainer/Sidebar"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="SidebarContent" type="VBoxContainer" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="FileSection" type="VBoxContainer" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent"]
 layout_mode = 2
 
-[node name="FileSection" type="VBoxContainer" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarContent"]
-layout_mode = 2
-
-[node name="FileLabel" type="Label" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarContent/FileSection"]
+[node name="FileLabel" type="Label" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent/FileSection"]
 layout_mode = 2
 text = "입력 파일"
 theme_override_font_sizes/font_size = 16
 
-[node name="FileButton" type="Button" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarContent/FileSection"]
+[node name="FileButton" type="Button" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent/FileSection"]
 layout_mode = 2
 text = "파일 선택..."
 
-[node name="FileInfo" type="RichTextLabel" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarContent/FileSection"]
+[node name="FileInfo" type="RichTextLabel" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent/FileSection"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 60)
+custom_minimum_size = Vector2(0, 50)
 bbcode_enabled = true
 text = "[color=gray]파일을 선택하세요[/color]"
 fit_content = true
 
-[node name="Sep1" type="HSeparator" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarContent"]
+[node name="Sep1" type="HSeparator" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent"]
 layout_mode = 2
 
-[node name="QualitySection" type="VBoxContainer" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarContent"]
+[node name="ParamsPanel" type="PanelContainer" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent"]
+layout_mode = 2
+size_flags_vertical = 3
+custom_minimum_size = Vector2(0, 400)
+script = ExtResource("5")
+
+[node name="Sep2" type="HSeparator" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent"]
 layout_mode = 2
 
-[node name="QualityLabel" type="Label" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarContent/QualitySection"]
-layout_mode = 2
-text = "품질 레벨"
-theme_override_font_sizes/font_size = 16
-
-[node name="QualityOptions" type="OptionButton" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarContent/QualitySection"]
-layout_mode = 2
-item_count = 3
-popup/item_0/text = "Draft (빠른 검증, ~1초)"
-popup/item_0/id = 0
-popup/item_1/text = "Standard (엔지니어링, ~수분)"
-popup/item_1/id = 1
-popup/item_2/text = "Fine (최종 CFD, ~30분+)"
-popup/item_2/id = 2
-selected = 1
-
-[node name="Sep2" type="HSeparator" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarContent"]
+[node name="ActionSection" type="VBoxContainer" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent"]
 layout_mode = 2
 
-[node name="ActionSection" type="VBoxContainer" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarContent"]
-layout_mode = 2
-
-[node name="GenerateButton" type="Button" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarContent/ActionSection"]
+[node name="GenerateButton" type="Button" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent/ActionSection"]
 layout_mode = 2
 text = "메쉬 생성"
 disabled = true
 
-[node name="ProgressBar" type="ProgressBar" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarContent/ActionSection"]
+[node name="ProgressBar" type="ProgressBar" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent/ActionSection"]
 layout_mode = 2
 value = 0.0
 show_percentage = true
 visible = false
 
-[node name="ProgressLabel" type="Label" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarContent/ActionSection"]
+[node name="ProgressLabel" type="Label" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent/ActionSection"]
 layout_mode = 2
 text = ""
 horizontal_alignment = 1
 
-[node name="Sep3" type="HSeparator" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarContent"]
+[node name="Sep3" type="HSeparator" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent"]
 layout_mode = 2
 
-[node name="ResultSection" type="VBoxContainer" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarContent"]
+[node name="ResultSection" type="VBoxContainer" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent"]
 layout_mode = 2
 
-[node name="ResultLabel" type="Label" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarContent/ResultSection"]
+[node name="ResultLabel" type="Label" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent/ResultSection"]
 layout_mode = 2
 text = "결과"
 theme_override_font_sizes/font_size = 16
 
-[node name="ResultInfo" type="RichTextLabel" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarContent/ResultSection"]
+[node name="ResultInfo" type="RichTextLabel" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent/ResultSection"]
 layout_mode = 2
-custom_minimum_size = Vector2(0, 200)
+custom_minimum_size = Vector2(0, 150)
 bbcode_enabled = true
 text = "[color=gray]메쉬 생성 후 결과가 표시됩니다[/color]"
 fit_content = true
