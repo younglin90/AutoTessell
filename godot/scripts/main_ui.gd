@@ -28,6 +28,9 @@ extends Control
 var _selected_file_path: String = ""
 var _quality_map := ["draft", "standard", "fine"]
 
+## 파라미터 패널 (동적 생성 또는 씬에서 연결)
+var _params_panel: RefCounted = null
+
 # -----------------------------------------------------------------------
 # Lifecycle
 # -----------------------------------------------------------------------
