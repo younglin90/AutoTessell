@@ -608,6 +608,49 @@ async def get_surface_stl(job_id: str) -> Response:
 # Entry point
 # ---------------------------------------------------------------------------
 
+def _kill_existing(port: int) -> None:
+    """포트를 사용 중인 기존 프로세스를 종료한다."""
+    import socket
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("127.0.0.1", port))
+        sock.close()
+        # 포트 사용 가능 → 기존 프로세스 없음
+    except OSError:
+        sock.close()
+        print(f"  Port {port} in use — killing existing process...")
+        import platform
+        import subprocess
+
+        if platform.system() == "Windows":
+            # Windows: netstat로 PID 찾아서 kill
+            try:
+                result = subprocess.run(
+                    ["netstat", "-ano"], capture_output=True, text=True
+                )
+                for line in result.stdout.split("\n"):
+                    if f":{port}" in line and "LISTENING" in line:
+                        pid = line.strip().split()[-1]
+                        subprocess.run(["taskkill", "/F", "/PID", pid],
+                                       capture_output=True)
+                        print(f"  Killed PID {pid}")
+                        break
+            except Exception:
+                pass
+        else:
+            # Linux/Mac
+            try:
+                subprocess.run(
+                    ["fuser", "-k", f"{port}/tcp"],
+                    capture_output=True,
+                )
+            except Exception:
+                pass
+        import time
+        time.sleep(1)
+
+
 def main() -> None:
     import sys
 
@@ -618,11 +661,18 @@ def main() -> None:
         if arg == "--port" and i + 1 < len(sys.argv):
             port = int(sys.argv[i + 1])
 
+    _kill_existing(port)
+
     print(f"Auto-Tessell Desktop Server starting on http://localhost:{port}")
     print(f"  WebSocket: ws://localhost:{port}/ws/mesh/{{job_id}}")
     print(f"  Health:    http://localhost:{port}/health")
 
-    uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
+    try:
+        uvicorn.run(app, host="127.0.0.1", port=port, log_level="info")
+    except Exception as exc:
+        print(f"\n[ERROR] {exc}")
+        print("\n아무 키나 눌러 종료하세요...")
+        input()
 
 
 if __name__ == "__main__":

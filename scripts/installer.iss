@@ -1,12 +1,10 @@
-; Auto-Tessell Windows Installer (Inno Setup)
-; Prerequisites: PyInstaller build + Godot export completed
+; Auto-Tessell Windows Installer (Inno Setup 6)
 ;
-; Build steps:
-;   1. pyinstaller auto_tessell.spec
-;   2. Godot export → dist/godot/AutoTessell.exe
-;   3. iscc scripts/installer.iss
+; Build: iscc scripts\installer.iss
+; Output: dist\installer\AutoTessell-Setup.exe
 
 [Setup]
+SourceDir=..
 AppName=Auto-Tessell
 AppVersion=0.1.0
 AppPublisher=Auto-Tessell
@@ -17,45 +15,39 @@ OutputDir=dist\installer
 OutputBaseFilename=AutoTessell-0.1.0-Setup
 Compression=lzma2
 SolidCompression=yes
-SetupIconFile=godot\assets\icon.ico
-UninstallDisplayIcon={app}\AutoTessell.exe
+UninstallDisplayName=Auto-Tessell
 WizardStyle=modern
 ArchitecturesInstallIn64BitMode=x64compatible
+PrivilegesRequired=lowest
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
-Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 
 [Files]
 ; Python backend (PyInstaller output)
 Source: "dist\auto-tessell\*"; DestDir: "{app}\backend"; Flags: ignoreversion recursesubdirs
 
-; Godot GUI (exported .exe + .pck)
-Source: "dist\godot\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
+; Godot project files (사용자가 Godot로 열 수 있도록)
+Source: "godot\project.godot"; DestDir: "{app}\godot"
+Source: "godot\scenes\*"; DestDir: "{app}\godot\scenes"; Flags: ignoreversion recursesubdirs
+Source: "godot\scripts\*"; DestDir: "{app}\godot\scripts"; Flags: ignoreversion recursesubdirs
+Source: "godot\assets\*"; DestDir: "{app}\godot\assets"; Flags: ignoreversion recursesubdirs
 
-; Benchmark files
+; Sample files
 Source: "tests\benchmarks\sphere.stl"; DestDir: "{app}\samples"
 Source: "tests\benchmarks\box.step"; DestDir: "{app}\samples"
+Source: "tests\benchmarks\naca0012.stl"; DestDir: "{app}\samples"
+
+; README
+Source: "README.md"; DestDir: "{app}"; Flags: isreadme
 
 [Icons]
-Name: "{group}\Auto-Tessell"; Filename: "{app}\AutoTessell.exe"
+Name: "{group}\Auto-Tessell Server"; Filename: "{app}\backend\auto-tessell.exe"; Comment: "Auto-Tessell 메쉬 생성 서버"
 Name: "{group}\Uninstall Auto-Tessell"; Filename: "{uninstallexe}"
-Name: "{commondesktop}\Auto-Tessell"; Filename: "{app}\AutoTessell.exe"
+Name: "{userdesktop}\Auto-Tessell"; Filename: "{app}\backend\auto-tessell.exe"; Comment: "Auto-Tessell 메쉬 생성 서버"
 
 [Run]
-; Start backend server automatically after install
-Filename: "{app}\backend\auto-tessell.exe"; Description: "Start Auto-Tessell backend"; Flags: postinstall nowait skipifsilent shellexec
+Filename: "{app}\backend\auto-tessell.exe"; Description: "Auto-Tessell 서버 시작"; Flags: postinstall nowait skipifsilent shellexec
 
 [UninstallRun]
-; Stop backend server on uninstall
 Filename: "taskkill"; Parameters: "/IM auto-tessell.exe /F"; Flags: runhidden
-
-[Code]
-// Auto-start backend with Godot GUI
-procedure CurStepChanged(CurStep: TSetupStep);
-begin
-  if CurStep = ssPostInstall then
-  begin
-    // Backend will be started by the [Run] section
-  end;
-end;
