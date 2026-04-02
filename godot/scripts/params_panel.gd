@@ -12,57 +12,57 @@ signal params_changed(params: Dictionary)
 # -----------------------------------------------------------------------
 var _params := {
 	# Quality / Tier
-	"quality": "standard",
+	"quality": "draft",
 	"tier": "auto",
 
 	# Engine selection
 	"repair_engine": "auto",
 	"remesh_engine": "auto",
 	"volume_engine": "auto",
-	"checker_engine": "auto",
+	"checker_engine": "native",   # Windows: OpenFOAM 없이 동작
 	"cad_engine": "auto",
-	"postprocess_engine": "auto",
+	"postprocess_engine": "none",  # 기본: 후처리 없음 (빠름)
 
 	# Cell size
-	"element_size": 0.0,        # 0 = auto
-	"base_cell_size": 0.0,
-	"min_cell_size": 0.0,
-	"base_cell_num": 50,
+	"element_size": 0.05,       # 표면 셀 크기 [m]
+	"base_cell_size": 0.2,      # 배경 셀 크기 [m]
+	"min_cell_size": 0.01,      # 최소 셀 크기 [m]
+	"base_cell_num": 20,        # 특성길이 분할 수 (20 = 적당히 거침)
 
 	# Domain
-	"domain_upstream": 0.0,     # 0 = auto (quality-dependent)
-	"domain_downstream": 0.0,
-	"domain_lateral": 0.0,
+	"domain_upstream": 3.0,     # 업스트림 3L
+	"domain_downstream": 5.0,   # 다운스트림 5L
+	"domain_lateral": 2.0,      # 측면 2L
 	"domain_scale": 1.0,
 
 	# Memory limit
-	"max_cells": 0,             # 0 = no limit
+	"max_cells": 500000,        # 50만 셀 제한 (메모리 안전)
 
 	# Boundary Layer
-	"bl_layers": 0,             # 0 = auto (quality-dependent)
-	"bl_first_height": 0.0,
+	"bl_layers": 0,             # 0 = BL 없음 (draft)
+	"bl_first_height": 0.001,
 	"bl_growth_ratio": 1.2,
 
 	# Preprocessor
 	"no_repair": false,
 	"force_remesh": false,
-	"remesh_target_faces": 0,   # 0 = auto
+	"remesh_target_faces": 30000,
 	"allow_ai_fallback": false,
 
 	# TetWild
-	"tetwild_epsilon": 0.0,     # 0 = auto
-	"tetwild_stop_energy": 0.0,
+	"tetwild_epsilon": 0.02,    # draft 기본
+	"tetwild_stop_energy": 20.0, # draft 기본 (빠름)
 
 	# snappyHexMesh
 	"snappy_castellated_min": 1,
-	"snappy_castellated_max": 2,
+	"snappy_castellated_max": 3,
 	"snappy_snap_tolerance": 2.0,
-	"snappy_snap_iterations": 5,
+	"snappy_snap_iterations": 10,
 
 	# Output
-	"max_iterations": 3,
+	"max_iterations": 1,        # 기본 1회 (재시도 없음, 빠름)
 	"export_vtk": false,
-	"parallel": 0,              # 0 = no parallel
+	"parallel": 0,
 }
 
 # UI node references (populated in _ready)
@@ -97,7 +97,7 @@ func _build_ui() -> void:
 
 	# === Quality / Tier ===
 	_add_section(vbox, "품질 / 엔진")
-	_add_option(vbox, "quality", "품질 레벨", ["draft", "standard", "fine"], 1,
+	_add_option(vbox, "quality", "품질 레벨", ["draft", "standard", "fine"], 0,
 		"draft: TetWild로 빠른 검증 (~1초). 품질 기준이 느슨함 (non-ortho < 85°).\nstandard: Netgen/cfMesh로 엔지니어링 해석용 (~수분). non-ortho < 70°.\nfine: snappyHexMesh + BL로 최종 CFD 제출용 (~30분+). non-ortho < 65°.")
 	_add_option(vbox, "tier", "볼륨 엔진", ["auto", "tetwild", "netgen", "snappy", "cfmesh"], 0,
 		"auto: 품질 레벨에 따라 자동 선택.\ntetwild: 사면체(tet) 메쉬. 불량 표면에도 강건. Draft 기본.\nnetgen: 사면체 메쉬. CAD(STEP) 직접 지원. Standard 기본.\nsnappy: 육면체 우세(hex-dominant) + BL. 외부 유동 최적.\ncfmesh: 육면체 우세. blockMesh 불필요, 대용량 안전.")

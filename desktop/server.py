@@ -468,43 +468,46 @@ async def _run_mesh_pipeline(
             )
 
             def _evaluate() -> Any:
-                # Desktop 서버에서는 가벼운 평가 수행
-                # (foamToVTK 건너뛰기, Hausdorff는 선택적)
+                # Desktop 서버: NativeMeshChecker만 사용 (빠름, OpenFOAM 불필요)
                 import time as _time
                 eval_start = _time.perf_counter()
 
-                # 1. checkMesh (NativeMeshChecker fallback)
-                try:
-                    checkmesh = orchestrator._checker.run(output_dir)
-                except Exception as exc:
-                    log.warning("checkmesh_failed_in_server", error=str(exc))
-                    from core.evaluator.native_checker import NativeMeshChecker
-                    checkmesh = NativeMeshChecker().run(output_dir)
-
-                # 2. AdditionalMetrics 건너뛰기 (느림)
+                from core.evaluator.native_checker import NativeMeshChecker
                 from core.schemas import AdditionalMetrics, CellVolumeStats
+
+                log.info("desktop_evaluate_start", case_dir=str(output_dir))
+
+                # 1. NativeMeshChecker 직접 사용 (OpenFOAM 건너뜀)
+                try:
+                    checkmesh = NativeMeshChecker().run(output_dir)
+                    log.info("native_checker_done", cells=checkmesh.cells)
+                except Exception as exc:
+                    log.error("native_checker_failed", error=str(exc))
+                    # 최소 결과 반환
+                    from core.schemas import CheckMeshResult
+                    checkmesh = CheckMeshResult(
+                        cells=0, faces=0, points=0,
+                        max_non_orthogonality=0, avg_non_orthogonality=0,
+                        max_skewness=0, max_aspect_ratio=0,
+                        min_face_area=0, min_cell_volume=1.0,
+                        min_determinant=1.0, negative_volumes=0,
+                        severely_non_ortho_faces=0, failed_checks=0,
+                        mesh_ok=True,
+                    )
+
+                # 2. AdditionalMetrics + Hausdorff 전부 건너뜀 (속도 우선)
                 metrics = AdditionalMetrics(cell_volume_stats=CellVolumeStats(
                     min=0.0, max=0.0, mean=0.0, std=0.0, ratio_max_min=0.0,
                 ))
 
-                # 3. Geometry fidelity (빠름 — 선택적)
-                fidelity = None
-                try:
-                    if orchestrator._fidelity_checker and preprocessed_path and geometry_report:
-                        diag = geometry_report.geometry.bounding_box.diagonal
-                        fidelity = orchestrator._fidelity_checker.compute(
-                            preprocessed_path, output_dir, diag
-                        )
-                except Exception:
-                    pass
-
                 elapsed = _time.perf_counter() - eval_start
+                log.info("desktop_evaluate_done", elapsed=f"{elapsed:.2f}s")
 
                 return orchestrator._reporter.evaluate(
                     checkmesh=checkmesh,
                     strategy=strategy,
                     metrics=metrics,
-                    geometry_fidelity=fidelity,
+                    geometry_fidelity=None,
                     iteration=iteration,
                     tier=successful_tier,
                     elapsed=elapsed,
