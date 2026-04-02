@@ -15,7 +15,8 @@ const _SB := "VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent
 @onready var file_button: Button = get_node(_SB + "/FileSection/FileButton")
 @onready var file_info: RichTextLabel = get_node(_SB + "/FileSection/FileInfo")
 @onready var params_panel: PanelContainer = get_node(_SB + "/ParamsPanel")
-@onready var generate_button: Button = get_node(_SB + "/ActionSection/GenerateButton")
+@onready var generate_button: Button = get_node(_SB + "/ActionSection/ButtonRow/GenerateButton")
+@onready var stop_button: Button = get_node(_SB + "/ActionSection/ButtonRow/StopButton")
 @onready var progress_bar: ProgressBar = get_node(_SB + "/ActionSection/ProgressBar")
 @onready var progress_label: Label = get_node(_SB + "/ActionSection/ProgressLabel")
 @onready var result_info: RichTextLabel = get_node(_SB + "/ResultSection/ResultInfo")
@@ -38,6 +39,7 @@ func _ready() -> void:
 	file_button.pressed.connect(_on_file_button_pressed)
 	file_dialog.file_selected.connect(_on_file_selected)
 	generate_button.pressed.connect(_on_generate_pressed)
+	stop_button.pressed.connect(_on_stop_pressed)
 
 	# WebSocket 시그널
 	WebSocketClient.upload_completed.connect(_on_upload_completed)
@@ -158,6 +160,7 @@ func _on_generate_pressed() -> void:
 
 	# UI 상태 전환
 	generate_button.disabled = true
+	stop_button.visible = true
 	progress_bar.visible = true
 	progress_bar.value = 0
 	progress_label.text = "업로드 중..."
@@ -166,6 +169,23 @@ func _on_generate_pressed() -> void:
 
 	# 파일 업로드
 	WebSocketClient.upload_file(_selected_file_path)
+
+
+func _on_stop_pressed() -> void:
+	"""메쉬 생성 강제 중지."""
+	WebSocketClient.disconnect_ws()
+	_reset_ui_after_stop()
+	status_label.text = "사용자에 의해 중지됨"
+	result_info.text = "[color=yellow]메쉬 생성이 중지되었습니다.[/color]"
+
+
+func _reset_ui_after_stop() -> void:
+	generate_button.disabled = false
+	stop_button.visible = false
+	progress_bar.visible = false
+	progress_bar.value = 0
+	progress_label.text = ""
+	AppState.current_state = AppState.State.IDLE
 
 
 func _on_upload_completed(job_id: String) -> void:
@@ -208,6 +228,7 @@ func _on_evaluation_received(iteration: int, verdict: String, cells: int, non_or
 func _on_mesh_completed(success: bool, data: Dictionary) -> void:
 	progress_bar.value = 100
 	generate_button.disabled = false
+	stop_button.visible = false
 	AppState.last_result = data
 
 	if success:
@@ -243,6 +264,7 @@ func _on_error(message: String) -> void:
 	result_info.text = "[b][color=red]오류[/color][/b]\n\n%s" % message
 	progress_label.text = "오류 발생"
 	generate_button.disabled = false
+	stop_button.visible = false
 	progress_bar.visible = false
 	AppState.current_state = AppState.State.FAILED
 

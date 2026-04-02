@@ -229,7 +229,15 @@ func _disconnect() -> void:
 	if _ws_connected:
 		_ws.close()
 		_ws_connected = false
+		_mesh_running = false
 		set_process(false)
+
+
+## 외부에서 호출 가능한 강제 연결 해제
+func disconnect_ws() -> void:
+	print("[WS] Force disconnect requested")
+	_disconnect()
+	disconnected.emit()
 
 
 # -----------------------------------------------------------------------

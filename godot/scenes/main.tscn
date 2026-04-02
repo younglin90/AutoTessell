@@ -96,10 +96,20 @@ layout_mode = 2
 [node name="ActionSection" type="VBoxContainer" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent"]
 layout_mode = 2
 
-[node name="GenerateButton" type="Button" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent/ActionSection"]
+[node name="ButtonRow" type="HBoxContainer" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent/ActionSection"]
 layout_mode = 2
+
+[node name="GenerateButton" type="Button" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent/ActionSection/ButtonRow"]
+layout_mode = 2
+size_flags_horizontal = 3
 text = "메쉬 생성"
 disabled = true
+
+[node name="StopButton" type="Button" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent/ActionSection/ButtonRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(70, 0)
+text = "중지"
+visible = false
 
 [node name="ProgressBar" type="ProgressBar" parent="VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent/ActionSection"]
 layout_mode = 2
