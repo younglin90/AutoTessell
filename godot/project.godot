@@ -23,6 +23,7 @@ config/icon="res://assets/icon.svg"
 
 [autoload]
 
+BackendLauncher="*res://scripts/backend_launcher.gd"
 WebSocketClient="*res://scripts/websocket_client.gd"
 AppState="*res://scripts/app_state.gd"
 

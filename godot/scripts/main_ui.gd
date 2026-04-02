@@ -51,6 +51,18 @@ func _ready() -> void:
 	if viewport_area != null:
 		viewport_area.mouse_filter = Control.MOUSE_FILTER_STOP
 
+	# 백엔드 자동 시작 시그널
+	BackendLauncher.backend_started.connect(func() -> void:
+		server_status.text = "서버: 시작됨"
+		server_status.add_theme_color_override("font_color", Color.GREEN)
+		_check_server()
+	)
+	BackendLauncher.backend_failed.connect(func(reason: String) -> void:
+		server_status.text = "서버: 시작 실패"
+		server_status.add_theme_color_override("font_color", Color.RED)
+		status_label.text = reason
+	)
+
 	# 서버 헬스 체크
 	_check_server()
 
