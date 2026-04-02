@@ -126,6 +126,13 @@ func _on_file_selected(path: String) -> void:
 	status_label.text = "파일 선택됨: %s" % file_name
 	AppState.add_recent_file(path)
 
+	# 파일 선택 즉시 3D 뷰어에 표면 메쉬 로드
+	if mesh_viewer and mesh_viewer.has_method("load_stl"):
+		var ext := path.get_extension().to_lower()
+		if ext in ["stl", "obj", "ply"]:
+			mesh_viewer.load_stl(path)
+			status_label.text = "파일 로드됨: %s (%s)" % [file_name, ext.to_upper()]
+
 
 # -----------------------------------------------------------------------
 # Mesh generation
