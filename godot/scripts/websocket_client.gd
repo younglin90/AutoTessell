@@ -27,7 +27,7 @@ const MAX_RECONNECT_ATTEMPTS := 3
 ## Seconds to wait between reconnection attempts.
 const RECONNECT_DELAY_SECONDS := 1.0
 ## Seconds allowed for mesh generation before a timeout is raised.
-const MESH_TIMEOUT_SECONDS := 30.0
+const MESH_TIMEOUT_SECONDS := 300.0  # 5분 (Fine tier는 오래 걸림)
 
 var base_url: String:
 	get: return "http://%s:%d" % [host, port]
