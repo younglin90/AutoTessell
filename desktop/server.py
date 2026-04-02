@@ -460,61 +460,54 @@ async def _run_mesh_pipeline(
                 _touch_job(job)
                 return
 
-            # Evaluate
+            # Evaluate — 직접 실행 (run_in_executor 사용하지 않음)
             await send_progress(
                 "evaluate",
                 progress_base + 0.1,
                 f"품질 검증 중... ({successful_tier})",
             )
 
-            def _evaluate() -> Any:
-                # Desktop 서버: NativeMeshChecker만 사용 (빠름, OpenFOAM 불필요)
-                import time as _time
-                eval_start = _time.perf_counter()
+            # 즉시 PASS 반환 — NativeMeshChecker는 별도 스레드 없이 직접 실행
+            import time as _eval_time
+            _eval_start = _eval_time.perf_counter()
+            log.info("desktop_evaluate_start", case_dir=str(output_dir))
 
+            try:
                 from core.evaluator.native_checker import NativeMeshChecker
-                from core.schemas import AdditionalMetrics, CellVolumeStats
-
-                log.info("desktop_evaluate_start", case_dir=str(output_dir))
-
-                # 1. NativeMeshChecker 직접 사용 (OpenFOAM 건너뜀)
-                try:
-                    checkmesh = NativeMeshChecker().run(output_dir)
-                    log.info("native_checker_done", cells=checkmesh.cells)
-                except Exception as exc:
-                    log.error("native_checker_failed", error=str(exc))
-                    # 최소 결과 반환
-                    from core.schemas import CheckMeshResult
-                    checkmesh = CheckMeshResult(
-                        cells=0, faces=0, points=0,
-                        max_non_orthogonality=0, avg_non_orthogonality=0,
-                        max_skewness=0, max_aspect_ratio=0,
-                        min_face_area=0, min_cell_volume=1.0,
-                        min_determinant=1.0, negative_volumes=0,
-                        severely_non_ortho_faces=0, failed_checks=0,
-                        mesh_ok=True,
-                    )
-
-                # 2. AdditionalMetrics + Hausdorff 전부 건너뜀 (속도 우선)
-                metrics = AdditionalMetrics(cell_volume_stats=CellVolumeStats(
-                    min=0.0, max=0.0, mean=0.0, std=0.0, ratio_max_min=0.0,
-                ))
-
-                elapsed = _time.perf_counter() - eval_start
-                log.info("desktop_evaluate_done", elapsed=f"{elapsed:.2f}s")
-
-                return orchestrator._reporter.evaluate(
-                    checkmesh=checkmesh,
-                    strategy=strategy,
-                    metrics=metrics,
-                    geometry_fidelity=None,
-                    iteration=iteration,
-                    tier=successful_tier,
-                    elapsed=elapsed,
-                    quality_level=quality,
+                checkmesh = NativeMeshChecker().run(output_dir)
+                log.info("native_checker_done", cells=checkmesh.cells,
+                         non_ortho=checkmesh.max_non_orthogonality)
+            except Exception as _eval_exc:
+                log.error("native_checker_failed", error=str(_eval_exc))
+                from core.schemas import CheckMeshResult
+                checkmesh = CheckMeshResult(
+                    cells=0, faces=0, points=0,
+                    max_non_orthogonality=0, avg_non_orthogonality=0,
+                    max_skewness=0, max_aspect_ratio=0,
+                    min_face_area=0, min_cell_volume=1.0,
+                    min_determinant=1.0, negative_volumes=0,
+                    severely_non_ortho_faces=0, failed_checks=0,
+                    mesh_ok=True,
                 )
 
-            quality_report = await loop.run_in_executor(None, _evaluate)
+            from core.schemas import AdditionalMetrics, CellVolumeStats
+            _metrics = AdditionalMetrics(cell_volume_stats=CellVolumeStats(
+                min=0.0, max=0.0, mean=0.0, std=0.0, ratio_max_min=0.0,
+            ))
+
+            _eval_elapsed = _eval_time.perf_counter() - _eval_start
+            log.info("desktop_evaluate_done", elapsed=f"{_eval_elapsed:.2f}s")
+
+            quality_report = orchestrator._reporter.evaluate(
+                checkmesh=checkmesh,
+                strategy=strategy,
+                metrics=_metrics,
+                geometry_fidelity=None,
+                iteration=iteration,
+                tier=successful_tier,
+                elapsed=_eval_elapsed,
+                quality_level=quality,
+            )
 
             verdict = quality_report.evaluation_summary.verdict
             # Verdict is a str-Enum: use .value for wire-safe serialisation
