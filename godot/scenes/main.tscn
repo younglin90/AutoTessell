@@ -201,6 +201,8 @@ layout_mode = 2
 size_flags_vertical = 3
 bbcode_enabled = true
 scroll_following = true
+selection_enabled = true
+context_menu_enabled = true
 text = "[color=gray]Auto-Tessell Console[/color]"
 
 [node name="StatusBar" type="PanelContainer" parent="VBoxContainer"]

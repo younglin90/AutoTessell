@@ -456,6 +456,7 @@ def evaluate(
 @click.option("--dry-run", is_flag=True, help="전략 수립까지만 (메쉬 생성 안 함)")
 @click.option("--profile", is_flag=True, help="성능 프로파일링 (단계별 소요 시간)")
 @click.option("--export-vtk", "do_export_vtk", is_flag=True, help="완료 후 VTK (.vtu) 내보내기")
+@click.option("--polyhedral", is_flag=True, help="Tet→Polyhedral 듀얼 변환 (polyDualMesh)")
 @click.option("--parallel", type=int, default=None, help="MPI 병렬 프로세서 수 (decomposeParDict 생성)")
 @click.option("--verbose-mesh", is_flag=True, help="메쉬 생성 상세 로그")
 @click.pass_context
@@ -496,6 +497,7 @@ def run(
     dry_run: bool,
     profile: bool,
     do_export_vtk: bool,
+    polyhedral: bool,
     parallel: int | None,
     verbose_mesh: bool,
 ) -> None:
@@ -624,6 +626,15 @@ def run(
 
     if result.success:
         console.print(f"[bold green]✓ PASS[/bold green] ({result.iterations} iteration, {result.total_time_seconds:.1f}s)")
+
+        # Polyhedral 변환
+        if polyhedral:
+            from core.generator.polyhedral import convert_to_polyhedral
+            console.print("[cyan]Tet → Polyhedral 변환 중...[/cyan]")
+            if convert_to_polyhedral(output):
+                console.print("[green]✓[/green] Polyhedral 변환 완료 (polyDualMesh)")
+            else:
+                console.print("[yellow]⚠ Polyhedral 변환 실패 (OpenFOAM polyDualMesh 필요)[/yellow]")
 
         # VTK 내보내기
         if do_export_vtk:

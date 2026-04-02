@@ -165,6 +165,7 @@ class MeshGenerator:
             # 품질 우선: cfMesh(대용량 안전) → snappy(BL) → Netgen → TetWild
             # cfMesh는 자체 배경 메쉬 → blockMesh int32 제한 없음
             # snappy는 blockMesh 필요 → OpenFOAM label=32일 때 ~2B 셀 한계
+            # 모든 Tier 후 polyDualMesh로 폴리헤드럴 변환 가능
             tier_names = ["tier15_cfmesh", "tier1_snappy", "tier05_netgen", "tier2_tetwild"]
         else:  # standard
             # 균형: Netgen → cfMesh → TetWild

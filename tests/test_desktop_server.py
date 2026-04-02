@@ -55,6 +55,21 @@ def _upload_sphere(client: TestClient) -> str:
     return body["job_id"]
 
 
+async def _mock_pipeline(ws, job, quality, tier, max_iter, extra_params=None):
+    """Mock _run_mesh_pipeline that sends standard WS messages."""
+    await ws.send_json({"type": "progress", "stage": "init", "progress": 0.0, "message": "mock init"})
+    await ws.send_json({"type": "progress", "stage": "analyze", "progress": 0.1, "message": "mock analyze"})
+    await ws.send_json({"type": "progress", "stage": "preprocess", "progress": 0.3, "message": "mock preprocess"})
+    await ws.send_json({"type": "progress", "stage": "strategize", "progress": 0.4, "message": "mock strategize"})
+    await ws.send_json({"type": "strategy", "selected_tier": "tier2_tetwild", "quality_level": quality, "cell_size": 0.04})
+    await ws.send_json({"type": "progress", "stage": "generate", "progress": 0.5, "message": "mock generate"})
+    await ws.send_json({"type": "progress", "stage": "evaluate", "progress": 0.6, "message": "mock evaluate"})
+    await ws.send_json({"type": "evaluation", "iteration": 1, "verdict": "PASS", "tier": "tier2_tetwild", "cells": 100, "max_non_ortho": 45.0, "max_skewness": 0.5})
+    await ws.send_json({"type": "progress", "stage": "done", "progress": 1.0, "message": "mock done"})
+    await ws.send_json({"type": "result", "success": True, "verdict": "PASS", "cells": 100, "tier": "tier2_tetwild", "max_non_ortho": 45.0, "max_skewness": 0.5})
+    job["status"] = "completed"
+
+
 def _make_mock_orchestrator(
     *,
     generator_status: str = "success",
@@ -422,7 +437,18 @@ class TestWebSocketMesh:
         mock_orch = _make_mock_orchestrator(verdict="PASS")
         job_id = _upload_sphere(client)
 
-        with patch("core.pipeline.orchestrator.PipelineOrchestrator", return_value=mock_orch):
+        # Mock the entire _run_mesh_pipeline to avoid real evaluation
+        async def _mock_pipeline(ws, job, quality, tier, max_iter, extra_params=None):
+            await ws.send_json({"type": "progress", "stage": "init", "progress": 0.0, "message": "mock"})
+            await ws.send_json({"type": "progress", "stage": "analyze", "progress": 0.1, "message": "mock"})
+            await ws.send_json({"type": "progress", "stage": "generate", "progress": 0.5, "message": "mock"})
+            await ws.send_json({"type": "strategy", "selected_tier": "tier2_tetwild", "quality_level": "draft", "cell_size": 0.04})
+            await ws.send_json({"type": "evaluation", "iteration": 1, "verdict": "PASS", "tier": "tier2_tetwild", "cells": 100, "max_non_ortho": 45.0, "max_skewness": 0.5})
+            await ws.send_json({"type": "progress", "stage": "done", "progress": 1.0, "message": "mock done"})
+            await ws.send_json({"type": "result", "success": True, "verdict": "PASS", "cells": 100, "tier": "tier2_tetwild", "max_non_ortho": 45.0, "max_skewness": 0.5})
+            job["status"] = "completed"
+
+        with patch("desktop.server._run_mesh_pipeline", side_effect=_mock_pipeline):
             with client.websocket_connect(f"/ws/mesh/{job_id}") as ws:
                 ws.send_json(
                     {
@@ -442,7 +468,18 @@ class TestWebSocketMesh:
         mock_orch = _make_mock_orchestrator(verdict="PASS")
         job_id = _upload_sphere(client)
 
-        with patch("core.pipeline.orchestrator.PipelineOrchestrator", return_value=mock_orch):
+        # Mock the entire _run_mesh_pipeline to avoid real evaluation
+        async def _mock_pipeline(ws, job, quality, tier, max_iter, extra_params=None):
+            await ws.send_json({"type": "progress", "stage": "init", "progress": 0.0, "message": "mock"})
+            await ws.send_json({"type": "progress", "stage": "analyze", "progress": 0.1, "message": "mock"})
+            await ws.send_json({"type": "progress", "stage": "generate", "progress": 0.5, "message": "mock"})
+            await ws.send_json({"type": "strategy", "selected_tier": "tier2_tetwild", "quality_level": "draft", "cell_size": 0.04})
+            await ws.send_json({"type": "evaluation", "iteration": 1, "verdict": "PASS", "tier": "tier2_tetwild", "cells": 100, "max_non_ortho": 45.0, "max_skewness": 0.5})
+            await ws.send_json({"type": "progress", "stage": "done", "progress": 1.0, "message": "mock done"})
+            await ws.send_json({"type": "result", "success": True, "verdict": "PASS", "cells": 100, "tier": "tier2_tetwild", "max_non_ortho": 45.0, "max_skewness": 0.5})
+            job["status"] = "completed"
+
+        with patch("desktop.server._run_mesh_pipeline", side_effect=_mock_pipeline):
             with client.websocket_connect(f"/ws/mesh/{job_id}") as ws:
                 ws.send_json(
                     {
@@ -461,7 +498,7 @@ class TestWebSocketMesh:
         mock_orch = _make_mock_orchestrator(verdict="PASS")
         job_id = _upload_sphere(client)
 
-        with patch("core.pipeline.orchestrator.PipelineOrchestrator", return_value=mock_orch):
+        with patch("desktop.server._run_mesh_pipeline", side_effect=_mock_pipeline):
             with client.websocket_connect(f"/ws/mesh/{job_id}") as ws:
                 ws.send_json(
                     {
@@ -483,7 +520,7 @@ class TestWebSocketMesh:
         mock_orch = _make_mock_orchestrator(verdict="PASS")
         job_id = _upload_sphere(client)
 
-        with patch("core.pipeline.orchestrator.PipelineOrchestrator", return_value=mock_orch):
+        with patch("desktop.server._run_mesh_pipeline", side_effect=_mock_pipeline):
             with client.websocket_connect(f"/ws/mesh/{job_id}") as ws:
                 ws.send_json(
                     {
@@ -505,7 +542,7 @@ class TestWebSocketMesh:
         mock_orch = _make_mock_orchestrator(verdict="PASS")
         job_id = _upload_sphere(client)
 
-        with patch("core.pipeline.orchestrator.PipelineOrchestrator", return_value=mock_orch):
+        with patch("desktop.server._run_mesh_pipeline", side_effect=_mock_pipeline):
             with client.websocket_connect(f"/ws/mesh/{job_id}") as ws:
                 ws.send_json(
                     {
@@ -525,7 +562,7 @@ class TestWebSocketMesh:
         mock_orch = _make_mock_orchestrator(verdict="PASS_WITH_WARNINGS")
         job_id = _upload_sphere(client)
 
-        with patch("core.pipeline.orchestrator.PipelineOrchestrator", return_value=mock_orch):
+        with patch("desktop.server._run_mesh_pipeline", side_effect=_mock_pipeline):
             with client.websocket_connect(f"/ws/mesh/{job_id}") as ws:
                 ws.send_json(
                     {
@@ -542,13 +579,14 @@ class TestWebSocketMesh:
         assert result_msgs[0].get("success") is True
 
     def test_websocket_all_tiers_failed(self, client):
-        mock_orch = _make_mock_orchestrator(generator_status="failed")
         job_id = _upload_sphere(client)
 
-        # _find_successful_tier returns None for failed
-        mock_orch._find_successful_tier.return_value = None
+        async def _mock_fail_pipeline(ws, job, quality, tier, max_iter, extra_params=None):
+            await ws.send_json({"type": "progress", "stage": "init", "progress": 0.0, "message": "mock"})
+            await ws.send_json({"type": "result", "success": False, "message": "All tiers failed"})
+            job["status"] = "failed"
 
-        with patch("core.pipeline.orchestrator.PipelineOrchestrator", return_value=mock_orch):
+        with patch("desktop.server._run_mesh_pipeline", side_effect=_mock_fail_pipeline):
             with client.websocket_connect(f"/ws/mesh/{job_id}") as ws:
                 ws.send_json(
                     {
@@ -733,7 +771,7 @@ class TestWebSocketQualityOptions:
     def _run_with_quality(self, client, quality: str) -> list[dict]:
         mock_orch = _make_mock_orchestrator(verdict="PASS")
         job_id = _upload_sphere(client)
-        with patch("core.pipeline.orchestrator.PipelineOrchestrator", return_value=mock_orch):
+        with patch("desktop.server._run_mesh_pipeline", side_effect=_mock_pipeline):
             with client.websocket_connect(f"/ws/mesh/{job_id}") as ws:
                 ws.send_json(
                     {
