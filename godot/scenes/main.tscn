@@ -140,35 +140,68 @@ bbcode_enabled = true
 text = "[color=gray]메쉬 생성 후 결과가 표시됩니다[/color]"
 fit_content = true
 
-[node name="ViewerContainer" type="SubViewportContainer" parent="VBoxContainer/HSplitContainer"]
+[node name="RightPanel" type="VSplitContainer" parent="VBoxContainer/HSplitContainer"]
 layout_mode = 2
 size_flags_horizontal = 3
+split_offset = -150
+
+[node name="ViewerContainer" type="SubViewportContainer" parent="VBoxContainer/HSplitContainer/RightPanel"]
+layout_mode = 2
+size_flags_vertical = 3
 stretch = true
 
-[node name="SubViewport" type="SubViewport" parent="VBoxContainer/HSplitContainer/ViewerContainer"]
+[node name="SubViewport" type="SubViewport" parent="VBoxContainer/HSplitContainer/RightPanel/ViewerContainer"]
 handle_input_locally = true
 size = Vector2i(800, 600)
 render_target_update_mode = 4
 
-[node name="MeshViewer" type="Node3D" parent="VBoxContainer/HSplitContainer/ViewerContainer/SubViewport"]
+[node name="MeshViewer" type="Node3D" parent="VBoxContainer/HSplitContainer/RightPanel/ViewerContainer/SubViewport"]
 script = ExtResource("2")
 
-[node name="Camera3D" type="Camera3D" parent="VBoxContainer/HSplitContainer/ViewerContainer/SubViewport/MeshViewer"]
+[node name="Camera3D" type="Camera3D" parent="VBoxContainer/HSplitContainer/RightPanel/ViewerContainer/SubViewport/MeshViewer"]
 transform = Transform3D(1, 0, 0, 0, 0.866, 0.5, 0, -0.5, 0.866, 0, 2, 3)
 
-[node name="DirectionalLight3D" type="DirectionalLight3D" parent="VBoxContainer/HSplitContainer/ViewerContainer/SubViewport/MeshViewer"]
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="VBoxContainer/HSplitContainer/RightPanel/ViewerContainer/SubViewport/MeshViewer"]
 transform = Transform3D(1, 0, 0, 0, 0.707, -0.707, 0, 0.707, 0.707, 0, 5, 5)
 light_energy = 0.8
 
-[node name="AmbientLight" type="DirectionalLight3D" parent="VBoxContainer/HSplitContainer/ViewerContainer/SubViewport/MeshViewer"]
+[node name="AmbientLight" type="DirectionalLight3D" parent="VBoxContainer/HSplitContainer/RightPanel/ViewerContainer/SubViewport/MeshViewer"]
 transform = Transform3D(1, 0, 0, 0, 0.707, 0.707, 0, -0.707, 0.707, 0, -3, -3)
 light_energy = 0.3
 
-[node name="GridMesh" type="MeshInstance3D" parent="VBoxContainer/HSplitContainer/ViewerContainer/SubViewport/MeshViewer"]
+[node name="GridMesh" type="MeshInstance3D" parent="VBoxContainer/HSplitContainer/RightPanel/ViewerContainer/SubViewport/MeshViewer"]
 mesh = SubResource("PlaneMesh_grid")
 visible = true
 
-[node name="MeshInstance" type="MeshInstance3D" parent="VBoxContainer/HSplitContainer/ViewerContainer/SubViewport/MeshViewer"]
+[node name="MeshInstance" type="MeshInstance3D" parent="VBoxContainer/HSplitContainer/RightPanel/ViewerContainer/SubViewport/MeshViewer"]
+
+[node name="ConsolePanel" type="PanelContainer" parent="VBoxContainer/HSplitContainer/RightPanel"]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 120)
+
+[node name="ConsoleVBox" type="VBoxContainer" parent="VBoxContainer/HSplitContainer/RightPanel/ConsolePanel"]
+layout_mode = 2
+
+[node name="ConsoleHeader" type="HBoxContainer" parent="VBoxContainer/HSplitContainer/RightPanel/ConsolePanel/ConsoleVBox"]
+layout_mode = 2
+
+[node name="ConsoleLabel" type="Label" parent="VBoxContainer/HSplitContainer/RightPanel/ConsolePanel/ConsoleVBox/ConsoleHeader"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "콘솔"
+theme_override_font_sizes/font_size = 12
+
+[node name="ClearButton" type="Button" parent="VBoxContainer/HSplitContainer/RightPanel/ConsolePanel/ConsoleVBox/ConsoleHeader"]
+layout_mode = 2
+custom_minimum_size = Vector2(50, 0)
+text = "지우기"
+
+[node name="ConsoleLog" type="RichTextLabel" parent="VBoxContainer/HSplitContainer/RightPanel/ConsolePanel/ConsoleVBox"]
+layout_mode = 2
+size_flags_vertical = 3
+bbcode_enabled = true
+scroll_following = true
+text = "[color=gray]Auto-Tessell Console[/color]"
 
 [node name="StatusBar" type="PanelContainer" parent="VBoxContainer"]
 layout_mode = 2

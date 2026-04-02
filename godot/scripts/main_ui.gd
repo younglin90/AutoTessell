@@ -23,8 +23,10 @@ const _SB := "VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent
 @onready var status_label: Label = $VBoxContainer/StatusBar/HBoxContainer/StatusLabel
 @onready var server_status: Label = $VBoxContainer/StatusBar/HBoxContainer/ServerStatus
 @onready var file_dialog: FileDialog = $FileDialog
-@onready var viewport_area: Control = $VBoxContainer/HSplitContainer/ViewerContainer if has_node("VBoxContainer/HSplitContainer/ViewerContainer") else null
-@onready var mesh_viewer = $VBoxContainer/HSplitContainer/ViewerContainer/SubViewport/MeshViewer if has_node("VBoxContainer/HSplitContainer/ViewerContainer/SubViewport/MeshViewer") else null
+@onready var viewport_area: Control = $VBoxContainer/HSplitContainer/RightPanel/ViewerContainer if has_node("VBoxContainer/HSplitContainer/RightPanel/ViewerContainer") else null
+@onready var mesh_viewer = $VBoxContainer/HSplitContainer/RightPanel/ViewerContainer/SubViewport/MeshViewer if has_node("VBoxContainer/HSplitContainer/RightPanel/ViewerContainer/SubViewport/MeshViewer") else null
+@onready var console_log: RichTextLabel = $VBoxContainer/HSplitContainer/RightPanel/ConsolePanel/ConsoleVBox/ConsoleLog if has_node("VBoxContainer/HSplitContainer/RightPanel/ConsolePanel/ConsoleVBox/ConsoleLog") else null
+@onready var clear_button: Button = $VBoxContainer/HSplitContainer/RightPanel/ConsolePanel/ConsoleVBox/ConsoleHeader/ClearButton if has_node("VBoxContainer/HSplitContainer/RightPanel/ConsolePanel/ConsoleVBox/ConsoleHeader/ClearButton") else null
 
 var _selected_file_path: String = ""
 
@@ -40,6 +42,10 @@ func _ready() -> void:
 	file_dialog.file_selected.connect(_on_file_selected)
 	generate_button.pressed.connect(_on_generate_pressed)
 	stop_button.pressed.connect(_on_stop_pressed)
+	if clear_button:
+		clear_button.pressed.connect(func() -> void:
+			if console_log: console_log.text = "[color=gray]Console cleared[/color]\n"
+		)
 
 	# WebSocket 시그널
 	WebSocketClient.upload_completed.connect(_on_upload_completed)
@@ -57,12 +63,14 @@ func _ready() -> void:
 	BackendLauncher.backend_started.connect(func() -> void:
 		server_status.text = "서버: 시작됨"
 		server_status.add_theme_color_override("font_color", Color.GREEN)
+		_log("백엔드 서버 시작됨", "success")
 		_check_server()
 	)
 	BackendLauncher.backend_failed.connect(func(reason: String) -> void:
 		server_status.text = "서버: 시작 실패"
 		server_status.add_theme_color_override("font_color", Color.RED)
 		status_label.text = reason
+		_log("백엔드 서버 시작 실패: %s" % reason, "error")
 	)
 
 	# 서버 헬스 체크
@@ -131,6 +139,7 @@ func _on_file_button_pressed() -> void:
 func _on_file_selected(path: String) -> void:
 	_selected_file_path = path
 	var file_name := path.get_file()
+	_log("파일 선택: %s" % file_name)
 	var file_ext := path.get_extension().to_upper()
 
 	file_info.text = "[b]%s[/b]\n[color=gray]%s | %s[/color]" % [
@@ -168,11 +177,13 @@ func _on_generate_pressed() -> void:
 	AppState.current_state = AppState.State.UPLOADING
 
 	# 파일 업로드
+	_log("업로드 시작: %s" % _selected_file_path.get_file())
 	WebSocketClient.upload_file(_selected_file_path)
 
 
 func _on_stop_pressed() -> void:
 	"""메쉬 생성 강제 중지."""
+	_log("사용자가 메쉬 생성을 중지했습니다", "warn")
 	WebSocketClient.disconnect_ws()
 	_reset_ui_after_stop()
 	status_label.text = "사용자에 의해 중지됨"
@@ -192,6 +203,7 @@ func _on_upload_completed(job_id: String) -> void:
 	AppState.current_job_id = job_id
 	AppState.current_state = AppState.State.MESHING
 	progress_label.text = "메쉬 생성 시작..."
+	_log("업로드 완료. Job ID: %s" % job_id, "success")
 
 	# ParamsPanel에서 모든 파라미터를 가져와 WebSocket으로 전달
 	if params_panel and params_panel.has_method("get_ws_start_payload"):
@@ -215,14 +227,18 @@ func _on_progress_updated(stage: String, progress: float, message: String) -> vo
 	progress_bar.value = progress * 100
 	progress_label.text = message
 	status_label.text = "[%s] %s" % [stage, message]
+	_log("[%.0f%%] %s: %s" % [progress * 100, stage, message])
 
 
 func _on_strategy_received(tier: String, quality: String, cell_size: float) -> void:
 	status_label.text = "전략: %s (cell_size=%.4f)" % [tier, cell_size]
+	_log("전략 수립: tier=%s, quality=%s, cell_size=%.4f" % [tier, quality, cell_size], "info")
 
 
 func _on_evaluation_received(iteration: int, verdict: String, cells: int, non_ortho: float) -> void:
 	status_label.text = "평가 #%d: %s (cells=%d, non-ortho=%.1f°)" % [iteration, verdict, cells, non_ortho]
+	var level := "success" if "PASS" in verdict else "error"
+	_log("평가 #%d: %s | cells=%d | non-ortho=%.1f°" % [iteration, verdict, cells, non_ortho], level)
 
 
 func _on_mesh_completed(success: bool, data: Dictionary) -> void:
@@ -230,6 +246,10 @@ func _on_mesh_completed(success: bool, data: Dictionary) -> void:
 	generate_button.disabled = false
 	stop_button.visible = false
 	AppState.last_result = data
+	if success:
+		_log("메쉬 생성 완료: %s | %d cells" % [data.get("verdict", ""), data.get("cells", 0)], "success")
+	else:
+		_log("메쉬 생성 실패: %s" % data.get("message", "unknown"), "error")
 
 	if success:
 		AppState.current_state = AppState.State.COMPLETED
@@ -263,6 +283,7 @@ func _on_mesh_completed(success: bool, data: Dictionary) -> void:
 func _on_error(message: String) -> void:
 	result_info.text = "[b][color=red]오류[/color][/b]\n\n%s" % message
 	progress_label.text = "오류 발생"
+	_log("오류: %s" % message, "error")
 	generate_button.disabled = false
 	stop_button.visible = false
 	progress_bar.visible = false
@@ -323,3 +344,24 @@ func _format_number(n: int) -> String:
 			result += ","
 		result += s[i]
 	return result
+
+
+# -----------------------------------------------------------------------
+# Console logging
+# -----------------------------------------------------------------------
+func _log(message: String, level: String = "info") -> void:
+	"""콘솔 패널에 로그 메시지 추가."""
+	if console_log == null:
+		return
+	var color := "white"
+	var prefix := ""
+	match level:
+		"info":    color = "#b0b8c8"; prefix = "INFO"
+		"success": color = "#4ade80"; prefix = " OK "
+		"warn":    color = "#fbbf24"; prefix = "WARN"
+		"error":   color = "#f87171"; prefix = "ERR "
+		"debug":   color = "#8888a0"; prefix = "DBG "
+	var timestamp := Time.get_time_string_from_system()
+	console_log.append_text(
+		"[color=#555568]%s[/color] [color=%s][%s][/color] %s\n" % [timestamp, color, prefix, message]
+	)
