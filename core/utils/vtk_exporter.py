@@ -7,13 +7,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 
 from core.utils.logging import get_logger
 from core.utils.polymesh_reader import (
-    parse_foam_boundary,
     parse_foam_faces,
     parse_foam_labels,
     parse_foam_points,

@@ -8,7 +8,7 @@ from __future__ import annotations
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Any, Generator
+from typing import Generator
 
 from core.utils.logging import get_logger
 

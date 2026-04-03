@@ -6,7 +6,6 @@ OpenFOAM polyDualMesh 또는 자체 듀얼 변환을 사용한다.
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 from core.utils.logging import get_logger
@@ -77,7 +76,6 @@ def _convert_native(case_dir: Path) -> bool:
     try:
         import numpy as np
         from core.utils.polymesh_reader import (
-            parse_foam_boundary,
             parse_foam_faces,
             parse_foam_labels,
             parse_foam_points,

@@ -648,7 +648,7 @@ def run(
 
     # 프로파일링 출력
     if profile:
-        console.print(f"\n[bold]Performance Profile[/bold]")
+        console.print("\n[bold]Performance Profile[/bold]")
         console.print(f"  Total: {result.total_time_seconds:.2f}s")
         console.print(f"  Iterations: {result.iterations}")
         if result.generator_log:

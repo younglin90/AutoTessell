@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import shutil
 import time
+from typing import Any
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -46,7 +47,7 @@ class PipelineResult:
     iterations: int = 0
     total_time_seconds: float = 0.0
     error: str | None = None
-    boundary_patches: list[dict] = field(default_factory=list)
+    boundary_patches: list[dict[str, Any]] = field(default_factory=list)
 
 
 class PipelineOrchestrator:

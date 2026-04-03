@@ -67,7 +67,7 @@ def _run_vorpalite_remesh(
         if isinstance(surf, trimesh.Scene):
             meshes = list(surf.geometry.values())
             surf = trimesh.util.concatenate(meshes)
-        surface_area = float(surf.area)
+        surface_area = float(surf.area)  # type: ignore[attr-defined]
         target_pts = max(1000, int(surface_area / (target_edge_length ** 2) * 0.5))
     except Exception:
         target_pts = 50_000

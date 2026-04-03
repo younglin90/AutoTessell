@@ -19,6 +19,7 @@ import uuid
 import zipfile
 from contextlib import asynccontextmanager
 from pathlib import Path
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from fastapi import FastAPI, UploadFile, WebSocket, WebSocketDisconnect
@@ -32,7 +33,7 @@ log = get_logger(__name__)
 
 
 @asynccontextmanager
-async def _lifespan(application: FastAPI):  # type: ignore[type-arg]
+async def _lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
     """Start background tasks on startup."""
     _purge_stale_temp_dirs()
     task = asyncio.create_task(_cleanup_old_jobs())
