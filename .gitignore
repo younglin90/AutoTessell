@@ -65,3 +65,4 @@ godot/export_presets.cfg
 case_fine/
 godot/**/*.import
 godot/**/*.uid
+*.obj
