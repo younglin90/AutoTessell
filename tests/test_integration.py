@@ -875,3 +875,160 @@ class TestBoundaryClassifier:
         assert result == [], (
             f"Expected [] for non-existent case_dir, got {result}"
         )
+
+
+# ---------------------------------------------------------------------------
+# 12. TestPolyDualMesh — polyhedral dual-mesh conversion
+# ---------------------------------------------------------------------------
+
+
+class TestPolyDualMesh:
+    """Integration tests for polyDualMesh / polyhedral conversion."""
+
+    # ------------------------------------------------------------------
+    # Helper: build a real polyMesh case from sphere.stl via TetWild
+    # ------------------------------------------------------------------
+
+    @pytest.fixture(scope="class")
+    def sphere_case_dir(self, tmp_path_factory) -> Path:
+        """Generate a real polyMesh (sphere.stl, draft) and return case dir."""
+        sphere = BENCHMARKS_DIR / "sphere.stl"
+        if not sphere.exists():
+            pytest.skip("sphere.stl not found — run from project root")
+
+        td = tmp_path_factory.mktemp("poly_dual")
+        case_dir = td / "case"
+
+        from core.pipeline.orchestrator import PipelineOrchestrator  # noqa: PLC0415
+
+        result = PipelineOrchestrator().run(
+            input_path=sphere,
+            output_dir=case_dir,
+            quality_level="draft",
+            max_iterations=1,
+        )
+
+        poly_dir = case_dir / "constant" / "polyMesh"
+        if not poly_dir.exists():
+            pytest.skip(
+                f"polyMesh generation failed — cannot test polyhedral: {result.error}"
+            )
+
+        return case_dir
+
+    # ------------------------------------------------------------------
+    # 12-1. is_polyhedral_available
+    # ------------------------------------------------------------------
+
+    def test_polyhedral_available(self):
+        """is_polyhedral_available() must return True when OpenFOAM is installed."""
+        from core.generator.polyhedral import is_polyhedral_available  # noqa: PLC0415
+
+        result = is_polyhedral_available()
+        assert isinstance(result, bool), "is_polyhedral_available must return bool"
+
+        if HAS_OPENFOAM:
+            assert result is True, (
+                "OpenFOAM checkMesh is on PATH but is_polyhedral_available() returned False"
+            )
+        else:
+            # Without OpenFOAM the function should still return a bool without crashing
+            assert result is False
+
+    # ------------------------------------------------------------------
+    # 12-2. convert sphere tet → polyhedral (OpenFOAM required)
+    # ------------------------------------------------------------------
+
+    @pytest.mark.skipif(not HAS_OPENFOAM, reason="OpenFOAM (checkMesh) not installed")
+    def test_convert_sphere_to_polyhedral(self, sphere_case_dir):
+        """Convert a real tet polyMesh to polyhedral and verify cell count decreased.
+
+        polyDualMesh produces a dual mesh whose cell count equals the original
+        point count (roughly), which is typically much less than the original
+        tet cell count.  We therefore only assert that:
+        - convert_to_polyhedral returns True
+        - the new cell count is positive
+        - the new cell count differs from the original tet cell count
+          (i.e. a transformation actually occurred)
+        """
+        from core.generator.polyhedral import convert_to_polyhedral  # noqa: PLC0415
+        from core.utils.polymesh_reader import parse_foam_labels  # noqa: PLC0415
+
+        poly_dir = sphere_case_dir / "constant" / "polyMesh"
+        owner_path = poly_dir / "owner"
+
+        # Record original cell count from 'owner' header note (max label + 1)
+        original_owner = parse_foam_labels(owner_path)
+        original_cell_count = max(original_owner) + 1 if original_owner else 0
+
+        # Run conversion
+        success = convert_to_polyhedral(sphere_case_dir, feature_angle=5.0)
+        assert success is True, "convert_to_polyhedral should succeed with OpenFOAM"
+
+        # Read new owner after conversion
+        new_owner = parse_foam_labels(owner_path)
+        new_cell_count = max(new_owner) + 1 if new_owner else 0
+
+        assert new_cell_count > 0, "Polyhedral mesh must have cells"
+        assert new_cell_count != original_cell_count, (
+            "Cell count must change after polyhedral conversion "
+            f"(was {original_cell_count}, now {new_cell_count})"
+        )
+
+    # ------------------------------------------------------------------
+    # 12-3. --polyhedral CLI flag exists
+    # ------------------------------------------------------------------
+
+    def test_polyhedral_cli_flag(self):
+        """The 'run' sub-command must expose a --polyhedral flag."""
+        from click.testing import CliRunner  # noqa: PLC0415
+        from cli.main import run  # noqa: PLC0415
+
+        runner = CliRunner()
+        # Invoke --help on 'run'; --polyhedral must appear in the help text
+        result = runner.invoke(run, ["--help"])
+        assert result.exit_code == 0, f"CLI --help failed: {result.output}"
+        assert "--polyhedral" in result.output, (
+            "--polyhedral option not found in 'run --help' output"
+        )
+
+    # ------------------------------------------------------------------
+    # 12-4. graceful degradation when OpenFOAM is absent
+    # ------------------------------------------------------------------
+
+    def test_polyhedral_graceful_when_no_openfoam(self, tmp_path):
+        """With OpenFOAM mocked away, is_polyhedral_available returns False
+        and convert_to_polyhedral returns False without raising."""
+        from unittest.mock import patch  # noqa: PLC0415
+
+        # Create a minimal polyMesh so the directory check passes
+        poly_dir = tmp_path / "constant" / "polyMesh"
+        poly_dir.mkdir(parents=True)
+        (poly_dir / "points").write_text("FoamFile\n{\n}\n0\n(\n)\n")
+
+        with patch(
+            "core.utils.openfoam_utils._find_openfoam_bashrc",
+            return_value=None,
+        ):
+            from core.generator.polyhedral import (  # noqa: PLC0415
+                convert_to_polyhedral,
+                is_polyhedral_available,
+            )
+
+            # availability check must return False
+            avail = is_polyhedral_available()
+            assert avail is False, (
+                f"Expected False when OpenFOAM is absent, got {avail}"
+            )
+
+            # conversion must not raise; it may return False (native fallback
+            # also returns False for incomplete meshes)
+            try:
+                result = convert_to_polyhedral(tmp_path)
+                assert isinstance(result, bool), (
+                    "convert_to_polyhedral must return bool even without OpenFOAM"
+                )
+            except Exception as exc:  # noqa: BLE001
+                pytest.fail(
+                    f"convert_to_polyhedral raised unexpectedly without OpenFOAM: {exc}"
+                )
