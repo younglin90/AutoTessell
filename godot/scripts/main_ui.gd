@@ -54,6 +54,9 @@ func _ready() -> void:
 	WebSocketClient.evaluation_received.connect(_on_evaluation_received)
 	WebSocketClient.mesh_completed.connect(_on_mesh_completed)
 	WebSocketClient.error_occurred.connect(_on_error)
+	WebSocketClient.server_log.connect(func(level: String, message: String) -> void:
+		_log(message, level)
+	)
 
 	# 드래그 앤 드롭 지원 활성화
 	if viewport_area != null:

@@ -328,11 +328,11 @@ class GeometryAnalyzer:
             edge_len = np.linalg.norm(verts[fe[:, 1]] - verts[fe[:, 0]], axis=1)
             edge_len = np.where(edge_len < 1e-15, 1e-15, edge_len)
             curvature = angles / edge_len
-            
+
             # 곡률 상한선 적용 (수치적 폭발 방지: 특성 길이의 역수에 비례하여 제한 가능하나
             # 여기서는 실용적인 수준인 1e6 정도로 제한)
             curvature = np.clip(curvature, 0, 1e6)
-            
+
             return float(np.max(curvature)), float(np.mean(curvature))
         except Exception:
             return 0.0, 0.0

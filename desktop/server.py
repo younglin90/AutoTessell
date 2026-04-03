@@ -382,16 +382,23 @@ async def _run_mesh_pipeline(
     orchestrator = PipelineOrchestrator()
 
     try:
+        import time as _t
+
         # 1. Analyze
         await send_progress("analyze", 0.1, "지오메트리 분석 중...")
+        await ws.send_json({"type": "log", "level": "debug", "message": f"[Server] Analyzer 시작: {input_path.name}"})
+        _t0 = _t.perf_counter()
         geometry_report = await loop.run_in_executor(
             None, orchestrator._analyzer.analyze, input_path
         )
+        await ws.send_json({"type": "log", "level": "info", "message": f"[Server] Analyzer 완료: {geometry_report.geometry.surface.num_faces} faces, watertight={geometry_report.geometry.surface.is_watertight} ({_t.perf_counter()-_t0:.2f}s)"})
 
         # 2. Preprocess
         await send_progress("preprocess", 0.3, "표면 전처리 중...")
+        await ws.send_json({"type": "log", "level": "debug", "message": "[Server] Preprocessor 시작..."})
         work_dir = output_dir / "_work"
         work_dir.mkdir(parents=True, exist_ok=True)
+        _t0 = _t.perf_counter()
 
         def _preprocess() -> tuple[Path, Any]:
             return orchestrator._preprocessor.run(
@@ -401,6 +408,8 @@ async def _run_mesh_pipeline(
             )
 
         preprocessed_path, preprocessed_report = await loop.run_in_executor(None, _preprocess)
+        _sq = preprocessed_report.preprocessing_summary.surface_quality_level or "l1"
+        await ws.send_json({"type": "log", "level": "info", "message": f"[Server] Preprocessor 완료: surface_quality={_sq} ({_t.perf_counter()-_t0:.2f}s)"})
 
         # 3. Strategize
         await send_progress("strategize", 0.4, f"전략 수립 중... (quality={quality})")
@@ -460,10 +469,23 @@ async def _run_mesh_pipeline(
                 f"메쉬 생성 중... (iteration {iteration}/{max_iterations})",
             )
 
+            await ws.send_json({"type": "log", "level": "debug", "message": f"[Server] Generator 시작: {strategy.selected_tier}"})
+            _gen_t0 = _t.perf_counter()
+
             def _generate() -> Any:
                 return orchestrator._generator.run(strategy, preprocessed_path, output_dir)
 
             generator_log = await loop.run_in_executor(None, _generate)
+            await ws.send_json({"type": "log", "level": "info", "message": f"[Server] Generator 완료 ({_t.perf_counter()-_gen_t0:.2f}s)"})
+
+            # 생성 결과 로그를 Godot 콘솔에 전달
+            for tier_attempt in generator_log.execution_summary.tiers_attempted:
+                await ws.send_json({
+                    "type": "log",
+                    "level": "info" if tier_attempt.status == "success" else "warn",
+                    "message": f"[Server] {tier_attempt.tier}: {tier_attempt.status} ({tier_attempt.time_seconds:.1f}s)"
+                    + (f" — {tier_attempt.error_message[:100]}" if tier_attempt.error_message else ""),
+                })
 
             # 성공 tier 확인
             successful_tier = orchestrator._find_successful_tier(generator_log)
@@ -489,14 +511,19 @@ async def _run_mesh_pipeline(
             import time as _eval_time
             _eval_start = _eval_time.perf_counter()
             log.info("desktop_evaluate_start", case_dir=str(output_dir))
+            await ws.send_json({"type": "log", "level": "debug", "message": "[Server] NativeMeshChecker 시작..."})
 
             try:
                 from core.evaluator.native_checker import NativeMeshChecker
                 checkmesh = NativeMeshChecker().run(output_dir)
                 log.info("native_checker_done", cells=checkmesh.cells,
                          non_ortho=checkmesh.max_non_orthogonality)
+                await ws.send_json({"type": "log", "level": "info",
+                    "message": f"[Server] NativeMeshChecker 완료: {checkmesh.cells} cells, non-ortho={checkmesh.max_non_orthogonality:.1f}°"})
             except Exception as _eval_exc:
                 log.error("native_checker_failed", error=str(_eval_exc))
+                await ws.send_json({"type": "log", "level": "error",
+                    "message": f"[Server] NativeMeshChecker 에러: {_eval_exc}"})
                 from core.schemas import CheckMeshResult
                 checkmesh = CheckMeshResult(
                     cells=0, faces=0, points=0,
@@ -580,6 +607,11 @@ async def _run_mesh_pipeline(
         log.error("pipeline_error", error=str(exc))
         job["status"] = "failed"
         job["error"] = str(exc)
+        try:
+            await ws.send_json({"type": "log", "level": "error",
+                "message": f"[Server] 파이프라인 에러: {exc}"})
+        except Exception:
+            pass
         _touch_job(job)
         await ws.send_json({"type": "error", "message": str(exc)})
 

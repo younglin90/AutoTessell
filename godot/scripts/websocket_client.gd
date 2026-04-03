@@ -15,6 +15,7 @@ signal evaluation_received(iteration: int, verdict: String, cells: int, non_orth
 signal mesh_completed(success: bool, data: Dictionary)
 signal error_occurred(message: String)
 signal upload_completed(job_id: String)
+signal server_log(level: String, message: String)
 
 # -----------------------------------------------------------------------
 # Configuration
@@ -280,6 +281,11 @@ func _handle_message(text: String) -> void:
 			var msg: String = json.get("message", "Unknown error")
 			_mesh_running = false
 			error_occurred.emit(msg)
+
+		"log":
+			var level: String = json.get("level", "info")
+			var msg: String = json.get("message", "")
+			server_log.emit(level, msg)
 
 		_:
 			print("[WS] Unknown message type: %s" % msg_type)

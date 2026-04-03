@@ -308,7 +308,7 @@ relaxationFactors
         if isinstance(value, list):
             # 중첩 리스트 처리
             return "(" + " ".join(OpenFOAMWriter._format_foam_value(v) for v in value) + ")"
-        
+
         # 문자열 처리
         s = str(value)
         # 쿼팅이 필요한 경우: 공백, 특수문자 포함, 마침표 포함(파일 경로/이름), 또는 경로
