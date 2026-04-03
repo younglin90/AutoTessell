@@ -1960,7 +1960,7 @@ class TestMMGPostProcessing:
         gen = Tier2TetWildGenerator()
         original_run_mmg = gen._run_mmg
 
-        def spy_run_mmg(input_msh, case_dir, params):
+        def spy_run_mmg(input_msh, case_dir, strategy):
             mmg_call_count.append(1)
             # Simulate MMG failing gracefully — returns input unchanged
             return input_msh
@@ -2061,9 +2061,58 @@ class TestMMGPostProcessing:
         meshio.write(str(msh_path), mesh)
 
         gen = Tier2TetWildGenerator()
-        params: dict = {}
-        result_path = gen._run_mmg(msh_path, tmp_path, params)
+        # mesh_strategy fixture is available in this file
+        from core.schemas import MeshStrategy, QualityLevel, DomainConfig, SurfaceMeshConfig, BoundaryLayerConfig, QualityTargets
+        strategy = MeshStrategy(
+            strategy_version=2, iteration=1, quality_level=QualityLevel.STANDARD, selected_tier="auto", fallback_tiers=[], flow_type="external",
+            domain=DomainConfig(type="box", min=[-1, -1, -1], max=[1, 1, 1], base_cell_size=0.1, location_in_mesh=[0,0,0]),
+            surface_mesh=SurfaceMeshConfig(input_file="test.stl", target_cell_size=0.05, min_cell_size=0.01),
+            boundary_layers=BoundaryLayerConfig(enabled=False, num_layers=0, first_layer_thickness=0.0, growth_ratio=1.2, max_total_thickness=0.0, min_thickness_ratio=0.1),
+            quality_targets=QualityTargets(max_non_orthogonality=65, max_skewness=4, max_aspect_ratio=100, min_determinant=0.001, target_y_plus=1.0),
+            tier_specific_params={}
+        )
+        result_path = gen._run_mmg(msh_path, tmp_path, strategy)
 
         # MMG may succeed or fail depending on the mesh size, but must not raise
         assert result_path is not None
         assert isinstance(result_path, Path)
+
+    def test_mmg_params_passed_from_strategy(self, tmp_path: Path) -> None:
+        """_run_mmg should use hmin/hmax from strategy.surface_mesh if not in tier_specific_params."""
+        from core.generator.tier2_tetwild import Tier2TetWildGenerator
+        from core.schemas import MeshStrategy, QualityLevel, DomainConfig, SurfaceMeshConfig, BoundaryLayerConfig, QualityTargets
+        import subprocess
+
+        input_msh = tmp_path / "test.msh"
+        input_msh.write_text("dummy mesh")
+        
+        gen = Tier2TetWildGenerator()
+        
+        strategy = MeshStrategy(
+            strategy_version=2, iteration=1, quality_level=QualityLevel.STANDARD, selected_tier="auto", fallback_tiers=[], flow_type="external",
+            domain=DomainConfig(type="box", min=[-1, -1, -1], max=[1, 1, 1], base_cell_size=0.1, location_in_mesh=[0,0,0]),
+            surface_mesh=SurfaceMeshConfig(input_file="test.stl", target_cell_size=0.05, min_cell_size=0.01),
+            boundary_layers=BoundaryLayerConfig(enabled=False, num_layers=0, first_layer_thickness=0.0, growth_ratio=1.2, max_total_thickness=0.0, min_thickness_ratio=0.1),
+            quality_targets=QualityTargets(max_non_orthogonality=65, max_skewness=4, max_aspect_ratio=100, min_determinant=0.001, target_y_plus=1.0),
+            tier_specific_params={}
+        )
+
+        # Mock subprocess.run to capture command line
+        captured_cmd = []
+        def mock_run(cmd, **kwargs):
+            captured_cmd.append(cmd)
+            return MagicMock(returncode=0)
+
+        with patch("subprocess.run", side_effect=mock_run):
+            with patch("shutil.which", return_value="/usr/bin/mmg3d"):
+                # meshio.write/read mocks to avoid real file IO issues in unit test
+                with patch("meshio.read"), patch("meshio.write"):
+                    gen._run_mmg(input_msh, tmp_path, strategy)
+
+        assert len(captured_cmd) > 0, "MMG3D was not called"
+        cmd = captured_cmd[0]
+        # standard_strategy: min_cell_size=0.01, target_cell_size=0.05
+        assert "-hmin" in cmd
+        assert str(strategy.surface_mesh.min_cell_size) in cmd
+        assert "-hmax" in cmd
+        assert str(strategy.surface_mesh.target_cell_size) in cmd

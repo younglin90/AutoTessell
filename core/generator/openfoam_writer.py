@@ -263,10 +263,9 @@ relaxationFactors
         path.write_text(header + body + footer)
         logger.info("wrote_foam_dict", path=str(path))
 
-    def _dict_to_foam(self, data: dict[str, Any] | list[Any] | str | int | float | bool, indent: int = 0) -> str:
-        """Python データ構造をOpenFOAM形式にシリアライズする。"""
+    def _dict_to_foam(self, data: Any, indent: int = 0) -> str:
+        """Python 데이터 구조를 OpenFOAM 형식으로 직렬화한다."""
         pad = "    " * indent
-        "    " * (indent + 1)
 
         if isinstance(data, dict):
             lines: list[str] = []
@@ -277,42 +276,44 @@ relaxationFactors
                     lines.append(self._dict_to_foam(value, indent + 1))
                     lines.append(f"{pad}}}")
                 elif isinstance(value, list):
-                    # Check if list contains dicts (e.g. features)
+                    # 리스트가 딕셔너리를 포함하는 경우 (예: features, refinementSurfaces)
                     if value and isinstance(value[0], dict):
                         lines.append(f"{pad}{key}")
                         lines.append(f"{pad}(")
                         for item in value:
-                            inner = "  ".join(
-                                f'{k} {self._format_foam_value(v)};'
-                                for k, v in item.items()
-                            )
-                            lines.append(f"{pad}    {{ {inner} }}")
+                            inner_lines = []
+                            for k, v in item.items():
+                                inner_lines.append(f"{k} {self._format_foam_value(v)}")
+                            inner = "; ".join(inner_lines)
+                            lines.append(f"{pad}    {{ {inner}; }}")
                         lines.append(f"{pad});")
                     else:
-                        rendered = " ".join(str(v) for v in value)
-                        lines.append(f"{pad}{key}    ({rendered});")
-                elif isinstance(value, str) and (" " in value or "/" in value):
-                    # Strings with spaces or paths need quoting
-                    lines.append(f'{pad}{key}    "{value}";')
-                elif isinstance(value, bool):
-                    lines.append(f"{pad}{key}    {'true' if value else 'false'};")
+                        rendered = " ".join(self._format_foam_value(v) for v in value)
+                        lines.append(f"{pad}{key} ({rendered});")
                 else:
-                    lines.append(f"{pad}{key}    {value};")
-            return "\n".join(lines) + "\n"
-        elif isinstance(data, list):
-            rendered = " ".join(str(v) for v in data)
-            return f"{pad}({rendered})\n"
+                    lines.append(f"{pad}{key} {self._format_foam_value(value)};")
+            return "\n".join(lines) + ("\n" if indent > 0 else "")
         else:
-            return f"{pad}{data}\n"
+            return f"{pad}{self._format_foam_value(data)}"
 
     @staticmethod
     def _format_foam_value(value: Any) -> str:
-        """OpenFOAM 값 포맷팅."""
-        if isinstance(value, str):
-            return f'"{value}"'
-        elif isinstance(value, bool):
+        """OpenFOAM 값 포맷팅 (쿼팅 및 타입 변환)."""
+        if value is None:
+            return "none"
+        if isinstance(value, bool):
             return "true" if value else "false"
-        elif isinstance(value, list):
-            return "(" + " ".join(str(v) for v in value) + ")"
-        else:
+        if isinstance(value, (int, float)):
             return str(value)
+        if isinstance(value, list):
+            # 중첩 리스트 처리
+            return "(" + " ".join(OpenFOAMWriter._format_foam_value(v) for v in value) + ")"
+        
+        # 문자열 처리
+        s = str(value)
+        # 쿼팅이 필요한 경우: 공백, 특수문자 포함, 마침표 포함(파일 경로/이름), 또는 경로
+        if any(c in s for c in ' /\\(){}[],;<>*?|=. ') or (s and s[0].isdigit() and "." in s):
+            # 이미 따옴표로 감싸져 있지 않은 경우에만 감쌈
+            if not (s.startswith('"') and s.endswith('"')):
+                return f'"{s}"'
+        return s

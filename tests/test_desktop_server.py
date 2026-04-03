@@ -274,7 +274,7 @@ def _make_mock_orchestrator(
     orch._find_successful_tier = MagicMock(
         return_value="tier2_tetwild" if generator_status == "success" else None
     )
-    orch._evaluate = MagicMock(return_value=quality_report)
+    orch._reporter.evaluate.return_value = quality_report
 
     return orch
 

@@ -181,7 +181,7 @@ class Tier2TetWildGenerator:
             mmg_verts = tet_v
             mmg_tets = tet_f
             if quality_level in ("standard", "fine") and shutil.which("mmg3d"):
-                mmg_mesh_path = self._run_mmg(result_msh, case_dir, params)
+                mmg_mesh_path = self._run_mmg(result_msh, case_dir, strategy)
                 # Re-read MMG output so we have updated arrays for PolyMeshWriter
                 if mmg_mesh_path != result_msh:
                     try:
@@ -241,7 +241,7 @@ class Tier2TetWildGenerator:
         self,
         input_msh: Path,
         case_dir: Path,
-        params: dict[str, Any],
+        strategy: MeshStrategy,
     ) -> Path:
         """MMG3D를 사용해 메쉬 품질을 향상시킨다.
 
@@ -250,14 +250,15 @@ class Tier2TetWildGenerator:
         Args:
             input_msh: TetWild 결과 .msh 파일.
             case_dir: 케이스 디렉터리.
-            params: tier_specific_params.
+            strategy: 메쉬 전략 (hmin/hmax 계산에 사용).
 
         Returns:
             최적화된 메쉬 파일 경로. 실패 시 input_msh 반환.
         """
-        # hmin/hmax 기본값 계산 (strategy 없이도 동작)
-        hmin = params.get("mmg_hmin", None)
-        hmax = params.get("mmg_hmax", None)
+        params = strategy.tier_specific_params
+        # hmin/hmax 기본값 계산 (strategy에서 가져옴)
+        hmin = params.get("mmg_hmin", strategy.surface_mesh.min_cell_size)
+        hmax = params.get("mmg_hmax", strategy.surface_mesh.target_cell_size)
         hgrad = params.get("mmg_hgrad", 1.3)
         hausd = params.get("mmg_hausd", 0.01)
 

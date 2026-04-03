@@ -34,6 +34,7 @@ log = get_logger(__name__)
 @asynccontextmanager
 async def _lifespan(application: FastAPI):  # type: ignore[type-arg]
     """Start background tasks on startup."""
+    _purge_stale_temp_dirs()
     task = asyncio.create_task(_cleanup_old_jobs())
     yield
     task.cancel()
@@ -75,6 +76,22 @@ JOB_TTL_SECONDS = 3600  # 1 hour
 
 # job_id → job info
 _jobs: dict[str, dict[str, Any]] = {}
+
+
+def _purge_stale_temp_dirs() -> None:
+    """서버 시작 시 이전 실행에서 남은 autotessell_* 임시 디렉터리를 삭제한다."""
+    import tempfile
+    tmp_dir = Path(tempfile.gettempdir())
+    count = 0
+    for p in tmp_dir.glob("autotessell_*"):
+        if p.is_dir():
+            try:
+                shutil.rmtree(p)
+                count += 1
+            except Exception as exc:
+                log.warning("purge_stale_failed", path=str(p), error=str(exc))
+    if count > 0:
+        log.info("purged_stale_temp_dirs", count=count)
 
 
 def _create_job(input_filename: str) -> dict[str, Any]:

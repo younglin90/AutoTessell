@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -108,13 +109,15 @@ def run_openfoam(
             "OPENFOAM_DIR 환경변수를 설정하거나 OpenFOAM을 설치하세요."
         )
 
-    source_cmd = f"source {bashrc_path}"
+    source_cmd = f"source {shlex.quote(str(bashrc_path))}"
 
-    cmd_parts = [utility, "-case", str(case_dir)]
+    # 각 인자를 개별적으로 quote 처리하여 공백/특수문자 대응
+    safe_parts = [shlex.quote(utility), "-case", shlex.quote(str(case_dir))]
     if args:
-        cmd_parts.extend(args)
+        for arg in args:
+            safe_parts.append(shlex.quote(arg))
 
-    full_cmd = f"{source_cmd} && {' '.join(cmd_parts)}"
+    full_cmd = f"{source_cmd} && {' '.join(safe_parts)}"
 
     logger.info(
         "running_openfoam_utility",

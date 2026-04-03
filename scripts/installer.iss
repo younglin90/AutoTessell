@@ -1,52 +1,40 @@
-; Auto-Tessell Windows Installer (Inno Setup 6)
-;
-; Godot GUI (.exe) + Python Backend (.exe) 통합 설치
-; 사용자는 AutoTessell.exe 더블클릭만 하면 됨
+; Auto-Tessell Installer (Inno Setup)
+#define MyAppName "Auto-Tessell"
+#define MyAppVersion "0.1.0"
+#define MyAppPublisher "Younglin"
+#define MyAppExeName "auto-tessell-gui.exe"
+#define MyAppServerExe "auto-tessell-server.exe"
 
 [Setup]
-SourceDir=..
-AppName=Auto-Tessell
-AppVersion=0.1.0
-AppPublisher=Auto-Tessell
-AppPublisherURL=https://github.com/younglin90/auto-tessell
-DefaultDirName={autopf}\Auto-Tessell
-DefaultGroupName=Auto-Tessell
-OutputDir=dist\installer
-OutputBaseFilename=AutoTessell-0.1.0-Setup
-Compression=lzma2
+AppId={{D3F4B5E6-A7C8-4D9E-B1A2-C3D4E5F6G7H8}}
+AppName={#MyAppName}
+AppVersion={#MyAppVersion}
+AppPublisher={#MyAppPublisher}
+DefaultDirName={autopf}\{#MyAppName}
+DefaultGroupName={#MyAppName}
+OutputDir=..\dist
+OutputBaseFilename=Auto-Tessell-Setup
+Compression=lzma
 SolidCompression=yes
-UninstallDisplayName=Auto-Tessell
 WizardStyle=modern
-ArchitecturesInstallIn64BitMode=x64compatible
-PrivilegesRequired=lowest
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
+
+[Tasks]
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
-; Godot GUI (메인 실행 파일)
-Source: "dist\godot\AutoTessell.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "dist\godot\AutoTessell.pck"; DestDir: "{app}"; Flags: ignoreversion
-
-; Python backend (Godot가 자동 실행)
-Source: "dist\auto-tessell\*"; DestDir: "{app}\backend"; Flags: ignoreversion recursesubdirs
-
-; Sample files
-Source: "tests\benchmarks\sphere.stl"; DestDir: "{app}\samples"
-Source: "tests\benchmarks\box.step"; DestDir: "{app}\samples"
-Source: "tests\benchmarks\naca0012.stl"; DestDir: "{app}\samples"
-
-; README
-Source: "README.md"; DestDir: "{app}"; Flags: isreadme
+; GUI files
+Source: "..\dist\gui\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Backend files (Server)
+Source: "..\dist\server\*"; DestDir: "{app}\server"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\Auto-Tessell"; Filename: "{app}\AutoTessell.exe"; Comment: "Auto-Tessell 메쉬 생성 도구"
-Name: "{group}\Uninstall Auto-Tessell"; Filename: "{uninstallexe}"
-Name: "{userdesktop}\Auto-Tessell"; Filename: "{app}\AutoTessell.exe"; Comment: "Auto-Tessell 메쉬 생성 도구"
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\AutoTessell.exe"; Description: "Auto-Tessell 실행"; Flags: postinstall nowait skipifsilent shellexec
-
-[UninstallRun]
-Filename: "taskkill"; Parameters: "/IM AutoTessell.exe /F"; Flags: runhidden; RunOnceId: "KillGodot"
-Filename: "taskkill"; Parameters: "/IM auto-tessell.exe /F"; Flags: runhidden; RunOnceId: "KillBackend"
+; Option to launch the app after setup completes
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent

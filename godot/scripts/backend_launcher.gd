@@ -61,16 +61,22 @@ func _launch_backend() -> void:
 	print("[Backend] Project dir: %s" % project_dir)
 	print("[Backend] Root dir: %s" % root)
 
-	# 탐색 순서
+	# 탐색 순서 (installer.iss 구조에 맞춤)
+	var exe_dir := OS.get_executable_path().get_base_dir()
 	var search_paths: Array[String] = [
-		# 설치 모드: Godot .exe 옆 backend/
-		OS.get_executable_path().get_base_dir().path_join("backend/auto-tessell.exe"),
-		OS.get_executable_path().get_base_dir().path_join("backend/auto-tessell"),
-		# 개발 모드: 프로젝트 루트의 dist/
+		# 설치 모드: Godot .exe 옆 server/ (installer.iss 구조)
+		exe_dir.path_join("server/auto-tessell-server.exe"),
+		exe_dir.path_join("server/auto-tessell-server"),
+		# 설치 모드 대안: backend/ 이름
+		exe_dir.path_join("backend/auto-tessell-server.exe"),
+		exe_dir.path_join("backend/auto-tessell.exe"),
+		exe_dir.path_join("backend/auto-tessell"),
+		# 개발 모드: dist/server/ (spec 출력)
+		root.path_join("dist/server/auto-tessell-server.exe"),
+		root.path_join("dist/server/auto-tessell-server"),
+		# 개발 모드 대안: dist/auto-tessell/
 		root.path_join("dist/auto-tessell/auto-tessell.exe"),
 		root.path_join("dist/auto-tessell/auto-tessell"),
-		# 개발 모드 대안: 절대 경로 (Windows)
-		"D:/work/claude_code/auto-tessell/dist/auto-tessell/auto-tessell.exe",
 	]
 
 	for path in search_paths:
