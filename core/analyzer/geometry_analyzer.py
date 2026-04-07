@@ -15,6 +15,7 @@ import trimesh
 
 from core.analyzer.file_reader import (
     CAD_FORMATS,
+    LAS_FORMATS,
     MESHIO_FORMATS,
     TRIMESH_FORMATS,
     load_mesh,
@@ -91,15 +92,37 @@ class GeometryAnalyzer:
         file_size = os.path.getsize(path)
 
         is_cad_brep = fmt in CAD_FORMATS
-        is_volume_mesh = fmt in MESHIO_FORMATS
-        is_surface_mesh = fmt in TRIMESH_FORMATS or (not is_cad_brep and not is_volume_mesh)
+        is_las = fmt in LAS_FORMATS
+        is_cgns = fmt == ".cgns"
+        is_volume_mesh = (fmt in MESHIO_FORMATS) or is_cgns
+        is_surface_mesh = (
+            fmt in TRIMESH_FORMATS or (not is_cad_brep and not is_volume_mesh and not is_las)
+        )
 
-        # 인코딩 감지: STL binary 판별
-        detected_encoding = self._detect_encoding(path)
+        # LAS/LAZ: 포인트 클라우드이므로 surface/volume 모두 False
+        if is_las:
+            is_surface_mesh = False
+            is_volume_mesh = False
+
+        # CGNS: 볼륨 메쉬 포함
+        if is_cgns:
+            is_surface_mesh = False
+            is_volume_mesh = True
+
+        # 인코딩 감지
+        detected_encoding = self._detect_encoding(path, fmt)
+
+        # format 문자열 정규화
+        if is_las:
+            format_str = "LAS"
+        elif is_cgns:
+            format_str = "CGNS"
+        else:
+            format_str = fmt.lstrip(".").upper()
 
         return FileInfo(
             path=str(path.resolve()),
-            format=fmt.lstrip(".").upper(),
+            format=format_str,
             file_size_bytes=file_size,
             detected_encoding=detected_encoding,
             is_cad_brep=is_cad_brep,
@@ -108,9 +131,14 @@ class GeometryAnalyzer:
         )
 
     @staticmethod
-    def _detect_encoding(path: Path) -> str:
-        """STL binary/ascii 판별, 나머지는 'binary' 기본값."""
-        fmt = path.suffix.lower()
+    def _detect_encoding(path: Path, fmt: str | None = None) -> str:
+        """STL binary/ascii 판별, 나머지는 포맷별 기본값."""
+        if fmt is None:
+            fmt = path.suffix.lower()
+        if fmt in {".las", ".laz"}:
+            return "binary_las"
+        if fmt == ".cgns":
+            return "binary_hdf5"
         if fmt != ".stl":
             return "binary"
         try:

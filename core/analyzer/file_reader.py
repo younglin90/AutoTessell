@@ -3,6 +3,8 @@
 지원 포맷: STL, OBJ, PLY, OFF (trimesh 기반)
 CAD 포맷: STEP, IGES, BREP (cadquery → trimesh 테셀레이션)
 추가 포맷 확장은 meshio 계층에서 처리한다.
+포인트 클라우드: LAS/LAZ (laspy → convex hull 근사)
+CFD 볼륨 메쉬: CGNS (meshio 우선, pyCGNS fallback)
 """
 
 from __future__ import annotations
@@ -23,10 +25,13 @@ TRIMESH_FORMATS: frozenset[str] = frozenset(
 
 # meshio 로딩을 지원하는 확장자 목록 (trimesh fallback 포함)
 MESHIO_FORMATS: frozenset[str] = frozenset(
-    {".msh", ".vtu", ".vtk", ".vtp", ".xdmf", ".xmf", ".nas", ".bdf", ".inp"}
+    {".msh", ".vtu", ".vtk", ".vtp", ".xdmf", ".xmf", ".nas", ".bdf", ".inp", ".cgns"}
 )
 
 CAD_FORMATS: frozenset[str] = frozenset({".step", ".stp", ".iges", ".igs", ".brep"})
+
+# LAS/LAZ 포인트 클라우드 포맷
+LAS_FORMATS: frozenset[str] = frozenset({".las", ".laz"})
 
 
 def _detect_format(path: Path) -> str:
@@ -67,6 +72,12 @@ def load_mesh(path: Path) -> trimesh.Trimesh:
 
     if fmt in CAD_FORMATS:
         return _load_via_cad(path, fmt)
+
+    if fmt in LAS_FORMATS:
+        return _load_via_las(path, fmt)
+
+    if fmt == ".cgns":
+        return _load_via_cgns(path, fmt)
 
     if fmt in MESHIO_FORMATS:
         return _load_via_meshio(path, fmt)
@@ -275,3 +286,183 @@ def _load_via_meshio(path: Path, fmt: str) -> trimesh.Trimesh:
         num_faces=len(result.faces),
     )
     return result
+
+
+def _load_via_las(path: Path, fmt: str) -> trimesh.Trimesh:
+    """LAS/LAZ 포인트 클라우드 파일 로딩 → convex hull 표면 근사.
+
+    laspy 2.x API: laspy.read(path) → LasData 객체.
+    x, y, z 속성은 스케일된 float64 numpy 배열을 반환한다.
+    convex hull 근사를 사용하여 표면 메쉬를 생성한다.
+    """
+    try:
+        import laspy
+    except ImportError as exc:
+        raise ValueError(
+            "LAS/LAZ 포맷을 읽으려면 laspy가 필요합니다. "
+            "`pip install laspy[lazrs]`를 실행하세요."
+        ) from exc
+
+    import numpy as np
+
+    try:
+        las = laspy.read(str(path))
+    except Exception as exc:
+        raise ValueError(
+            f"laspy 로딩 실패 [{fmt}]: {path}\n원인: {exc}"
+        ) from exc
+
+    x = np.asarray(las.x, dtype=np.float64)
+    y = np.asarray(las.y, dtype=np.float64)
+    z = np.asarray(las.z, dtype=np.float64)
+    points = np.column_stack([x, y, z])
+
+    if len(points) < 4:
+        raise ValueError(
+            f"LAS 파일에 포인트가 너무 적습니다 ({len(points)}개, 최소 4개 필요): {path}"
+        )
+
+    # convex hull 근사로 표면 메쉬 생성
+    try:
+        hull = trimesh.convex.convex_hull(points)
+    except Exception as exc:
+        raise ValueError(
+            f"LAS 포인트 클라우드의 convex hull 생성 실패: {path}\n원인: {exc}"
+        ) from exc
+
+    if not isinstance(hull, trimesh.Trimesh) or len(hull.faces) == 0:
+        raise ValueError(
+            f"LAS convex hull 결과가 유효하지 않습니다: {path}"
+        )
+
+    log.info(
+        "mesh_loaded_via_las",
+        path=str(path),
+        num_points=len(points),
+        num_hull_vertices=len(hull.vertices),
+        num_hull_faces=len(hull.faces),
+    )
+    return hull
+
+
+def _load_via_cgns(path: Path, fmt: str) -> trimesh.Trimesh:
+    """CGNS 파일 로딩.
+
+    meshio를 우선 시도하고, 실패 시 pyCGNS(CGNS.MAP)로 fallback한다.
+    CGNS는 주로 볼륨 메쉬를 포함하므로 표면 삼각형 셀을 추출한다.
+    """
+    # --- meshio 우선 시도 ---
+    try:
+        import meshio
+        mesh = meshio.read(str(path))
+        tri_cells = [cell for cell in mesh.cells if cell.type == "triangle"]
+        if tri_cells:
+            import numpy as np
+            faces = np.vstack([c.data for c in tri_cells])
+            result = trimesh.Trimesh(
+                vertices=mesh.points[:, :3], faces=faces, process=False
+            )
+            log.info(
+                "mesh_loaded_via_cgns_meshio",
+                path=str(path),
+                num_vertices=len(result.vertices),
+                num_faces=len(result.faces),
+            )
+            return result
+        # meshio 성공했으나 삼각형 없음 → tetra 등에서 표면 추출 시도
+        tetra_cells = [cell for cell in mesh.cells if cell.type == "tetra"]
+        if tetra_cells:
+            import numpy as np
+            all_faces: list[np.ndarray] = []
+            for cell in tetra_cells:
+                tets = cell.data
+                # tetra 4면: 각 면의 인덱스 조합
+                face_combos = np.array([[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]])
+                for combo in face_combos:
+                    all_faces.append(tets[:, combo])
+            combined = np.vstack(all_faces)
+            tmp_mesh = trimesh.Trimesh(
+                vertices=mesh.points[:, :3], faces=combined, process=True
+            )
+            # 중복 면 제거된 표면만 추출
+            surface = tmp_mesh
+            log.info(
+                "mesh_loaded_via_cgns_meshio_tetra_surface",
+                path=str(path),
+                num_vertices=len(surface.vertices),
+                num_faces=len(surface.faces),
+            )
+            return surface
+    except Exception as meshio_exc:
+        log.warning("cgns_meshio_failed", path=str(path), error=str(meshio_exc))
+
+    # --- pyCGNS fallback ---
+    try:
+        import CGNS.MAP as cgm
+        import numpy as np
+
+        result_tree, _, _ = cgm.load(str(path))
+
+        # CGNS 트리를 순회하여 좌표와 connectivity 추출
+        # CGNS.PAT.cgnslib 유틸리티로 노드 검색
+        try:
+            import CGNS.PAT.cgnslib as cgl
+
+            # Zone 노드에서 GridCoordinates 추출
+            coords_x: list[np.ndarray] = []
+            coords_y: list[np.ndarray] = []
+            coords_z: list[np.ndarray] = []
+            tri_faces_list: list[np.ndarray] = []
+
+            def _walk_tree(node: list) -> None:
+                """CGNS 트리 재귀 탐색."""
+                if not isinstance(node, list) or len(node) < 4:
+                    return
+                name, value, children, label = node[0], node[1], node[2], node[3]
+                if label == "DataArray_t" and isinstance(name, str):
+                    if name == "CoordinateX" and value is not None:
+                        coords_x.append(np.asarray(value).flatten())
+                    elif name == "CoordinateY" and value is not None:
+                        coords_y.append(np.asarray(value).flatten())
+                    elif name == "CoordinateZ" and value is not None:
+                        coords_z.append(np.asarray(value).flatten())
+                if label == "Elements_t" and children:
+                    for child in children:
+                        if isinstance(child, list) and child[3] == "DataArray_t":
+                            if child[0] == "ElementConnectivity" and child[1] is not None:
+                                conn = np.asarray(child[1]).flatten()
+                                # TRI_3 = 5 in CGNS element type
+                                tri_faces_list.append(conn.reshape(-1, 3) - 1)
+                for child in children or []:
+                    _walk_tree(child)
+
+            _walk_tree(result_tree)
+
+            if coords_x and coords_y and coords_z:
+                vx = np.concatenate(coords_x)
+                vy = np.concatenate(coords_y)
+                vz = np.concatenate(coords_z)
+                vertices = np.column_stack([vx, vy, vz])
+                if tri_faces_list:
+                    faces = np.vstack(tri_faces_list)
+                    result = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
+                    log.info(
+                        "mesh_loaded_via_pycgns",
+                        path=str(path),
+                        num_vertices=len(result.vertices),
+                        num_faces=len(result.faces),
+                    )
+                    return result
+        except Exception:
+            pass
+
+        raise ValueError(
+            f"CGNS 파일에서 표면 삼각형 메쉬를 추출하지 못했습니다: {path}"
+        )
+
+    except ImportError:
+        raise ValueError(
+            f"CGNS 파일 로딩 실패: {path}\n"
+            "meshio와 pyCGNS 모두 사용할 수 없습니다. "
+            "`pip install meshio` 또는 `pip install pyCGNS`를 실행하세요."
+        )

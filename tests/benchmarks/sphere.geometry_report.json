@@ -1,8 +1,8 @@
 {
   "file_info": {
-    "path": "tests/benchmarks/sphere.stl",
-    "format": "stl",
-    "file_size_bytes": 61284,
+    "path": "/home/younglin90/work/claude_code/AutoTessell/tests/benchmarks/sphere.stl",
+    "format": "STL",
+    "file_size_bytes": 64084,
     "detected_encoding": "binary",
     "is_cad_brep": false,
     "is_surface_mesh": true,
@@ -10,9 +10,21 @@
   },
   "geometry": {
     "bounding_box": {
-      "min": [-1.0, -1.0, -1.0],
-      "max": [1.0, 1.0, 1.0],
-      "center": [0.0, 0.0, 0.0],
+      "min": [
+        -1.0,
+        -1.0,
+        -1.0
+      ],
+      "max": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
       "diagonal": 3.4641016151377544,
       "characteristic_length": 2.0
     },
@@ -27,38 +39,55 @@
       "genus": 0,
       "has_degenerate_faces": false,
       "num_degenerate_faces": 0,
-      "min_face_area": 0.005,
-      "max_face_area": 0.025,
-      "face_area_std": 0.003,
-      "min_edge_length": 0.08,
-      "max_edge_length": 0.20,
-      "edge_length_ratio": 2.5
+      "min_face_area": 0.009082838806991374,
+      "max_face_area": 0.011738409411183679,
+      "face_area_std": 0.0008403463873592898,
+      "min_edge_length": 0.1382831472207013,
+      "max_edge_length": 0.16464719563233013,
+      "edge_length_ratio": 1.1906526495925893
     },
     "features": {
-      "has_sharp_edges": false,
-      "num_sharp_edges": 0,
+      "has_sharp_edges": true,
+      "num_sharp_edges": 1920,
       "sharp_edge_angle_threshold": 30.0,
       "has_thin_walls": false,
-      "min_wall_thickness_estimate": 0.5,
+      "min_wall_thickness_estimate": 2.0,
       "has_small_features": false,
-      "smallest_feature_size": 0.1,
-      "feature_to_bbox_ratio": 0.05,
-      "curvature_max": 1.0,
-      "curvature_mean": 1.0
+      "smallest_feature_size": 0.1382831472207013,
+      "feature_to_bbox_ratio": 0.06914157361035066,
+      "curvature_max": 0.725932038747952,
+      "curvature_mean": 0.5859194329135564
     }
   },
   "flow_estimation": {
     "type": "external",
-    "confidence": 0.9,
-    "reasoning": "Closed sphere surface — typical external flow benchmark",
-    "alternatives": ["internal"]
+    "confidence": 0.85,
+    "reasoning": "단일 폐곡면, genus=0, 외부 유동 물체로 추정",
+    "alternatives": [
+      "internal"
+    ]
   },
   "issues": [],
   "tier_compatibility": {
-    "tier0_core": {"compatible": true, "notes": ""},
-    "tier05_netgen": {"compatible": true, "notes": ""},
-    "tier1_snappy": {"compatible": true, "notes": ""},
-    "tier15_cfmesh": {"compatible": true, "notes": ""},
-    "tier2_tetwild": {"compatible": true, "notes": ""}
+    "tier0_core": {
+      "compatible": true,
+      "notes": "watertight 메쉬, Tier 0 가능"
+    },
+    "tier05_netgen": {
+      "compatible": true,
+      "notes": "표면 메쉬 입력 가능"
+    },
+    "tier1_snappy": {
+      "compatible": true,
+      "notes": "외부 유동 최적, BL 자동 생성"
+    },
+    "tier15_cfmesh": {
+      "compatible": true,
+      "notes": "자동화 수준 높음"
+    },
+    "tier2_tetwild": {
+      "compatible": true,
+      "notes": "불량 지오메트리 fallback, 강건한 처리 가능"
+    }
   }
 }
