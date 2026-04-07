@@ -6,6 +6,8 @@ build-backend = "setuptools.build_meta"
 name = "auto-tessell"
 version = "0.1.0"
 description = "CAD/메쉬 파일 → OpenFOAM polyMesh 자동 생성 CLI 도구"
+license = {text = "MIT"}
+readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     # 핵심 CLI

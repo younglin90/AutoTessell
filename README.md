@@ -141,15 +141,22 @@ auto-tessell/
 └── agents/specs/           # 에이전트 스펙 문서
 ```
 
-## 라이선스 요약
+## 라이선스
 
-| 라이브러리 | 라이선스 | 상업 사용 |
-|-----------|---------|----------|
+**Auto-Tessell** 자체는 **MIT 라이선스**로 배포됩니다 (연구·오픈소스 목적).
+
+### 의존 라이브러리 라이선스
+
+| 라이브러리 | 라이선스 | 연구/오픈소스 |
+|-----------|---------|-------------|
 | trimesh, pyACVD, pymeshfix | MIT/BSD | ✅ |
 | TetWild (pytetwild) | MPL-2.0 | ✅ |
-| Netgen | LGPL-2.1 | ✅ (동적 링크) |
-| OpenFOAM | GPL | ✅ (서버 내부) |
-| MMG | LGPL-3.0 | ✅ (동적 링크) |
+| Netgen | LGPL-2.1 | ✅ |
+| OpenFOAM | GPL-2.0+ | ✅ |
+| MMG | LGPL-3.0 | ✅ |
 | Godot | MIT | ✅ |
 | meshgpt-pytorch | MIT | ✅ |
-| MeshAnythingV2 | S-Lab 1.0 | ❌ (비상업, 허가 필요) |
+| MeshAnythingV2 | S-Lab 1.0 | ✅ (비상업 연구 한정) |
+
+> **주의:** MeshAnythingV2 (L3 AI 표면 수리)는 비상업 연구 목적으로만 사용 가능합니다.
+> 상업적 사용 시 원저자의 별도 허가가 필요합니다.
