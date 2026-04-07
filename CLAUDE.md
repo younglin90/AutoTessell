@@ -53,10 +53,46 @@ Gate: watertight + manifold 통과 시 Volume Phase 진입
 | Standard | Netgen 또는 cfMesh | Tet / Hex-dominant | ~분 | LGPL-2.1 / GPL |
 | Fine | snappyHexMesh + BL 또는 MMG | Hex-dominant / Tet | ~30분+ | GPL / LGPL-3.0 |
 
+### 지원 메쉬 타입 (볼륨)
+
+| 타입 | 설명 | 주요 엔진 |
+|------|------|---------|
+| 정렬격자 (Structured) | 블록 기반, PLOT3D/CGNS 출력 | gridgen, ICEM CFD style |
+| 비정렬 Tetrahedral | 복잡 형상에 범용 | TetWild, Netgen, MeshPy(TetGen), MMG |
+| Hex-dominant | 경계층 품질 우수 | snappyHexMesh, cfMesh, classy_blocks |
+| Polygonal/Polyhedral | 셀 수 최소화 | OpenFOAM polyDualMesh, geogram |
+
+모든 타입을 지원하며, 형상·품질 레벨·솔버 요구사항에 따라 자동 선택.
+
 ## 입력 포맷
 
-CAD: STL, OBJ, PLY, OFF, 3MF, STEP, IGES, BREP
-CFD 메쉬: Gmsh .msh, Fluent .msh/.cas, CGNS, VTK/VTU/VTP, Nastran, Abaqus, Medit, XDMF, OpenFOAM polyMesh
+### CAD — 표준 중립 포맷
+STL, STEP(.stp/.step), IGES(.igs/.iges), VDA-FS(.vda), OBJ, PLY, OFF, 3MF, BREP
+
+### CAD — 커널 기반
+Parasolid(.x_t/.x_b), ACIS(.sat/.sab)
+
+### CAD — 네이티브 (상용, pythonocc/IfcOpenShell 등 경유)
+CATIA V4/V5/V6, SolidWorks(.sldprt/.sldasm), PTC Creo/Pro·E(.prt/.asm),
+Siemens NX(.prt), Rhino 3D(.3dm), Autodesk Inventor, Solid Edge
+
+### 격자 데이터
+CGNS(.cgns), PLOT3D(.p3d/.x/.q), Gmsh(.msh), Fluent(.msh/.cas),
+VTK/VTU/VTP, Nastran, Abaqus, Medit, XDMF, OpenFOAM polyMesh,
+NASA VGRID/FELISA/PATRAN, LAS/LAZ(포인트 클라우드)
+
+## 출력 포맷
+
+### CFD 솔버 — 주요
+OpenFOAM(polyMesh), ANSYS Fluent(.cas/.msh), CGNS(.cgns),
+Star-CCM+(.ccm), ANSYS CFX(.gtm), SU2(.su2), PLOT3D,
+NASA FUN3D, OVERFLOW, CFL3D
+
+### CFD 솔버 — 상용 추가
+CFD++, Cobalt, SC/Tetra, CRUNCH, ADINA
+
+### 지오메트리 재출력
+IGES, STEP, STL, Parasolid(.x_t)
 
 ## 디렉터리 구조
 

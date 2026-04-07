@@ -405,3 +405,37 @@ OpenFOAM polyMesh 출력
     + foamlib으로 BC 자동 설정
     + OpenFOAMCaseGenerator로 실행 가능한 케이스 생성
 ```
+
+---
+
+## v1.6 — 네이티브 CAD 포맷 확장
+
+**목표**: 상용 CAD 소프트웨어 파일 직접 읽기 지원
+
+| 추가 툴 | 라이선스 | 설치 | 역할 |
+|--------|---------|------|------|
+| **pythonocc-core** | LGPL-2.1 | conda-forge | OCCT 전체 API — Parasolid/ACIS/CATIA/NX/Creo/SW 힐링·변환 |
+| **rhino3dm** | MIT | `pip install rhino3dm` | Rhino 3D(.3dm) 읽기 |
+| **IfcOpenShell** | LGPL-3.0 | `pip install ifcopenshell` | IFC(건축)/Inventor/Solid Edge 보조 |
+
+**달성 기준**:
+- .x_t .x_b (Parasolid) → polyMesh 파이프라인 동작
+- .3dm (Rhino) → polyMesh 동작
+- CATIA/SolidWorks/NX .prt → STEP 중간 변환 후 파이프라인
+
+---
+
+## v1.7 — 다중 CFD 솔버 출력
+
+**목표**: OpenFOAM 외 60개 솔버 포맷 출력 지원 (Pointwise 수준)
+
+| 추가 툴 | 라이선스 | 설치 | 역할 |
+|--------|---------|------|------|
+| **meshio 전체 활용** | MIT | 이미 설치 | Fluent/CGNS/SU2/PLOT3D/Abaqus/Nastran 등 출력 |
+| **pye57** | MIT | `pip install pye57` | E57 LiDAR 포인트 클라우드 입력 |
+| **rhino3dm** | MIT | `pip install rhino3dm` | Rhino 지오메트리 재출력 |
+
+**달성 기준**:
+- ANSYS Fluent(.cas), CGNS, SU2, PLOT3D 출력 동작
+- 지오메트리 재출력: IGES, STEP, STL, Parasolid
+- NASA FUN3D, OVERFLOW, CFL3D 출력 경로 구현

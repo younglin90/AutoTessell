@@ -186,30 +186,86 @@
 
 ## 입출력 포맷
 
-### 입력 포맷 (현재)
+### 입력 포맷 — CAD 표준 중립
 
-| 카테고리 | 포맷 |
-|---------|------|
-| 표면 메쉬 | STL, OBJ, PLY, OFF, 3MF |
-| CAD | STEP, IGES, BREP |
-| CFD 메쉬 | Gmsh .msh, Fluent .msh/.cas, VTK/VTU/VTP, Nastran, Abaqus, Medit |
-| 기타 | XDMF, OpenFOAM polyMesh |
+| 포맷 | 확장자 | 라이브러리 | 상태 |
+|------|--------|-----------|------|
+| STL | .stl | trimesh | ✅ |
+| STEP | .stp, .step | cadquery / gmsh | ✅ |
+| IGES | .igs, .iges | cadquery / gmsh | ✅ |
+| VDA-FS | .vda | pythonocc-core | 예정 |
+| OBJ/PLY/OFF/3MF | | trimesh | ✅ |
+| BREP | .brep | cadquery | ✅ |
+| Parasolid | .x_t, .x_b | pythonocc-core | 예정 |
+| ACIS | .sat, .sab | pythonocc-core | 예정 |
 
-### 입력 포맷 (예정 추가)
+### 입력 포맷 — 네이티브 CAD (상용)
+
+| 포맷 | 확장자 | 라이브러리 | 비고 |
+|------|--------|-----------|------|
+| CATIA V4/V5/V6 | .model, .CATPart, .CATProduct | pythonocc-core / IfcOpenShell | 라이선스 필요할 수 있음 |
+| SolidWorks | .sldprt, .sldasm | pythonocc-core | |
+| PTC Creo/Pro·E | .prt, .asm | pythonocc-core | |
+| Siemens NX | .prt | pythonocc-core | |
+| Rhino 3D | .3dm | rhino3dm (MIT) | |
+| Autodesk Inventor | .ipt, .iam | IfcOpenShell / OCC | |
+| Solid Edge | .par, .asm | pythonocc-core | |
+
+### 입력 포맷 — 격자 데이터
+
+| 포맷 | 확장자 | 라이브러리 | 상태 |
+|------|--------|-----------|------|
+| CGNS | .cgns | pyCGNS / meshio | ✅ |
+| PLOT3D | .p3d, .x, .q | meshio | 예정 |
+| Gmsh | .msh | meshio | ✅ |
+| Fluent | .msh, .cas | meshio | ✅ |
+| VTK/VTU/VTP | | pyvista / meshio | ✅ |
+| Nastran/Abaqus | | meshio | ✅ |
+| XDMF/Medit | | meshio | ✅ |
+| OpenFOAM polyMesh | | 내장 파서 | ✅ |
+| NASA VGRID/FELISA | | meshio (부분) | 예정 |
+| PATRAN | .pat | meshio | 예정 |
+| LAS/LAZ | | laspy | ✅ |
+| E57 (LiDAR) | .e57 | pye57 | 예정 |
+
+### 출력 포맷 — CFD 솔버
+
+| 솔버 | 포맷 | 라이브러리 | 상태 |
+|------|------|-----------|------|
+| OpenFOAM | polyMesh 디렉터리 | PolyMeshWriter (내장) | ✅ |
+| ANSYS Fluent | .cas, .msh | meshio | ✅ |
+| CGNS | .cgns | pyCGNS / meshio | ✅ |
+| Star-CCM+ | .ccm | meshio (부분) | 예정 |
+| ANSYS CFX | .gtm | meshio | 예정 |
+| SU2 | .su2 | meshio | ✅ |
+| PLOT3D | .p3d, .x | meshio | 예정 |
+| NASA FUN3D | | meshio | 예정 |
+| OVERFLOW | | meshio | 예정 |
+| CFL3D | | meshio | 예정 |
+| CFD++/Cobalt/SC/Tetra/CRUNCH/ADINA | | meshio (부분) | 예정 |
+
+### 출력 포맷 — 지오메트리 재출력
 
 | 포맷 | 라이브러리 |
 |------|-----------|
-| CGNS | pyCGNS |
-| Exodus II | SEACAS/exodus.py |
-| LAS/LAZ/E57 (LiDAR) | PDAL |
-| SU2 native | SU2 |
+| IGES | cadquery / pythonocc |
+| STEP | cadquery / pythonocc |
+| STL | trimesh |
+| Parasolid (.x_t) | pythonocc-core |
 
-### 출력 포맷
+### 지원 볼륨 메쉬 타입
 
-| 포맷 | 라이브러리 |
-|------|-----------|
-| OpenFOAM polyMesh | PolyMeshWriter (내장) |
-| 기타 CFD 포맷 | meshio |
+| 타입 | 설명 | 주요 엔진 | 출력 포맷 |
+|------|------|---------|---------|
+| 정렬격자 (Structured) | 블록 기반 정렬 격자 | ICEM-CFD style, gridgen | CGNS, PLOT3D |
+| 비정렬 Tetrahedral | 복잡 형상 범용 | TetWild, Netgen, TetGen(MeshPy), MMG3D, JIGSAW | OpenFOAM, Fluent, SU2, CGNS |
+| Hex-dominant | 경계층·정확도 우수 | snappyHexMesh, cfMesh, classy_blocks | OpenFOAM polyMesh, CGNS |
+| Polygonal/Polyhedral | 셀 수 최소, 수렴성 우수 | OpenFOAM polyDualMesh, geogram | OpenFOAM polyMesh |
+
+**선택 기준**: 형상 복잡도·품질 레벨·솔버 요구사항에 따라 Generator가 자동 선택.
+- Draft → Tetrahedral (속도 우선)
+- Standard → Tet 또는 Hex-dominant (정확도 균형)
+- Fine → Hex-dominant 또는 Polyhedral (최고 품질)
 
 ---
 
