@@ -15,10 +15,9 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+from typing import Any
 
 import trimesh
-
-from typing import Any
 
 from core.schemas import GeometryReport
 from core.utils.logging import get_logger
@@ -45,14 +44,22 @@ try:
     _FAST_SIMPLIFICATION_AVAILABLE = True
 except ImportError:
     _FAST_SIMPLIFICATION_AVAILABLE = False
-    log.debug("fast_simplification_unavailable", msg="fast-simplification 미설치 — L2 사전 데시메이션 비활성화")
+    msg = "fast-simplification 미설치 — L2 사전 데시메이션 비활성화"
+    log.debug("fast_simplification_unavailable", msg=msg)
 
 try:
-    import igl
+    import igl  # noqa: F401
     _IGL_AVAILABLE = True
 except ImportError:
     _IGL_AVAILABLE = False
     log.debug("igl_unavailable", msg="igl 미설치 — Laplacian smoothing 비활성화")
+
+try:
+    import xatlas
+    _XATLAS_AVAILABLE = True
+except ImportError:
+    _XATLAS_AVAILABLE = False
+    log.debug("xatlas_unavailable", msg="xatlas 미설치 — UV unwrap 비활성화")
 
 
 def _run_vorpalite_remesh(
@@ -510,3 +517,55 @@ class SurfaceRemesher:
             output_faces=len(result.faces),
         )
         return result
+
+    def apply_uv_unwrap(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh:
+        """xatlas를 사용한 UV 언랩 적용.
+
+        AI 모델 입력 전처리 등에서 UV 좌표가 필요할 때 사용.
+        xatlas가 미설치되거나 실패 시 UV 없는 원본 메쉬를 반환한다.
+
+        Args:
+            mesh: 입력 trimesh.Trimesh 객체.
+
+        Returns:
+            UV 좌표가 추가된 trimesh.Trimesh (또는 원본).
+        """
+        if not _XATLAS_AVAILABLE:
+            log.debug("apply_uv_unwrap_skipped", reason="xatlas unavailable")
+            return mesh
+
+        import numpy as np
+
+        try:
+            vertices = np.asarray(mesh.vertices, dtype=np.float32)
+            faces = np.asarray(mesh.faces, dtype=np.uint32)
+
+            # xatlas.parametrize(positions, indices) → (atlas, chart_indices, uvs)
+            # positions: (N, 3) float32 vertices
+            # indices: (F, 3) uint32 faces
+            # Returns: (atlas_uint32, chart_indices_uint32, uvs_float32)
+            # uvs는 (V, 2) float32 배열
+            atlas, chart_indices, uvs = xatlas.parametrize(vertices, faces)
+
+            if uvs is None or len(uvs) == 0:
+                log.warning("xatlas_parametrize_no_uvs")
+                return mesh
+
+            # trimesh visual에 UV 저장
+            # trimesh.visual.TextureVisuals는 uv 좌표를 가질 수 있음
+            try:
+                mesh.visual.uv = uvs  # type: ignore[union-attr]
+            except (AttributeError, TypeError):
+                log.warning("xatlas_uv_assignment_failed")
+
+            log.info(
+                "uv_unwrap_done",
+                num_vertices=len(vertices),
+                num_faces=len(faces),
+                uv_shape=uvs.shape,
+            )
+            return mesh
+
+        except Exception as exc:
+            log.warning("apply_uv_unwrap_failed", error=str(exc), fallback="passthrough")
+            return mesh

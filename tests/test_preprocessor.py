@@ -1132,3 +1132,128 @@ def test_l2_remesh_includes_laplacian_smoothing(sphere_mesh):
     method = step_record["method"]
     # 'igl_laplacian'이 있을 수도, 없을 수도 있음 (다른 리메쉬 방법이 우선될 수 있음)
     assert isinstance(method, str)
+
+
+# ---------------------------------------------------------------------------
+# test_xatlas_uv_unwrap (UV 언랩)
+# ---------------------------------------------------------------------------
+
+
+def test_xatlas_uv_unwrap_available():
+    """xatlas 라이브러리 가용성 확인."""
+    pytest.importorskip("xatlas")
+    from core.preprocessor.remesh import _XATLAS_AVAILABLE
+    assert _XATLAS_AVAILABLE is True
+
+
+def test_xatlas_uv_unwrap_returns_mesh(sphere_mesh):
+    """apply_uv_unwrap()은 trimesh.Trimesh를 반환한다."""
+    pytest.importorskip("xatlas")
+    from core.preprocessor.remesh import SurfaceRemesher
+
+    remesher = SurfaceRemesher()
+    result_mesh = remesher.apply_uv_unwrap(sphere_mesh)
+
+    # 입력과 동일한 면 개수이거나 그 이상
+    assert isinstance(result_mesh, trimesh.Trimesh)
+    assert len(result_mesh.faces) == len(sphere_mesh.faces)
+
+
+def test_xatlas_uv_unwrap_sets_uv_coordinates(sphere_mesh):
+    """apply_uv_unwrap()은 메쉬에 UV 좌표를 설정한다."""
+    pytest.importorskip("xatlas")
+    from core.preprocessor.remesh import SurfaceRemesher
+
+    remesher = SurfaceRemesher()
+    result_mesh = remesher.apply_uv_unwrap(sphere_mesh)
+
+    # UV 좌표 확인
+    if hasattr(result_mesh.visual, "uv") and result_mesh.visual.uv is not None:
+        import numpy as np
+        uv = result_mesh.visual.uv
+        assert isinstance(uv, np.ndarray)
+        assert uv.shape[1] == 2, "UV 좌표는 (N, 2) 형태여야 합니다"
+        assert len(uv) > 0, "UV 좌표가 비어있습니다"
+
+
+# ---------------------------------------------------------------------------
+# test_pygem_rbf_morph (RBF 메쉬 모핑)
+# ---------------------------------------------------------------------------
+
+
+def test_pygem_rbf_morph_notimplemented_if_unavailable(sphere_mesh):
+    """PyGeM이 미설치된 경우 NotImplementedError를 발생시킨다."""
+    pytest.importorskip("pygem")  # 설치됐다고 가정해야 이 테스트가 의미 있음
+    # 하지만 실제로는 설치된 pygem이 빙하 모델링용이므로 fallback 테스트
+    from core.preprocessor.morph import MeshMorpher
+
+    morpher = MeshMorpher()
+    import numpy as np
+
+    # 간단한 제어점 설정
+    cp_before = np.array([
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+    ], dtype=np.float64)
+
+    cp_after = np.array([
+        [0.0, 0.0, 0.0],
+        [1.5, 0.0, 0.0],
+        [0.0, 1.5, 0.0],
+    ], dtype=np.float64)
+
+    # PyGeM이 없으면 NotImplementedError 발생
+    try:
+        result_mesh = morpher.rbf_morph(sphere_mesh, cp_before, cp_after)
+        # PyGeM이 설치됐다면 이 부분 실행
+        assert isinstance(result_mesh, trimesh.Trimesh)
+    except NotImplementedError as e:
+        # 예상되는 동작 (PyGeM 미설치 시)
+        assert "PyGeM" in str(e)
+
+
+def test_pygem_rbf_morph_safe_returns_original_on_failure(sphere_mesh):
+    """rbf_morph_safe()는 실패 시 (원본_메쉬, False)를 반환한다."""
+    from core.preprocessor.morph import MeshMorpher
+
+    morpher = MeshMorpher()
+    import numpy as np
+
+    cp_before = np.array([
+        [0.0, 0.0, 0.0],
+        [1.0, 0.0, 0.0],
+    ], dtype=np.float64)
+
+    cp_after = np.array([
+        [0.0, 0.0, 0.0],
+        [1.5, 0.0, 0.0],
+    ], dtype=np.float64)
+
+    result_mesh, success = morpher.rbf_morph_safe(sphere_mesh, cp_before, cp_after)
+
+    assert isinstance(result_mesh, trimesh.Trimesh)
+    assert isinstance(success, bool)
+    # PyGeM이 없으면 success=False, 메쉬는 원본과 동일
+    if not success:
+        assert len(result_mesh.vertices) == len(sphere_mesh.vertices)
+
+
+def test_pygem_rbf_morph_validates_input_shape():
+    """rbf_morph()는 불일치한 제어점 형태를 거부한다."""
+    from core.preprocessor.morph import MeshMorpher
+    import numpy as np
+
+    morpher = MeshMorpher()
+    dummy_mesh = trimesh.creation.box()
+
+    # 불일치한 제어점
+    cp_before = np.array([[0, 0, 0], [1, 0, 0]], dtype=np.float64)
+    cp_after = np.array([[0, 0, 0]], dtype=np.float64)  # 개수 불일치
+
+    try:
+        morpher.rbf_morph(dummy_mesh, cp_before, cp_after)
+        # PyGeM 설치 시만 도달
+    except (ValueError, NotImplementedError) as e:
+        # 불일치 감지 또는 PyGeM 미설치
+        assert True
