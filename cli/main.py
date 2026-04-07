@@ -690,15 +690,15 @@ def export_vtk_cmd(case_dir: Path, output: Path | None, no_quality: bool) -> Non
 def interactive(ctx: click.Context, input_file: Path, output: Path) -> None:
     """대화형 모드 — 각 단계를 확인하며 진행한다."""
     from core.analyzer.geometry_analyzer import GeometryAnalyzer
+    from core.evaluator.metrics import AdditionalMetricsComputer
+    from core.evaluator.native_checker import NativeMeshChecker
+    from core.evaluator.quality_checker import MeshQualityChecker
+    from core.evaluator.report import EvaluationReporter, render_terminal
+    from core.generator.pipeline import MeshGenerator
     from core.preprocessor.pipeline import Preprocessor
     from core.strategist.strategy_planner import StrategyPlanner
-    from core.generator.pipeline import MeshGenerator
-    from core.evaluator.quality_checker import MeshQualityChecker
-    from core.evaluator.native_checker import NativeMeshChecker
-    from core.evaluator.report import EvaluationReporter, render_terminal
-    from core.evaluator.metrics import AdditionalMetricsComputer
-    from core.utils.boundary_classifier import classify_boundaries
     from core.utils.bc_writer import write_boundary_conditions
+    from core.utils.boundary_classifier import classify_boundaries
     from core.utils.vtk_exporter import export_vtk
 
     console.print(f"[bold magenta]Auto-Tessell Interactive[/bold magenta] {input_file}")

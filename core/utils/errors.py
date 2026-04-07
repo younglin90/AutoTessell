@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 
-
 class AutoTessellError(Exception):
     """Auto-Tessell 기본 에러. 사용자 친화적 메시지 포함."""
 

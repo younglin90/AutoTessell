@@ -8,15 +8,16 @@ from __future__ import annotations
 import json
 import shutil
 import time
-from typing import Any
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from core.analyzer.geometry_analyzer import GeometryAnalyzer
 from core.evaluator.fidelity import GeometryFidelityChecker
 from core.evaluator.metrics import AdditionalMetricsComputer
 from core.evaluator.quality_checker import MeshQualityChecker
 from core.evaluator.report import EvaluationReporter
+from core.generator.case_writer import FoamCaseWriter
 from core.generator.pipeline import MeshGenerator
 from core.preprocessor.pipeline import Preprocessor
 from core.schemas import (
@@ -27,7 +28,6 @@ from core.schemas import (
     QualityReport,
 )
 from core.strategist.strategy_planner import StrategyPlanner
-from core.generator.case_writer import FoamCaseWriter
 from core.utils.bc_writer import write_boundary_conditions
 from core.utils.boundary_classifier import classify_boundaries
 from core.utils.logging import get_logger

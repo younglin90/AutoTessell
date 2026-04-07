@@ -2,36 +2,35 @@
 
 from __future__ import annotations
 
-from enum import Enum
-from typing import Any, Optional
+from enum import StrEnum
+from typing import Any
 
 from pydantic import BaseModel, Field
-
 
 # ---------------------------------------------------------------------------
 # 공통 타입
 # ---------------------------------------------------------------------------
 
 
-class Severity(str, Enum):
+class Severity(StrEnum):
     CRITICAL = "critical"
     WARNING = "warning"
     INFO = "info"
 
 
-class Verdict(str, Enum):
+class Verdict(StrEnum):
     PASS = "PASS"
     PASS_WITH_WARNINGS = "PASS_WITH_WARNINGS"
     FAIL = "FAIL"
 
 
-class QualityLevel(str, Enum):
+class QualityLevel(StrEnum):
     DRAFT = "draft"
     STANDARD = "standard"
     FINE = "fine"
 
 
-class SurfaceQualityLevel(str, Enum):
+class SurfaceQualityLevel(StrEnum):
     L1_REPAIR = "l1_repair"
     L2_REMESH = "l2_remesh"
     L3_AI = "l3_ai"
@@ -146,7 +145,7 @@ class PreprocessStep(BaseModel):
     input_faces: int | None = None
     output_faces: int | None = None
     time_seconds: float
-    gate_passed: Optional[bool] = None
+    gate_passed: bool | None = None
 
 
 class FinalValidation(BaseModel):
@@ -165,12 +164,12 @@ class PreprocessingSummary(BaseModel):
     total_time_seconds: float
     steps_performed: list[PreprocessStep] = Field(default_factory=list)
     final_validation: FinalValidation
-    surface_quality_level: Optional[str] = None
+    surface_quality_level: str | None = None
 
 
 class PreprocessedReport(BaseModel):
     preprocessing_summary: PreprocessingSummary
-    surface_quality_level: Optional[str] = None
+    surface_quality_level: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -217,7 +216,7 @@ class QualityTargets(BaseModel):
     max_skewness: float = 6.0
     max_aspect_ratio: float = 200.0
     min_determinant: float = 0.001
-    target_y_plus: Optional[float] = None
+    target_y_plus: float | None = None
 
 
 class PreviousAttempt(BaseModel):
@@ -285,7 +284,7 @@ class ExecutionSummary(BaseModel):
     tiers_attempted: list[TierAttempt] = Field(default_factory=list)
     output_dir: str
     total_time_seconds: float
-    quality_level: Optional[str] = None
+    quality_level: str | None = None
 
 
 class GeneratorLog(BaseModel):
@@ -366,7 +365,7 @@ class EvaluationSummary(BaseModel):
     hard_fails: list[FailCriterion] = Field(default_factory=list)
     soft_fails: list[FailCriterion] = Field(default_factory=list)
     recommendations: list[Recommendation] = Field(default_factory=list)
-    quality_level: Optional[str] = None
+    quality_level: str | None = None
 
 
 class QualityReport(BaseModel):

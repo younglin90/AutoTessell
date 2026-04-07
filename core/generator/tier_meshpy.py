@@ -73,8 +73,8 @@ class TierMeshPyGenerator:
 
         try:
             import meshpy.tet as mtet
-            import trimesh as _trimesh
             import numpy as np
+            import trimesh as _trimesh
 
             params = strategy.tier_specific_params
             max_vol = params.get(

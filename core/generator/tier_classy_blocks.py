@@ -28,7 +28,7 @@ def _write_block_mesh_dict_via_classy(
         strategy: 메쉬 전략 (domain 정보 포함).
         case_dir: OpenFOAM 케이스 디렉터리.
     """
-    import classy_blocks  # type: ignore[import-untyped]
+    import classy_blocks
 
     domain = strategy.domain
     x_min, y_min, z_min = domain.min
@@ -53,13 +53,7 @@ def _write_block_mesh_dict_via_classy(
     import numpy as np
 
     p000 = np.array([x_min, y_min, z_min])
-    p100 = np.array([x_max, y_min, z_min])
-    p110 = np.array([x_max, y_max, z_min])
-    p010 = np.array([x_min, y_max, z_min])
-    p001 = np.array([x_min, y_min, z_max])
-    p101 = np.array([x_max, y_min, z_max])
     p111 = np.array([x_max, y_max, z_max])
-    p011 = np.array([x_min, y_max, z_max])
 
     block = classy_blocks.Box(p000, p111)
     block.chop(0, count=nx)

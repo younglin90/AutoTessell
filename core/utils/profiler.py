@@ -6,9 +6,9 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import Generator
 
 from core.utils.logging import get_logger
 
@@ -21,7 +21,7 @@ class TimingRecord:
 
     name: str
     elapsed: float = 0.0
-    children: list["TimingRecord"] = field(default_factory=list)
+    children: list[TimingRecord] = field(default_factory=list)
 
     @property
     def total(self) -> float:

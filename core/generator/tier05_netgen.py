@@ -47,8 +47,8 @@ class Tier05NetgenGenerator:
         # netgen 모듈 import 시도
         try:
             import netgen.meshing as nm  # noqa: F401
-            from netgen.stl import STLGeometry  # noqa: F401
             from netgen.occ import OCCGeometry  # noqa: F401
+            from netgen.stl import STLGeometry  # noqa: F401
         except ImportError as exc:
             elapsed = time.monotonic() - t_start
             logger.warning(

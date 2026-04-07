@@ -75,6 +75,7 @@ def _convert_native(case_dir: Path) -> bool:
     """
     try:
         import numpy as np
+
         from core.utils.polymesh_reader import (
             parse_foam_faces,
             parse_foam_labels,

@@ -6,7 +6,6 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
-
 from typing import Any
 
 import numpy.typing as npt
@@ -150,8 +149,8 @@ class Tier2TetWildGenerator:
                 stop_energy=stop_energy,
             )
 
-            import trimesh as _trimesh
             import pytetwild
+            import trimesh as _trimesh
 
             surf: _trimesh.Trimesh = _trimesh.load(str(preprocessed_path), force="mesh")  # type: ignore[assignment]
             vertices = surf.vertices
@@ -163,7 +162,7 @@ class Tier2TetWildGenerator:
             if edge_length is not None:
                 tetra_kwargs["edge_len_r"] = edge_length
 
-            tet_v, tet_f = pytetwild.tetrahedralize(vertices, faces, **tetra_kwargs)  # type: ignore[attr-defined]
+            tet_v, tet_f = pytetwild.tetrahedralize(vertices, faces, **tetra_kwargs)
 
             # meshio로 .msh 저장 (gmshToFoam 경로에서 사용)
             import meshio as _meshio

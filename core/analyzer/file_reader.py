@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import cast
 
 import trimesh
 
@@ -135,7 +136,7 @@ def _load_via_cadquery(path: Path, fmt: str) -> trimesh.Trimesh:
         raise ValueError(f"cadquery에서 지원하지 않는 CAD 확장자: {fmt}")
 
     shape = wp.val()
-    vertices_cq, faces_list = shape.tessellate(tolerance=0.001, angularTolerance=0.1)  # type: ignore[union-attr]
+    vertices_cq, faces_list = shape.tessellate(tolerance=0.001, angularTolerance=0.1)
 
     if not vertices_cq or not faces_list:
         raise ValueError(f"cadquery 테셀레이션 결과가 비어 있습니다: {path}")
@@ -406,7 +407,7 @@ def _load_via_cgns(path: Path, fmt: str) -> trimesh.Trimesh:
         # CGNS 트리를 순회하여 좌표와 connectivity 추출
         # CGNS.PAT.cgnslib 유틸리티로 노드 검색
         try:
-            import CGNS.PAT.cgnslib as cgl
+            import CGNS.PAT.cgnslib as cgl  # noqa: F401
 
             # Zone 노드에서 GridCoordinates 추출
             coords_x: list[np.ndarray] = []
@@ -414,7 +415,7 @@ def _load_via_cgns(path: Path, fmt: str) -> trimesh.Trimesh:
             coords_z: list[np.ndarray] = []
             tri_faces_list: list[np.ndarray] = []
 
-            def _walk_tree(node: list) -> None:
+            def _walk_tree(node: list[object] | object) -> None:
                 """CGNS 트리 재귀 탐색."""
                 if not isinstance(node, list) or len(node) < 4:
                     return
@@ -427,13 +428,12 @@ def _load_via_cgns(path: Path, fmt: str) -> trimesh.Trimesh:
                     elif name == "CoordinateZ" and value is not None:
                         coords_z.append(np.asarray(value).flatten())
                 if label == "Elements_t" and children:
-                    for child in children:
+                    for child in cast(list[object], children):
                         if isinstance(child, list) and child[3] == "DataArray_t":
                             if child[0] == "ElementConnectivity" and child[1] is not None:
                                 conn = np.asarray(child[1]).flatten()
-                                # TRI_3 = 5 in CGNS element type
                                 tri_faces_list.append(conn.reshape(-1, 3) - 1)
-                for child in children or []:
+                for child in cast(list[object], children or []):
                     _walk_tree(child)
 
             _walk_tree(result_tree)

@@ -19,7 +19,7 @@ class PipelineWorker:
     QThread 상속 및 Signal 생성은 내부에서 지연 처리한다.
     """
 
-    def __new__(cls, input_path: Path, quality_level: "QualityLevel") -> "PipelineWorker":  # type: ignore[misc]
+    def __new__(cls, input_path: Path, quality_level: QualityLevel) -> PipelineWorker:  # type: ignore[misc]
         """QThread 를 동적으로 상속한 인스턴스를 반환한다."""
         from PySide6.QtCore import QThread, Signal
 
@@ -32,13 +32,13 @@ class PipelineWorker:
                 _PR = object  # type: ignore[assignment,misc]
 
             class _Worker(QThread):
-                progress: "Signal[str]" = Signal(str)
-                finished: "Signal[object]" = Signal(object)
+                progress: Signal[str] = Signal(str)
+                finished: Signal[object] = Signal(object)
 
                 def __init__(
                     self,
                     input_path: Path,
-                    quality_level: "QualityLevel",
+                    quality_level: QualityLevel,
                 ) -> None:
                     super().__init__()
                     self._input_path = input_path

@@ -35,7 +35,7 @@ def _read_foam_list(text: str) -> list[str]:
     return text[start + 1 : end].split()
 
 
-def _parse_foam_points(points_file: Path) -> "list[list[float]]":
+def _parse_foam_points(points_file: Path) -> list[list[float]]:
     """polyMesh/points 파일을 파싱해 좌표 목록으로 반환한다."""
 
     text = points_file.read_text()
@@ -57,7 +57,7 @@ def _parse_foam_points(points_file: Path) -> "list[list[float]]":
     return coords
 
 
-def _parse_foam_faces(faces_file: Path) -> "list[list[int]]":
+def _parse_foam_faces(faces_file: Path) -> list[list[int]]:
     """polyMesh/faces 파일을 파싱해 face 정점 인덱스 목록으로 반환한다."""
     text = faces_file.read_text()
     tokens = _read_foam_list(text)
@@ -220,14 +220,14 @@ class GeometryFidelityChecker:
     # polyMesh 경계면 추출
     # ------------------------------------------------------------------
 
-    def _extract_boundary_mesh(self, case_dir: Path) -> "trimesh.Trimesh | None":
+    def _extract_boundary_mesh(self, case_dir: Path) -> trimesh.Trimesh | None:
         """polyMesh에서 경계면 삼각형 메쉬를 추출한다.
 
         constant/polyMesh/points, faces, boundary 파일을 읽어 경계 패치에
         해당하는 faces만 모아 trimesh.Trimesh를 생성한다.
         """
-        import trimesh  # noqa: PLC0415
         import numpy as np  # noqa: PLC0415
+        import trimesh  # noqa: PLC0415
 
         poly_mesh_dir = case_dir / "constant" / "polyMesh"
         if not poly_mesh_dir.is_dir():
@@ -297,16 +297,16 @@ class GeometryFidelityChecker:
 
     def _compute_hausdorff(
         self,
-        mesh_a: "trimesh.Trimesh",
-        mesh_b: "trimesh.Trimesh",
+        mesh_a: trimesh.Trimesh,
+        mesh_b: trimesh.Trimesh,
     ) -> float:
         """두 메쉬 사이의 양방향 Hausdorff 거리를 계산한다.
 
         trimesh.sample.sample_surface로 포인트를 샘플링한 뒤
         scipy.spatial.cKDTree로 최근접 거리를 구한다.
         """
-        from scipy.spatial import cKDTree  # noqa: PLC0415
         import numpy as np  # noqa: PLC0415
+        from scipy.spatial import cKDTree  # noqa: PLC0415
 
         n = self.N_SAMPLES
 

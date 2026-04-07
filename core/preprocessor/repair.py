@@ -8,10 +8,9 @@ L1 수리 완료 후 gate 검사(watertight + manifold)를 수행한다.
 from __future__ import annotations
 
 import time
+from typing import Any
 
 import trimesh
-
-from typing import Any
 
 from core.schemas import Issue, Severity
 from core.utils.logging import get_logger
@@ -33,7 +32,7 @@ except ImportError:
     log.debug("mesh2sdf_unavailable", msg="mesh2sdf 미설치 — L1 mesh2sdf fallback 비활성화")
 
 try:
-    import igl
+    import igl as _igl_mod  # noqa: F401
     _IGL_AVAILABLE = True
 except ImportError:
     _IGL_AVAILABLE = False
@@ -74,45 +73,30 @@ def detect_self_intersections(mesh: trimesh.Trimesh) -> int:
     Returns:
         감지된 자기교차 쌍의 개수 (>= 0).
     """
-    import numpy as np
 
     # igl 기반 감지 시도
     if _IGL_AVAILABLE:
-        try:
-            import numpy as np
-            V = np.asarray(mesh.vertices, dtype=np.float64)
-            F = np.asarray(mesh.faces, dtype=np.int64)
-
-            # igl.self_intersecting_face_pairs는 없으므로
-            # 다른 접근: 면 쌍을 순회하며 교차 검사
-            # 이는 비용이 크므로 대신 간단한 heuristic 사용
-            # (실제 구현은 trimesh.collision 사용)
-            pass  # igl로는 직접 감지 불가
-        except Exception:
-            pass
+        pass  # igl available, but self-intersection detection uses trimesh.collision below
 
     # trimesh.collision.CollisionManager 사용 (기본)
     try:
         from trimesh.collision import CollisionManager
 
         # 자신과의 충돌 검사
-        manager = CollisionManager()
-        manager.add_object("mesh", mesh)
+        manager = CollisionManager()  # type: ignore[no-untyped-call]
+        manager.add_object("mesh", mesh)  # type: ignore[no-untyped-call]
 
         # 모든 면 쌍에 대한 충돌 검사
         # 더 간단한 방식: scene 자신과의 교차
-        in_contact = manager.in_collision_internal()
+        in_contact = manager.in_collision_internal()  # type: ignore[no-untyped-call]
 
         if in_contact:
             # 실제 교차 쌍 개수 세기 (근사치)
-            # collider 내부의 활성 충돌 수
             count = 0
             try:
-                # 충돌 쌍 반복
-                pairs = manager.collision_pairs()
+                pairs = manager.collision_pairs()  # type: ignore[attr-defined]
                 count = len(list(pairs))
             except Exception:
-                # 충돌이 감지됐지만 쌍 개수 불명확하면 1로 표시
                 count = 1
             return count
     except Exception as exc:
@@ -318,7 +302,7 @@ class SurfaceRepairer:
             )
 
             # marching cubes로 복원
-            vertices, faces, _, _ = marching_cubes(sdf_grid, level=0.0)
+            vertices, faces, _, _ = marching_cubes(sdf_grid, level=0.0)  # type: ignore[no-untyped-call]
 
             if len(faces) == 0:
                 log.warning("mesh2sdf_no_faces_after_marching_cubes")

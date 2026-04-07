@@ -17,9 +17,9 @@ import tempfile
 import time
 import uuid
 import zipfile
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from collections.abc import AsyncGenerator
 from typing import Any
 
 from fastapi import FastAPI, UploadFile, WebSocket, WebSocketDisconnect

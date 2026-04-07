@@ -45,14 +45,14 @@ from core.utils.polymesh_reader import (
 log = get_logger(__name__)
 
 try:
-    import meshio as _meshio  # type: ignore[import-untyped]
-    from neatmesh._analyzer import Analyzer3D as _NeatAnalyzer3D  # type: ignore[import-untyped]
-    from neatmesh._reader import MeshReader3D as _NeatReader3D  # type: ignore[import-untyped]
+    import meshio as _meshio
+    from neatmesh._analyzer import Analyzer3D as _NeatAnalyzer3D
+    from neatmesh._reader import MeshReader3D as _NeatReader3D
     _NEATMESH_AVAILABLE = True
 except ImportError:
-    _meshio = None  # type: ignore[assignment]
-    _NeatAnalyzer3D = None  # type: ignore[assignment]
-    _NeatReader3D = None  # type: ignore[assignment]
+    _meshio = None
+    _NeatAnalyzer3D = None
+    _NeatReader3D = None
     _NEATMESH_AVAILABLE = False
 
 

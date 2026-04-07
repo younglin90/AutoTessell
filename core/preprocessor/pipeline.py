@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import trimesh
 
@@ -123,7 +123,7 @@ class Preprocessor:
         # ------------------------------------------------------------------
         # L1: 표면 수리 (Repair)
         # ------------------------------------------------------------------
-        surface_quality_level: Optional[str] = None
+        surface_quality_level: str | None = None
 
         if not no_repair:
             mesh, l1_passed, l1_record = self._l1_repair(mesh, geometry_report)
@@ -337,9 +337,9 @@ class Preprocessor:
     def _try_meshgpt(self, mesh: trimesh.Trimesh) -> trimesh.Trimesh | None:
         """meshgpt-pytorch 추론 시도. 실패 시 None 반환."""
         try:
-            from meshgpt_pytorch import MeshTransformer
-            import torch
             import numpy as np
+            import torch
+            from meshgpt_pytorch import MeshTransformer
 
             transformer = MeshTransformer.from_pretrained("MarcusLoren/MeshGPT-preview")
             transformer.eval().cuda()

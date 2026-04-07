@@ -8,12 +8,12 @@ from pathlib import Path
 
 from core.generator.tier0_core import Tier0CoreGenerator
 from core.generator.tier05_netgen import Tier05NetgenGenerator
-from core.generator.tier15_cfmesh import Tier15CfMeshGenerator
 from core.generator.tier1_snappy import Tier1SnappyGenerator
 from core.generator.tier2_tetwild import Tier2TetWildGenerator
-from core.generator.tier_meshpy import TierMeshPyGenerator
+from core.generator.tier15_cfmesh import Tier15CfMeshGenerator
 from core.generator.tier_classy_blocks import TierClassyBlocksGenerator
 from core.generator.tier_jigsaw import TierJigsawGenerator
+from core.generator.tier_meshpy import TierMeshPyGenerator
 from core.schemas import ExecutionSummary, GeneratorLog, MeshStrategy, TierAttempt
 from core.utils.logging import get_logger
 

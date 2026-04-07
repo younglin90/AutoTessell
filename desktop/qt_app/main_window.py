@@ -6,7 +6,7 @@ Qt 위젯 클래스를 최상위 스코프에서 직접 참조하지 않는다.
 """
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 
-class QualityLevel(str, Enum):
+class QualityLevel(StrEnum):
     DRAFT = "draft"
     STANDARD = "standard"
     FINE = "fine"
@@ -88,18 +88,18 @@ class AutoTessellWindow:  # type: ignore[misc]
 
     def _build(self) -> None:  # pragma: no cover
         """Qt 위젯 트리를 구성한다. QApplication 생성 후 호출해야 한다."""
-        from PySide6.QtWidgets import (
-            QMainWindow,
-            QWidget,
-            QHBoxLayout,
-            QVBoxLayout,
-            QLabel,
-            QComboBox,
-            QPushButton,
-            QPlainTextEdit,
-            QSizePolicy,
-        )
         from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import (
+            QComboBox,
+            QHBoxLayout,
+            QLabel,
+            QMainWindow,
+            QPlainTextEdit,
+            QPushButton,
+            QSizePolicy,
+            QVBoxLayout,
+            QWidget,
+        )
 
         # QMainWindow를 동적으로 상속하는 대신 인스턴스를 합성(composition)
         self._qmain = QMainWindow()
@@ -173,7 +173,6 @@ class AutoTessellWindow:  # type: ignore[misc]
     # ------------------------------------------------------------------
 
     def _on_drag_enter(self, event: object) -> None:  # pragma: no cover
-        from PySide6.QtCore import Qt
 
         mime = event.mimeData()  # type: ignore[attr-defined]
         if mime.hasUrls():

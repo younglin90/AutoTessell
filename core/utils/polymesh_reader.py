@@ -17,12 +17,12 @@ from pathlib import Path
 from typing import Any
 
 try:
-    import Ofpp as _ofpp  # type: ignore[import-untyped]
-    from Ofpp.mesh_parser import FoamMesh as _FoamMesh  # type: ignore[import-untyped]
+    import Ofpp as _ofpp
+    from Ofpp.mesh_parser import FoamMesh as _FoamMesh
     _OFPP_AVAILABLE = True
 except ImportError:  # pragma: no cover
-    _ofpp = None  # type: ignore[assignment]
-    _FoamMesh = None  # type: ignore[assignment]
+    _ofpp = None
+    _FoamMesh = None
     _OFPP_AVAILABLE = False
 
 
@@ -165,7 +165,7 @@ def parse_foam_boundary(boundary_file: Path) -> list[dict[str, Any]]:
 # ---------------------------------------------------------------------------
 
 
-def load_polymesh_with_ofpp(case_dir: Path) -> "_FoamMesh | None":
+def load_polymesh_with_ofpp(case_dir: Path) -> _FoamMesh | None:
     """Load a polyMesh using Ofpp as a fallback parser.
 
     Returns an ``Ofpp.FoamMesh`` instance when Ofpp is available and the mesh
@@ -209,7 +209,6 @@ def ofpp_to_parsed_data(
         return None
 
     try:
-        import numpy as np  # noqa: PLC0415
 
         pts_arr = foam_mesh.points
         if hasattr(pts_arr, "tolist"):

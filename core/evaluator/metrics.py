@@ -103,8 +103,8 @@ class AdditionalMetricsComputer:
     def _compute_bl_stats(self, mesh: object) -> BoundaryLayerStats | None:
         """경계층 통계를 추정한다. pyvista mesh 객체를 받는다."""
         try:
-            import pyvista as pv  # noqa: PLC0415
             import numpy as np  # noqa: PLC0415
+            import pyvista as pv  # noqa: PLC0415
 
             assert isinstance(mesh, pv.DataSet)
             # 벽면 패치의 첫 번째 레이어 높이를 근사적으로 계산

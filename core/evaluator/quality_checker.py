@@ -133,7 +133,7 @@ class MeshQualityChecker:
         log.info("Running OpenFOAM checkMesh", case_dir=str(case_dir))
 
         try:
-            from core.utils.openfoam_utils import run_openfoam, OpenFOAMError  # noqa: PLC0415
+            from core.utils.openfoam_utils import OpenFOAMError, run_openfoam  # noqa: PLC0415
             proc = run_openfoam(
                 "checkMesh", case_dir,
                 args=["-allGeometry", "-allTopology"],

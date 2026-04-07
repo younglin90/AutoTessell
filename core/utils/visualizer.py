@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import ModuleType
 from typing import Any
 
 from core.utils.logging import get_logger
@@ -14,30 +15,31 @@ from core.utils.logging import get_logger
 log = get_logger(__name__)
 
 # polyscope import 시도
+_ps: ModuleType | None = None
+_k3d: ModuleType | None = None
+
 try:
     import polyscope as _ps
 
     _POLYSCOPE_AVAILABLE = True
 except ImportError:  # pragma: no cover
-    _ps = None  # type: ignore[assignment]
     _POLYSCOPE_AVAILABLE = False
 
 # k3d import 시도
 try:
-    import k3d as _k3d
+    import k3d as _k3d  # type: ignore[no-redef]
 
     _K3D_AVAILABLE = True
 except ImportError:  # pragma: no cover
-    _k3d = None  # type: ignore[assignment]
     _K3D_AVAILABLE = False
 
 
 def _is_jupyter() -> bool:
     """현재 Jupyter 노트북 환경 여부를 반환한다."""
     try:
-        from IPython import get_ipython  # noqa: PLC0415
+        from IPython import get_ipython  # type: ignore[attr-defined]  # noqa: PLC0415
 
-        shell = get_ipython()
+        shell = get_ipython()  # type: ignore[no-untyped-call]
         if shell is None:
             return False
         return "ZMQInteractiveShell" in type(shell).__name__
