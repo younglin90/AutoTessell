@@ -350,6 +350,102 @@ class TestTierGracefulFail:
         assert attempt.error_message is not None
         assert attempt.time_seconds >= 0.0
 
+    def test_tier_meshpy_fails_gracefully(
+        self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
+    ) -> None:
+        """meshpy 없음 → TierAttempt(status='failed') 반환."""
+        meshpy = pytest.importorskip("meshpy", reason="meshpy 미설치 — 스킵")
+        _ = meshpy  # silence unused import warning
+
+        from core.generator.tier_meshpy import TierMeshPyGenerator
+
+        generator = TierMeshPyGenerator()
+        with patch.dict("sys.modules", {"meshpy": None, "meshpy.tet": None}):
+            attempt = generator.run(mesh_strategy, dummy_stl, tmp_path)
+
+        assert attempt.status == "failed"
+        assert attempt.tier == "tier_meshpy"
+        assert attempt.error_message is not None
+        assert attempt.time_seconds >= 0.0
+
+    def test_tier_meshpy_import_skip(
+        self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
+    ) -> None:
+        """meshpy 미설치 환경에서 import 실패 → graceful fail."""
+        from core.generator.tier_meshpy import TierMeshPyGenerator
+
+        generator = TierMeshPyGenerator()
+        with patch.dict("sys.modules", {"meshpy": None, "meshpy.tet": None}):
+            attempt = generator.run(mesh_strategy, dummy_stl, tmp_path)
+
+        assert attempt.status == "failed"
+        assert attempt.tier == "tier_meshpy"
+        assert "meshpy" in (attempt.error_message or "").lower()
+
+    def test_tier_classy_blocks_no_openfoam(
+        self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
+    ) -> None:
+        """OpenFOAM(blockMesh) 없음 → TierAttempt(status='failed') 반환."""
+        try:
+            import classy_blocks as _classy_blocks
+            _ = _classy_blocks
+        except (ImportError, AttributeError):
+            pytest.skip("classy_blocks 미설치 또는 호환 불가 — 스킵")
+
+        from core.generator.tier_classy_blocks import TierClassyBlocksGenerator
+
+        generator = TierClassyBlocksGenerator()
+        with patch("shutil.which", return_value=None):
+            attempt = generator.run(mesh_strategy, dummy_stl, tmp_path)
+
+        assert attempt.status == "failed"
+        assert attempt.tier == "tier_classy_blocks"
+        assert attempt.error_message is not None
+
+    def test_tier_classy_blocks_import_skip(
+        self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
+    ) -> None:
+        """classy_blocks 미설치 환경에서 import 실패 → graceful fail."""
+        from core.generator.tier_classy_blocks import TierClassyBlocksGenerator
+
+        generator = TierClassyBlocksGenerator()
+        with patch.dict("sys.modules", {"classy_blocks": None}):
+            attempt = generator.run(mesh_strategy, dummy_stl, tmp_path)
+
+        assert attempt.status == "failed"
+        assert attempt.tier == "tier_classy_blocks"
+        assert "classy_blocks" in (attempt.error_message or "").lower()
+
+    def test_tier_jigsaw_import_skip(
+        self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
+    ) -> None:
+        """jigsawpy 미설치 환경에서 import 실패 → graceful fail."""
+        from core.generator.tier_jigsaw import TierJigsawGenerator
+
+        generator = TierJigsawGenerator()
+        with patch.dict("sys.modules", {"jigsawpy": None}):
+            attempt = generator.run(mesh_strategy, dummy_stl, tmp_path)
+
+        assert attempt.status == "failed"
+        assert attempt.tier == "tier_jigsaw"
+        assert "jigsawpy" in (attempt.error_message or "").lower()
+
+    def test_tier_jigsaw_missing_file(
+        self, mesh_strategy: MeshStrategy, tmp_path: Path
+    ) -> None:
+        """입력 파일 없음 → TierAttempt(status='failed') 반환."""
+        pytest.importorskip("jigsawpy", reason="jigsawpy 미설치 — 스킵")
+
+        from core.generator.tier_jigsaw import TierJigsawGenerator
+
+        generator = TierJigsawGenerator()
+        nonexistent = tmp_path / "no_such_file.stl"
+        attempt = generator.run(mesh_strategy, nonexistent, tmp_path)
+
+        assert attempt.status == "failed"
+        assert attempt.tier == "tier_jigsaw"
+        assert attempt.error_message is not None
+
 
 # ---------------------------------------------------------------------------
 # 파이프라인 테스트
@@ -656,8 +752,8 @@ class TestOpenFOAMError:
         # 존재하지 않는 OPENFOAM_DIR을 설정하여 source 실패 유도
         import os
         with patch.dict(os.environ, {"OPENFOAM_DIR": "/nonexistent/openfoam"}):
-            # blockMesh가 없으면 returncode != 0 → OpenFOAMError
-            with pytest.raises(OpenFOAMError):
+            # bashrc 없으면 FileNotFoundError, 실행 실패하면 OpenFOAMError
+            with pytest.raises((OpenFOAMError, FileNotFoundError)):
                 run_openfoam("blockMesh_NONEXISTENT_CMD_XYZ", tmp_path)
 
 
@@ -702,7 +798,7 @@ class TestTierOrderByQualityLevel:
     """quality_level 기반 Tier 실행 순서 테스트."""
 
     def test_draft_tier_order(self) -> None:
-        """draft → TetWild coarse 우선, Netgen 폴백."""
+        """draft → TetWild coarse 우선, JIGSAW fallback, Netgen 순."""
         from core.generator.pipeline import MeshGenerator
 
         gen = MeshGenerator()
@@ -710,10 +806,11 @@ class TestTierOrderByQualityLevel:
         order = gen._get_tier_order(strategy)
 
         assert order[0] == "tier2_tetwild", "Draft: TetWild이 첫 번째여야 합니다"
+        assert order[1] == "tier_jigsaw", "Draft: JIGSAW가 두 번째 fallback이어야 합니다"
         assert "tier05_netgen" in order
 
     def test_standard_tier_order(self) -> None:
-        """standard → Netgen 우선, cfMesh, TetWild 순."""
+        """standard → Netgen 우선, MeshPy fallback, cfMesh, TetWild 순."""
         from core.generator.pipeline import MeshGenerator
 
         gen = MeshGenerator()
@@ -721,21 +818,25 @@ class TestTierOrderByQualityLevel:
         order = gen._get_tier_order(strategy)
 
         assert order[0] == "tier05_netgen", "Standard: Netgen이 첫 번째여야 합니다"
-        assert order[1] == "tier15_cfmesh"
-        assert order[2] == "tier2_tetwild"
+        assert "tier_meshpy" in order, "Standard: MeshPy가 fallback에 있어야 합니다"
+        assert "tier15_cfmesh" in order
+        assert "tier2_tetwild" in order
+        # MeshPy는 Netgen 바로 다음 (인덱스 1)
+        assert order[1] == "tier_meshpy"
 
     def test_fine_tier_order(self) -> None:
-        """fine → cfMesh 우선(대용량 안전), snappy, Netgen, TetWild 순."""
+        """fine → classy_blocks → cfMesh → snappy → Netgen → TetWild 순."""
         from core.generator.pipeline import MeshGenerator
 
         gen = MeshGenerator()
         strategy = _make_strategy_with_quality(QualityLevel.FINE)
         order = gen._get_tier_order(strategy)
 
-        assert order[0] == "tier15_cfmesh", "Fine: cfMesh가 첫 번째(blockMesh int32 안전)"
-        assert order[1] == "tier1_snappy"
-        assert order[2] == "tier05_netgen"
-        assert order[3] == "tier2_tetwild"
+        assert order[0] == "tier_classy_blocks", "Fine: classy_blocks가 첫 번째(구조 Hex)"
+        assert order[1] == "tier15_cfmesh"
+        assert order[2] == "tier1_snappy"
+        assert order[3] == "tier05_netgen"
+        assert order[4] == "tier2_tetwild"
 
     def test_explicit_tier_overrides_quality_level(self) -> None:
         """selected_tier가 명시적으로 지정되면 quality_level 기반 순서 무시."""
@@ -886,10 +987,10 @@ class TestTierOrderByQualityLevel:
 
         assert called_tiers[0] == "tier2_tetwild"
 
-    def test_fine_pipeline_starts_with_cfmesh(
+    def test_fine_pipeline_starts_with_classy_blocks(
         self, tmp_path: Path, dummy_stl: Path
     ) -> None:
-        """Fine pipeline → cfMesh가 첫 번째 (blockMesh int32 안전)."""
+        """Fine pipeline → classy_blocks가 첫 번째 (구조 Hex 우선)."""
         from core.generator.pipeline import MeshGenerator
 
         gen = MeshGenerator()
@@ -904,7 +1005,142 @@ class TestTierOrderByQualityLevel:
         with patch("core.generator.pipeline._run_tier", side_effect=mock_run_tier):
             gen.run(strategy, dummy_stl, tmp_path)
 
-        assert called_tiers[0] == "tier15_cfmesh"
+        assert called_tiers[0] == "tier_classy_blocks"
+        assert called_tiers[1] == "tier15_cfmesh"
+
+
+# ---------------------------------------------------------------------------
+# 새 Tier 등록 / 별칭 테스트
+# ---------------------------------------------------------------------------
+
+
+class TestNewTierRegistry:
+    """v0.3에서 추가된 MeshPy / classy_blocks / JIGSAW Tier 등록 확인."""
+
+    def test_meshpy_in_registry(self) -> None:
+        """tier_meshpy가 _TIER_REGISTRY에 등록되어 있어야 한다."""
+        from core.generator.pipeline import _TIER_REGISTRY
+
+        assert "tier_meshpy" in _TIER_REGISTRY
+
+    def test_classy_blocks_in_registry(self) -> None:
+        """tier_classy_blocks가 _TIER_REGISTRY에 등록되어 있어야 한다."""
+        from core.generator.pipeline import _TIER_REGISTRY
+
+        assert "tier_classy_blocks" in _TIER_REGISTRY
+
+    def test_jigsaw_in_registry(self) -> None:
+        """tier_jigsaw가 _TIER_REGISTRY에 등록되어 있어야 한다."""
+        from core.generator.pipeline import _TIER_REGISTRY
+
+        assert "tier_jigsaw" in _TIER_REGISTRY
+
+    def test_meshpy_alias(self) -> None:
+        """'meshpy' 별칭 → tier_meshpy 해석 확인."""
+        from core.generator.pipeline import _resolve_tier
+
+        assert _resolve_tier("meshpy") == "tier_meshpy"
+
+    def test_classy_blocks_alias(self) -> None:
+        """'classy_blocks' 별칭 → tier_classy_blocks 해석 확인."""
+        from core.generator.pipeline import _resolve_tier
+
+        assert _resolve_tier("classy_blocks") == "tier_classy_blocks"
+
+    def test_jigsaw_alias(self) -> None:
+        """'jigsaw' 별칭 → tier_jigsaw 해석 확인."""
+        from core.generator.pipeline import _resolve_tier
+
+        assert _resolve_tier("jigsaw") == "tier_jigsaw"
+
+    def test_standard_has_meshpy_in_fallback(self) -> None:
+        """Standard auto 모드 → tier_meshpy가 Netgen 바로 다음 fallback."""
+        from core.generator.pipeline import MeshGenerator
+
+        gen = MeshGenerator()
+        strategy = _make_strategy_with_quality(QualityLevel.STANDARD)
+        order = gen._get_tier_order(strategy)
+
+        netgen_idx = order.index("tier05_netgen")
+        meshpy_idx = order.index("tier_meshpy")
+        assert meshpy_idx == netgen_idx + 1, "MeshPy는 Netgen 바로 다음이어야 합니다"
+
+    def test_draft_has_jigsaw_after_tetwild(self) -> None:
+        """Draft auto 모드 → tier_jigsaw가 TetWild 바로 다음 fallback."""
+        from core.generator.pipeline import MeshGenerator
+
+        gen = MeshGenerator()
+        strategy = _make_strategy_with_quality(QualityLevel.DRAFT)
+        order = gen._get_tier_order(strategy)
+
+        tetwild_idx = order.index("tier2_tetwild")
+        jigsaw_idx = order.index("tier_jigsaw")
+        assert jigsaw_idx == tetwild_idx + 1, "JIGSAW는 TetWild 바로 다음이어야 합니다"
+
+    def test_fine_has_classy_blocks_first(self) -> None:
+        """Fine auto 모드 → tier_classy_blocks가 첫 번째."""
+        from core.generator.pipeline import MeshGenerator
+
+        gen = MeshGenerator()
+        strategy = _make_strategy_with_quality(QualityLevel.FINE)
+        order = gen._get_tier_order(strategy)
+
+        assert order[0] == "tier_classy_blocks"
+
+    def test_pipeline_runs_meshpy_as_fallback(
+        self, tmp_path: Path, dummy_stl: Path
+    ) -> None:
+        """Standard pipeline: Netgen 실패 시 tier_meshpy가 실행됨."""
+        from core.generator.pipeline import MeshGenerator
+
+        gen = MeshGenerator()
+        strategy = _make_strategy_with_quality(QualityLevel.STANDARD)
+        called_tiers: list[str] = []
+
+        def mock_run_tier(tier, strat, path, case):
+            called_tiers.append(tier)
+            if tier == "tier05_netgen":
+                return TierAttempt(tier=tier, status="failed", time_seconds=0.01,
+                                   error_message="netgen mock fail")
+            # meshpy succeeds
+            return TierAttempt(tier=tier, status="success", time_seconds=0.01)
+
+        with patch("core.generator.pipeline._run_tier", side_effect=mock_run_tier):
+            log = gen.run(strategy, dummy_stl, tmp_path)
+
+        assert "tier05_netgen" in called_tiers
+        assert "tier_meshpy" in called_tiers
+        success_attempts = [a for a in log.execution_summary.tiers_attempted
+                            if a.status == "success"]
+        assert len(success_attempts) == 1
+        assert success_attempts[0].tier == "tier_meshpy"
+
+    def test_pipeline_runs_jigsaw_as_draft_fallback(
+        self, tmp_path: Path, dummy_stl: Path
+    ) -> None:
+        """Draft pipeline: TetWild 실패 시 tier_jigsaw가 실행됨."""
+        from core.generator.pipeline import MeshGenerator
+
+        gen = MeshGenerator()
+        strategy = _make_strategy_with_quality(QualityLevel.DRAFT)
+        called_tiers: list[str] = []
+
+        def mock_run_tier(tier, strat, path, case):
+            called_tiers.append(tier)
+            if tier == "tier2_tetwild":
+                return TierAttempt(tier=tier, status="failed", time_seconds=0.01,
+                                   error_message="tetwild mock fail")
+            return TierAttempt(tier=tier, status="success", time_seconds=0.01)
+
+        with patch("core.generator.pipeline._run_tier", side_effect=mock_run_tier):
+            log = gen.run(strategy, dummy_stl, tmp_path)
+
+        assert "tier2_tetwild" in called_tiers
+        assert "tier_jigsaw" in called_tiers
+        success_attempts = [a for a in log.execution_summary.tiers_attempted
+                            if a.status == "success"]
+        assert len(success_attempts) == 1
+        assert success_attempts[0].tier == "tier_jigsaw"
 
 
 # ---------------------------------------------------------------------------
@@ -1158,11 +1394,11 @@ class TestPolyMeshWriter:
     # ------------------------------------------------------------------
 
     @pytest.mark.skipif(
-        not pytest.importorskip("pytetwild", reason="pytetwild not installed")
-        or not (Path("tests/benchmarks/sphere.stl")).exists(),
-        reason="pytetwild not installed or sphere.stl not found",
+        not (Path("tests/benchmarks/sphere.stl")).exists(),
+        reason="sphere.stl not found",
     )
     def test_polymesh_writer_sphere(self, tmp_path: Path) -> None:
+        pytest.importorskip("pytetwild", reason="pytetwild not installed")
         """Real sphere tetrahedralization → sane polyMesh statistics."""
         import trimesh
         import pytetwild

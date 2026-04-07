@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "auto-tessell"
-version = "0.1.0"
+version = "1.0.0"
 description = "CAD/메쉬 파일 → OpenFOAM polyMesh 자동 생성 CLI 도구"
 license = {text = "MIT"}
 readme = "README.md"
@@ -53,6 +53,36 @@ volume = [
 ai = [
     "torch>=2.0",
     "meshgpt-pytorch>=1.0",
+]
+# v0.2: Evaluator 강화
+evaluator = [
+    "neatmesh>=0.0.8",
+    "Ofpp>=0.12",
+]
+# v0.3: Generator 확장
+generator = [
+    "meshpy>=2022.1",
+    "classy-blocks>=0.6",
+]
+# v0.4: 케이스 자동화
+case = [
+    "foamlib>=1.0",
+]
+# v0.5: 전처리 강화
+preprocess = [
+    "mesh2sdf>=1.0",
+    "fast-simplification>=0.1",
+    "sdf>=0.9",
+]
+# 전체 설치 (AI/CAD 제외)
+full = [
+    "neatmesh>=0.0.8",
+    "Ofpp>=0.12",
+    "meshpy>=2022.1",
+    "foamlib>=1.0",
+    "mesh2sdf>=1.0",
+    "fast-simplification>=0.1",
+    "sdf>=0.9",
 ]
 
 [project.scripts]

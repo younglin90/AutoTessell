@@ -184,6 +184,7 @@ class TestRealTetWild:
     """Direct pytetwild calls — no Generator wrapper."""
 
     def test_tetwild_sphere(self, sphere_path):
+        pytest.importorskip("pytetwild")
         import trimesh
         import pytetwild
 
@@ -196,6 +197,7 @@ class TestRealTetWild:
         assert len(f) > 0
 
     def test_tetwild_output_valid(self, sphere_path):
+        pytest.importorskip("pytetwild")
         import trimesh
         import pytetwild
 
@@ -251,6 +253,7 @@ class TestRealPipelineDraft:
 
     @pytest.mark.slow
     def test_draft_pipeline_real(self, sphere_path, tmp_path):
+        pytest.importorskip("pytetwild")
         from core.pipeline.orchestrator import PipelineOrchestrator
 
         case_dir = tmp_path / "case"
@@ -476,6 +479,7 @@ class TestStepFullPipeline:
     @pytest.fixture(scope="class")
     def step_geometry_report(self, step_file_path):
         """Analyze box.step once."""
+        pytest.importorskip("cadquery", reason="cadquery required for STEP tests")
         from core.analyzer.geometry_analyzer import GeometryAnalyzer
 
         return GeometryAnalyzer().analyze(step_file_path)
@@ -593,6 +597,7 @@ class TestBenchmarkSuite:
     @pytest.mark.slow
     def test_sphere_draft_pass(self, tmp_path, monkeypatch):
         """sphere.stl + draft → PASS, cells > 0, wall-clock < 10 s."""
+        pytest.importorskip("pytetwild")
         self._force_native(monkeypatch)
         from core.pipeline.orchestrator import PipelineOrchestrator  # noqa: PLC0415
 
@@ -665,6 +670,7 @@ class TestBenchmarkSuite:
     @pytest.mark.slow
     def test_step_draft_runs(self, box_step, tmp_path, monkeypatch):
         """box.step + draft → pipeline completes, geometry_report.file_info.is_cad_brep == True."""
+        pytest.importorskip("cadquery", reason="cadquery required for STEP tests")
         self._force_native(monkeypatch)
         from core.pipeline.orchestrator import PipelineOrchestrator  # noqa: PLC0415
 

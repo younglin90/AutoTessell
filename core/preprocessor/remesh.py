@@ -40,6 +40,13 @@ except ImportError:
     _PYMESHLAB_AVAILABLE = False
     log.info("pymeshlab_unavailable", msg="pymeshlab 미설치 — isotropic remesh 건너뜀")
 
+try:
+    import fast_simplification
+    _FAST_SIMPLIFICATION_AVAILABLE = True
+except ImportError:
+    _FAST_SIMPLIFICATION_AVAILABLE = False
+    log.debug("fast_simplification_unavailable", msg="fast-simplification 미설치 — L2 사전 데시메이션 비활성화")
+
 
 def _run_vorpalite_remesh(
     input_stl: Path, output_stl: Path, target_edge_length: float
@@ -116,6 +123,7 @@ class SurfaceRemesher:
     ) -> tuple[trimesh.Trimesh, bool, dict[str, Any]]:
         """L2 리메쉬 수행 후 gate 검사.
 
+        0. fast-simplification 사전 데시메이션 (200k+ 면일 때)
         1. vorpalite(geogram) — PATH에 있으면 최우선 사용 (특징 보존)
         2. pyACVD Voronoi 균일 리메쉬
         3. pymeshlab isotropic remesh (선택적 추가 개선)
@@ -136,6 +144,19 @@ class SurfaceRemesher:
 
         remeshed = mesh
         computed_target = target_faces or self._compute_target_faces(mesh)
+
+        # 0) fast-simplification 사전 데시메이션 (200k+ 면일 때)
+        if len(remeshed.faces) > 200_000 and _FAST_SIMPLIFICATION_AVAILABLE:
+            remeshed, simplify_applied = self._run_fast_simplification(
+                remeshed, target_reduction=0.5
+            )
+            if simplify_applied:
+                methods_used.append("fast_simplification")
+                log.info(
+                    "l2_fast_simplification_done",
+                    input_faces=len(mesh.faces),
+                    output_faces=len(remeshed.faces),
+                )
 
         # 1) vorpalite — 특징 보존 고품질 리메쉬 (최우선)
         target_edge = element_size or self._estimate_element_size(mesh)
@@ -332,6 +353,49 @@ class SurfaceRemesher:
             target_faces=target,
         )
         return target
+
+    def _run_fast_simplification(
+        self,
+        mesh: trimesh.Trimesh,
+        target_reduction: float = 0.5,
+    ) -> tuple[trimesh.Trimesh, bool]:
+        """fast-simplification으로 메쉬 데시메이션.
+
+        Args:
+            mesh: 입력 trimesh.Trimesh.
+            target_reduction: 목표 감소율 (0.0~1.0). 0.5 = 50% 감소.
+
+        Returns:
+            (단순화된 메쉬, 적용 여부) 튜플.
+        """
+        try:
+            import numpy as np
+
+            simplified_verts, simplified_faces = fast_simplification.simplify(
+                mesh.vertices.astype(np.float64),
+                mesh.faces.astype(np.uint32),
+                target_reduction=target_reduction,
+            )
+
+            if len(simplified_faces) == 0:
+                log.warning("fast_simplification_no_output")
+                return mesh, False
+
+            result = trimesh.Trimesh(
+                vertices=simplified_verts,
+                faces=simplified_faces,
+                process=False,
+            )
+            log.info(
+                "fast_simplification_success",
+                input_faces=len(mesh.faces),
+                output_faces=len(result.faces),
+                target_reduction=target_reduction,
+            )
+            return result, True
+        except Exception as exc:
+            log.warning("fast_simplification_failed", error=str(exc))
+            return mesh, False
 
     def _run_pyacvd(self, mesh: trimesh.Trimesh, target_faces: int) -> trimesh.Trimesh:
         """pyacvd 리메쉬 실행."""

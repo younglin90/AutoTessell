@@ -16,11 +16,20 @@ Metrics computed
 - min determinant (conservative estimate)
 - negative volume count
 - severely non-orthogonal face count (> 70 degrees)
+
+neatmesh integration
+--------------------
+If the ``neatmesh`` package is installed, ``NativeMeshChecker`` exposes the
+``run_neatmesh`` helper which accepts a meshio-compatible mesh file (e.g. a
+VTK or Gmsh file) and returns supplementary quality statistics computed by
+neatmesh's ``Analyzer3D``.  Import errors are silently ignored so the module
+works without neatmesh.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -34,6 +43,17 @@ from core.utils.polymesh_reader import (
 )
 
 log = get_logger(__name__)
+
+try:
+    import meshio as _meshio  # type: ignore[import-untyped]
+    from neatmesh._analyzer import Analyzer3D as _NeatAnalyzer3D  # type: ignore[import-untyped]
+    from neatmesh._reader import MeshReader3D as _NeatReader3D  # type: ignore[import-untyped]
+    _NEATMESH_AVAILABLE = True
+except ImportError:
+    _meshio = None  # type: ignore[assignment]
+    _NeatAnalyzer3D = None  # type: ignore[assignment]
+    _NeatReader3D = None  # type: ignore[assignment]
+    _NEATMESH_AVAILABLE = False
 
 
 class NativeMeshChecker:
@@ -514,6 +534,95 @@ class NativeMeshChecker:
         if min_vol <= 0:
             return 0.0
         return float(np.clip(min_vol / mean_vol, 0.0, 1.0))
+
+    # ------------------------------------------------------------------
+    # neatmesh supplementary quality layer
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def neatmesh_available() -> bool:
+        """Return True if neatmesh is importable."""
+        return _NEATMESH_AVAILABLE
+
+    def run_neatmesh(self, mesh_file: Path) -> dict[str, Any]:
+        """Compute supplementary quality metrics using neatmesh.
+
+        neatmesh reads a meshio-compatible mesh file (VTK, Gmsh .msh, etc.)
+        and returns additional statistics: non-orthogonality, adjacent cell
+        volume ratio, face aspect ratios, and cell counts per type.
+
+        Args:
+            mesh_file: Path to a meshio-readable 3-D mesh file.
+
+        Returns:
+            Dictionary with neatmesh metrics, or an empty dict if neatmesh is
+            not available or the mesh cannot be read.
+
+        Example returned keys::
+
+            {
+                "max_non_ortho": float,
+                "avg_non_ortho": float,
+                "max_adj_volume_ratio": float,
+                "max_face_aspect_ratio": float,
+                "n_cells": int,
+                "n_faces": int,
+                "hex_count": int,
+                "tetra_count": int,
+                "wedge_count": int,
+                "pyramid_count": int,
+            }
+        """
+        if not _NEATMESH_AVAILABLE:
+            log.debug("neatmesh not available — skipping supplementary metrics")
+            return {}
+
+        if not mesh_file.is_file():
+            log.warning("run_neatmesh: file not found", path=str(mesh_file))
+            return {}
+
+        try:
+            io_mesh = _meshio.read(str(mesh_file))
+            reader = _NeatReader3D(io_mesh)
+            analyzer = _NeatAnalyzer3D(reader)
+
+            analyzer.count_cell_types()
+            analyzer.analyze_faces()
+            analyzer.analyze_cells()
+            analyzer.analyze_non_ortho()
+            analyzer.analyze_adjacents_volume_ratio()
+
+            metrics: dict[str, Any] = {
+                "n_cells": analyzer.n_cells,
+                "n_faces": analyzer.n_faces,
+                "hex_count": analyzer.hex_count,
+                "tetra_count": analyzer.tetra_count,
+                "wedge_count": analyzer.wedge_count,
+                "pyramid_count": analyzer.pyramid_count,
+            }
+
+            if len(analyzer.non_ortho) > 0:
+                metrics["max_non_ortho"] = float(analyzer.non_ortho.max())
+                metrics["avg_non_ortho"] = float(analyzer.non_ortho.mean())
+
+            if len(analyzer.adj_ratio) > 0:
+                metrics["max_adj_volume_ratio"] = float(analyzer.adj_ratio.max())
+
+            if len(analyzer.face_aspect_ratios) > 0:
+                metrics["max_face_aspect_ratio"] = float(
+                    analyzer.face_aspect_ratios.max()
+                )
+
+            log.info(
+                "neatmesh supplementary metrics computed",
+                n_cells=metrics.get("n_cells"),
+                max_non_ortho=metrics.get("max_non_ortho"),
+            )
+            return metrics
+
+        except Exception as exc:  # noqa: BLE001
+            log.warning("neatmesh analysis failed", error=str(exc))
+            return {}
 
     # ------------------------------------------------------------------
     # Fallback for empty/unreadable meshes

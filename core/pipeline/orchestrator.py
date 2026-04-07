@@ -27,6 +27,7 @@ from core.schemas import (
     QualityReport,
 )
 from core.strategist.strategy_planner import StrategyPlanner
+from core.generator.case_writer import FoamCaseWriter
 from core.utils.bc_writer import write_boundary_conditions
 from core.utils.boundary_classifier import classify_boundaries
 from core.utils.logging import get_logger
@@ -86,6 +87,7 @@ class PipelineOrchestrator:
         no_repair: bool = False,
         surface_remesh: bool = False,
         allow_ai_fallback: bool = False,
+        write_of_case: bool = True,
     ) -> PipelineResult:
         """전체 파이프라인을 실행한다.
 
@@ -100,6 +102,7 @@ class PipelineOrchestrator:
             no_repair: 표면 수리 건너뛰기.
             surface_remesh: 강제 리메쉬.
             allow_ai_fallback: L3 AI 수리 허용.
+            write_of_case: True이면 Generator 완료 후 OpenFOAM 케이스 파일 자동 생성.
 
         Returns:
             PipelineResult with all intermediate artifacts.
@@ -203,6 +206,34 @@ class PipelineOrchestrator:
                     log.warning("All tiers failed", iteration=iteration)
                     result.error = "All mesh generation tiers failed"
                     break
+
+                # OpenFOAM 케이스 파일 생성 (write_of_case=True 일 때)
+                if write_of_case:
+                    try:
+                        flow_type = strategy.flow_type if strategy else "external"
+                        solver = (
+                            "pimpleFoam"
+                            if strategy and strategy.quality_level.value == "fine"
+                            else "simpleFoam"
+                        )
+                        polymesh_dir = case_dir / "constant" / "polyMesh"
+                        case_writer = FoamCaseWriter()
+                        of_files = case_writer.write_case(
+                            mesh_dir=polymesh_dir,
+                            case_dir=case_dir,
+                            flow_type=flow_type,
+                            solver=solver,
+                        )
+                        log.info(
+                            "openfoam_case_files_generated",
+                            count=len(of_files),
+                            solver=solver,
+                        )
+                    except Exception as exc:
+                        log.warning(
+                            "openfoam_case_generation_skipped",
+                            error=str(exc),
+                        )
 
                 # Evaluate
                 log.info("Pipeline stage: Evaluate", tier=successful_tier)

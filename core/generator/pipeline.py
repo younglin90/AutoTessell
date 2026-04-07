@@ -11,6 +11,9 @@ from core.generator.tier05_netgen import Tier05NetgenGenerator
 from core.generator.tier15_cfmesh import Tier15CfMeshGenerator
 from core.generator.tier1_snappy import Tier1SnappyGenerator
 from core.generator.tier2_tetwild import Tier2TetWildGenerator
+from core.generator.tier_meshpy import TierMeshPyGenerator
+from core.generator.tier_classy_blocks import TierClassyBlocksGenerator
+from core.generator.tier_jigsaw import TierJigsawGenerator
 from core.schemas import ExecutionSummary, GeneratorLog, MeshStrategy, TierAttempt
 from core.utils.logging import get_logger
 
@@ -23,6 +26,9 @@ _TIER_REGISTRY: dict[str, type] = {
     "tier1_snappy": Tier1SnappyGenerator,
     "tier15_cfmesh": Tier15CfMeshGenerator,
     "tier2_tetwild": Tier2TetWildGenerator,
+    "tier_meshpy": TierMeshPyGenerator,
+    "tier_classy_blocks": TierClassyBlocksGenerator,
+    "tier_jigsaw": TierJigsawGenerator,
 }
 
 # CLI --tier 별칭 → 정규 Tier 이름
@@ -32,12 +38,18 @@ _TIER_ALIASES: dict[str, str] = {
     "snappy": "tier1_snappy",
     "cfmesh": "tier15_cfmesh",
     "tetwild": "tier2_tetwild",
+    "meshpy": "tier_meshpy",
+    "classy_blocks": "tier_classy_blocks",
+    "jigsaw": "tier_jigsaw",
     # 정규 이름 자체도 허용
     "tier0_core": "tier0_core",
     "tier05_netgen": "tier05_netgen",
     "tier1_snappy": "tier1_snappy",
     "tier15_cfmesh": "tier15_cfmesh",
     "tier2_tetwild": "tier2_tetwild",
+    "tier_meshpy": "tier_meshpy",
+    "tier_classy_blocks": "tier_classy_blocks",
+    "tier_jigsaw": "tier_jigsaw",
 }
 
 
@@ -159,17 +171,24 @@ class MeshGenerator:
 
         # Auto 모드: quality_level 기반 기본 순서
         if quality_level == "draft":
-            # 속도 우선: TetWild coarse → Netgen
-            tier_names = ["tier2_tetwild", "tier05_netgen"]
+            # 속도 우선: TetWild coarse → JIGSAW fallback → Netgen
+            tier_names = ["tier2_tetwild", "tier_jigsaw", "tier05_netgen"]
         elif quality_level == "fine":
-            # 품질 우선: cfMesh(대용량 안전) → snappy(BL) → Netgen → TetWild
+            # 품질 우선: classy_blocks(구조 Hex) → cfMesh → snappy(BL) → Netgen → TetWild
+            # classy_blocks: 단순 도메인의 구조 Hex 경로
             # cfMesh는 자체 배경 메쉬 → blockMesh int32 제한 없음
             # snappy는 blockMesh 필요 → OpenFOAM label=32일 때 ~2B 셀 한계
             # 모든 Tier 후 polyDualMesh로 폴리헤드럴 변환 가능
-            tier_names = ["tier15_cfmesh", "tier1_snappy", "tier05_netgen", "tier2_tetwild"]
+            tier_names = [
+                "tier_classy_blocks",
+                "tier15_cfmesh",
+                "tier1_snappy",
+                "tier05_netgen",
+                "tier2_tetwild",
+            ]
         else:  # standard
-            # 균형: Netgen → cfMesh → TetWild
-            tier_names = ["tier05_netgen", "tier15_cfmesh", "tier2_tetwild"]
+            # 균형: Netgen → MeshPy TetGen fallback → cfMesh → TetWild
+            tier_names = ["tier05_netgen", "tier_meshpy", "tier15_cfmesh", "tier2_tetwild"]
 
         return tier_names
 

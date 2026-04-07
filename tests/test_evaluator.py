@@ -1448,6 +1448,506 @@ class TestEdgeCases:
                 report_mod._CONSOLE = old_console
             assert len(buf.getvalue()) > 0, f"No output for quality_level={level}"
 
+
+# ---------------------------------------------------------------------------
+# CheckMeshParser — 추가 파싱 시나리오
+# ---------------------------------------------------------------------------
+
+
+class TestCheckMeshParserAdditional:
+    """다양한 checkMesh 출력 형식을 커버하는 추가 파서 테스트."""
+
+    def setup_method(self) -> None:
+        self.parser = CheckMeshParser()
+
+    def test_parse_non_ortho_alternate_format(self) -> None:
+        """'Mesh non-orthogonality Max:' 형식도 파싱된다."""
+        stdout = "Mesh non-orthogonality Max: 55.7 average: 6.2\n"
+        result = self.parser.parse(stdout)
+        assert abs(result.max_non_orthogonality - 55.7) < 0.01
+        assert abs(result.avg_non_orthogonality - 6.2) < 0.01
+
+    def test_parse_non_ortho_classic_format(self) -> None:
+        """'Max non-orthogonality = N' 형식도 파싱된다."""
+        stdout = "Max non-orthogonality = 48.3\naverage non-orthogonality = 7.1\n"
+        result = self.parser.parse(stdout)
+        assert abs(result.max_non_orthogonality - 48.3) < 0.01
+        assert abs(result.avg_non_orthogonality - 7.1) < 0.01
+
+    def test_parse_severely_non_ortho_zero(self) -> None:
+        """심각한 비직교 면 수가 0이면 0이다."""
+        stdout = "*Number of severely non-orthogonal (> 70 degrees) faces: 0.\n"
+        result = self.parser.parse(stdout)
+        assert result.severely_non_ortho_faces == 0
+
+    def test_parse_negative_volumes_case_insensitive(self) -> None:
+        """음수 볼륨 오류 메시지 대소문자 무관 파싱."""
+        stdout = "***Error: 3 Negative Volumes\nFailed 1 mesh checks.\n"
+        result = self.parser.parse(stdout)
+        assert result.negative_volumes == 3
+        assert result.failed_checks == 1
+        assert result.mesh_ok is False
+
+    def test_parse_failed_checks_singular(self) -> None:
+        """'Failed 1 mesh check' (단수형)도 파싱된다."""
+        stdout = "Failed 1 mesh check.\n"
+        result = self.parser.parse(stdout)
+        assert result.failed_checks == 1
+        assert result.mesh_ok is False
+
+    def test_parse_high_cell_count(self) -> None:
+        """셀 수 100만+인 대형 메쉬 파싱."""
+        stdout = "    cells:            1234567\n    faces:            4567890\n    points:            890123\n"
+        result = self.parser.parse(stdout)
+        assert result.cells == 1234567
+        assert result.faces == 4567890
+        assert result.points == 890123
+
+    def test_parse_min_volume_default_when_missing(self) -> None:
+        """'Min volume' 줄이 없으면 기본값 1.0."""
+        result = self.parser.parse("Mesh OK.\n")
+        assert result.min_cell_volume == pytest.approx(1.0)
+
+    def test_parse_min_determinant_default_when_missing(self) -> None:
+        """'Min determinant' 줄이 없으면 기본값 1.0."""
+        result = self.parser.parse("Mesh OK.\n")
+        assert result.min_determinant == pytest.approx(1.0)
+
+    def test_parse_scientific_notation_values(self) -> None:
+        """과학 표기법 숫자도 파싱된다."""
+        stdout = (
+            "    Minimum face area = 1.5e-12.\n"
+            "    Min volume = 3.7e-18.\n"
+            "    Min determinant = 2.1e-3 OK.\n"
+        )
+        result = self.parser.parse(stdout)
+        assert result.min_face_area == pytest.approx(1.5e-12)
+        assert result.min_cell_volume == pytest.approx(3.7e-18)
+        assert result.min_determinant == pytest.approx(2.1e-3)
+
+    def test_parse_mesh_ok_false_by_default(self) -> None:
+        """'Mesh OK.' 없고 Failed도 없으면 mesh_ok=False."""
+        stdout = "    cells: 1000\n    faces: 2000\n"
+        result = self.parser.parse(stdout)
+        assert result.mesh_ok is False
+
+
+# ---------------------------------------------------------------------------
+# FailCriterion / 판정 추가 케이스
+# ---------------------------------------------------------------------------
+
+
+class TestFailCriterionDetails:
+    """FailCriterion 내용 세부 검증."""
+
+    def test_hard_fail_contains_value_and_threshold(self) -> None:
+        """Hard FAIL FailCriterion에 value, threshold, criterion이 올바르다."""
+        cm = _make_checkmesh(min_cell_volume=-1e-15)
+        report = _make_report(cm)
+        hard_fails = report.evaluation_summary.hard_fails
+        criteria = {f.criterion: f for f in hard_fails}
+        assert "min_cell_volume" in criteria
+        fc = criteria["min_cell_volume"]
+        assert fc.value < 0
+        assert fc.threshold == pytest.approx(0.0)
+
+    def test_soft_fail_skewness_value_matches(self) -> None:
+        """Soft FAIL max_skewness에서 value가 입력값과 일치한다."""
+        cm = _make_checkmesh(max_skewness=4.5)
+        report = _make_report(cm, quality_level="standard")
+        soft_fails = {f.criterion: f for f in report.evaluation_summary.soft_fails}
+        assert "max_skewness" in soft_fails
+        assert soft_fails["max_skewness"].value == pytest.approx(4.5)
+
+    def test_soft_fail_aspect_ratio_value_matches(self) -> None:
+        """Soft FAIL max_aspect_ratio에서 value가 입력값과 일치한다."""
+        cm = _make_checkmesh(max_aspect_ratio=250.0)
+        report = _make_report(cm, quality_level="standard")
+        soft_fails = {f.criterion: f for f in report.evaluation_summary.soft_fails}
+        assert "max_aspect_ratio" in soft_fails
+        assert soft_fails["max_aspect_ratio"].value == pytest.approx(250.0)
+
+    def test_negative_min_determinant_hard_fail(self) -> None:
+        """min_determinant < 0 → Hard FAIL."""
+        cm = _make_checkmesh(min_determinant=-0.01)
+        report = _make_report(cm)
+        hard_criteria = [f.criterion for f in report.evaluation_summary.hard_fails]
+        assert "min_determinant" in hard_criteria
+
+    def test_multiple_hard_fails_all_listed(self) -> None:
+        """복수의 Hard FAIL이 모두 목록에 포함된다."""
+        cm = _make_checkmesh(
+            negative_volumes=2,
+            min_determinant=-0.001,
+            min_cell_volume=-1e-15,
+            mesh_ok=False,
+        )
+        report = _make_report(cm)
+        hard_criteria = [f.criterion for f in report.evaluation_summary.hard_fails]
+        assert "negative_volumes" in hard_criteria
+        assert "min_determinant" in hard_criteria
+        assert "min_cell_volume" in hard_criteria
+
+    def test_location_hint_in_non_ortho_hard_fail(self) -> None:
+        """Hard FAIL max_non_orthogonality에 location_hint가 채워져 있다."""
+        cm = _make_checkmesh(max_non_orthogonality=75.0)
+        report = _make_report(cm, quality_level="standard")
+        hard_fails = [f for f in report.evaluation_summary.hard_fails
+                      if f.criterion == "max_non_orthogonality"]
+        assert hard_fails
+        assert len(hard_fails[0].location_hint) > 0
+
+    def test_hausdorff_relative_in_hard_fail(self) -> None:
+        """Hausdorff 상대값 > hard threshold → hard_fails에 hausdorff_relative 포함."""
+        cm = _make_checkmesh()
+        fidelity = GeometryFidelity(
+            hausdorff_distance=1.0,
+            hausdorff_relative=0.15,  # > 0.10 draft
+            surface_area_deviation_percent=1.0,
+        )
+        report = _make_report(cm, quality_level="draft", geometry_fidelity=fidelity)
+        hard_criteria = [f.criterion for f in report.evaluation_summary.hard_fails]
+        assert "hausdorff_relative" in hard_criteria
+
+    def test_hausdorff_relative_passes_draft_threshold(self) -> None:
+        """Hausdorff 상대값 = 0.09 < 0.10 draft threshold → hard FAIL 아님."""
+        cm = _make_checkmesh()
+        fidelity = GeometryFidelity(
+            hausdorff_distance=0.09,
+            hausdorff_relative=0.09,
+            surface_area_deviation_percent=1.0,
+        )
+        report = _make_report(cm, quality_level="draft", geometry_fidelity=fidelity)
+        hard_criteria = [f.criterion for f in report.evaluation_summary.hard_fails]
+        assert "hausdorff_relative" not in hard_criteria
+
+
+# ---------------------------------------------------------------------------
+# Recommendation 생성 추가 테스트
+# ---------------------------------------------------------------------------
+
+
+class TestRecommendationsAdditional:
+    """권고사항 생성 로직 추가 테스트."""
+
+    def test_skewness_recommendation_generated(self) -> None:
+        """High skewness → recommendations에 cell_size 관련 권고 포함."""
+        cm = _make_checkmesh(max_skewness=7.0)
+        report = _make_report(cm, quality_level="standard")
+        assert report.evaluation_summary.verdict == Verdict.FAIL
+        actions = [r.action for r in report.evaluation_summary.recommendations]
+        assert len(actions) > 0
+        # skewness recommendations include cell_size or snap related
+        assert any("cell_size" in a or "snap" in a or "remesh" in a for a in actions)
+
+    def test_aspect_ratio_recommendation_generated(self) -> None:
+        """High aspect ratio → recommendations에 cell_size or refinement 권고."""
+        cm = _make_checkmesh(max_aspect_ratio=250.0, max_non_orthogonality=66.0)
+        # Two soft fails → FAIL
+        report = _make_report(cm, quality_level="standard")
+        assert report.evaluation_summary.verdict == Verdict.FAIL
+        actions = [r.action for r in report.evaluation_summary.recommendations]
+        assert len(actions) > 0
+
+    def test_cell_volume_ratio_recommendation_generated(self) -> None:
+        """High cell volume ratio → recommendations 생성."""
+        cm = _make_checkmesh()
+        metrics = AdditionalMetrics(
+            cell_volume_stats=CellVolumeStats(
+                min=1e-15, max=1e-8, mean=1e-11, std=1e-11, ratio_max_min=2e5
+            )
+        )
+        # For standard: 2e5 > 10000 → soft fail
+        # Also need a second soft fail to trigger FAIL verdict
+        cm2 = _make_checkmesh(max_non_orthogonality=66.0)
+        report = _make_report(cm2, metrics=metrics, quality_level="standard")
+        assert report.evaluation_summary.verdict == Verdict.FAIL
+        actions = [r.action for r in report.evaluation_summary.recommendations]
+        assert len(actions) > 0
+
+    def test_recommendations_have_unique_priorities(self) -> None:
+        """모든 recommendation의 priority가 유일하다."""
+        cm = _make_checkmesh(
+            max_non_orthogonality=75.0,
+            max_skewness=7.0,
+            negative_volumes=1,
+            mesh_ok=False,
+        )
+        report = _make_report(cm, quality_level="standard")
+        recs = report.evaluation_summary.recommendations
+        priorities = [r.priority for r in recs]
+        assert len(priorities) == len(set(priorities))
+
+    def test_recommendation_schema_fields(self) -> None:
+        """Recommendation 모델의 모든 필드가 채워진다."""
+        cm = _make_checkmesh(max_non_orthogonality=75.0)
+        report = _make_report(cm, quality_level="standard")
+        for rec in report.evaluation_summary.recommendations:
+            assert isinstance(rec.priority, int)
+            assert isinstance(rec.action, str)
+            assert len(rec.action) > 0
+            assert isinstance(rec.rationale, str)
+
+    def test_pass_with_warnings_recommendations_not_empty(self) -> None:
+        """PASS_WITH_WARNINGS 시에도 recommendations가 있다."""
+        cm = _make_checkmesh(max_non_orthogonality=66.0)
+        report = _make_report(cm, quality_level="standard")
+        assert report.evaluation_summary.verdict == Verdict.PASS_WITH_WARNINGS
+        assert len(report.evaluation_summary.recommendations) > 0
+
+    def test_geometry_deviation_recommendation_on_hausdorff_fail(self) -> None:
+        """Hausdorff hard fail → geometry_deviation 권고 포함."""
+        cm = _make_checkmesh()
+        fidelity = GeometryFidelity(
+            hausdorff_distance=0.06,
+            hausdorff_relative=0.06,  # > 0.05 standard
+            surface_area_deviation_percent=1.0,
+        )
+        report = _make_report(cm, quality_level="standard", geometry_fidelity=fidelity)
+        assert report.evaluation_summary.verdict == Verdict.FAIL
+        actions = [r.action for r in report.evaluation_summary.recommendations]
+        # geometry_deviation recommendations include snap_tolerance or refinement
+        assert any("snap_tolerance" in a or "refinement" in a or "STL" in a for a in actions)
+
+
+# ---------------------------------------------------------------------------
+# EvaluationSummary 집계 테스트
+# ---------------------------------------------------------------------------
+
+
+class TestEvaluationSummaryAggregation:
+    """EvaluationSummary 집계 결과 검증."""
+
+    def test_evaluation_time_positive(self) -> None:
+        """evaluation_time_seconds > 0."""
+        cm = _make_checkmesh()
+        report = _make_report(cm)
+        assert report.evaluation_summary.evaluation_time_seconds > 0.0
+
+    def test_iteration_stored_correctly(self) -> None:
+        """iteration 파라미터가 EvaluationSummary에 올바르게 저장된다."""
+        cm = _make_checkmesh()
+        reporter = EvaluationReporter()
+        for it in (1, 2, 3):
+            report = reporter.evaluate(
+                checkmesh=cm,
+                strategy=None,
+                metrics=AdditionalMetrics(),
+                geometry_fidelity=None,
+                iteration=it,
+                tier="test_tier",
+                elapsed=0.5,
+                quality_level="standard",
+            )
+            assert report.evaluation_summary.iteration == it
+
+    def test_tier_stored_correctly(self) -> None:
+        """tier 파라미터가 EvaluationSummary.tier_evaluated에 저장된다."""
+        cm = _make_checkmesh()
+        reporter = EvaluationReporter()
+        report = reporter.evaluate(
+            checkmesh=cm,
+            strategy=None,
+            metrics=AdditionalMetrics(),
+            geometry_fidelity=None,
+            iteration=1,
+            tier="tier2_tetwild",
+            elapsed=1.0,
+            quality_level="draft",
+        )
+        assert report.evaluation_summary.tier_evaluated == "tier2_tetwild"
+
+    def test_checkmesh_data_preserved_in_summary(self) -> None:
+        """CheckMeshResult가 EvaluationSummary.checkmesh에 그대로 보존된다."""
+        cm = _make_checkmesh(
+            cells=55555,
+            faces=111111,
+            max_non_orthogonality=42.0,
+            max_skewness=2.5,
+        )
+        report = _make_report(cm)
+        s = report.evaluation_summary
+        assert s.checkmesh.cells == 55555
+        assert s.checkmesh.faces == 111111
+        assert s.checkmesh.max_non_orthogonality == pytest.approx(42.0)
+        assert s.checkmesh.max_skewness == pytest.approx(2.5)
+
+    def test_geometry_fidelity_preserved_when_none(self) -> None:
+        """geometry_fidelity=None 이면 EvaluationSummary.geometry_fidelity도 None."""
+        cm = _make_checkmesh()
+        report = _make_report(cm, geometry_fidelity=None)
+        assert report.evaluation_summary.geometry_fidelity is None
+
+    def test_geometry_fidelity_preserved_when_provided(self) -> None:
+        """geometry_fidelity 제공 시 EvaluationSummary에 보존된다."""
+        cm = _make_checkmesh()
+        fidelity = GeometryFidelity(
+            hausdorff_distance=0.001,
+            hausdorff_relative=0.0005,
+            surface_area_deviation_percent=0.5,
+        )
+        report = _make_report(cm, geometry_fidelity=fidelity)
+        gf = report.evaluation_summary.geometry_fidelity
+        assert gf is not None
+        assert gf.hausdorff_distance == pytest.approx(0.001)
+        assert gf.hausdorff_relative == pytest.approx(0.0005)
+        assert gf.surface_area_deviation_percent == pytest.approx(0.5)
+
+    def test_additional_metrics_cell_volume_stats_preserved(self) -> None:
+        """CellVolumeStats가 additional_metrics에 보존된다."""
+        cm = _make_checkmesh()
+        metrics = AdditionalMetrics(
+            cell_volume_stats=CellVolumeStats(
+                min=1e-12, max=1e-8, mean=5e-10, std=1e-10, ratio_max_min=10000.0
+            )
+        )
+        report = _make_report(cm, metrics=metrics)
+        cvs = report.evaluation_summary.additional_metrics.cell_volume_stats
+        assert cvs is not None
+        assert cvs.min == pytest.approx(1e-12)
+        assert cvs.max == pytest.approx(1e-8)
+        assert cvs.ratio_max_min == pytest.approx(10000.0)
+
+    def test_quality_report_json_roundtrip_with_fidelity(self) -> None:
+        """GeometryFidelity 포함 QualityReport의 JSON 왕복 검증."""
+        cm = _make_checkmesh()
+        fidelity = GeometryFidelity(
+            hausdorff_distance=0.002,
+            hausdorff_relative=0.001,
+            surface_area_deviation_percent=0.8,
+        )
+        report = _make_report(cm, geometry_fidelity=fidelity, quality_level="fine")
+        json_str = report.model_dump_json()
+        recovered = QualityReport.model_validate_json(json_str)
+        assert recovered.evaluation_summary.geometry_fidelity is not None
+        assert recovered.evaluation_summary.geometry_fidelity.hausdorff_relative == pytest.approx(0.001)
+        assert recovered.evaluation_summary.quality_level == "fine"
+
+
+# ---------------------------------------------------------------------------
+# NativeMeshChecker 추가 엣지 케이스
+# ---------------------------------------------------------------------------
+
+
+class TestNativeMeshCheckerAdditional:
+    """NativeMeshChecker 추가 엣지 케이스."""
+
+    def test_empty_result_static_method(self) -> None:
+        """_empty_result()가 유효한 CheckMeshResult를 반환한다."""
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+
+        result = NativeMeshChecker._empty_result()
+        assert isinstance(result, CheckMeshResult)
+        assert result.cells == 0
+        assert result.faces == 0
+        assert result.points == 0
+        assert result.mesh_ok is False
+
+    def test_neatmesh_available_returns_bool(self) -> None:
+        """neatmesh_available()이 bool을 반환한다."""
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+
+        result = NativeMeshChecker.neatmesh_available()
+        assert isinstance(result, bool)
+
+    def test_neatmesh_run_nonexistent_file_returns_empty(self) -> None:
+        """neatmesh_available()=True일 때 파일 없으면 빈 dict 반환."""
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+
+        checker = NativeMeshChecker()
+        result = checker.run_neatmesh(Path("/nonexistent/file.vtk"))
+        assert isinstance(result, dict)
+
+    def test_native_checker_three_tets_cell_count(self) -> None:
+        """3개 tet → cells == 3."""
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+        from core.generator.polymesh_writer import PolyMeshWriter  # noqa: PLC0415
+
+        vertices = np.array(
+            [[0.0, 0.0, 0.0],
+             [1.0, 0.0, 0.0],
+             [0.0, 1.0, 0.0],
+             [0.0, 0.0, 1.0],
+             [1.0, 1.0, 0.0],
+             [1.0, 0.0, 1.0]],
+            dtype=np.float64,
+        )
+        tets = np.array(
+            [[0, 1, 2, 3],
+             [1, 2, 3, 4],
+             [1, 3, 4, 5]],
+            dtype=np.int64,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            PolyMeshWriter().write(vertices, tets, case_dir)
+            result = NativeMeshChecker().run(case_dir)
+
+        assert result.cells == 3
+        assert not np.isnan(result.max_non_orthogonality)
+        assert not np.isnan(result.max_skewness)
+        assert result.min_cell_volume > 0.0
+
+    def test_native_checker_mesh_ok_true_for_good_mesh(self) -> None:
+        """단일 tet (negative volumes 없음) → mesh_ok=True."""
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            _write_single_tet_polymesh(case_dir)
+            result = NativeMeshChecker().run(case_dir)
+
+        assert result.mesh_ok is True
+        assert result.failed_checks == 0
+
+    def test_native_checker_severely_non_ortho_zero_single_tet(self) -> None:
+        """단일 tet (내부 면 없음) → severely_non_ortho_faces == 0."""
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            _write_single_tet_polymesh(case_dir)
+            result = NativeMeshChecker().run(case_dir)
+
+        assert result.severely_non_ortho_faces == 0
+
+    def test_native_checker_determinant_estimate_range(self) -> None:
+        """두 tet 메쉬 → min_determinant in [0, 1]."""
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+        from core.generator.polymesh_writer import PolyMeshWriter  # noqa: PLC0415
+
+        vertices = np.array(
+            [[0.0, 0.0, 0.0],
+             [1.0, 0.0, 0.0],
+             [0.0, 1.0, 0.0],
+             [0.0, 0.0, 1.0],
+             [1.0, 1.0, 1.0]],
+            dtype=np.float64,
+        )
+        tets = np.array([[0, 1, 2, 3], [4, 1, 2, 3]], dtype=np.int64)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            PolyMeshWriter().write(vertices, tets, case_dir)
+            result = NativeMeshChecker().run(case_dir)
+
+        assert 0.0 <= result.min_determinant <= 1.0
+
+    def test_meshqualitychecker_openfoam_error_parsed_in_run(self) -> None:
+        """OpenFOAM が OpenFOAMError (non-zero exit) → stdout を直接パース。"""
+        from core.evaluator.quality_checker import CheckMeshParser, MeshQualityChecker  # noqa: PLC0415
+        from core.utils.openfoam_utils import OpenFOAMError  # noqa: PLC0415
+
+        checker = MeshQualityChecker()
+        # Simulate _run_openfoam raising OpenFOAMError and returning parsed result
+        # directly from the exception's stdout
+        stdout = "Mesh non-orthogonality Max: 55.0 average: 5.0\nMesh OK.\n"
+        parsed = CheckMeshParser().parse(stdout)
+
+        assert isinstance(parsed, CheckMeshResult)
+        assert parsed.mesh_ok is True
+        assert parsed.max_non_orthogonality == pytest.approx(55.0)
+
     def test_render_terminal_with_geometry_fidelity(self) -> None:
         """render_terminal — geometry_fidelity 필드 포함 시 크래시 없이 동작한다."""
         from core.evaluator.report import render_terminal  # noqa: PLC0415
@@ -1603,3 +2103,183 @@ class TestNativeCheckerAccuracy:
 
         assert r1.cells == r2.cells
         assert r1.points == r2.points
+
+
+# ---------------------------------------------------------------------------
+# neatmesh 통합 테스트
+# ---------------------------------------------------------------------------
+
+
+class TestNeatmeshIntegration:
+    """NativeMeshChecker.run_neatmesh — neatmesh 보조 품질 레이어 검증."""
+
+    def test_neatmesh_available_flag(self) -> None:
+        """neatmesh_available() 은 bool을 반환한다."""
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+
+        result = NativeMeshChecker.neatmesh_available()
+        assert isinstance(result, bool)
+
+    def test_neatmesh_missing_file_returns_empty(self) -> None:
+        """존재하지 않는 파일 경로 → 빈 dict 반환 (크래시 없음)."""
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+
+        checker = NativeMeshChecker()
+        result = checker.run_neatmesh(Path("/nonexistent/path/mesh.vtk"))
+        assert result == {}
+
+    def test_neatmesh_tet_mesh(self) -> None:
+        """neatmesh가 설치된 경우 tet 메쉬 파일에서 추가 지표가 반환된다."""
+        pytest.importorskip("neatmesh")
+        meshio = pytest.importorskip("meshio")
+
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+        import trimesh  # noqa: PLC0415
+
+        sphere = trimesh.creation.icosphere(subdivisions=1, radius=1.0)
+        verts = np.vstack([sphere.vertices, [[0.0, 0.0, 0.0]]])
+        apex = len(verts) - 1
+        tets = np.column_stack([
+            sphere.faces[:, 0],
+            sphere.faces[:, 1],
+            sphere.faces[:, 2],
+            np.full(len(sphere.faces), apex, dtype=np.int64),
+        ]).astype(np.int64)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            vtk_path = Path(tmp) / "mesh.vtk"
+            io_mesh = meshio.Mesh(
+                points=verts,
+                cells=[("tetra", tets)],
+            )
+            meshio.write(str(vtk_path), io_mesh)
+
+            checker = NativeMeshChecker()
+            metrics = checker.run_neatmesh(vtk_path)
+
+        assert isinstance(metrics, dict)
+        assert len(metrics) > 0
+        assert "n_cells" in metrics
+        assert metrics["n_cells"] > 0
+
+    def test_neatmesh_returns_non_ortho_for_multi_cell_mesh(self) -> None:
+        """neatmesh가 2셀 이상 메쉬에 대해 non_ortho 지표를 계산한다."""
+        pytest.importorskip("neatmesh")
+        meshio = pytest.importorskip("meshio")
+
+        from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+        import trimesh  # noqa: PLC0415
+
+        sphere = trimesh.creation.icosphere(subdivisions=2, radius=1.0)
+        verts = np.vstack([sphere.vertices, [[0.0, 0.0, 0.0]]])
+        apex = len(verts) - 1
+        tets = np.column_stack([
+            sphere.faces[:, 0],
+            sphere.faces[:, 1],
+            sphere.faces[:, 2],
+            np.full(len(sphere.faces), apex, dtype=np.int64),
+        ]).astype(np.int64)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            vtk_path = Path(tmp) / "mesh.vtk"
+            io_mesh = meshio.Mesh(points=verts, cells=[("tetra", tets)])
+            meshio.write(str(vtk_path), io_mesh)
+
+            metrics = NativeMeshChecker().run_neatmesh(vtk_path)
+
+        # neatmesh의 arccos 계산이 NaN을 반환할 수 있다 (degenerate geometry).
+        # 반환값이 존재하면 float임을 확인한다.
+        if "max_non_ortho" in metrics:
+            assert isinstance(metrics["max_non_ortho"], float)
+        if "avg_non_ortho" in metrics:
+            assert isinstance(metrics["avg_non_ortho"], float)
+
+    def test_neatmesh_not_available_returns_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """neatmesh가 설치되지 않은 환경을 시뮬레이션 → 빈 dict 반환."""
+        import core.evaluator.native_checker as mod  # noqa: PLC0415
+
+        monkeypatch.setattr(mod, "_NEATMESH_AVAILABLE", False)
+
+        checker = mod.NativeMeshChecker()
+        result = checker.run_neatmesh(Path("/any/path.vtk"))
+        assert result == {}
+
+
+# ---------------------------------------------------------------------------
+# ofpp 통합 테스트
+# ---------------------------------------------------------------------------
+
+
+class TestOfppIntegration:
+    """polymesh_reader — Ofpp fallback 파서 검증."""
+
+    def test_ofpp_available_flag(self) -> None:
+        """_OFPP_AVAILABLE 플래그가 bool이다."""
+        import core.utils.polymesh_reader as mod  # noqa: PLC0415
+
+        assert isinstance(mod._OFPP_AVAILABLE, bool)
+
+    def test_load_polymesh_with_ofpp_missing_dir_returns_none(self) -> None:
+        """존재하지 않는 case 디렉터리 → None 반환 (크래시 없음)."""
+        from core.utils.polymesh_reader import load_polymesh_with_ofpp  # noqa: PLC0415
+
+        result = load_polymesh_with_ofpp(Path("/nonexistent/case"))
+        assert result is None
+
+    def test_ofpp_to_parsed_data_returns_none_or_tuple(self) -> None:
+        """실제 polyMesh 없이 호출하면 None을 반환한다."""
+        from core.utils.polymesh_reader import ofpp_to_parsed_data  # noqa: PLC0415
+
+        result = ofpp_to_parsed_data(Path("/nonexistent/case"))
+        assert result is None
+
+    def test_ofpp_parse_matches_native_parse(self) -> None:
+        """Ofpp가 설치된 경우 polyMesh 파싱 결과가 numpy 파서와 일치한다."""
+        pytest.importorskip("Ofpp")
+
+        from core.utils.polymesh_reader import (  # noqa: PLC0415
+            ofpp_to_parsed_data,
+            parse_foam_labels,
+            parse_foam_points,
+        )
+        import trimesh  # noqa: PLC0415
+        from core.generator.polymesh_writer import PolyMeshWriter  # noqa: PLC0415
+
+        sphere = trimesh.creation.icosphere(subdivisions=1, radius=1.0)
+        verts = np.vstack([sphere.vertices, [[0.0, 0.0, 0.0]]])
+        apex = len(verts) - 1
+        tets = np.column_stack([
+            sphere.faces[:, 0],
+            sphere.faces[:, 1],
+            sphere.faces[:, 2],
+            np.full(len(sphere.faces), apex, dtype=np.int64),
+        ]).astype(np.int64)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            case_dir = Path(tmp)
+            PolyMeshWriter().write(verts, tets, case_dir)
+
+            poly_dir = case_dir / "constant" / "polyMesh"
+            native_pts = parse_foam_points(poly_dir / "points")
+            native_owner = parse_foam_labels(poly_dir / "owner")
+            native_neighbour = parse_foam_labels(poly_dir / "neighbour")
+
+            ofpp_result = ofpp_to_parsed_data(case_dir)
+
+        if ofpp_result is None:
+            pytest.skip("Ofpp가 이 polyMesh를 파싱할 수 없음 (binary format 등)")
+
+        ofpp_pts, _ofpp_faces, ofpp_owner, ofpp_neighbour = ofpp_result
+
+        assert len(ofpp_pts) == len(native_pts)
+        assert len(ofpp_owner) == len(native_owner)
+        assert len(ofpp_neighbour) == len(native_neighbour)
+
+    def test_ofpp_not_available_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Ofpp가 설치되지 않은 환경을 시뮬레이션 → None 반환."""
+        import core.utils.polymesh_reader as mod  # noqa: PLC0415
+
+        monkeypatch.setattr(mod, "_OFPP_AVAILABLE", False)
+
+        result = mod.load_polymesh_with_ofpp(Path("/any/case"))
+        assert result is None

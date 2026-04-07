@@ -1,0 +1,64 @@
+{
+  "file_info": {
+    "path": "tests/benchmarks/sphere.stl",
+    "format": "stl",
+    "file_size_bytes": 61284,
+    "detected_encoding": "binary",
+    "is_cad_brep": false,
+    "is_surface_mesh": true,
+    "is_volume_mesh": false
+  },
+  "geometry": {
+    "bounding_box": {
+      "min": [-1.0, -1.0, -1.0],
+      "max": [1.0, 1.0, 1.0],
+      "center": [0.0, 0.0, 0.0],
+      "diagonal": 3.4641016151377544,
+      "characteristic_length": 2.0
+    },
+    "surface": {
+      "num_vertices": 642,
+      "num_faces": 1280,
+      "surface_area": 12.506492595767828,
+      "is_watertight": true,
+      "is_manifold": true,
+      "num_connected_components": 1,
+      "euler_number": 2,
+      "genus": 0,
+      "has_degenerate_faces": false,
+      "num_degenerate_faces": 0,
+      "min_face_area": 0.005,
+      "max_face_area": 0.025,
+      "face_area_std": 0.003,
+      "min_edge_length": 0.08,
+      "max_edge_length": 0.20,
+      "edge_length_ratio": 2.5
+    },
+    "features": {
+      "has_sharp_edges": false,
+      "num_sharp_edges": 0,
+      "sharp_edge_angle_threshold": 30.0,
+      "has_thin_walls": false,
+      "min_wall_thickness_estimate": 0.5,
+      "has_small_features": false,
+      "smallest_feature_size": 0.1,
+      "feature_to_bbox_ratio": 0.05,
+      "curvature_max": 1.0,
+      "curvature_mean": 1.0
+    }
+  },
+  "flow_estimation": {
+    "type": "external",
+    "confidence": 0.9,
+    "reasoning": "Closed sphere surface — typical external flow benchmark",
+    "alternatives": ["internal"]
+  },
+  "issues": [],
+  "tier_compatibility": {
+    "tier0_core": {"compatible": true, "notes": ""},
+    "tier05_netgen": {"compatible": true, "notes": ""},
+    "tier1_snappy": {"compatible": true, "notes": ""},
+    "tier15_cfmesh": {"compatible": true, "notes": ""},
+    "tier2_tetwild": {"compatible": true, "notes": ""}
+  }
+}

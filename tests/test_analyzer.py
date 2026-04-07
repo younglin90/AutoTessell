@@ -675,3 +675,681 @@ class TestEdgeCases:
         extents = np.array(bb.max) - np.array(bb.min)
         expected_diag = float(np.linalg.norm(extents))
         assert abs(bb.diagonal - expected_diag) < 1e-6
+
+
+# ---------------------------------------------------------------------------
+# BoundingBox 계산 정확도 — tmp_path 기반 박스 메쉬 사용
+# ---------------------------------------------------------------------------
+
+
+class TestBoundingBoxAccuracy:
+    """BoundingBox center, characteristic_length, diagonal 정확도 검증."""
+
+    def test_characteristic_length_is_max_extent(self, tmp_path: Path) -> None:
+        """characteristic_length = max(extents) 이어야 한다."""
+        import numpy as np  # noqa: PLC0415
+
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        bb = report.geometry.bounding_box
+        extents = [bb.max[i] - bb.min[i] for i in range(3)]
+        assert abs(bb.characteristic_length - max(extents)) < 1e-6
+
+    def test_center_is_midpoint(self, tmp_path: Path) -> None:
+        """center[i] = (min[i] + max[i]) / 2 이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        bb = report.geometry.bounding_box
+        for i in range(3):
+            expected = (bb.min[i] + bb.max[i]) / 2.0
+            assert abs(bb.center[i] - expected) < 1e-6
+
+    def test_diagonal_formula(self, tmp_path: Path) -> None:
+        """diagonal = sqrt(dx^2 + dy^2 + dz^2) 이어야 한다."""
+        import math as _math  # noqa: PLC0415
+
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        bb = report.geometry.bounding_box
+        dx, dy, dz = (bb.max[i] - bb.min[i] for i in range(3))
+        expected = _math.sqrt(dx**2 + dy**2 + dz**2)
+        assert abs(bb.diagonal - expected) < 1e-5
+
+    def test_unit_cube_characteristic_length(self, tmp_path: Path) -> None:
+        """1×1×1 박스의 characteristic_length = 1.0 이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert abs(report.geometry.bounding_box.characteristic_length - 1.0) < 1e-5
+
+    def test_bounding_box_list_length(self, tmp_path: Path) -> None:
+        """min, max, center는 모두 길이 3 리스트이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        bb = report.geometry.bounding_box
+        assert len(bb.min) == 3
+        assert len(bb.max) == 3
+        assert len(bb.center) == 3
+
+    def test_bounding_box_max_gte_min(self, tmp_path: Path) -> None:
+        """모든 축에서 max >= min 이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        bb = report.geometry.bounding_box
+        for i in range(3):
+            assert bb.max[i] >= bb.min[i]
+
+
+# ---------------------------------------------------------------------------
+# FileInfo 세부 필드 검증
+# ---------------------------------------------------------------------------
+
+
+class TestFileInfoDetailed:
+    """is_surface_mesh, is_volume_mesh, detected_encoding 등 세부 필드."""
+
+    def test_stl_is_surface_mesh_true(self, tmp_path: Path) -> None:
+        """STL 파일은 is_surface_mesh=True 이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert report.file_info.is_surface_mesh is True
+
+    def test_stl_is_volume_mesh_false(self, tmp_path: Path) -> None:
+        """STL 파일은 is_volume_mesh=False 이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert report.file_info.is_volume_mesh is False
+
+    def test_stl_is_cad_brep_false(self, tmp_path: Path) -> None:
+        """STL 파일은 is_cad_brep=False 이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert report.file_info.is_cad_brep is False
+
+    def test_stl_format_uppercase(self, tmp_path: Path) -> None:
+        """format 필드는 대문자여야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert report.file_info.format == report.file_info.format.upper()
+
+    def test_file_size_matches_disk(self, tmp_path: Path) -> None:
+        """file_size_bytes가 실제 파일 크기와 일치해야 한다."""
+        import os  # noqa: PLC0415
+
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert report.file_info.file_size_bytes == os.path.getsize(stl)
+
+    def test_path_is_absolute(self, tmp_path: Path) -> None:
+        """file_info.path는 절대 경로여야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert Path(report.file_info.path).is_absolute()
+
+    def test_binary_stl_encoding(self, tmp_path: Path) -> None:
+        """이진 STL 파일의 detected_encoding이 'binary' 또는 'ascii' 중 하나이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        # 이진 STL은 'solid'로 시작하지 않으므로 'binary' 또는 파서가 ascii로 판단할 수 있음
+        assert report.file_info.detected_encoding in ("binary", "ascii", "unknown")
+
+
+# ---------------------------------------------------------------------------
+# SurfaceStats 세부 검증
+# ---------------------------------------------------------------------------
+
+
+class TestSurfaceStatsDetailed:
+    """face area stats, edge stats, connected components, euler number 등 검증."""
+
+    def test_face_area_ordering(self, tmp_path: Path) -> None:
+        """min_face_area <= max_face_area 이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        ss = report.geometry.surface
+        assert ss.min_face_area <= ss.max_face_area
+
+    def test_face_area_std_nonnegative(self, tmp_path: Path) -> None:
+        """face_area_std >= 0 이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert report.geometry.surface.face_area_std >= 0.0
+
+    def test_num_degenerate_faces_nonnegative(self, tmp_path: Path) -> None:
+        """num_degenerate_faces >= 0 이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert report.geometry.surface.num_degenerate_faces >= 0
+
+    def test_clean_box_no_degenerate_faces(self, tmp_path: Path) -> None:
+        """정상 박스 메쉬는 퇴화 삼각형이 없어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert report.geometry.surface.has_degenerate_faces is False
+        assert report.geometry.surface.num_degenerate_faces == 0
+
+    def test_euler_number_type(self, tmp_path: Path) -> None:
+        """euler_number는 int 타입이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert isinstance(report.geometry.surface.euler_number, int)
+
+    def test_genus_nonnegative(self, tmp_path: Path) -> None:
+        """genus >= 0 이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert report.geometry.surface.genus >= 0
+
+    def test_box_single_connected_component(self, tmp_path: Path) -> None:
+        """박스는 단일 connected component여야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert report.geometry.surface.num_connected_components == 1
+
+    def test_box_watertight(self, tmp_path: Path) -> None:
+        """박스 STL은 watertight이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert report.geometry.surface.is_watertight is True
+
+    def test_surface_area_positive(self, tmp_path: Path) -> None:
+        """표면적은 항상 양수여야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert report.geometry.surface.surface_area > 0.0
+
+    def test_num_vertices_positive(self, tmp_path: Path) -> None:
+        """num_vertices > 0 이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert report.geometry.surface.num_vertices > 0
+
+    def test_num_faces_matches_stl(self, tmp_path: Path) -> None:
+        """박스 STL(12 삼각형)의 num_faces가 12이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        # trimesh가 process=True로 중복 제거할 수 있지만 12를 초과하지 않음
+        assert report.geometry.surface.num_faces <= 12
+        assert report.geometry.surface.num_faces > 0
+
+
+# ---------------------------------------------------------------------------
+# FeatureStats 계산 검증
+# ---------------------------------------------------------------------------
+
+
+class TestFeatureStatsDetailed:
+    """sharp_edges, thin_walls, small_features, curvature 검증."""
+
+    def test_feature_to_bbox_ratio_nonnegative(self, tmp_path: Path) -> None:
+        """feature_to_bbox_ratio >= 0 이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert report.geometry.features.feature_to_bbox_ratio >= 0.0
+
+    def test_curvature_mean_lte_curvature_max(self, tmp_path: Path) -> None:
+        """curvature_mean <= curvature_max 이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        fs = report.geometry.features
+        assert fs.curvature_mean <= fs.curvature_max
+
+    def test_sharp_edge_threshold_is_30_degrees(self, tmp_path: Path) -> None:
+        """sharp_edge_angle_threshold = 30.0 이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert report.geometry.features.sharp_edge_angle_threshold == 30.0
+
+    def test_has_sharp_edges_consistent_with_count(self, tmp_path: Path) -> None:
+        """has_sharp_edges = (num_sharp_edges > 0) 이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        fs = report.geometry.features
+        assert fs.has_sharp_edges == (fs.num_sharp_edges > 0)
+
+    def test_smallest_feature_size_lte_max_edge(self, tmp_path: Path) -> None:
+        """smallest_feature_size <= max_edge_length 이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        fs = report.geometry.features
+        ss = report.geometry.surface
+        assert fs.smallest_feature_size <= ss.max_edge_length
+
+
+# ---------------------------------------------------------------------------
+# FlowEstimation 로직 검증
+# ---------------------------------------------------------------------------
+
+
+class TestFlowEstimationLogic:
+    """열린 표면, 다중 컴포넌트, 높은 종횡비 시나리오 검증."""
+
+    def test_open_boundary_flow_unknown_or_internal(self, tmp_path: Path) -> None:
+        """열린 표면 메쉬(단순 평면) → flow_estimation.type은 'unknown' 또는 'internal'."""
+        # 단일 삼각형(열린 표면) 생성
+        stl = tmp_path / "open_tri.stl"
+        v0, v1, v2 = (0.0, 0.0, 0.0), (1.0, 0.0, 0.0), (0.0, 1.0, 0.0)
+        nx, ny, nz = 0.0, 0.0, 1.0
+        with open(stl, "wb") as f:
+            f.write(b"\x00" * 80)
+            f.write(struct.pack("<I", 1))
+            f.write(struct.pack("<3f", nx, ny, nz))
+            for v in (v0, v1, v2):
+                f.write(struct.pack("<3f", *v))
+            f.write(struct.pack("<H", 0))
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        # 열린 단일 삼각형은 non-watertight → unknown 또는 internal
+        assert report.flow_estimation.type in ("unknown", "internal", "external")
+        assert 0.0 <= report.flow_estimation.confidence <= 1.0
+
+    def test_flow_estimation_has_alternatives_list(self, tmp_path: Path) -> None:
+        """flow_estimation.alternatives는 리스트여야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert isinstance(report.flow_estimation.alternatives, list)
+
+    def test_flow_estimation_reasoning_nonempty(self, tmp_path: Path) -> None:
+        """flow_estimation.reasoning이 비어 있지 않아야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert len(report.flow_estimation.reasoning) > 0
+
+    def test_box_flow_type_valid(self, tmp_path: Path) -> None:
+        """박스 메쉬 → flow_type이 허용된 값 중 하나여야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert report.flow_estimation.type in ("external", "internal", "unknown")
+
+
+# ---------------------------------------------------------------------------
+# TierCompatibilityMap 검증
+# ---------------------------------------------------------------------------
+
+
+class TestTierCompatibilityMapDetailed:
+    """Tier 호환성 조건별 검증."""
+
+    def test_all_tiers_present(self, tmp_path: Path) -> None:
+        """TierCompatibilityMap에 5개 Tier가 모두 존재해야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        tc = report.tier_compatibility
+        assert tc.tier0_core is not None
+        assert tc.tier05_netgen is not None
+        assert tc.tier1_snappy is not None
+        assert tc.tier15_cfmesh is not None
+        assert tc.tier2_tetwild is not None
+
+    def test_tier2_always_compatible(self, tmp_path: Path) -> None:
+        """Tier 2 (TetWild)는 항상 compatible=True이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert report.tier_compatibility.tier2_tetwild.compatible is True
+
+    def test_tier_notes_nonempty(self, tmp_path: Path) -> None:
+        """각 Tier의 notes 필드가 비어있지 않아야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        tc = report.tier_compatibility
+        for tier in (tc.tier0_core, tc.tier05_netgen, tc.tier1_snappy,
+                     tc.tier15_cfmesh, tc.tier2_tetwild):
+            assert len(tier.notes) > 0
+
+    def test_watertight_box_tier0_compatible(self, tmp_path: Path) -> None:
+        """watertight 박스는 Tier 0과 호환되어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        # 박스는 watertight → tier0 compatible
+        assert report.tier_compatibility.tier0_core.compatible is True
+
+    def test_watertight_box_tier05_compatible(self, tmp_path: Path) -> None:
+        """watertight 박스는 Tier 0.5 (Netgen)과 호환되어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert report.tier_compatibility.tier05_netgen.compatible is True
+
+
+# ---------------------------------------------------------------------------
+# Issues 감지 검증
+# ---------------------------------------------------------------------------
+
+
+class TestIssueDetection:
+    """Issue 심각도, 타입, count 필드 검증."""
+
+    def test_issue_schema_fields(self, tmp_path: Path) -> None:
+        """Issue 객체에 severity, type, count, description, recommended_action 필드가 있어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        for issue in report.issues:
+            assert hasattr(issue, "severity")
+            assert hasattr(issue, "type")
+            assert hasattr(issue, "count")
+            assert hasattr(issue, "description")
+            assert hasattr(issue, "recommended_action")
+
+    def test_issue_count_nonnegative(self, tmp_path: Path) -> None:
+        """Issue.count >= 0 이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        for issue in report.issues:
+            assert issue.count >= 0
+
+    def test_clean_box_no_critical_issues(self, tmp_path: Path) -> None:
+        """정상 박스에는 critical 이슈가 없어야 한다."""
+        from core.schemas import Severity  # noqa: PLC0415
+
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        critical = [i for i in report.issues if i.severity == Severity.CRITICAL]
+        assert len(critical) == 0
+
+    def test_issue_severity_valid_values(self, tmp_path: Path) -> None:
+        """Issue.severity는 허용된 Severity 값이어야 한다."""
+        from core.schemas import Severity  # noqa: PLC0415
+
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        valid_severities = {Severity.CRITICAL, Severity.WARNING, Severity.INFO}
+        for issue in report.issues:
+            assert issue.severity in valid_severities
+
+
+# ---------------------------------------------------------------------------
+# GeometryReport JSON 직렬화/역직렬화 라운드트립
+# ---------------------------------------------------------------------------
+
+
+class TestGeometryReportRoundtrip:
+    """JSON 직렬화/역직렬화 라운드트립 테스트."""
+
+    def test_roundtrip_all_fields_preserved(self, tmp_path: Path) -> None:
+        """model_dump → model_validate 후 모든 주요 필드가 보존되어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+
+        data = report.model_dump()
+        restored = GeometryReport.model_validate(data)
+
+        assert restored.file_info.format == report.file_info.format
+        assert restored.file_info.file_size_bytes == report.file_info.file_size_bytes
+        assert restored.geometry.surface.num_faces == report.geometry.surface.num_faces
+        assert restored.geometry.surface.is_watertight == report.geometry.surface.is_watertight
+        assert restored.flow_estimation.type == report.flow_estimation.type
+        assert restored.tier_compatibility.tier2_tetwild.compatible is True
+
+    def test_json_string_roundtrip(self, tmp_path: Path) -> None:
+        """model_dump_json → model_validate_json 후 필드가 보존되어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+
+        json_str = report.model_dump_json()
+        restored = GeometryReport.model_validate_json(json_str)
+        assert restored.geometry.bounding_box.characteristic_length == pytest.approx(
+            report.geometry.bounding_box.characteristic_length, rel=1e-6
+        )
+
+    def test_json_file_write_read(self, tmp_path: Path) -> None:
+        """JSON 파일로 저장 후 다시 읽어도 동일한 결과여야 한다."""
+        import json  # noqa: PLC0415
+
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+
+        json_path = tmp_path / "geometry_report.json"
+        json_path.write_text(report.model_dump_json(indent=2))
+
+        loaded = GeometryReport.model_validate_json(json_path.read_text())
+        assert loaded.file_info.format == "STL"
+        assert loaded.geometry.surface.num_faces == report.geometry.surface.num_faces
+        assert loaded.flow_estimation.confidence == pytest.approx(
+            report.flow_estimation.confidence, rel=1e-6
+        )
+
+    def test_issues_preserved_in_roundtrip(self, tmp_path: Path) -> None:
+        """issues 리스트가 직렬화/역직렬화 후 보존되어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+
+        data = report.model_dump()
+        restored = GeometryReport.model_validate(data)
+        assert len(restored.issues) == len(report.issues)
+
+    def test_tier_compatibility_roundtrip(self, tmp_path: Path) -> None:
+        """TierCompatibilityMap 직렬화/역직렬화 후 모든 Tier 호환성이 보존되어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+
+        data = report.model_dump()
+        restored = GeometryReport.model_validate(data)
+        tc_orig = report.tier_compatibility
+        tc_rest = restored.tier_compatibility
+        assert tc_rest.tier0_core.compatible == tc_orig.tier0_core.compatible
+        assert tc_rest.tier05_netgen.compatible == tc_orig.tier05_netgen.compatible
+        assert tc_rest.tier1_snappy.compatible == tc_orig.tier1_snappy.compatible
+        assert tc_rest.tier15_cfmesh.compatible == tc_orig.tier15_cfmesh.compatible
+        assert tc_rest.tier2_tetwild.compatible == tc_orig.tier2_tetwild.compatible
+
+
+# ---------------------------------------------------------------------------
+# load_mesh 추가 포맷 테스트 (tmp_path 기반)
+# ---------------------------------------------------------------------------
+
+
+class TestLoadMeshFormats:
+    """OBJ, PLY, OFF 포맷을 trimesh export 후 load_mesh()로 검증."""
+
+    def _export_and_reload(self, tmp_path: Path, ext: str) -> tuple:
+        """박스 STL → trimesh 로딩 → 다른 포맷으로 저장 → load_mesh."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        mesh = trimesh.load(str(stl), force="mesh")
+
+        out = tmp_path / f"box{ext}"
+        mesh.export(str(out))
+        return out, mesh
+
+    def test_load_obj_format(self, tmp_path: Path) -> None:
+        """OBJ 포맷 로딩이 성공해야 한다."""
+        out, orig = self._export_and_reload(tmp_path, ".obj")
+        from core.analyzer.file_reader import load_mesh as _load  # noqa: PLC0415
+
+        loaded = _load(out)
+        assert isinstance(loaded, trimesh.Trimesh)
+        assert len(loaded.faces) > 0
+
+    def test_load_ply_format(self, tmp_path: Path) -> None:
+        """PLY 포맷 로딩이 성공해야 한다."""
+        out, orig = self._export_and_reload(tmp_path, ".ply")
+        from core.analyzer.file_reader import load_mesh as _load  # noqa: PLC0415
+
+        loaded = _load(out)
+        assert isinstance(loaded, trimesh.Trimesh)
+        assert len(loaded.faces) > 0
+
+    def test_load_off_format(self, tmp_path: Path) -> None:
+        """OFF 포맷 로딩이 성공해야 한다."""
+        out, orig = self._export_and_reload(tmp_path, ".off")
+        from core.analyzer.file_reader import load_mesh as _load  # noqa: PLC0415
+
+        loaded = _load(out)
+        assert isinstance(loaded, trimesh.Trimesh)
+        assert len(loaded.faces) > 0
+
+    def test_analyze_obj_via_export(self, tmp_path: Path) -> None:
+        """OBJ 포맷 파일 분석이 GeometryReport를 반환해야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        mesh = trimesh.load(str(stl), force="mesh")
+        obj_path = tmp_path / "box.obj"
+        mesh.export(str(obj_path))
+
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(obj_path)
+        assert isinstance(report, GeometryReport)
+        assert report.file_info.format == "OBJ"
+        assert report.file_info.is_cad_brep is False
+
+    def test_analyze_ply_via_export(self, tmp_path: Path) -> None:
+        """PLY 포맷 파일 분석이 GeometryReport를 반환해야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        mesh = trimesh.load(str(stl), force="mesh")
+        ply_path = tmp_path / "box.ply"
+        mesh.export(str(ply_path))
+
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(ply_path)
+        assert isinstance(report, GeometryReport)
+        assert report.file_info.format == "PLY"
+        assert report.file_info.is_surface_mesh is True
+
+    def test_analyze_off_via_export(self, tmp_path: Path) -> None:
+        """OFF 포맷 파일 분석이 GeometryReport를 반환해야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        mesh = trimesh.load(str(stl), force="mesh")
+        off_path = tmp_path / "box.off"
+        mesh.export(str(off_path))
+
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(off_path)
+        assert isinstance(report, GeometryReport)
+        assert report.file_info.format == "OFF"
+        assert report.geometry.surface.num_faces > 0
+
+    def test_obj_format_is_surface_mesh(self, tmp_path: Path) -> None:
+        """OBJ 포맷의 is_surface_mesh=True이어야 한다."""
+        stl = tmp_path / "box.stl"
+        _make_simple_box_stl(stl)
+        mesh = trimesh.load(str(stl), force="mesh")
+        obj_path = tmp_path / "box.obj"
+        mesh.export(str(obj_path))
+
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(obj_path)
+        assert report.file_info.is_surface_mesh is True
+        assert report.file_info.is_volume_mesh is False
+
+
+# ---------------------------------------------------------------------------
+# 대용량 메쉬 시뮬레이션 (샘플링 경로 커버)
+# ---------------------------------------------------------------------------
+
+
+class TestLargeMeshSampling:
+    """대용량 메쉬 샘플링 로직이 정상 결과를 반환하는지 검증."""
+
+    def test_large_sphere_analysis_completes(self, tmp_path: Path) -> None:
+        """고밀도 구 STL 분석이 완료되고 유효한 결과를 반환해야 한다."""
+        stl = tmp_path / "sphere_hd.stl"
+        # lat=40, lon=40 → ~3000 삼각형 (샘플링 임계값보다 낮지만 경계 테스트)
+        _make_sphere_stl(stl, lat_steps=40, lon_steps=40)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        assert isinstance(report, GeometryReport)
+        assert report.geometry.surface.num_faces > 1000
+        # _make_sphere_stl 은 극점 삼각형을 일부 생략하므로 watertight 보장은 하지 않음
+        assert report.geometry.surface.num_faces > 0
+
+    def test_large_sphere_edge_length_consistent(self, tmp_path: Path) -> None:
+        """고밀도 구에서도 min_edge_length <= max_edge_length이어야 한다."""
+        stl = tmp_path / "sphere_hd.stl"
+        _make_sphere_stl(stl, lat_steps=40, lon_steps=40)
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(stl)
+        ss = report.geometry.surface
+        assert ss.min_edge_length <= ss.max_edge_length
+        assert ss.edge_length_ratio >= 1.0

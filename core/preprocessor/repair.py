@@ -25,6 +25,13 @@ except ImportError:
     _PYMESHFIX_AVAILABLE = False
     log.info("pymeshfix_unavailable", msg="pymeshfix 미설치 — trimesh fallback 사용")
 
+try:
+    import mesh2sdf
+    _MESH2SDF_AVAILABLE = True
+except ImportError:
+    _MESH2SDF_AVAILABLE = False
+    log.debug("mesh2sdf_unavailable", msg="mesh2sdf 미설치 — L1 mesh2sdf fallback 비활성화")
+
 
 def gate_check(mesh: trimesh.Trimesh) -> bool:
     """Gate 검사: watertight + manifold 여부 확인.
@@ -186,7 +193,13 @@ class SurfaceRepairer:
             actions.extend(trimesh_actions)
             return repaired, actions
         except Exception as exc:
-            log.warning("pymeshfix_failed", error=str(exc), fallback="trimesh")
+            log.warning("pymeshfix_failed", error=str(exc), fallback="mesh2sdf")
+            # mesh2sdf fallback 시도
+            if _MESH2SDF_AVAILABLE:
+                result = self._repair_with_mesh2sdf(mesh, actions)
+                if result is not None:
+                    return result
+            # mesh2sdf도 실패 시 trimesh로 계속 진행
             return self._repair_with_trimesh(mesh, issues, actions)
 
     def _repair_with_trimesh(
@@ -199,6 +212,65 @@ class SurfaceRepairer:
         mesh, trimesh_actions = self._apply_trimesh_cleanup(mesh)
         actions.extend(trimesh_actions)
         return mesh, actions
+
+    def _repair_with_mesh2sdf(
+        self,
+        mesh: trimesh.Trimesh,
+        actions: list[str],
+    ) -> tuple[trimesh.Trimesh, list[str]] | None:
+        """mesh2sdf를 사용한 watertight 복원 (L1 fallback).
+
+        mesh2sdf는 SDF 그리드를 생성하고 marching cubes로 복원하여
+        watertight 메쉬를 생성한다.
+
+        Args:
+            mesh: 입력 trimesh.Trimesh 객체.
+            actions: 수행한 작업 리스트.
+
+        Returns:
+            (복원된 메쉬, 수행한 작업 리스트) 튜플 또는 실패 시 None.
+        """
+        import numpy as np
+        from skimage.measure import marching_cubes
+
+        try:
+            log.info("mesh2sdf_fallback_start", input_faces=len(mesh.faces))
+
+            # mesh2sdf로 SDF 계산 (기본 크기 128)
+            sdf_grid = mesh2sdf.compute(
+                mesh.vertices.astype(np.float64),
+                mesh.faces.astype(np.uint32),
+                size=128,
+            )
+
+            # marching cubes로 복원
+            vertices, faces, _, _ = marching_cubes(sdf_grid, level=0.0)
+
+            if len(faces) == 0:
+                log.warning("mesh2sdf_no_faces_after_marching_cubes")
+                return None
+
+            # 정규화 및 스케일 조정
+            repaired = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
+            repaired.vertices = repaired.vertices * mesh.scale
+            repaired.vertices = repaired.vertices + mesh.centroid
+
+            actions.append("mesh2sdf.compute(sdf_grid) + marching_cubes()")
+
+            log.info(
+                "mesh2sdf_repaired",
+                input_faces=len(mesh.faces),
+                output_faces=len(repaired.faces),
+            )
+
+            # trimesh 추가 정리
+            repaired, trimesh_actions = self._apply_trimesh_cleanup(repaired)
+            actions.extend(trimesh_actions)
+            return repaired, actions
+
+        except Exception as exc:
+            log.warning("mesh2sdf_fallback_failed", error=str(exc))
+            return None
 
     def _apply_trimesh_cleanup(
         self,
