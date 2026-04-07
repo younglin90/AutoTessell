@@ -47,6 +47,13 @@ except ImportError:
     _FAST_SIMPLIFICATION_AVAILABLE = False
     log.debug("fast_simplification_unavailable", msg="fast-simplification 미설치 — L2 사전 데시메이션 비활성화")
 
+try:
+    import igl
+    _IGL_AVAILABLE = True
+except ImportError:
+    _IGL_AVAILABLE = False
+    log.debug("igl_unavailable", msg="igl 미설치 — Laplacian smoothing 비활성화")
+
 
 def _run_vorpalite_remesh(
     input_stl: Path, output_stl: Path, target_edge_length: float
@@ -204,6 +211,14 @@ class SurfaceRemesher:
             except Exception as exc:
                 log.warning("l2_pymeshlab_fallback_failed", error=str(exc))
 
+        # 4) igl Laplacian smoothing (마무리 품질 개선)
+        if _IGL_AVAILABLE:
+            try:
+                remeshed = self.apply_laplacian_smoothing(remeshed, iterations=5, lambda_=0.5)
+                methods_used.append("igl_laplacian")
+            except Exception as exc:
+                log.warning("l2_laplacian_smoothing_failed", error=str(exc))
+
         elapsed = time.perf_counter() - step_start
         passed = gate_check(remeshed)
         method_str = "+".join(methods_used) if methods_used else "passthrough"
@@ -330,6 +345,71 @@ class SurfaceRemesher:
             return self._run_pyacvd(mesh, computed_target)
         except Exception as exc:
             log.warning("remesh_failed", error=str(exc), fallback="passthrough")
+            return mesh
+
+    def apply_laplacian_smoothing(
+        self,
+        mesh: trimesh.Trimesh,
+        iterations: int = 5,
+        lambda_: float = 0.5,
+    ) -> trimesh.Trimesh:
+        """Laplacian 스무딩을 적용하여 메쉬 품질을 개선한다.
+
+        igl의 cotmatrix()와 massmatrix()를 사용하여 기하학적 스무딩을 수행.
+
+        Args:
+            mesh: 입력 trimesh.Trimesh.
+            iterations: 스무딩 반복 횟수 (기본: 5).
+            lambda_: 스무딩 강도 (0.0~1.0, 기본: 0.5).
+
+        Returns:
+            스무딩된 trimesh.Trimesh (igl 미설치 시 원본 반환).
+        """
+        if not _IGL_AVAILABLE:
+            log.debug("laplacian_smoothing_skipped", reason="igl unavailable")
+            return mesh
+
+        import numpy as np
+        from scipy.sparse import linalg
+
+        try:
+            import igl
+
+            V = np.asarray(mesh.vertices, dtype=np.float64)
+            F = np.asarray(mesh.faces, dtype=np.int64)
+
+            # Cotangent Laplacian과 Mass matrix 계산
+            L = igl.cotmatrix(V, F)
+            M = igl.massmatrix(V, F, igl.MASSMATRIX_TYPE_VORONOI)
+
+            # Laplacian smoothing: V_new = V - lambda * M^(-1) * L * V
+            # 더 안정적인 구현: iterate (M - lambda * L) * V_new = M * V
+            # which gives V_new = (M - lambda * L)^(-1) * M * V
+            A = M - lambda_ * L
+
+            V_smoothed = V.copy()
+            for _ in range(iterations):
+                # Solve A @ V_smoothed = M @ V for each coordinate separately
+                for coord_idx in range(3):
+                    rhs = M.dot(V_smoothed[:, coord_idx])
+                    V_smoothed[:, coord_idx] = linalg.spsolve(A, rhs)
+
+            result = trimesh.Trimesh(
+                vertices=V_smoothed,
+                faces=F,
+                process=False,
+            )
+
+            log.info(
+                "laplacian_smoothing_done",
+                iterations=iterations,
+                lambda_=lambda_,
+                num_vertices=len(V),
+            )
+            return result
+
+        except Exception as exc:
+            log.warning("laplacian_smoothing_failed", error=str(exc), fallback="passthrough")
             return mesh
 
     # ------------------------------------------------------------------
