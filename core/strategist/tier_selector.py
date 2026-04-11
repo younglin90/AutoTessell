@@ -142,6 +142,17 @@ class TierSelector:
             log.debug("tier_decision", reason="2d_geometry_detected", tier="tier0_2d_meshpy")
             return "tier0_2d_meshpy", "2d_geometry_detected"
 
+        # ── Open boundary 감지 (모든 quality level)
+        # Open boundary는 전처리 강화 필요 → TetWild 우선 (L2/L3 후처리 안정성)
+        if not is_watertight and not is_cad:
+            log.debug(
+                "tier_decision",
+                reason="open_boundary_detected",
+                tier="tier2_tetwild",
+                note="L2/L3 전처리 권장",
+            )
+            return "tier2_tetwild", "open_boundary_detected"
+
         # ── draft ─────────────────────────────────────────────────────
         if quality_level == QualityLevel.DRAFT.value:
             log.debug("tier_decision", reason="draft_quality", tier="tier2_tetwild")

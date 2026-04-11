@@ -68,6 +68,56 @@ class ParamOptimizer:
     """지오메트리 보고서 기반 메쉬 파라미터 자동 최적화."""
 
     # ------------------------------------------------------------------
+    # 극단적 형상 감지 및 파라미터 조정
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _is_extreme_geometry(report: GeometryReport) -> tuple[bool, list[str]]:
+        """극단적 형상 감지: 미세한 features, non-manifold 등.
+
+        Returns:
+            (is_extreme, reasons) 튜플.
+            is_extreme=True이면 cell size를 크게 설정하여 계산 시간 감소.
+        """
+        reasons: list[str] = []
+        bbox = report.geometry.bounding_box
+        surface = report.geometry.surface
+        features = report.geometry.features
+
+        # 극도로 미세한 features (feature:bbox ratio < 0.1%)
+        if features.has_small_features and features.feature_to_bbox_ratio < 0.001:
+            reasons.append(f"micro_features_ratio={features.feature_to_bbox_ratio:.6f}")
+
+        # 매우 얇은 벽 (thin walls)
+        if features.has_thin_walls:
+            min_wall = features.min_wall_thickness_estimate
+            L = bbox.characteristic_length
+            if min_wall / L < 0.01:  # 0.01L 미만의 얇은 벽
+                reasons.append(f"thin_walls={min_wall:.6f}")
+
+        # 높은 곡률 (복잡한 surface)
+        if features.curvature_max > 100:
+            reasons.append(f"high_curvature={features.curvature_max:.1f}")
+
+        # Non-manifold 기하학
+        if not surface.is_manifold:
+            reasons.append("non_manifold")
+
+        # 많은 연결 컴포넌트 (분리된 부분)
+        if surface.num_connected_components > 5:
+            reasons.append(f"many_components={surface.num_connected_components}")
+
+        # 자체 교차 또는 심각한 손상
+        if not surface.is_watertight and surface.has_degenerate_faces:
+            reasons.append("degenerate_and_non_watertight")
+
+        is_extreme = len(reasons) > 0
+        if is_extreme:
+            log.info("extreme_geometry_detected", is_extreme=is_extreme, reasons=reasons)
+
+        return is_extreme, reasons
+
+    # ------------------------------------------------------------------
     # 도메인 설정
     # ------------------------------------------------------------------
 
@@ -121,6 +171,18 @@ class ParamOptimizer:
 
         base_cell_size = self._base_cell_size(L, quality_level)
 
+        # 극단적 형상 감지 → 셀 크기 증가 (계산 시간 감소)
+        is_extreme, reasons = self._is_extreme_geometry(report)
+        if is_extreme:
+            extreme_factor = 1.5
+            base_cell_size *= extreme_factor
+            log.info(
+                "extreme_geometry_cell_size_increase_domain",
+                reasons=reasons,
+                factor=extreme_factor,
+                new_base_cell=base_cell_size,
+            )
+
         # location_in_mesh: 업스트림 입구 근처 (외부), 도메인 중심 (내부)
         if flow_type == "external":
             loc = [domain_min[0] + L * 0.5, bbox.center[1], bbox.center[2]]
@@ -173,6 +235,8 @@ class ParamOptimizer:
         QualityLevel에 따라 셀 크기 배율이 달라진다:
           draft=4.0, standard=2.0, fine=1.0
 
+        극단적 형상 감지 시 셀 크기를 증가시켜 계산 시간을 감소시킨다.
+
         Returns:
             {
                 "base_cell_size": ...,
@@ -187,11 +251,25 @@ class ParamOptimizer:
         ql = quality_level.value if isinstance(quality_level, QualityLevel) else str(quality_level)
 
         base = self._base_cell_size(L, ql)
+
+        # 극단적 형상 감지 → 셀 크기 증가 (계산 시간 감소)
+        is_extreme, reasons = self._is_extreme_geometry(report)
+        if is_extreme:
+            # 극단적 형상은 cell size를 1.5배 증가 (mesh element 수를 ~0.3배로 감소)
+            extreme_factor = 1.5
+            base *= extreme_factor
+            log.info(
+                "extreme_geometry_cell_size_increase",
+                reasons=reasons,
+                factor=extreme_factor,
+                new_base_cell=base,
+            )
+
         surface = base / 4.0
         min_size = surface / 4.0
 
-        # 고곡률 보정 (fine에만 적용)
-        if ql == QualityLevel.FINE.value and curvature_max > 20.0:
+        # 고곡률 보정 (fine에만 적용, 극단적 형상 제외)
+        if not is_extreme and ql == QualityLevel.FINE.value and curvature_max > 20.0:
             surface *= 0.5
             min_size = surface / 4.0
             log.debug("high_curvature_correction", curvature_max=curvature_max)
@@ -201,7 +279,7 @@ class ParamOptimizer:
             "surface_cell_size": surface,
             "min_cell_size": min_size,
         }
-        log.debug("cell_sizes_computed", quality_level=ql, **sizes)
+        log.debug("cell_sizes_computed", quality_level=ql, is_extreme=is_extreme, **sizes)
         return sizes
 
     # ------------------------------------------------------------------

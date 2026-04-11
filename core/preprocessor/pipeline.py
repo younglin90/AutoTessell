@@ -115,23 +115,26 @@ class Preprocessor:
         from core.analyzer.file_reader import load_mesh
 
         mesh = load_mesh(current_path)
+        is_open_boundary = not mesh.is_watertight and not is_cad
         log.info(
             "mesh_loaded",
             path=str(current_path),
             num_faces=len(mesh.faces),
             is_watertight=mesh.is_watertight,
+            is_open_boundary=is_open_boundary,
         )
 
         # ------------------------------------------------------------------
         # L1: 표면 수리 (Repair)
         # ------------------------------------------------------------------
         surface_quality_level: str | None = None
+        force_l2_for_open = is_open_boundary and not surface_remesh
 
         if not no_repair:
             mesh, l1_passed, l1_record = self._l1_repair(mesh, geometry_report)
             steps_performed.append(PreprocessStep(**l1_record))
 
-            if l1_passed and not surface_remesh:
+            if l1_passed and not surface_remesh and not force_l2_for_open:
                 surface_quality_level = "l1_repair"
                 log.info("l1_gate_passed", surface_quality_level=surface_quality_level)
             else:
@@ -140,6 +143,8 @@ class Preprocessor:
                 # ----------------------------------------------------------
                 if not l1_passed:
                     log.info("l1_gate_failed", reason="proceeding to L2")
+                elif force_l2_for_open:
+                    log.info("l2_forced", reason="open_boundary_detected")
                 else:
                     log.info("l2_forced", reason="surface_remesh=True")
 
