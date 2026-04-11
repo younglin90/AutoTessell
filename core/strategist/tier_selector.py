@@ -197,7 +197,7 @@ class TierSelector:
 
     @staticmethod
     def _is_2d(report: GeometryReport) -> bool:
-        """2D 기하학 판별: 한 축의 좌표 분산이 대각선의 1% 이하."""
+        """2D 기하학 판별: 한 축의 좌표 분산이 대각선의 2% 이하, 또는 높은 aspect ratio."""
         bounds = report.geometry.bounding_box
         if bounds is None:
             return False
@@ -212,12 +212,34 @@ class TierSelector:
         # 대각선 길이
         diagonal = bounds.diagonal
 
-        # 한 축의 범위가 대각선의 1% 미만 → 2D
-        threshold = 0.01 * diagonal
-        is_2d = min(dx, dy, dz) < threshold
+        # 방법 1: 한 축의 범위가 대각선의 2% 미만 → 2D (완화된 임계값)
+        threshold_strict = 0.01 * diagonal
+        threshold_loose = 0.02 * diagonal
+        is_2d_strict = min(dx, dy, dz) < threshold_strict
+        is_2d_loose = min(dx, dy, dz) < threshold_loose
+
+        # 방법 2: 항공형/칼날 같은 높은 aspect ratio 형상 감지
+        # (예: naca0012, blade) — 두 축은 크고 한 축은 매우 작음
+        sorted_dims = sorted([dx, dy, dz])
+        min_dim = sorted_dims[0]
+        max_dim = sorted_dims[2]
+        aspect_ratio = max_dim / max(min_dim, 1e-10)
+
+        # aspect ratio > 100이고 min_dim이 대각선의 2% 미만이면 2D
+        is_2d_aspect = (aspect_ratio > 100) and (min_dim < threshold_loose)
+
+        is_2d = is_2d_strict or is_2d_aspect
 
         if is_2d:
-            log.debug("is_2d_detected", threshold=threshold, dx=dx, dy=dy, dz=dz)
+            log.debug(
+                "is_2d_detected",
+                method="strict" if is_2d_strict else "aspect_ratio",
+                threshold=threshold_strict,
+                dx=dx,
+                dy=dy,
+                dz=dz,
+                aspect_ratio=aspect_ratio if is_2d_aspect else None,
+            )
 
         return is_2d
 
