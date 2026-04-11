@@ -9,35 +9,37 @@ log = get_logger(__name__)
 
 # Tier 우선순위 (품질/안정성 순)
 _TIER_ORDER = [
-    "tier1_snappy",
-    "tier15_cfmesh",
-    "tier05_netgen",
-    "tier0_core",
-    "tier2_tetwild",
+    "tier0_2d_meshpy",          # 2D 감지 시 먼저 시도
+    "tier1_snappy",             # 외부유동 + 경계층
+    "tier_hex_classy_blocks",   # 구조화 Hex (단순 형상)
+    "tier15_cfmesh",            # 내부유동
+    "tier05_netgen",            # CAD/일반
+    "tier0_core",               # 단순 형상
+    "tier_meshpy",              # Tet fallback
+    "tier2_tetwild",            # 불량 표면
+    "tier_jigsaw_fallback",     # 최후 fallback (매우 안정적)
 ]
 
 # CLI hint → canonical tier name
 _HINT_MAP: dict[str, str] = {
     "auto": "auto",
+    "2d": "tier0_2d_meshpy",
+    "hex": "tier_hex_classy_blocks",
     "core": "tier0_core",
     "netgen": "tier05_netgen",
     "snappy": "tier1_snappy",
     "cfmesh": "tier15_cfmesh",
     "tetwild": "tier2_tetwild",
+    "jigsaw_fallback": "tier_jigsaw_fallback",
     # canonical names are also accepted directly
+    "tier0_2d_meshpy": "tier0_2d_meshpy",
     "tier0_core": "tier0_core",
     "tier05_netgen": "tier05_netgen",
     "tier1_snappy": "tier1_snappy",
     "tier15_cfmesh": "tier15_cfmesh",
     "tier2_tetwild": "tier2_tetwild",
-}
-
-# QualityLevel → (primary_tiers_candidates, fallback_tiers)
-# primary_tiers_candidates: ordered list — first matching compatible tier wins
-_QUALITY_FALLBACKS: dict[str, list[str]] = {
-    "draft":    ["tier05_netgen"],
-    "standard": ["tier2_tetwild", "tier0_core"],
-    "fine":     ["tier05_netgen", "tier2_tetwild"],
+    "tier_hex_classy_blocks": "tier_hex_classy_blocks",
+    "tier_jigsaw_fallback": "tier_jigsaw_fallback",
 }
 
 
@@ -135,6 +137,11 @@ class TierSelector:
         is_manifold = report.geometry.surface.is_manifold
         has_degenerate = report.geometry.surface.has_degenerate_faces
 
+        # ── 2D 감지 (모든 quality level)
+        if self._is_2d(report):
+            log.debug("tier_decision", reason="2d_geometry_detected", tier="tier0_2d_meshpy")
+            return "tier0_2d_meshpy", "2d_geometry_detected"
+
         # ── draft ─────────────────────────────────────────────────────
         if quality_level == QualityLevel.DRAFT.value:
             log.debug("tier_decision", reason="draft_quality", tier="tier2_tetwild")
@@ -187,6 +194,32 @@ class TierSelector:
         # default fallback
         log.debug("tier_decision", reason="default", tier="tier2_tetwild")
         return "tier2_tetwild", "default"
+
+    @staticmethod
+    def _is_2d(report: GeometryReport) -> bool:
+        """2D 기하학 판별: 한 축의 좌표 분산이 대각선의 1% 이하."""
+        bounds = report.geometry.bounding_box
+        if bounds is None:
+            return False
+
+        x_min, y_min, z_min = bounds.min
+        x_max, y_max, z_max = bounds.max
+
+        dx = x_max - x_min
+        dy = y_max - y_min
+        dz = z_max - z_min
+
+        # 대각선 길이
+        diagonal = bounds.diagonal
+
+        # 한 축의 범위가 대각선의 1% 미만 → 2D
+        threshold = 0.01 * diagonal
+        is_2d = min(dx, dy, dz) < threshold
+
+        if is_2d:
+            log.debug("is_2d_detected", threshold=threshold, dx=dx, dy=dy, dz=dz)
+
+        return is_2d
 
     @staticmethod
     def _is_simple(report: GeometryReport) -> bool:

@@ -625,6 +625,22 @@ def run(
         # element_size = base_cell_size / 4 (orchestrator 내부 로직)
         effective_element_size = base_cell_size / 4
 
+    # base_cell_num은 geometry_report 필요하므로 Analyzer 먼저 실행
+    effective_base_cell_size = base_cell_size
+    if effective_element_size is None and base_cell_num is not None:
+        # Analyzer 실행하여 characteristic_length 획득
+        from core.analyzer.geometry_analyzer import GeometryAnalyzer
+        analyzer = GeometryAnalyzer()
+        try:
+            geometry_report = analyzer.analyze(input_file)
+            if geometry_report and geometry_report.geometry.bounding_box:
+                L = geometry_report.geometry.bounding_box.characteristic_length
+                effective_base_cell_size = L / base_cell_num
+                effective_element_size = effective_base_cell_size / 4
+                console.print(f"[cyan]base_cell_num={base_cell_num} → base_cell_size={effective_base_cell_size:.6f}[/cyan]")
+        except Exception as exc:
+            console.print(f"[yellow]⚠ base_cell_num 계산 실패 (무시): {exc}[/yellow]")
+
     # BL, domain 파라미터들을 tier_specific_params에 추가 (orchestrator 내부 처리용)
     if bl_layers is not None:
         tier_params["bl_layers"] = bl_layers
@@ -634,9 +650,8 @@ def run(
         tier_params["bl_growth_ratio"] = bl_growth_ratio
     if min_cell_size is not None:
         tier_params["min_cell_size"] = min_cell_size
-    # base_cell_num는 geometry_report 필요하므로 post-processing에서 처리
-    if base_cell_num is not None:
-        tier_params["base_cell_num"] = base_cell_num
+    # base_cell_num을 base_cell_size로 변환했으므로 전달하지 않음
+    # (element_size로 이미 효과가 반영됨)
 
     orchestrator = PipelineOrchestrator()
     result = orchestrator.run(
@@ -656,13 +671,8 @@ def run(
         strict_tier=strict_tier,
     )
 
-    # base_cell_num은 geometry_report 필요하므로 여기서만 처리
-    if result.strategy and base_cell_num is not None:
-        s = result.strategy
-        L = result.geometry_report.geometry.bounding_box.characteristic_length if result.geometry_report else 1.0
-        s.domain.base_cell_size = L / base_cell_num
-        s.surface_mesh.target_cell_size = s.domain.base_cell_size / 4
-        s.surface_mesh.min_cell_size = s.surface_mesh.target_cell_size / 4
+    # base_cell_num은 이미 element_size로 변환되어 orchestrator에 전달됨
+    # (post-processing 불필요)
 
     # 병렬 분해
     if parallel is not None and result.success:

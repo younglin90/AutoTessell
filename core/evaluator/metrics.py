@@ -158,14 +158,20 @@ class AdditionalMetricsComputer:
 
             volumes = np.asarray(volumes, dtype=np.float64)
             heights = np.cbrt(np.abs(volumes))
-            bl_coverage = 100.0 if bl_enabled else 0.0
 
-            return BoundaryLayerStats(
-                bl_coverage_percent=bl_coverage,
-                avg_first_layer_height=float(heights.mean()),
-                min_first_layer_height=float(heights.min()),
-                max_first_layer_height=float(heights.max()),
-            )
+            # BL이 비활성화된 경우만 정확히 알 수 있음 (coverage = 0.0)
+            # 활성화된 경우 실제 BL 감지 불가능하므로 None 반환 (판정 skip)
+            if not bl_enabled:
+                return BoundaryLayerStats(
+                    bl_coverage_percent=0.0,
+                    avg_first_layer_height=float(heights.mean()),
+                    min_first_layer_height=float(heights.min()),
+                    max_first_layer_height=float(heights.max()),
+                )
+            else:
+                # BL enabled이지만 실제 감지 불가능 → None 반환
+                return None
+
         except Exception:  # noqa: BLE001
             return None
 
@@ -221,13 +227,19 @@ class AdditionalMetricsComputer:
             cell_sizes = mesh.compute_cell_sizes(volume=True, length=False, area=False)
             vols = cell_sizes["Volume"]
             heights = np.cbrt(np.abs(vols))
-            # BL이 비활성화된 경우 coverage 0.0, 활성화된 경우 100.0 근사값
-            bl_coverage = 100.0 if bl_enabled else 0.0
-            return BoundaryLayerStats(
-                bl_coverage_percent=bl_coverage,
-                avg_first_layer_height=float(heights.mean()),
-                min_first_layer_height=float(heights.min()),
-                max_first_layer_height=float(heights.max()),
-            )
+
+            # BL이 비활성화된 경우만 정확히 알 수 있음 (coverage = 0.0)
+            # 활성화된 경우 실제 BL 감지 불가능하므로 None 반환 (판정 skip)
+            if not bl_enabled:
+                return BoundaryLayerStats(
+                    bl_coverage_percent=0.0,
+                    avg_first_layer_height=float(heights.mean()),
+                    min_first_layer_height=float(heights.min()),
+                    max_first_layer_height=float(heights.max()),
+                )
+            else:
+                # BL enabled이지만 실제 감지 불가능 → None 반환
+                return None
+
         except Exception:  # noqa: BLE001
             return None
