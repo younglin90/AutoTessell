@@ -1,0 +1,26 @@
+{
+  "total": 9,
+  "pass": 2,
+  "fail": 0,
+  "timeout": 7,
+  "by_input": {
+    "/home/younglin90/work/claude_code/AutoTessell/tests/benchmarks/cylinder.stl": {
+      "pass": 1,
+      "fail": 0,
+      "timeout": 2,
+      "total": 3
+    },
+    "/home/younglin90/work/claude_code/AutoTessell/tests/benchmarks/broken_sphere.stl": {
+      "pass": 0,
+      "fail": 0,
+      "timeout": 3,
+      "total": 3
+    },
+    "/home/younglin90/work/claude_code/AutoTessell/tests/benchmarks/box.step": {
+      "pass": 1,
+      "fail": 0,
+      "timeout": 2,
+      "total": 3
+    }
+  }
+}

@@ -642,7 +642,7 @@ class TestPipelineProfiler:
 # vtk_exporter.py 테스트
 # ===========================================================================
 
-from core.utils.vtk_exporter import export_vtk
+from core.utils.vtk_exporter import _write_vtu, export_vtk
 
 
 class TestVtkExporter:
@@ -738,3 +738,32 @@ class TestVtkExporter:
         m = re.search(r'NumberOfCells="(\d+)"', content)
         assert m is not None
         assert int(m.group(1)) >= 1
+
+    def test_vtu_uses_int32_indices_for_normal_mesh(self, tmp_path: Path) -> None:
+        """일반 범위 인덱스에서는 Int32 타입을 유지한다."""
+        _make_polymesh(tmp_path)
+        result = export_vtk(tmp_path)
+        assert result is not None
+        content = result.read_text()
+        assert 'type="Int32" Name="connectivity"' in content
+        assert 'type="Int32" Name="offsets"' in content
+
+    def test_vtu_upgrades_to_int64_for_large_indices(self, tmp_path: Path) -> None:
+        """인덱스가 Int32 범위를 넘으면 Int64 타입으로 승격한다."""
+        out = tmp_path / "large_index.vtu"
+        points = np.array([[0.0, 0.0, 0.0]], dtype=np.float64)
+        cell_verts = [[2**31]]
+        _write_vtu(
+            path=out,
+            points=points,
+            cell_verts=cell_verts,
+            faces=[],
+            owner=np.array([], dtype=np.int64),
+            neighbour=np.array([], dtype=np.int64),
+            n_cells=1,
+            n_internal=0,
+            include_quality=False,
+        )
+        content = out.read_text()
+        assert 'type="Int64" Name="connectivity"' in content
+        assert 'type="Int64" Name="offsets"' in content

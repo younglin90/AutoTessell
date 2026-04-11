@@ -14,6 +14,7 @@ from api.payment import router as payment_router
 from api.upload import router as upload_router
 from config import settings
 from db import create_tables
+from version import APP_VERSION
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -21,7 +22,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="auto-tessell", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="auto-tessell", version=APP_VERSION, lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

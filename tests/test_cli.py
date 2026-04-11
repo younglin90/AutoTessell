@@ -9,6 +9,7 @@ import pytest
 from click.testing import CliRunner
 
 from cli.main import cli
+from core.runtime.dependency_status import DependencyStatus
 
 
 # ---------------------------------------------------------------------------
@@ -53,7 +54,7 @@ class TestCLIHelp:
     def test_root_help_shows_subcommands(self, runner: CliRunner):
         result = runner.invoke(cli, ["--help"])
         assert result.exit_code == 0
-        for cmd in ("run", "analyze", "preprocess", "strategize", "generate", "evaluate"):
+        for cmd in ("run", "analyze", "preprocess", "strategize", "generate", "evaluate", "doctor"):
             assert cmd in result.output
 
     def test_run_help(self, runner: CliRunner):
@@ -90,6 +91,34 @@ class TestCLIHelp:
         result = runner.invoke(cli, ["export-vtk", "--help"])
         assert result.exit_code == 0
         assert "CASE_DIR" in result.output or "case_dir" in result.output.lower() or "vtu" in result.output.lower() or "VTK" in result.output
+
+    @patch("core.runtime.dependency_status.collect_dependency_statuses")
+    def test_doctor_command(self, mock_collect: MagicMock, runner: CliRunner):
+        mock_collect.return_value = [
+            DependencyStatus(
+                name="OpenFOAM",
+                category="core",
+                optional=False,
+                detected=True,
+                detector="mock",
+                fallback="native checker",
+                action="install openfoam",
+            ),
+            DependencyStatus(
+                name="pytetwild",
+                category="volume-mesh",
+                optional=True,
+                detected=False,
+                detector="mock",
+                fallback="fallback tier",
+                action="pip install pytetwild",
+            ),
+        ]
+        result = runner.invoke(cli, ["doctor"])
+        assert result.exit_code == 0
+        assert "Runtime Dependency Status" in result.output
+        assert "OpenFOAM" in result.output
+        assert "pytetwild" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -217,6 +246,10 @@ class TestRunErrors:
 
     def test_preprocess_missing_file(self, runner: CliRunner, tmp_path: Path):
         result = runner.invoke(cli, ["preprocess", str(tmp_path / "ghost.stl")])
+        assert result.exit_code != 0
+
+    def test_run_invalid_max_cells_zero(self, runner: CliRunner, sphere_stl: Path):
+        result = runner.invoke(cli, ["run", str(sphere_stl), "--max-cells", "0"])
         assert result.exit_code != 0
 
 
@@ -383,6 +416,37 @@ class TestRunDryRun:
 
     @patch("core.pipeline.orchestrator.PipelineOrchestrator.run")
     @patch("core.utils.logging.configure_logging")
+    def test_dry_run_passes_tier_specific_params(
+        self,
+        mock_log: MagicMock,
+        mock_run: MagicMock,
+        runner: CliRunner,
+        sphere_stl: Path,
+        tmp_path: Path,
+    ):
+        mock_run.return_value = _make_mock_pipeline_result(dry_run=True)
+        result = runner.invoke(
+            cli,
+            [
+                "run",
+                str(sphere_stl),
+                "--dry-run",
+                "--tetwild-epsilon",
+                "0.0005",
+                "--tetwild-stop-energy",
+                "8",
+                "--output",
+                str(tmp_path / "case"),
+            ],
+        )
+        assert result.exit_code == 0
+        _, kwargs = mock_run.call_args
+        params = kwargs.get("tier_specific_params") or {}
+        assert params.get("tetwild_epsilon") == pytest.approx(0.0005)
+        assert params.get("tetwild_stop_energy") == pytest.approx(8.0)
+
+    @patch("core.pipeline.orchestrator.PipelineOrchestrator.run")
+    @patch("core.utils.logging.configure_logging")
     def test_dry_run_tier_netgen(
         self,
         mock_log: MagicMock,
@@ -448,6 +512,67 @@ class TestRunDryRun:
             ],
         )
         assert result.exit_code == 0
+
+    @patch("cli.main.get_openfoam_label_size", return_value=32)
+    @patch("core.pipeline.orchestrator.PipelineOrchestrator.run")
+    @patch("core.utils.logging.configure_logging")
+    def test_dry_run_max_cells_clamps_for_int32(
+        self,
+        mock_log: MagicMock,
+        mock_run: MagicMock,
+        mock_label: MagicMock,
+        runner: CliRunner,
+        sphere_stl: Path,
+        tmp_path: Path,
+    ):
+        mock_run.return_value = _make_mock_pipeline_result(dry_run=True)
+        mock_run.return_value.strategy.domain.base_cell_size = 0.001
+        result = runner.invoke(
+            cli,
+            [
+                "run", str(sphere_stl),
+                "--dry-run",
+                "--quality", "draft",
+                "--max-cells", "999999999",
+                "--output", str(tmp_path / "case"),
+            ],
+        )
+        assert result.exit_code == 0
+        assert "max_cells clamp" in result.output
+        assert "requested=999,999,999" in result.output
+        assert "capped=500,000" in result.output
+        assert "label=Int32" in result.output
+        _, kwargs = mock_run.call_args
+        assert kwargs.get("max_cells") == 500_000
+
+    @patch("cli.main.get_openfoam_label_size", return_value=64)
+    @patch("core.pipeline.orchestrator.PipelineOrchestrator.run")
+    @patch("core.utils.logging.configure_logging")
+    def test_dry_run_max_cells_no_clamp_for_int64(
+        self,
+        mock_log: MagicMock,
+        mock_run: MagicMock,
+        mock_label: MagicMock,
+        runner: CliRunner,
+        sphere_stl: Path,
+        tmp_path: Path,
+    ):
+        mock_run.return_value = _make_mock_pipeline_result(dry_run=True)
+        mock_run.return_value.strategy.domain.base_cell_size = 0.001
+        result = runner.invoke(
+            cli,
+            [
+                "run", str(sphere_stl),
+                "--dry-run",
+                "--quality", "draft",
+                "--max-cells", "1500000",
+                "--output", str(tmp_path / "case"),
+            ],
+        )
+        assert result.exit_code == 0
+        assert "max_cells clamp" not in result.output
+        _, kwargs = mock_run.call_args
+        assert kwargs.get("max_cells") == 1_500_000
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,7 @@
+input,quality,tier,remesh_engine,status,elapsed_sec,timeout_sec,failure_category,error
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,fine,auto,auto,timeout,60.0,60,timeout,timeout(60s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,fine,core,auto,pass,2.51,12,pass,"2026-04-10T12:43:57.178741Z [info     ] Evaluation complete            [core.evaluator.report] hard_fails=0 quality_level=fine soft_fails=0 verdict=PASS; 2026-04-10T12:43:57.179351Z [info     ] Pipeline PASS                  [core.pipeline.orchestrator] iteration=1 verdict=PASS; 2026-04-10T12:43:57.179652Z [warning  ] boundary_classification_failed [core.utils.boundary_classifier] error=""could not convert string to float: ''""; 2026-04-10T12:43:57.179813Z [info     ] boundary_patches_classified  "
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,fine,netgen,auto,fail,6.65,60,all_tiers_failed,All mesh generation tiers failed
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,fine,snappy,auto,timeout,90.0,90,timeout,timeout(90s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,fine,cfmesh,auto,timeout,90.0,90,timeout,timeout(90s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,fine,tetwild,auto,fail,7.67,60,iteration_exhausted,Failed after 1 iterations

@@ -684,6 +684,44 @@ def _make_minimal_polymesh(case_dir: "Path", stl_path: "Path") -> None:
 class TestGeometryFidelityChecker:
     """GeometryFidelityChecker 단위 테스트."""
 
+    def test_fidelity_select_geometry_patches_prefers_surface(self) -> None:
+        """도메인 패치와 형상 패치가 공존하면 surface 패치를 우선 선택한다."""
+        from core.evaluator.fidelity import _select_geometry_patches  # noqa: PLC0415
+
+        patches = [
+            {"name": "inlet", "nFaces": 10, "startFace": 0},
+            {"name": "outlet", "nFaces": 10, "startFace": 10},
+            {"name": "walls", "nFaces": 40, "startFace": 20},
+            {"name": "surface", "nFaces": 100, "startFace": 60},
+        ]
+        selected = _select_geometry_patches(patches)
+        assert [p["name"] for p in selected] == ["surface"]
+
+    def test_parse_boundary_keeps_patch_names(self, tmp_path: Path) -> None:
+        """boundary 파서가 패치 이름을 보존해야 fidelity patch selection이 가능하다."""
+        from core.evaluator.fidelity import _parse_foam_boundary  # noqa: PLC0415
+
+        content = (
+            "2\n(\n"
+            "    inlet\n"
+            "    {\n"
+            "        nFaces 12;\n"
+            "        startFace 0;\n"
+            "    }\n"
+            "    surface\n"
+            "    {\n"
+            "        nFaces 24;\n"
+            "        startFace 12;\n"
+            "    }\n"
+            ")\n"
+        )
+        boundary = tmp_path / "boundary"
+        boundary.write_text(content)
+        patches = _parse_foam_boundary(boundary)
+        assert len(patches) == 2
+        assert patches[0]["name"] == "inlet"
+        assert patches[1]["name"] == "surface"
+
     def test_fidelity_identical_meshes(self) -> None:
         """동일한 STL → Hausdorff ≈ 0, 표면적 편차 ≈ 0."""
         pytest.importorskip("trimesh")

@@ -28,6 +28,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from starlette.responses import Response
 
 from core.utils.logging import get_logger
+from core.version import APP_VERSION
 
 log = get_logger(__name__)
 
@@ -45,7 +46,7 @@ async def _lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
         pass
 
 
-app = FastAPI(title="Auto-Tessell Desktop", version="0.1.0", lifespan=_lifespan)
+app = FastAPI(title="Auto-Tessell Desktop", version=APP_VERSION, lifespan=_lifespan)
 
 # ---------------------------------------------------------------------------
 # CORS — allow browser-based and Godot HTML5 clients
@@ -153,7 +154,7 @@ async def _cleanup_old_jobs() -> None:
 @app.get("/health")
 async def health() -> dict[str, str]:
     """서버 상태 확인."""
-    return {"status": "ok", "version": "0.1.0"}
+    return {"status": "ok", "version": APP_VERSION}
 
 
 @app.post("/upload")

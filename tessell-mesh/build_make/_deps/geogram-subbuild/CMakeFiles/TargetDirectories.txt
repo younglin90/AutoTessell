@@ -1,0 +1,3 @@
+/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/CMakeFiles/geogram-populate.dir
+/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/CMakeFiles/edit_cache.dir
+/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/CMakeFiles/rebuild_cache.dir

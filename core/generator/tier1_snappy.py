@@ -93,7 +93,9 @@ def generate_snappy_dict(strategy: MeshStrategy) -> dict[str, Any]:
     qt = strategy.quality_targets
     domain = strategy.domain
 
-    stl_name = sm.input_file.replace(".stl", "").replace(".STL", "") if sm.input_file else "surface"
+    # OpenFOAM dictionary `word`는 경로 구분자(`/`)를 허용하지 않는다.
+    # 입력 경로와 무관하게 triSurface에 복사한 파일(`surface.stl`)의 논리 이름을 고정한다.
+    stl_name = "surface"
 
     return {
         "castellatedMesh": True,

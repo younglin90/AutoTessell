@@ -122,6 +122,10 @@ def _write_vtu(
         else:
             types.append(42)  # VTK_POLYHEDRON (fallback)
 
+    vtk_index_type = _select_vtk_index_type(connectivity, offsets)
+    if vtk_index_type == "Int64":
+        log.info("vtk_export_using_int64_indices", reason="index_out_of_int32_range")
+
     # Quality fields
     quality_fields: dict[str, np.ndarray] = {}
     if include_quality:
@@ -147,10 +151,10 @@ def _write_vtu(
 
     # Cells
     lines.append('      <Cells>')
-    lines.append('        <DataArray type="Int32" Name="connectivity" format="ascii">')
+    lines.append(f'        <DataArray type="{vtk_index_type}" Name="connectivity" format="ascii">')
     lines.append('          ' + ' '.join(str(c) for c in connectivity))
     lines.append('        </DataArray>')
-    lines.append('        <DataArray type="Int32" Name="offsets" format="ascii">')
+    lines.append(f'        <DataArray type="{vtk_index_type}" Name="offsets" format="ascii">')
     lines.append('          ' + ' '.join(str(o) for o in offsets))
     lines.append('        </DataArray>')
     lines.append('        <DataArray type="UInt8" Name="types" format="ascii">')
@@ -173,6 +177,18 @@ def _write_vtu(
 
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text('\n'.join(lines))
+
+
+def _select_vtk_index_type(connectivity: list[int], offsets: list[int]) -> str:
+    """VTK 인덱스 배열 타입(Int32/Int64)을 값 범위에 맞춰 선택한다."""
+    int32 = np.iinfo(np.int32)
+    for values in (connectivity, offsets):
+        if not values:
+            continue
+        arr = np.asarray(values, dtype=np.int64)
+        if arr.min() < int32.min or arr.max() > int32.max:
+            return "Int64"
+    return "Int32"
 
 
 def _compute_quality_fields(

@@ -53,12 +53,19 @@ def gate_check(mesh: trimesh.Trimesh) -> bool:
     """
     if not mesh.is_watertight:
         return False
-    # is_volume: watertight + consistent winding + positive volume
-    is_manifold = getattr(mesh, "is_manifold", None)
-    if is_manifold is not None:
-        return bool(is_manifold)
-    # trimesh 4.x fallback
-    return bool(getattr(mesh, "is_volume", mesh.is_winding_consistent))
+    # trimesh.is_volume는 법선 방향/부피 부호에 좌우되므로
+    # manifold 판정에는 고유 엣지 사용 횟수 기반 체크를 우선 사용한다.
+    try:
+        import numpy as np
+
+        counts = np.bincount(
+            mesh.edges_unique_inverse,
+            minlength=len(mesh.edges_unique),
+        )
+        return bool(np.all(counts == 2))
+    except Exception:
+        # 최소 fallback: winding 일관성
+        return bool(getattr(mesh, "is_winding_consistent", False))
 
 
 def detect_self_intersections(mesh: trimesh.Trimesh) -> int:

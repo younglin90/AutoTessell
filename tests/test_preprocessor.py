@@ -12,6 +12,7 @@ import pytest
 import trimesh
 
 BENCHMARKS_DIR = Path(__file__).parent / "benchmarks"
+REPO_ROOT = Path(__file__).resolve().parents[1]
 SPHERE_STL = BENCHMARKS_DIR / "sphere.stl"
 SPHERE_REPORT_JSON = BENCHMARKS_DIR / "sphere.geometry_report.json"
 
@@ -49,6 +50,15 @@ def test_no_repair_needed(sphere_mesh, sphere_geometry_report):
 
     assert isinstance(repaired, trimesh.Trimesh)
     assert actions == [], f"수리 불필요한 메쉬에 actions가 발생했습니다: {actions}"
+
+
+def test_gate_check_accepts_watertight_surface_even_if_not_volume():
+    """watertight + manifold 표면은 is_volume=False여도 gate를 통과해야 한다."""
+    from core.preprocessor.repair import gate_check
+
+    cube = trimesh.load(str(REPO_ROOT / "test_cube.stl"), force="mesh")
+    assert cube.is_watertight is True
+    assert gate_check(cube) is True
 
 
 # ---------------------------------------------------------------------------
@@ -1257,3 +1267,53 @@ def test_pygem_rbf_morph_validates_input_shape():
     except (ValueError, NotImplementedError) as e:
         # 불일치 감지 또는 PyGeM 미설치
         assert True
+
+
+def test_obj_face_stats_counts_quads_and_tris(tmp_path):
+    from core.preprocessor.remesh import _obj_face_stats
+
+    obj = tmp_path / "m.obj"
+    obj.write_text(
+        "\n".join(
+            [
+                "v 0 0 0",
+                "v 1 0 0",
+                "v 1 1 0",
+                "v 0 1 0",
+                "v 0 0 1",
+                "f 1 2 3",
+                "f 1 3 4",
+                "f 1 2 3 4",
+                "f 1 2 3 5",
+            ]
+        )
+    )
+    total, quads, tris = _obj_face_stats(obj)
+    assert total == 4
+    assert quads == 2
+    assert tris == 2
+
+
+def test_l2_remesh_forwards_engine(monkeypatch):
+    from core.preprocessor.pipeline import Preprocessor
+
+    pre = Preprocessor()
+    mesh = trimesh.creation.icosphere(subdivisions=1)
+    captured: dict[str, object] = {}
+
+    def _fake_remesh_l2(m, target_faces=None, element_size=None, remesh_engine="auto"):
+        captured["engine"] = remesh_engine
+        return m, True, {
+            "step": "l2_remesh",
+            "method": "fake",
+            "params": {},
+            "input_faces": len(m.faces),
+            "output_faces": len(m.faces),
+            "time_seconds": 0.0,
+            "gate_passed": True,
+        }
+
+    monkeypatch.setattr(pre._remesher, "remesh_l2", _fake_remesh_l2)
+    _, passed, _ = pre._l2_remesh(mesh, target_faces=1000, remesh_engine="quadwild")
+    assert passed is True
+    assert captured["engine"] == "quadwild"

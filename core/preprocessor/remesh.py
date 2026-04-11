@@ -10,6 +10,7 @@ L2 리메쉬 완료 후 gate 검사(watertight + manifold)를 수행한다.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tempfile
@@ -122,6 +123,87 @@ def _run_vorpalite_remesh(
         return False
 
 
+def _obj_face_stats(obj_path: Path) -> tuple[int, int, int]:
+    """OBJ 파일의 face 통계를 계산한다.
+
+    Returns:
+        (총 face 수, quad face 수, tri face 수)
+    """
+    total = 0
+    quads = 0
+    tris = 0
+    for line in obj_path.read_text(errors="ignore").splitlines():
+        if not line.startswith("f "):
+            continue
+        total += 1
+        n = len(line.split()) - 1
+        if n == 4:
+            quads += 1
+        elif n == 3:
+            tris += 1
+    return total, quads, tris
+
+
+def _run_quadwild_remesh(input_mesh: Path, setup_txt: Path, work_dir: Path) -> Path | None:
+    """quadwild를 실행하고, 유효한 quad 결과 OBJ 경로를 반환한다.
+
+    - `quadwild` 명령이 없으면 None.
+    - 종료코드 비정상 / 결과 파일 없음 / quad face 없음이면 None.
+    """
+    quadwild_bin = shutil.which("quadwild")
+    if not quadwild_bin:
+        log.debug("quadwild_not_found")
+        return None
+
+    cmd = [quadwild_bin, str(input_mesh), str(setup_txt)]
+    log.info("running_quadwild", cmd=" ".join(cmd), cwd=str(work_dir))
+    env = os.environ.copy()
+    env.setdefault("OMP_NUM_THREADS", "1")
+
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=str(work_dir),
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+    except subprocess.TimeoutExpired:
+        log.warning("quadwild_timeout")
+        return None
+    except Exception as exc:
+        log.warning("quadwild_exception", error=str(exc))
+        return None
+
+    stem = input_mesh.stem
+    out_obj = work_dir / f"{stem}_p0.obj"
+    if result.returncode != 0:
+        log.warning(
+            "quadwild_failed",
+            returncode=result.returncode,
+            stderr=(result.stderr or "")[:400],
+            stdout_tail=(result.stdout or "")[-400:],
+        )
+        return None
+    if not out_obj.exists():
+        log.warning("quadwild_no_output_obj", expected=str(out_obj))
+        return None
+
+    total, quads, tris = _obj_face_stats(out_obj)
+    if total == 0 or quads == 0:
+        # 프로젝트 목적(quad 기반 자동 생성)에 맞지 않는 결과는 실패로 간주.
+        log.warning(
+            "quadwild_invalid_output",
+            total_faces=total,
+            quad_faces=quads,
+            tri_faces=tris,
+        )
+        return None
+    log.info("quadwild_success", output=str(out_obj), total_faces=total, quad_faces=quads)
+    return out_obj
+
+
 class SurfaceRemesher:
     """표면 리메쉬기 (L2).
 
@@ -134,11 +216,12 @@ class SurfaceRemesher:
         mesh: trimesh.Trimesh,
         target_faces: int | None = None,
         element_size: float | None = None,
+        remesh_engine: str = "auto",
     ) -> tuple[trimesh.Trimesh, bool, dict[str, Any]]:
         """L2 리메쉬 수행 후 gate 검사.
 
         0. fast-simplification 사전 데시메이션 (200k+ 면일 때)
-        1. vorpalite(geogram) — PATH에 있으면 최우선 사용 (특징 보존)
+        1. quadwild (옵션) / vorpalite(geogram) — 고품질 표면 리메쉬
         2. pyACVD Voronoi 균일 리메쉬
         3. pymeshlab isotropic remesh (선택적 추가 개선)
 
@@ -158,6 +241,10 @@ class SurfaceRemesher:
 
         remeshed = mesh
         computed_target = target_faces or self._compute_target_faces(mesh)
+        engine = remesh_engine.lower()
+        if engine not in {"auto", "quadwild", "vorpalite", "pyacvd", "pymeshlab", "none"}:
+            log.warning("invalid_remesh_engine", remesh_engine=remesh_engine, fallback="auto")
+            engine = "auto"
 
         # 0) fast-simplification 사전 데시메이션 (200k+ 면일 때)
         if len(remeshed.faces) > 200_000 and _FAST_SIMPLIFICATION_AVAILABLE:
@@ -172,54 +259,88 @@ class SurfaceRemesher:
                     output_faces=len(remeshed.faces),
                 )
 
-        # 1) vorpalite — 특징 보존 고품질 리메쉬 (최우선)
+        # 1) quadwild/vorpalite
         target_edge = element_size or self._estimate_element_size(mesh)
-        vorpalite_succeeded = False
-        with tempfile.TemporaryDirectory() as tmp:
-            in_stl = Path(tmp) / "in.stl"
-            out_stl = Path(tmp) / "vorpalite_out.stl"
-            try:
-                mesh.export(str(in_stl))
-                if _run_vorpalite_remesh(in_stl, out_stl, target_edge):
-                    loaded = trimesh.load(str(out_stl), force="mesh")
-                    if isinstance(loaded, trimesh.Scene):
-                        meshes = list(loaded.geometry.values())
-                        loaded = trimesh.util.concatenate(meshes)
-                    remeshed = loaded  # type: ignore[assignment]
-                    methods_used.append("vorpalite")
-                    vorpalite_succeeded = True
-            except Exception as exc:
-                log.warning("l2_vorpalite_failed", error=str(exc))
+        remesh_primary_succeeded = False
 
-        # 2) pyACVD (vorpalite 없거나 실패 시)
-        if not vorpalite_succeeded:
+        if engine == "none":
+            methods_used.append("passthrough")
+            remesh_primary_succeeded = True
+
+        if not remesh_primary_succeeded and engine in {"auto", "quadwild"}:
+            with tempfile.TemporaryDirectory() as tmp:
+                in_obj = Path(tmp) / "in.obj"
+                setup_txt = Path(tmp) / "basic_setup.txt"
+                try:
+                    mesh.export(str(in_obj))
+                    setup_txt.write_text("do_remesh 1\nsharp_feature_thr 35\nalpha 0.01\nscaleFact 1\n")
+                    out_obj = _run_quadwild_remesh(in_obj, setup_txt, Path(tmp))
+                    if out_obj is not None:
+                        loaded = trimesh.load(str(out_obj), force="mesh")
+                        if isinstance(loaded, trimesh.Scene):
+                            loaded = trimesh.util.concatenate(list(loaded.geometry.values()))
+                        remeshed = loaded  # type: ignore[assignment]
+                        methods_used.append("quadwild")
+                        remesh_primary_succeeded = True
+                except Exception as exc:
+                    log.warning("l2_quadwild_failed", error=str(exc))
+
+        if not remesh_primary_succeeded and engine in {"auto", "vorpalite", "quadwild"}:
+            with tempfile.TemporaryDirectory() as tmp:
+                in_stl = Path(tmp) / "in.stl"
+                out_stl = Path(tmp) / "vorpalite_out.stl"
+                try:
+                    mesh.export(str(in_stl))
+                    if _run_vorpalite_remesh(in_stl, out_stl, target_edge):
+                        loaded = trimesh.load(str(out_stl), force="mesh")
+                        if isinstance(loaded, trimesh.Scene):
+                            meshes = list(loaded.geometry.values())
+                            loaded = trimesh.util.concatenate(meshes)
+                        remeshed = loaded  # type: ignore[assignment]
+                        methods_used.append("vorpalite")
+                        remesh_primary_succeeded = True
+                except Exception as exc:
+                    log.warning("l2_vorpalite_failed", error=str(exc))
+
+        # 2) pyACVD (상위 엔진 실패 시 혹은 pyacvd 강제)
+        if not remesh_primary_succeeded and engine in {"auto", "pyacvd", "quadwild", "vorpalite"}:
             if _PYACVD_AVAILABLE:
                 try:
                     remeshed = self._run_pyacvd(remeshed, computed_target)
                     methods_used.append("pyacvd")
+                    remesh_primary_succeeded = True
                 except Exception as exc:
                     log.warning("l2_pyacvd_failed", error=str(exc))
             else:
                 log.info("l2_pyacvd_skipped", reason="pyacvd unavailable")
 
-        # 3) pymeshlab isotropic remesh (선택적 추가 개선)
-        if _PYMESHLAB_AVAILABLE and element_size is not None:
+        # 3) pymeshlab (마지막 fallback 혹은 pymeshlab 강제)
+        if not remesh_primary_succeeded and engine in {"auto", "pymeshlab", "quadwild", "vorpalite", "pyacvd"}:
+            if _PYMESHLAB_AVAILABLE:
+                try:
+                    auto_size = element_size or self._estimate_element_size(remeshed)
+                    remeshed = self._run_pymeshlab_isotropic(remeshed, auto_size)
+                    methods_used.append("pymeshlab")
+                    remesh_primary_succeeded = True
+                except Exception as exc:
+                    log.warning("l2_pymeshlab_fallback_failed", error=str(exc))
+            else:
+                log.info("l2_pymeshlab_skipped", reason="pymeshlab unavailable")
+
+        # 요청 엔진이 실패해도 전체 파이프라인을 깨지 않도록 passthrough 유지
+        if not remesh_primary_succeeded:
+            methods_used.append("passthrough")
+
+        # 3-b) element_size가 주어진 경우 pymeshlab 추가 후처리
+        if _PYMESHLAB_AVAILABLE and element_size is not None and engine != "none":
             try:
                 remeshed = self._run_pymeshlab_isotropic(remeshed, element_size)
                 methods_used.append("pymeshlab")
             except Exception as exc:
                 log.warning("l2_pymeshlab_failed", error=str(exc))
-        elif _PYMESHLAB_AVAILABLE and not _PYACVD_AVAILABLE and not vorpalite_succeeded:
-            # pyACVD/vorpalite 모두 없을 때 pymeshlab만으로 대체 시도
-            try:
-                auto_size = self._estimate_element_size(remeshed)
-                remeshed = self._run_pymeshlab_isotropic(remeshed, auto_size)
-                methods_used.append("pymeshlab")
-            except Exception as exc:
-                log.warning("l2_pymeshlab_fallback_failed", error=str(exc))
 
         # 4) igl Laplacian smoothing (마무리 품질 개선)
-        if _IGL_AVAILABLE:
+        if _IGL_AVAILABLE and engine != "none":
             try:
                 remeshed = self.apply_laplacian_smoothing(remeshed, iterations=5, lambda_=0.5)
                 methods_used.append("igl_laplacian")

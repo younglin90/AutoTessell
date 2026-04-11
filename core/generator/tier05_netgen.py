@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 from core.schemas import MeshStrategy, TierAttempt
+from core.utils.errors import format_missing_dependency_message
 from core.utils.logging import get_logger
 from core.utils.openfoam_utils import OpenFOAMError, run_openfoam
 
@@ -60,9 +61,11 @@ class Tier05NetgenGenerator:
                 tier=TIER_NAME,
                 status="failed",
                 time_seconds=elapsed,
-                error_message=(
-                    f"netgen 모듈 import 실패: {exc}. "
-                    "'pip install netgen-mesher' 또는 시스템 패키지 설치 필요."
+                error_message=format_missing_dependency_message(
+                    dependency="netgen",
+                    fallback="MeshPy/cfMesh/TetWild fallback",
+                    action="pip install netgen-mesher",
+                    detail=str(exc),
                 ),
             )
 

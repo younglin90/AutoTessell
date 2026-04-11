@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import struct
 import math
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -338,6 +340,57 @@ class TestLoadStepFile:
         pytest.importorskip("cadquery")
         mesh = load_mesh(box_step_path)
         assert mesh.faces.shape[1] == 3
+
+
+class TestGmshLoaderDtypes:
+    def test_load_via_gmsh_uses_platform_int_indices(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """gmsh 로더가 faces를 int32로 강제하지 않고 플랫폼 정수 폭을 사용한다."""
+        import numpy as np
+        from core.analyzer.file_reader import _load_via_gmsh  # noqa: PLC0415
+
+        class _FakeOcc:
+            def importShapes(self, _path: str) -> None:
+                return None
+
+            def synchronize(self) -> None:
+                return None
+
+        class _FakeMesh:
+            def generate(self, _dim: int) -> None:
+                return None
+
+            def getNodes(self):
+                return (
+                    np.array([1, 2, 3], dtype=np.int64),
+                    np.array([0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0], dtype=np.float64),
+                    None,
+                )
+
+            def getElements(self, dim: int):
+                assert dim == 2
+                return (
+                    [2],
+                    [np.array([1], dtype=np.int64)],
+                    [np.array([1, 2, 3], dtype=np.int64)],
+                )
+
+        fake_gmsh = types.SimpleNamespace(
+            initialize=lambda: None,
+            finalize=lambda: None,
+            option=types.SimpleNamespace(setNumber=lambda *_args: None),
+            model=types.SimpleNamespace(occ=_FakeOcc(), mesh=_FakeMesh()),
+        )
+        monkeypatch.setitem(sys.modules, "gmsh", fake_gmsh)
+
+        class _CapturedMesh:
+            def __init__(self, vertices, faces, process=True):
+                self.vertices = vertices
+                self.faces = faces
+
+        monkeypatch.setattr("core.analyzer.file_reader.trimesh.Trimesh", _CapturedMesh)
+
+        mesh = _load_via_gmsh(Path("dummy.step"), ".step")
+        assert mesh.faces.dtype == np.intp
 
 
 class TestStepFileInfo:
@@ -1123,6 +1176,14 @@ class TestIssueDetection:
         report = analyzer.analyze(stl)
         critical = [i for i in report.issues if i.severity == Severity.CRITICAL]
         assert len(critical) == 0
+
+    def test_watertight_cube_not_flagged_non_manifold(self) -> None:
+        """watertight 표면은 is_volume 여부와 무관하게 non_manifold_edges로 오판정되지 않아야 한다."""
+        cube = Path(__file__).resolve().parents[1] / "test_cube.stl"
+        analyzer = GeometryAnalyzer()
+        report = analyzer.analyze(cube)
+        issue_types = {issue.type for issue in report.issues}
+        assert "non_manifold_edges" not in issue_types
 
     def test_issue_severity_valid_values(self, tmp_path: Path) -> None:
         """Issue.severity는 허용된 Severity 값이어야 한다."""

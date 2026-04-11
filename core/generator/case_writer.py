@@ -497,13 +497,13 @@ class FoamCaseWriter:
 
         if field_name == "p":
             if ptype == "outlet":
-                return entry("fixedValue", "\n        value   uniform 0")
+                return entry("fixedValue", "\n        value   uniform 0;")
             return entry("zeroGradient")
 
         if field_name == "U":
             if ptype == "inlet":
                 return entry(
-                    "fixedValue", f"\n        value   uniform ({velocity} 0 0)"
+                    "fixedValue", f"\n        value   uniform ({velocity} 0 0);"
                 )
             if ptype == "wall":
                 return entry("noSlip")
@@ -513,38 +513,38 @@ class FoamCaseWriter:
 
         if field_name == "k":
             if ptype == "inlet":
-                return entry("fixedValue", f"\n        value   uniform {k_val:.6g}")
+                return entry("fixedValue", f"\n        value   uniform {k_val:.6g};")
             if ptype == "wall":
                 return entry(
-                    "kqRWallFunction", f"\n        value   uniform {k_val:.6g}"
+                    "kqRWallFunction", f"\n        value   uniform {k_val:.6g};"
                 )
             return entry("zeroGradient")
 
         if field_name == "epsilon":
             eps = k_val**1.5 / 0.1
             if ptype == "inlet":
-                return entry("fixedValue", f"\n        value   uniform {eps:.6g}")
+                return entry("fixedValue", f"\n        value   uniform {eps:.6g};")
             if ptype == "wall":
                 return entry(
-                    "epsilonWallFunction", f"\n        value   uniform {eps:.6g}"
+                    "epsilonWallFunction", f"\n        value   uniform {eps:.6g};"
                 )
             return entry("zeroGradient")
 
         if field_name == "omega":
             if ptype == "inlet":
                 return entry(
-                    "fixedValue", f"\n        value   uniform {omega_val:.6g}"
+                    "fixedValue", f"\n        value   uniform {omega_val:.6g};"
                 )
             if ptype == "wall":
                 return entry(
-                    "omegaWallFunction", f"\n        value   uniform {omega_val:.6g}"
+                    "omegaWallFunction", f"\n        value   uniform {omega_val:.6g};"
                 )
             return entry("zeroGradient")
 
         if field_name == "nut":
             if ptype == "wall":
-                return entry("nutkWallFunction", "\n        value   uniform 0")
-            return entry("calculated", "\n        value   uniform 0")
+                return entry("nutkWallFunction", "\n        value   uniform 0;")
+            return entry("calculated", "\n        value   uniform 0;")
 
         return entry("zeroGradient")
 

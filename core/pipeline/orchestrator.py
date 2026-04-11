@@ -10,7 +10,7 @@ import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from core.analyzer.geometry_analyzer import GeometryAnalyzer
 from core.evaluator.fidelity import GeometryFidelityChecker
@@ -84,10 +84,15 @@ class PipelineOrchestrator:
         max_iterations: int = 3,
         dry_run: bool = False,
         element_size: float | None = None,
+        max_cells: int | None = None,
+        tier_specific_params: dict[str, Any] | None = None,
         no_repair: bool = False,
         surface_remesh: bool = False,
+        remesh_engine: str = "auto",
         allow_ai_fallback: bool = False,
         write_of_case: bool = True,
+        strict_tier: bool = False,
+        progress_callback: Callable[[int, str], None] | None = None,
     ) -> PipelineResult:
         """전체 파이프라인을 실행한다.
 
@@ -99,25 +104,73 @@ class PipelineOrchestrator:
             max_iterations: Generator↔Evaluator 최대 반복 횟수.
             dry_run: True이면 전략 수립까지만 수행.
             element_size: 셀 크기 override.
+            max_cells: 최대 셀 수 제한 (초과 시 base_cell_size 자동 확대).
+            tier_specific_params: Tier별 사용자 파라미터 override.
             no_repair: 표면 수리 건너뛰기.
             surface_remesh: 강제 리메쉬.
+            remesh_engine: L2 표면 리메쉬 엔진 선택.
             allow_ai_fallback: L3 AI 수리 허용.
             write_of_case: True이면 Generator 완료 후 OpenFOAM 케이스 파일 자동 생성.
+            strict_tier: True면 명시 tier(auto 아님)에서 fallback tier를 비활성화.
+            progress_callback: (percent, message) 진행률 콜백.
 
         Returns:
             PipelineResult with all intermediate artifacts.
         """
         start = time.perf_counter()
         result = PipelineResult(success=False)
+        max_iterations = max(1, int(max_iterations))
+        stage = "init"
+
+        def emit_progress(percent: int, message: str) -> None:
+            if progress_callback is None:
+                return
+            p = max(0, min(100, int(percent)))
+            try:
+                progress_callback(p, message)
+            except Exception as exc:  # noqa: BLE001
+                log.debug("progress_callback_failed", error=str(exc))
 
         try:
+            log.debug(
+                "pipeline_run_params",
+                input_path=str(input_path),
+                output_dir=str(output_dir),
+                quality_level=quality_level,
+                tier_hint=tier_hint,
+                max_iterations=max_iterations,
+                dry_run=dry_run,
+                element_size=element_size,
+                max_cells=max_cells,
+                no_repair=no_repair,
+                surface_remesh=surface_remesh,
+                remesh_engine=remesh_engine,
+                allow_ai_fallback=allow_ai_fallback,
+                write_of_case=write_of_case,
+                strict_tier=strict_tier,
+                tier_param_keys=sorted((tier_specific_params or {}).keys()),
+            )
+            emit_progress(1, "Analyze 시작")
+            log.info(
+                "retry_policy",
+                max_iterations=max_iterations,
+                rules=[
+                    "failed_checks_or_cells0 -> tier fallback",
+                    "quality_fail -> parameter relax + optional quality downgrade",
+                    "max_cells_limit -> base_cell_size enlarge",
+                ],
+            )
             # ------ 1. Analyze ------
+            stage = "analyze"
             log.info("Pipeline stage: Analyze", input=str(input_path))
             geometry_report = self._analyzer.analyze(input_path)
             result.geometry_report = geometry_report
             self._save_json(output_dir / "geometry_report.json", geometry_report)
+            emit_progress(12, "Analyze 완료")
 
             # ------ 2. Preprocess ------
+            stage = "preprocess"
+            emit_progress(15, "Preprocess 시작")
             log.info("Pipeline stage: Preprocess")
             work_dir = output_dir / "_work"
             work_dir.mkdir(parents=True, exist_ok=True)
@@ -129,12 +182,16 @@ class PipelineOrchestrator:
                 tier_hint=tier_hint if tier_hint != "auto" else None,
                 no_repair=no_repair,
                 surface_remesh=surface_remesh,
+                remesh_engine=remesh_engine,
                 allow_ai_fallback=allow_ai_fallback,
             )
             result.preprocessed_report = preprocessed_report
             self._save_json(output_dir / "preprocessed_report.json", preprocessed_report)
+            emit_progress(32, "Preprocess 완료")
 
             # ------ 3. Strategize ------
+            stage = "strategize"
+            emit_progress(35, "Strategize 시작")
             log.info("Pipeline stage: Strategize", quality_level=quality_level)
             strategy = self._planner.plan(
                 geometry_report=geometry_report,
@@ -143,26 +200,40 @@ class PipelineOrchestrator:
                 quality_level=quality_level,
             )
 
-            # element_size override
-            if element_size is not None:
-                strategy.surface_mesh.target_cell_size = element_size
-                strategy.surface_mesh.min_cell_size = element_size / 4
-                strategy.domain.base_cell_size = element_size * 4
-                log.info("element_size_override", element_size=element_size)
-
+            self._apply_strategy_overrides(
+                strategy,
+                element_size=element_size,
+                max_cells=max_cells,
+                tier_specific_params=tier_specific_params,
+            )
+            if strict_tier and str(tier_hint).lower() != "auto":
+                if strategy.fallback_tiers:
+                    log.info(
+                        "strict_tier_applied",
+                        selected_tier=strategy.selected_tier,
+                        removed_fallbacks=strategy.fallback_tiers,
+                    )
+                strategy.fallback_tiers = []
             result.strategy = strategy
             self._save_json(output_dir / "mesh_strategy.json", strategy)
+            emit_progress(42, "Strategize 완료")
 
             if dry_run:
                 log.info("Dry-run mode: stopping after strategy")
                 result.success = True
                 result.total_time_seconds = time.perf_counter() - start
+                emit_progress(100, "Dry-run 완료")
                 return result
 
             # ------ 4 & 5. Generate ↔ Evaluate loop ------
             quality_report: QualityReport | None = None
 
             for iteration in range(1, max_iterations + 1):
+                loop_start = 45 + int((iteration - 1) * (45 / max_iterations))
+                loop_generate_done = 45 + int(((iteration - 1) + 0.55) * (45 / max_iterations))
+                loop_eval_done = 45 + int(((iteration - 1) + 0.90) * (45 / max_iterations))
+                emit_progress(loop_start, f"Generate {iteration}/{max_iterations}")
+                stage = f"generate(iter={iteration})"
                 log.info(
                     "Pipeline stage: Generate",
                     iteration=iteration,
@@ -173,6 +244,7 @@ class PipelineOrchestrator:
                 # 재시도 시 전략 재수립
                 if iteration > 1 and quality_report is not None:
                     log.info("Re-strategizing based on evaluator feedback")
+                    prev_summary = quality_report.evaluation_summary
                     strategy = self._planner.plan(
                         geometry_report=geometry_report,
                         preprocessed_report=preprocessed_report,
@@ -181,8 +253,29 @@ class PipelineOrchestrator:
                         iteration=iteration,
                         quality_level=quality_level,
                     )
+                    self._apply_strategy_overrides(
+                        strategy,
+                        element_size=element_size,
+                        max_cells=max_cells,
+                        tier_specific_params=tier_specific_params,
+                    )
+                    if strict_tier and str(tier_hint).lower() != "auto":
+                        strategy.fallback_tiers = []
                     result.strategy = strategy
                     self._save_json(output_dir / "mesh_strategy.json", strategy)
+                    log.info(
+                        "retry_decision",
+                        iteration=iteration,
+                        previous_tier=prev_summary.tier_evaluated,
+                        previous_verdict=prev_summary.verdict.value,
+                        previous_failed_checks=prev_summary.checkmesh.failed_checks,
+                        previous_cells=prev_summary.checkmesh.cells,
+                        next_tier=strategy.selected_tier,
+                        fallback_tiers=strategy.fallback_tiers,
+                        quality_level=strategy.quality_level.value,
+                        base_cell_size=strategy.domain.base_cell_size,
+                        target_cell_size=strategy.surface_mesh.target_cell_size,
+                    )
 
                 # case 디렉터리 초기화 (재시도 시)
                 case_dir = output_dir
@@ -199,6 +292,7 @@ class PipelineOrchestrator:
                 )
                 result.generator_log = generator_log
                 self._save_json(output_dir / "generator_log.json", generator_log)
+                emit_progress(loop_generate_done, f"Generate 완료 {iteration}/{max_iterations}")
 
                 # 모든 Tier 실패 시 루프 종료
                 successful_tier = self._find_successful_tier(generator_log)
@@ -217,12 +311,15 @@ class PipelineOrchestrator:
                             else "simpleFoam"
                         )
                         polymesh_dir = case_dir / "constant" / "polyMesh"
+                        patches = classify_boundaries(case_dir, flow_type=flow_type)
+                        result.boundary_patches = patches
                         case_writer = FoamCaseWriter()
                         of_files = case_writer.write_case(
                             mesh_dir=polymesh_dir,
                             case_dir=case_dir,
                             flow_type=flow_type,
                             solver=solver,
+                            patches=patches or None,
                         )
                         log.info(
                             "openfoam_case_files_generated",
@@ -236,6 +333,8 @@ class PipelineOrchestrator:
                         )
 
                 # Evaluate
+                stage = f"evaluate(iter={iteration})"
+                emit_progress(loop_generate_done + 2, f"Evaluate {iteration}/{max_iterations}")
                 log.info("Pipeline stage: Evaluate", tier=successful_tier)
                 try:
                     quality_report = self._evaluate(
@@ -255,13 +354,15 @@ class PipelineOrchestrator:
 
                 result.quality_report = quality_report
                 self._save_json(output_dir / "quality_report.json", quality_report)
+                emit_progress(loop_eval_done, f"Evaluate 완료 {iteration}/{max_iterations}")
 
                 verdict = quality_report.evaluation_summary.verdict
                 if verdict in ("PASS", "PASS_WITH_WARNINGS"):
                     log.info("Pipeline PASS", verdict=verdict, iteration=iteration)
                     result.success = True
-                    # Classify boundary patches on success
+                    # Refresh boundary typing from the final mesh, then rewrite BCs.
                     try:
+                        stage = f"postprocess_boundary(iter={iteration})"
                         flow_type = strategy.flow_type if strategy else "external"
                         patches = classify_boundaries(case_dir, flow_type=flow_type)
                         result.boundary_patches = patches
@@ -276,6 +377,7 @@ class PipelineOrchestrator:
                             log.info("boundary_conditions_generated", files=bc_files)
                     except Exception as exc:
                         log.warning("boundary_classification_skipped", error=str(exc))
+                    emit_progress(100, f"PASS ({iteration}회)")
                     break
                 else:
                     log.warning(
@@ -287,10 +389,20 @@ class PipelineOrchestrator:
 
             if not result.success and result.error is None:
                 result.error = f"Failed after {result.iterations} iterations"
+            if not result.success:
+                emit_progress(100, "FAIL")
 
         except Exception as exc:
-            log.error("Pipeline error", error=str(exc), exc_info=True)
-            result.error = str(exc)
+            log.exception(
+                "pipeline_exception",
+                stage=stage,
+                error=str(exc),
+                error_type=exc.__class__.__name__,
+                input_path=str(input_path),
+                output_dir=str(output_dir),
+            )
+            result.error = f"[{stage}] {exc.__class__.__name__}: {exc}"
+            emit_progress(100, "오류로 중단")
 
         result.total_time_seconds = time.perf_counter() - start
         return result
@@ -357,3 +469,78 @@ class PipelineOrchestrator:
                 path.write_text(json.dumps(model, indent=2, default=str))
         except Exception as exc:
             log.warning("Failed to save JSON", path=str(path), error=str(exc))
+
+    @staticmethod
+    def _apply_max_cells_limit(strategy: MeshStrategy, max_cells: int | None) -> None:
+        """max_cells 제한을 만족하도록 base_cell_size를 보정한다."""
+        if max_cells is None:
+            return
+
+        base_cell = strategy.domain.base_cell_size
+        if base_cell <= 0:
+            return
+
+        domain_vol = 1.0
+        for i in range(3):
+            domain_vol *= strategy.domain.max[i] - strategy.domain.min[i]
+
+        est_cells = domain_vol / (base_cell ** 3)
+        if est_cells > max_cells:
+            strategy.domain.base_cell_size = (domain_vol / max_cells) ** (1.0 / 3.0)
+            log.info(
+                "base_cell_enlarged_for_max_cells",
+                est_cells=int(est_cells),
+                max_cells=max_cells,
+                new_base_cell=strategy.domain.base_cell_size,
+            )
+
+    @staticmethod
+    def _apply_tier_specific_params(
+        strategy: MeshStrategy,
+        tier_specific_params: dict[str, Any] | None,
+    ) -> None:
+        if not tier_specific_params:
+            return
+        strategy.tier_specific_params.update(tier_specific_params)
+        log.info(
+            "tier_specific_params_override",
+            keys=sorted(tier_specific_params.keys()),
+            tier=strategy.selected_tier,
+        )
+
+    @staticmethod
+    def _apply_strategy_overrides(
+        strategy: MeshStrategy,
+        *,
+        element_size: float | None,
+        max_cells: int | None,
+        tier_specific_params: dict[str, Any] | None,
+    ) -> None:
+        if element_size is not None:
+            strategy.surface_mesh.target_cell_size = element_size
+            strategy.surface_mesh.min_cell_size = element_size / 4
+            strategy.domain.base_cell_size = element_size * 4
+            log.info("element_size_override", element_size=element_size)
+        PipelineOrchestrator._apply_max_cells_limit(strategy, max_cells)
+
+        # BL, 표면 메쉬 파라미터 처리 (tier_specific_params에서 추출)
+        if tier_specific_params:
+            if "bl_layers" in tier_specific_params:
+                bl_layers = tier_specific_params["bl_layers"]
+                strategy.boundary_layers.enabled = bl_layers > 0
+                strategy.boundary_layers.num_layers = bl_layers
+                log.info("bl_layers_override", bl_layers=bl_layers)
+            if "bl_first_height" in tier_specific_params:
+                bl_first_height = tier_specific_params["bl_first_height"]
+                strategy.boundary_layers.first_layer_thickness = bl_first_height
+                log.info("bl_first_height_override", bl_first_height=bl_first_height)
+            if "bl_growth_ratio" in tier_specific_params:
+                bl_growth_ratio = tier_specific_params["bl_growth_ratio"]
+                strategy.boundary_layers.growth_ratio = bl_growth_ratio
+                log.info("bl_growth_ratio_override", bl_growth_ratio=bl_growth_ratio)
+            if "min_cell_size" in tier_specific_params:
+                min_cell_size = tier_specific_params["min_cell_size"]
+                strategy.surface_mesh.min_cell_size = min_cell_size
+                log.info("min_cell_size_override", min_cell_size=min_cell_size)
+
+        PipelineOrchestrator._apply_tier_specific_params(strategy, tier_specific_params)

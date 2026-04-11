@@ -51,7 +51,7 @@ endif()
 # ──────────────────────────────────────────────────────────────
 FetchContent_Declare(CDT
     GIT_REPOSITORY https://github.com/artem-ogre/CDT.git
-    GIT_TAG        v1.4.5
+    GIT_TAG        1.4.4
     GIT_SHALLOW    TRUE
 )
 FetchContent_GetProperties(CDT)

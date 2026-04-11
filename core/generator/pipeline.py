@@ -16,6 +16,7 @@ from core.generator.tier_jigsaw import TierJigsawGenerator
 from core.generator.tier_meshpy import TierMeshPyGenerator
 from core.schemas import ExecutionSummary, GeneratorLog, MeshStrategy, TierAttempt
 from core.utils.logging import get_logger
+from core.utils.openfoam_utils import get_openfoam_label_size
 
 logger = get_logger(__name__)
 
@@ -175,17 +176,28 @@ class MeshGenerator:
             tier_names = ["tier2_tetwild", "tier_jigsaw", "tier05_netgen"]
         elif quality_level == "fine":
             # 품질 우선: classy_blocks(구조 Hex) → cfMesh → snappy(BL) → Netgen → TetWild
-            # classy_blocks: 단순 도메인의 구조 Hex 경로
-            # cfMesh는 자체 배경 메쉬 → blockMesh int32 제한 없음
-            # snappy는 blockMesh 필요 → OpenFOAM label=32일 때 ~2B 셀 한계
-            # 모든 Tier 후 polyDualMesh로 폴리헤드럴 변환 가능
-            tier_names = [
-                "tier_classy_blocks",
-                "tier15_cfmesh",
-                "tier1_snappy",
-                "tier05_netgen",
-                "tier2_tetwild",
-            ]
+            # 단, OpenFOAM label=32 환경에서는 snappy를 뒤로 미뤄 대형 셀 한계를 완화한다.
+            label_bits = get_openfoam_label_size()
+            if label_bits >= 64:
+                tier_names = [
+                    "tier_classy_blocks",
+                    "tier15_cfmesh",
+                    "tier1_snappy",
+                    "tier05_netgen",
+                    "tier2_tetwild",
+                ]
+            else:
+                logger.warning(
+                    "fine_tier_order_demoted_snappy_for_int32",
+                    label_bits=label_bits,
+                )
+                tier_names = [
+                    "tier_classy_blocks",
+                    "tier15_cfmesh",
+                    "tier05_netgen",
+                    "tier2_tetwild",
+                    "tier1_snappy",
+                ]
         else:  # standard
             # 균형: Netgen → MeshPy TetGen fallback → cfMesh → TetWild
             tier_names = ["tier05_netgen", "tier_meshpy", "tier15_cfmesh", "tier2_tetwild"]

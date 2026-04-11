@@ -49,6 +49,7 @@ class Preprocessor:
         no_repair: bool = False,
         surface_remesh: bool = False,
         remesh_target_faces: int | None = None,
+        remesh_engine: str = "auto",
         allow_ai_fallback: bool = False,
     ) -> tuple[Path, PreprocessedReport]:
         """전처리 파이프라인 실행.
@@ -63,6 +64,7 @@ class Preprocessor:
             no_repair: True이면 warning 수리 건너뜀 (critical은 수행).
             surface_remesh: True이면 gate 성공 여부와 무관하게 강제 L2 리메쉬.
             remesh_target_faces: 리메쉬 목표 삼각형 수 (None이면 자동).
+            remesh_engine: L2 리메쉬 엔진 선택 (auto/vorpalite/pyacvd/pymeshlab/quadwild/none).
             allow_ai_fallback: True이면 L3 AI fix 시도 허용.
 
         Returns:
@@ -141,7 +143,11 @@ class Preprocessor:
                 else:
                     log.info("l2_forced", reason="surface_remesh=True")
 
-                mesh, l2_passed, l2_record = self._l2_remesh(mesh, remesh_target_faces)
+                mesh, l2_passed, l2_record = self._l2_remesh(
+                    mesh,
+                    remesh_target_faces,
+                    remesh_engine=remesh_engine,
+                )
                 steps_performed.append(PreprocessStep(**l2_record))
 
                 if l2_passed:
@@ -170,7 +176,11 @@ class Preprocessor:
             log.info("repair_skipped", reason="no_repair=True")
             # no_repair 모드: L2 강제 리메쉬만 처리
             if surface_remesh or self._remesher.should_remesh(geometry_report):
-                mesh, l2_passed, l2_record = self._l2_remesh(mesh, remesh_target_faces)
+                mesh, l2_passed, l2_record = self._l2_remesh(
+                    mesh,
+                    remesh_target_faces,
+                    remesh_engine=remesh_engine,
+                )
                 steps_performed.append(PreprocessStep(**l2_record))
                 surface_quality_level = "l2_remesh" if l2_passed else None
             else:
@@ -243,6 +253,8 @@ class Preprocessor:
         self,
         mesh: trimesh.Trimesh,
         target_faces: int | None,
+        *,
+        remesh_engine: str = "auto",
     ) -> tuple[trimesh.Trimesh, bool, dict[str, Any]]:
         """L2 표면 리메쉬 수행.
 
@@ -252,7 +264,11 @@ class Preprocessor:
         Returns:
             (리메쉬된 메쉬, gate_passed, step_record) 튜플.
         """
-        return self._remesher.remesh_l2(mesh, target_faces=target_faces)
+        return self._remesher.remesh_l2(
+            mesh,
+            target_faces=target_faces,
+            remesh_engine=remesh_engine,
+        )
 
     def _l3_ai_fix(
         self,

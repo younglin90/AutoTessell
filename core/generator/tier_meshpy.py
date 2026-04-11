@@ -11,6 +11,7 @@ from pathlib import Path
 
 from core.generator.polymesh_writer import PolyMeshWriter
 from core.schemas import MeshStrategy, TierAttempt
+from core.utils.errors import format_missing_dependency_message
 from core.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -58,7 +59,12 @@ class TierMeshPyGenerator:
                 tier=TIER_NAME,
                 status="failed",
                 time_seconds=elapsed,
-                error_message=f"meshpy 모듈 import 실패: {exc}. pip install meshpy",
+                error_message=format_missing_dependency_message(
+                    dependency="meshpy",
+                    fallback="cfMesh/TetWild fallback",
+                    action="pip install meshpy",
+                    detail=str(exc),
+                ),
             )
 
         # 파일 존재 확인

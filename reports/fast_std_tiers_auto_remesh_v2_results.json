@@ -1,0 +1,68 @@
+[
+  {
+    "input": "/home/younglin90/work/claude_code/AutoTessell/test_cube.stl",
+    "quality": "standard",
+    "tier": "auto",
+    "remesh_engine": "auto",
+    "status": "timeout",
+    "elapsed_sec": 12.0,
+    "timeout_sec": 12,
+    "failure_category": "timeout",
+    "error": "timeout(12s)"
+  },
+  {
+    "input": "/home/younglin90/work/claude_code/AutoTessell/test_cube.stl",
+    "quality": "standard",
+    "tier": "core",
+    "remesh_engine": "auto",
+    "status": "pass",
+    "elapsed_sec": 2.32,
+    "timeout_sec": 12,
+    "failure_category": "pass",
+    "error": "2026-04-10T05:25:00.693660Z [info     ] Evaluation complete            [core.evaluator.report] hard_fails=0 quality_level=standard soft_fails=0 verdict=PASS; 2026-04-10T05:25:00.694229Z [info     ] Pipeline PASS                  [core.pipeline.orchestrator] iteration=1 verdict=PASS; 2026-04-10T05:25:00.694461Z [warning  ] boundary_classification_failed [core.utils.boundary_classifier] error=\"could not convert string to float: ''\"; 2026-04-10T05:25:00.694581Z [info     ] boundary_patches_classifi"
+  },
+  {
+    "input": "/home/younglin90/work/claude_code/AutoTessell/test_cube.stl",
+    "quality": "standard",
+    "tier": "netgen",
+    "remesh_engine": "auto",
+    "status": "pass",
+    "elapsed_sec": 9.5,
+    "timeout_sec": 30,
+    "failure_category": "pass",
+    "error": "--> FOAM FATAL ERROR: \u001b[1m(\u001b[0mopenfoam-\u001b[1m2406\u001b[0m patch=\u001b[1m260127\u001b[0m\u001b[1m)\u001b[0m"
+  },
+  {
+    "input": "/home/younglin90/work/claude_code/AutoTessell/test_cube.stl",
+    "quality": "standard",
+    "tier": "snappy",
+    "remesh_engine": "auto",
+    "status": "timeout",
+    "elapsed_sec": 30.0,
+    "timeout_sec": 30,
+    "failure_category": "timeout",
+    "error": "timeout(30s)"
+  },
+  {
+    "input": "/home/younglin90/work/claude_code/AutoTessell/test_cube.stl",
+    "quality": "standard",
+    "tier": "cfmesh",
+    "remesh_engine": "auto",
+    "status": "pass",
+    "elapsed_sec": 25.43,
+    "timeout_sec": 30,
+    "failure_category": "pass",
+    "error": "2026-04-10T05:26:05.629640Z [info     ] boundary_classified            [core.utils.boundary_classifier] patches=[('patch0', 'wall')]; 2026-04-10T05:26:05.692538Z [info     ] boundary_patches_classified    [core.pipeline.orchestrator] count=1 patches=[('patch0', 'wall')]; 2026-04-10T05:26:05.694236Z [info     ] boundary_conditions_written    [core.utils.bc_writer] files=['0/p', '0/U', '0/k', '0/omega', '0/nut', 'constant/transportProperties', 'constant/turbulenceProperties']; 2026-04-10T05:26:05."
+  },
+  {
+    "input": "/home/younglin90/work/claude_code/AutoTessell/test_cube.stl",
+    "quality": "standard",
+    "tier": "tetwild",
+    "remesh_engine": "auto",
+    "status": "pass",
+    "elapsed_sec": 9.43,
+    "timeout_sec": 30,
+    "failure_category": "pass",
+    "error": "2026-04-10T05:26:11.873603Z [warning  ] gmsh_to_foam_failed            [core.generator.tier2_tetwild] error='OpenFOAM utility \\'gmshToFoam\\' failed with returncode=1.\\nstderr: \\n\\n--> FOAM FATAL ERROR: (openfoam-2406 patch=260127)\\ncannot find file \"/home/younglin90/work/claude_code/AutoTessell/_matrix_runs/mx_test_cube_standard_tetwild_auto/system/controlDict\"\\n\\n    From virtual Foam::autoPtr<Foam::ISstream> Foam::fileOperations::uncollatedFileOperation::readStream(Foam::regIOobject&, const Foam::fileName&, const Foam::word&, bool) const\\n    in file global/fileOperations/uncollatedFileOperation/uncollatedFileOperation.C at line 629.\\n\\nFOAM exiting\\n\\n'"
+  }
+]

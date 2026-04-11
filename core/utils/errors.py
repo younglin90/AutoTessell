@@ -23,6 +23,20 @@ class AutoTessellError(Exception):
         return "\n".join(parts)
 
 
+def format_missing_dependency_message(
+    dependency: str,
+    fallback: str,
+    action: str,
+    *,
+    detail: str = "",
+) -> str:
+    """미설치 의존성 안내 메시지를 표준 포맷으로 생성한다."""
+    msg = f"{dependency} unavailable; fallback={fallback}; action={action}"
+    if detail:
+        return f"{msg}; detail={detail}"
+    return msg
+
+
 # ---------------------------------------------------------------------------
 # 에러 진단 + 해결 가이드
 # ---------------------------------------------------------------------------

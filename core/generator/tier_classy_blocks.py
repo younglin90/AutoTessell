@@ -11,6 +11,7 @@ import time
 from pathlib import Path
 
 from core.schemas import MeshStrategy, TierAttempt
+from core.utils.errors import format_missing_dependency_message
 from core.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -110,7 +111,12 @@ class TierClassyBlocksGenerator:
                 tier=TIER_NAME,
                 status="failed",
                 time_seconds=elapsed,
-                error_message=f"classy_blocks 모듈 import 실패: {exc}. pip install classy-blocks",
+                error_message=format_missing_dependency_message(
+                    dependency="classy_blocks",
+                    fallback="cfMesh/snappy/netgen fallback",
+                    action="pip install classy-blocks",
+                    detail=str(exc),
+                ),
             )
 
         # OpenFOAM blockMesh 존재 확인
@@ -125,7 +131,11 @@ class TierClassyBlocksGenerator:
                 tier=TIER_NAME,
                 status="failed",
                 time_seconds=elapsed,
-                error_message="blockMesh 실행 파일을 찾을 수 없습니다. OpenFOAM 설치 필요.",
+                error_message=format_missing_dependency_message(
+                    dependency="blockMesh(OpenFOAM)",
+                    fallback="다른 fine tier로 fallback",
+                    action="OpenFOAM 설치 및 PATH 설정",
+                ),
             )
 
         try:

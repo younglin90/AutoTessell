@@ -3,10 +3,26 @@
 CAD/메쉬 파일 → OpenFOAM polyMesh 자동 생성 도구.
 오픈소스 메쉬 라이브러리 총동원, 사용자 개입 최소화.
 
+## 현재 기준선 (Primary Track)
+
+- **Primary Track**: `core + cli` (메인 제품 경로)
+- **Desktop**: Godot + `desktop.server` 운용, Qt는 프로토타입 병행
+- **Web SaaS**: `backend + frontend`는 데모/검증 경로
+- **버전 기준**: `1.0.0`
+
+관련 문서:
+
+- `CURRENT_STATUS_AND_BACKLOG.md`
+- `TRACK_OWNERSHIP.md`
+- `OWNERSHIP_DECISIONS.md`
+- `RELEASE_CHECKLIST.md`
+- `TEST_COUNTING_POLICY.md`
+
 ```bash
 auto-tessell run model.stl -o ./case --quality draft      # ~1초, 빠른 검증
 auto-tessell run model.stl -o ./case --quality standard    # ~수분, 엔지니어링
 auto-tessell run model.step -o ./case --quality fine        # ~30분+, 최종 CFD
+auto-tessell doctor                                          # 런타임 의존성 설치/미설치 표
 ```
 
 ## 주요 기능
@@ -16,8 +32,8 @@ auto-tessell run model.step -o ./case --quality fine        # ~30분+, 최종 CF
 - **Windows 네이티브 지원**: OpenFOAM 없이도 메쉬 생성 + 품질 검증 가능
 - **다양한 입력 포맷**: STL, OBJ, PLY, STEP, IGES, BREP, Gmsh .msh, VTK 등
 - **자동 품질 검증**: NativeMeshChecker + Hausdorff 거리 기반 표면 충실도
-- **Godot 4.3 데스크톱 GUI**: 3D 메쉬 뷰어 + WebSocket 실시간 진행상황
-- **331+ 테스트**: 단위 + 통합 + 벤치마크
+- **데스크톱 경로**: Godot + `desktop.server` (현재), Qt 프로토타입 병행
+- **테스트 스위트**: 단위 + 통합 + 벤치마크
 
 ## 설치
 
@@ -57,9 +73,53 @@ auto-tessell run model.stl -o ./case --tier tetwild --quality draft
 # 1. Python 백엔드 서버 실행
 python -m desktop.server
 
-# 2. Godot 4.3에서 godot/project.godot 열기
+# 2. Godot에서 godot/project.godot 열기
 # 3. F5 (Play) → 파일 선택 → 메쉬 생성
 ```
+
+### 데스크톱 GUI (Qt, 빠른 로컬 테스트)
+
+```bash
+# Qt 의존성 포함 설치
+pip install -e ".[desktop]"
+
+# 실행 (둘 중 하나)
+auto-tessell-qt
+python -m desktop.qt_main
+```
+
+Qt GUI에서 아래 파라미터를 사용자가 직접 조정할 수 있습니다.
+- `Element Size` (전체 셀 크기 오버라이드)
+- `Max Cells` (최대 셀 수 제한)
+- `Snappy Tol` (`snappy_snap_tolerance`)
+- `Snappy Iter` (`snappy_snap_iterations`)
+- `Snappy Level` (`snappy_castellated_level`, `min,max`)
+- `TetWild Eps` (`tetwild_epsilon`)
+- `TetWild Energy` (`tetwild_stop_energy`)
+- `cfMesh MaxCell` (`cfmesh_max_cell_size`)
+- `No Repair` (`no_repair`)
+- `Force Surface Remesh` (`surface_remesh`)
+- `Remesh Engine` (`remesh_engine`: `auto|mmg|quadwild`)
+- `Allow AI Fallback` (`allow_ai_fallback`)
+- `Extra Tier Params (JSON)` (임의 `tier_specific_params` 키/값 직접 주입)
+
+모든 파라미터 옆 `?` 버튼을 누르면 의미/용도 설명 팝업이 표시됩니다.
+또한 `Advanced Tier Params` 패널에서 core/netgen/snappy/tetwild/mmg/meshpy/jigsaw 관련 세부 키를 직접 조정할 수 있습니다.
+
+### 헤드리스 Linux에서 Qt 화면 보기 (Xvfb + VNC)
+
+```bash
+# 런타임 도구 설치 (Ubuntu/Debian)
+sudo apt install -y xvfb x11vnc
+
+# 오프스크린 스모크 체크
+make gui-offscreen-smoke
+
+# 가상 디스플레이 + VNC로 실행
+make gui-headless
+```
+
+`make gui-headless` 실행 후 VNC 클라이언트로 `127.0.0.1:5900`에 접속하면 Qt 창을 볼 수 있습니다.
 
 ## 아키텍처
 
@@ -98,6 +158,25 @@ python -m desktop.server
 | Standard | Netgen / cfMesh | ~수분 |
 | Fine | snappyHexMesh + BL | ~30분+ |
 
+### 엔진 자동 선택 규칙 (코드 기준)
+
+- `--tier`를 명시하면 자동 선택을 건너뛰고 해당 tier를 고정한다.
+- 표면 품질이 `l3_ai`이면 `tier2_tetwild`를 강제한다.
+- `draft`: `tier2_tetwild` 우선, fallback은 `tier05_netgen`.
+- `standard`:
+`CAD B-Rep -> tier05_netgen`, `external+watertight -> tier1_snappy`,
+`internal+watertight -> tier15_cfmesh`, `watertight+simple -> tier0_core`, 그 외 `tier2_tetwild`.
+- `fine`:
+`CAD B-Rep -> tier05_netgen`, `external+watertight -> tier1_snappy`,
+`watertight -> tier15_cfmesh`, 그 외 `tier2_tetwild`.
+- 자동 선택 결과는 `mesh_strategy.json`의 `tier_specific_params.engine_selection`과 로그(`tier_auto_selected`, `strategy_planned`)에 기록된다.
+
+### `--max-cells` 동작
+
+- `--max-cells`는 `base_cell_size`를 자동 확대해 셀 수 상한을 강제한다.
+- 상한 cap은 OpenFOAM `label` 크기(Int32/Int64)와 `quality`에 따라 자동 적용된다.
+- 요청값이 cap을 넘으면 CLI에서 `max_cells clamp` 경고를 출력한다.
+
 ## 품질 레벨
 
 | 지표 | Draft | Standard | Fine |
@@ -120,7 +199,34 @@ pytest tests/test_generator.py -v
 
 # 벤치마크 (실제 메쉬 생성)
 pytest tests/test_integration.py -v
+
+# 문서 기준선/테스트 수 점검
+make checks-strict
+make smoke-check
+
+# 필수 안전장치 회귀 세트 (빠른 로컬 게이트)
+make safeguard-regression
+
+# 메쉬 엔진 조합 스모크 매트릭스 (quality x tier)
+make qa-matrix-mini
+# 결과: reports/mini_matrix_results.json, reports/mini_matrix_summary.json
+
+# 타임아웃 완화 fast 프로파일 매트릭스
+make qa-matrix-mini-fast
+# 결과: reports/mini_matrix_fast_results.json, reports/mini_matrix_fast_summary.json
+
+# 전체 조합 매트릭스 (quality x tier x remesh_engine)
+make qa-matrix-full-cube
+# 결과: reports/full_matrix_results.json, reports/full_matrix_summary.json
+
+# fine 전용 fast 매트릭스 (tier별 timeout/fail 진단)
+make qa-matrix-fine-fast
+# 결과: reports/fast_fine_tiers_auto_remesh_results.json, reports/fast_fine_tiers_auto_remesh_summary.json
+# 참고: fine fast 타겟은 tier별 max-iterations override(auto=2, netgen=2, tetwild=3)를 포함
 ```
+
+CI note: baseline strict checks are centralized in
+`.github/workflows/common-checks.yml` and reused by test/release flows.
 
 ## 프로젝트 구조
 
@@ -136,8 +242,8 @@ auto-tessell/
 │   ├── pipeline/           # Orchestrator
 │   └── utils/              # OpenFOAM 래퍼, 로깅
 ├── desktop/                # FastAPI WebSocket 서버
-├── godot/                  # Godot 4.3 GUI
-├── tests/                  # 331+ 테스트
+├── godot/                  # Godot GUI
+├── tests/                  # 테스트 스위트
 └── agents/specs/           # 에이전트 스펙 문서
 ```
 

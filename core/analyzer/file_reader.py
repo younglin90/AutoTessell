@@ -195,7 +195,8 @@ def _load_via_gmsh(path: Path, fmt: str) -> trimesh.Trimesh:
         if not tri_faces:
             raise ValueError(f"gmsh 메쉬에서 삼각형 요소를 찾지 못했습니다: {path}")
 
-        faces = np.vstack(tri_faces).astype(np.int32)
+        # 인덱스는 플랫폼 네이티브 정수 폭으로 유지해 대형 태그 손실을 방지한다.
+        faces = np.vstack(tri_faces).astype(np.intp, copy=False)
         mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=True)
 
         if len(mesh.faces) == 0:

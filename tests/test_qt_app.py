@@ -134,3 +134,53 @@ def test_pipeline_worker_signals() -> None:
     assert issubclass(qt_cls, QThread), "PipelineWorker 인스턴스는 QThread 여야 한다"
     assert hasattr(qt_cls, "progress"), "progress 시그널이 필요하다"
     assert hasattr(qt_cls, "finished"), "finished 시그널이 필요하다"
+
+
+def test_pipeline_worker_accepts_advanced_options() -> None:
+    """PipelineWorker 가 고급 실행 옵션을 받아 내부 필드로 유지한다."""
+    from pathlib import Path
+    import tempfile
+
+    from PySide6.QtCore import QCoreApplication
+    from desktop.qt_app.main_window import QualityLevel
+    from desktop.qt_app.pipeline_worker import PipelineWorker
+
+    app = QCoreApplication.instance()
+    if app is None:
+        app = QCoreApplication([])
+
+    with tempfile.NamedTemporaryFile(suffix=".stl") as f:
+        worker = PipelineWorker(
+            Path(f.name),
+            QualityLevel.DRAFT,
+            no_repair=True,
+            surface_remesh=True,
+            remesh_engine="mmg",
+            allow_ai_fallback=True,
+        )
+
+    assert getattr(worker, "_no_repair") is True
+    assert getattr(worker, "_surface_remesh") is True
+    assert getattr(worker, "_remesh_engine") == "mmg"
+    assert getattr(worker, "_allow_ai_fallback") is True
+
+
+def test_param_scope_by_tier_and_remesh_engine() -> None:
+    """엔진별 파라미터 적용 범위가 GUI 규칙과 일치한다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+
+    assert win._param_is_applicable("snappy_snap_tolerance", "snappy", "auto")
+    assert not win._param_is_applicable("snappy_snap_tolerance", "netgen", "auto")
+    assert win._param_is_applicable("tetwild_stop_energy", "tetwild", "auto")
+    assert not win._param_is_applicable("tetwild_stop_energy", "core", "auto")
+    assert win._param_is_applicable("core_quality", "core", "auto")
+    assert not win._param_is_applicable("core_quality", "snappy", "auto")
+
+    assert win._param_is_applicable("mmg_hmin", "auto", "mmg")
+    assert not win._param_is_applicable("mmg_hmin", "auto", "quadwild")
+
+    # auto는 후보 엔진을 확정하지 않았으므로 관련 파라미터를 노출한다.
+    assert win._param_is_applicable("snappy_snap_tolerance", "auto", "auto")
+    assert win._param_is_applicable("mmg_hgrad", "auto", "auto")

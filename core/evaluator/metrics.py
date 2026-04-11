@@ -69,7 +69,8 @@ class AdditionalMetricsComputer:
         )
 
         # BL 검사: 벽면 경계 근처 셀 높이 추정
-        bl_stats = self._compute_bl_stats(mesh)
+        bl_enabled = self._check_bl_enabled(case_dir)
+        bl_stats = self._compute_bl_stats(mesh, bl_enabled)
 
         return AdditionalMetrics(
             cell_volume_stats=cell_volume_stats,
@@ -100,7 +101,22 @@ class AdditionalMetricsComputer:
         # 타임스텝 0 (또는 가장 이른 파일) 우선
         return candidates[0]
 
-    def _compute_bl_stats(self, mesh: object) -> BoundaryLayerStats | None:
+    def _check_bl_enabled(self, case_dir: Path) -> bool:
+        """mesh_strategy.json에서 BL enabled 상태를 확인한다."""
+        try:
+            import json  # noqa: PLC0415
+            strategy_file = case_dir / "mesh_strategy.json"
+            if not strategy_file.exists():
+                return False
+            with open(strategy_file) as f:
+                data = json.load(f)
+            # boundary_layer.enabled 확인
+            bl_cfg = data.get("boundary_layer", {})
+            return bool(bl_cfg.get("enabled", False))
+        except Exception:  # noqa: BLE001
+            return False
+
+    def _compute_bl_stats(self, mesh: object, bl_enabled: bool = True) -> BoundaryLayerStats | None:
         """경계층 통계를 추정한다. pyvista mesh 객체를 받는다."""
         try:
             import numpy as np  # noqa: PLC0415
@@ -113,8 +129,10 @@ class AdditionalMetricsComputer:
             cell_sizes = mesh.compute_cell_sizes(volume=True, length=False, area=False)
             vols = cell_sizes["Volume"]
             heights = np.cbrt(np.abs(vols))
+            # BL이 비활성화된 경우 coverage 0.0, 활성화된 경우 100.0 근사값
+            bl_coverage = 100.0 if bl_enabled else 0.0
             return BoundaryLayerStats(
-                bl_coverage_percent=100.0,  # 근사값
+                bl_coverage_percent=bl_coverage,
                 avg_first_layer_height=float(heights.mean()),
                 min_first_layer_height=float(heights.min()),
                 max_first_layer_height=float(heights.max()),

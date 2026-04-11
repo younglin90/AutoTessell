@@ -1,6 +1,6 @@
 ; Auto-Tessell Installer (Inno Setup)
 #define MyAppName "Auto-Tessell"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "1.0.0"
 #define MyAppPublisher "Younglin"
 #define MyAppExeName "auto-tessell-gui.exe"
 #define MyAppServerExe "auto-tessell-server.exe"

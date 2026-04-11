@@ -7,14 +7,10 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - run: pip install -e ".[dev,volume,cad,netgen]"
-      - run: pytest tests/ -v --tb=short -x
+    uses: ./.github/workflows/common-checks.yml
+    with:
+      run_pytest: true
+      run_cli_smoke: false
 
   release:
     needs: test

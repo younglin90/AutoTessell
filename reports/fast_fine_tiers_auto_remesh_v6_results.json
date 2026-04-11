@@ -1,0 +1,68 @@
+[
+  {
+    "input": "/home/younglin90/work/claude_code/AutoTessell/test_cube.stl",
+    "quality": "fine",
+    "tier": "auto",
+    "remesh_engine": "auto",
+    "status": "timeout",
+    "elapsed_sec": 60.0,
+    "timeout_sec": 60,
+    "failure_category": "timeout",
+    "error": "timeout(60s)"
+  },
+  {
+    "input": "/home/younglin90/work/claude_code/AutoTessell/test_cube.stl",
+    "quality": "fine",
+    "tier": "core",
+    "remesh_engine": "auto",
+    "status": "pass",
+    "elapsed_sec": 2.5,
+    "timeout_sec": 12,
+    "failure_category": "pass",
+    "error": "2026-04-10T12:48:30.115426Z [info     ] Evaluation complete            [core.evaluator.report] hard_fails=0 quality_level=fine soft_fails=0 verdict=PASS; 2026-04-10T12:48:30.115884Z [info     ] Pipeline PASS                  [core.pipeline.orchestrator] iteration=1 verdict=PASS; 2026-04-10T12:48:30.116089Z [warning  ] boundary_classification_failed [core.utils.boundary_classifier] error=\"could not convert string to float: ''\"; 2026-04-10T12:48:30.116190Z [info     ] boundary_patches_classified  "
+  },
+  {
+    "input": "/home/younglin90/work/claude_code/AutoTessell/test_cube.stl",
+    "quality": "fine",
+    "tier": "netgen",
+    "remesh_engine": "auto",
+    "status": "fail",
+    "elapsed_sec": 43.97,
+    "timeout_sec": 60,
+    "failure_category": "iteration_exhausted",
+    "error": "Failed after 1 iterations"
+  },
+  {
+    "input": "/home/younglin90/work/claude_code/AutoTessell/test_cube.stl",
+    "quality": "fine",
+    "tier": "snappy",
+    "remesh_engine": "auto",
+    "status": "timeout",
+    "elapsed_sec": 90.0,
+    "timeout_sec": 90,
+    "failure_category": "timeout",
+    "error": "timeout(90s)"
+  },
+  {
+    "input": "/home/younglin90/work/claude_code/AutoTessell/test_cube.stl",
+    "quality": "fine",
+    "tier": "cfmesh",
+    "remesh_engine": "auto",
+    "status": "timeout",
+    "elapsed_sec": 90.0,
+    "timeout_sec": 90,
+    "failure_category": "timeout",
+    "error": "timeout(90s)"
+  },
+  {
+    "input": "/home/younglin90/work/claude_code/AutoTessell/test_cube.stl",
+    "quality": "fine",
+    "tier": "tetwild",
+    "remesh_engine": "auto",
+    "status": "fail",
+    "elapsed_sec": 7.75,
+    "timeout_sec": 60,
+    "failure_category": "iteration_exhausted",
+    "error": "Failed after 1 iterations"
+  }
+]

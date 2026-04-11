@@ -32,6 +32,38 @@ class OpenFOAMError(RuntimeError):
         )
 
 
+def _normalize_shell_path(value: str | Path) -> str:
+    """bash 명령에서 사용할 수 있도록 경로 구분자를 정규화한다."""
+    return str(value).replace("\\", "/")
+
+
+def _to_wsl_linux_path(value: str | Path) -> tuple[str, str | None]:
+    """WSL UNC 경로를 Linux 경로로 변환한다.
+
+    Returns:
+        (normalized_path, distro_name_or_none)
+    """
+    normalized = _normalize_shell_path(value)
+    lowered = normalized.lower()
+
+    for prefix in ("//wsl.localhost/", "//wsl$/"):
+        if lowered.startswith(prefix):
+            rest = normalized[len(prefix):]
+            parts = [p for p in rest.split("/") if p]
+            if len(parts) >= 2:
+                distro = parts[0]
+                linux_path = "/" + "/".join(parts[1:])
+                return linux_path, distro
+    return normalized, None
+
+
+def _normalize_openfoam_arg(arg: str) -> tuple[str, str | None]:
+    """OpenFOAM CLI 인자를 shell-safe path 기준으로 정규화한다."""
+    if arg.startswith("-"):
+        return arg, None
+    return _to_wsl_linux_path(arg)
+
+
 def get_openfoam_label_size() -> int:
     """OpenFOAM의 label 크기(비트)를 감지한다. 32 또는 64 반환. 미설치 시 0."""
     bashrc = _find_openfoam_bashrc()
@@ -41,11 +73,12 @@ def get_openfoam_label_size() -> int:
     of_dir = bashrc.parent.parent
     platforms = of_dir / "platforms"
     if platforms.exists():
-        for d in platforms.iterdir():
-            if "Int64" in d.name:
-                return 64
-            if "Int32" in d.name:
-                return 32
+        names = [d.name for d in platforms.iterdir()]
+        # Int32/Int64가 공존하는 경우(멀티 빌드)에는 Int64를 우선한다.
+        if any("Int64" in name for name in names):
+            return 64
+        if any("Int32" in name for name in names):
+            return 32
     return 32  # default assumption
 
 
@@ -109,27 +142,44 @@ def run_openfoam(
             "OPENFOAM_DIR 환경변수를 설정하거나 OpenFOAM을 설치하세요."
         )
 
-    source_cmd = f"source {shlex.quote(str(bashrc_path))}"
+    bashrc_shell, bashrc_distro = _to_wsl_linux_path(bashrc_path)
+    case_dir_shell, case_distro = _to_wsl_linux_path(case_dir)
+    source_cmd = f"source {shlex.quote(bashrc_shell)}"
 
     # 각 인자를 개별적으로 quote 처리하여 공백/특수문자 대응
-    safe_parts = [shlex.quote(utility), "-case", shlex.quote(str(case_dir))]
+    safe_parts = [shlex.quote(utility), "-case", shlex.quote(case_dir_shell)]
+    arg_distros: list[str] = []
     if args:
         for arg in args:
-            safe_parts.append(shlex.quote(arg))
+            normalized_arg, distro = _normalize_openfoam_arg(arg)
+            safe_parts.append(shlex.quote(normalized_arg))
+            if distro:
+                arg_distros.append(distro)
 
     full_cmd = f"{source_cmd} && {' '.join(safe_parts)}"
+    target_distro = (
+        case_distro
+        or bashrc_distro
+        or (arg_distros[0] if arg_distros else None)
+        or os.environ.get("WSL_DISTRO_NAME")
+        or "Ubuntu"
+    )
 
     logger.info(
         "running_openfoam_utility",
         utility=utility,
-        case_dir=str(case_dir),
+        case_dir=case_dir_shell,
         args=args,
-        bashrc=str(bashrc_path),
+        bashrc=bashrc_shell,
     )
 
     try:
+        if os.name == "nt":
+            run_cmd = ["wsl", "-d", target_distro, "bash", "-lc", full_cmd]
+        else:
+            run_cmd = ["bash", "-c", full_cmd]
         result = subprocess.run(
-            ["bash", "-c", full_cmd],
+            run_cmd,
             capture_output=True,
             text=True,
             timeout=3600,

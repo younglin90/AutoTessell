@@ -1,0 +1,13 @@
+[
+  {
+    "input": "/home/younglin90/work/claude_code/AutoTessell/test_cube.stl",
+    "quality": "fine",
+    "tier": "netgen",
+    "remesh_engine": "auto",
+    "status": "fail",
+    "elapsed_sec": 6.54,
+    "timeout_sec": 60,
+    "failure_category": "all_tiers_failed",
+    "error": "All mesh generation tiers failed"
+  }
+]

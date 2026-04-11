@@ -205,6 +205,15 @@ class TestDictGeneration:
         assert sc["tolerance"] == 2.0
         assert sc["nSolveIter"] == 30
 
+    def test_snappy_geometry_name_is_safe_word(self, mesh_strategy: MeshStrategy) -> None:
+        """geometry.name은 OpenFOAM word 제약을 만족하는 고정 식별자여야 한다."""
+        from core.generator.tier1_snappy import generate_snappy_dict
+
+        mesh_strategy.surface_mesh.input_file = "/tmp/foo/bar/preprocessed.stl"
+        snappy = generate_snappy_dict(mesh_strategy)
+        geom = snappy["geometry"]["surface.stl"]
+        assert geom["name"] == "surface"
+
     def test_cfmesh_dict_keys(self, mesh_strategy: MeshStrategy) -> None:
         """generate_cfmesh_dict → surfaceFile/maxCellSize 키 포함 확인."""
         from core.generator.tier15_cfmesh import generate_cfmesh_dict
@@ -268,12 +277,12 @@ class TestTierGracefulFail:
     def test_tier0_fails_gracefully(
         self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
     ) -> None:
-        """auto_tessell_core 없음 → TierAttempt(status='failed') 반환."""
+        """Tier0 모듈(auto_tessell_core/tessell_mesh) 모두 없으면 실패 반환."""
         from core.generator.tier0_core import Tier0CoreGenerator
 
         generator = Tier0CoreGenerator()
-        # auto_tessell_core가 없는 환경에서 실행
-        with patch.dict("sys.modules", {"auto_tessell_core": None}):
+        # Tier0 C++ 모듈이 모두 없는 환경에서 실행
+        with patch.dict("sys.modules", {"auto_tessell_core": None, "tessell_mesh": None}):
             attempt = generator.run(mesh_strategy, dummy_stl, tmp_path)
 
         assert attempt.status == "failed"
@@ -830,13 +839,31 @@ class TestTierOrderByQualityLevel:
 
         gen = MeshGenerator()
         strategy = _make_strategy_with_quality(QualityLevel.FINE)
-        order = gen._get_tier_order(strategy)
+        with patch("core.generator.pipeline.get_openfoam_label_size", return_value=64):
+            order = gen._get_tier_order(strategy)
 
         assert order[0] == "tier_classy_blocks", "Fine: classy_blocks가 첫 번째(구조 Hex)"
         assert order[1] == "tier15_cfmesh"
         assert order[2] == "tier1_snappy"
         assert order[3] == "tier05_netgen"
         assert order[4] == "tier2_tetwild"
+
+    def test_fine_tier_order_demotes_snappy_on_int32(self) -> None:
+        """fine + label=32에서는 snappy 우선도를 낮춰 뒤로 미룬다."""
+        from core.generator.pipeline import MeshGenerator
+
+        gen = MeshGenerator()
+        strategy = _make_strategy_with_quality(QualityLevel.FINE)
+        with patch("core.generator.pipeline.get_openfoam_label_size", return_value=32):
+            order = gen._get_tier_order(strategy)
+
+        assert order == [
+            "tier_classy_blocks",
+            "tier15_cfmesh",
+            "tier05_netgen",
+            "tier2_tetwild",
+            "tier1_snappy",
+        ]
 
     def test_explicit_tier_overrides_quality_level(self) -> None:
         """selected_tier가 명시적으로 지정되면 quality_level 기반 순서 무시."""

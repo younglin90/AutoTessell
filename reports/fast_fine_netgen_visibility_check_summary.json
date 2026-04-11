@@ -1,0 +1,38 @@
+{
+  "total": 1,
+  "pass": 0,
+  "fail": 0,
+  "timeout": 1,
+  "by_failure_category": {
+    "timeout": {
+      "pass": 0,
+      "fail": 0,
+      "timeout": 1,
+      "total": 1
+    }
+  },
+  "by_tier": {
+    "netgen": {
+      "pass": 0,
+      "fail": 0,
+      "timeout": 1,
+      "total": 1
+    }
+  },
+  "by_quality": {
+    "fine": {
+      "pass": 0,
+      "fail": 0,
+      "timeout": 1,
+      "total": 1
+    }
+  },
+  "by_input": {
+    "/home/younglin90/work/claude_code/AutoTessell/test_cube.stl": {
+      "pass": 0,
+      "fail": 0,
+      "timeout": 1,
+      "total": 1
+    }
+  }
+}

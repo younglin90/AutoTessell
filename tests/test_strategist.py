@@ -33,7 +33,7 @@ from core.schemas import (
     Verdict,
 )
 from core.strategist.param_optimizer import ParamOptimizer
-from core.strategist.strategy_planner import StrategyPlanner
+from core.strategist.strategy_planner import StrategyPlanner, _TIER_PARAMS
 from core.strategist.tier_selector import TierSelector
 
 BENCHMARKS_DIR = Path(__file__).parent / "benchmarks"
@@ -305,6 +305,8 @@ class TestTierSelector:
         report = _make_geometry_report(flow_type="external", is_watertight=True)
         tier, _ = self.selector.select(report, quality_level="draft")
         assert tier == "tier2_tetwild"
+        assert self.selector.last_selection_context.get("source") == "auto"
+        assert self.selector.last_selection_context.get("reason") == "draft_quality"
 
 
 # ---------------------------------------------------------------------------
@@ -1442,6 +1444,7 @@ class TestTierSelectorAdditional:
         report = _make_geometry_report(flow_type="external", is_watertight=True)
         tier, _ = self.selector.select(report, tier_hint="cfmesh")
         assert tier == "tier15_cfmesh"
+        assert self.selector.last_selection_context.get("source") == "hint_override"
 
     def test_hint_tetwild(self):
         """tier_hint='tetwild' → tier2_tetwild."""
@@ -1608,6 +1611,29 @@ class TestParamOptimizerAdditional:
         for i in range(3):
             assert domain.max[i] > domain.min[i]
 
+    def test_domain_cell_cap_more_conservative_on_int32(self, monkeypatch: pytest.MonkeyPatch):
+        """동일 조건에서 label=32가 label=64보다 더 보수적으로 base_cell_size를 키워야 한다."""
+        report = _make_geometry_report(characteristic_length=1000.0)
+
+        monkeypatch.setattr("core.strategist.param_optimizer.get_openfoam_label_size", lambda: 32)
+        d32 = self.optimizer.compute_domain(report, "external", quality_level=QualityLevel.FINE)
+
+        monkeypatch.setattr("core.strategist.param_optimizer.get_openfoam_label_size", lambda: 64)
+        d64 = self.optimizer.compute_domain(report, "external", quality_level=QualityLevel.FINE)
+
+        assert d32.base_cell_size > d64.base_cell_size
+
+    def test_max_bg_cells_profile_switches_by_label(self, monkeypatch: pytest.MonkeyPatch):
+        """label=64일 때 fine 상한이 label=32보다 커야 한다."""
+        monkeypatch.setattr("core.strategist.param_optimizer.get_openfoam_label_size", lambda: 32)
+        max32, bits32 = self.optimizer._max_bg_cells("fine")
+        assert bits32 == 32
+
+        monkeypatch.setattr("core.strategist.param_optimizer.get_openfoam_label_size", lambda: 64)
+        max64, bits64 = self.optimizer._max_bg_cells("fine")
+        assert bits64 == 64
+        assert max64 > max32
+
 
 # ---------------------------------------------------------------------------
 # StrategyPlanner 추가 테스트
@@ -1662,6 +1688,39 @@ class TestStrategyPlannerAdditional:
         report = _make_geometry_report()
         strategy = self.planner.plan(report, quality_level=QualityLevel.FINE)
         assert abs(strategy.boundary_layers.growth_ratio - 1.2) < 1e-9
+
+    def test_plan_snappy_params_int64_profile(self, monkeypatch: pytest.MonkeyPatch):
+        """label=64 + snappy 선택 시 초대형 snappy 셀 한도 프로파일이 적용되어야 한다."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        monkeypatch.setattr("core.strategist.strategy_planner.get_openfoam_label_size", lambda: 64)
+
+        strategy = self.planner.plan(
+            report,
+            tier_hint="snappy",
+            quality_level=QualityLevel.FINE,
+        )
+        p = strategy.tier_specific_params
+        assert strategy.selected_tier == "tier1_snappy"
+        assert p["snappy_int64_mode"] is True
+        assert p["snappy_max_local_cells"] == 500_000_000
+        assert p["snappy_max_global_cells"] == 4_000_000_000
+
+    def test_plan_snappy_params_int32_clamp(self, monkeypatch: pytest.MonkeyPatch):
+        """label=32 + 과도한 snappy 셀 설정은 안전 상한으로 클램프되어야 한다."""
+        report = _make_geometry_report(flow_type="external", is_watertight=True)
+        monkeypatch.setattr("core.strategist.strategy_planner.get_openfoam_label_size", lambda: 32)
+        monkeypatch.setitem(_TIER_PARAMS["tier1_snappy"], "snappy_max_local_cells", 9_999_999_999)
+        monkeypatch.setitem(_TIER_PARAMS["tier1_snappy"], "snappy_max_global_cells", 9_999_999_999)
+
+        strategy = self.planner.plan(
+            report,
+            tier_hint="snappy",
+            quality_level=QualityLevel.FINE,
+        )
+        p = strategy.tier_specific_params
+        assert p["snappy_int64_mode"] is False
+        assert p["snappy_max_local_cells"] == 20_000_000
+        assert p["snappy_max_global_cells"] == 200_000_000
 
     def test_plan_fallback_tiers_excludes_selected(self):
         """fallback_tiers에 selected_tier가 포함되지 않아야 한다."""

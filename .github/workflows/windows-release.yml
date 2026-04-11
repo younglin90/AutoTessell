@@ -3,11 +3,15 @@ name: Windows Release Build
 on:
   push:
     tags:
-      - 'v*' # v0.1.0 같은 태그가 푸시되면 빌드 시작
+      - 'v*' # v1.0.0 같은 태그가 푸시되면 빌드 시작
   workflow_dispatch: # 수동으로도 실행 가능
 
 jobs:
+  preflight:
+    uses: ./.github/workflows/common-checks.yml
+
   build:
+    needs: preflight
     runs-on: windows-latest
 
     steps:

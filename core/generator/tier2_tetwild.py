@@ -12,6 +12,7 @@ import numpy.typing as npt
 
 from core.generator.polymesh_writer import PolyMeshWriter
 from core.schemas import MeshStrategy, TierAttempt
+from core.utils.errors import format_missing_dependency_message
 from core.utils.logging import get_logger
 
 logger = get_logger(__name__)
@@ -109,7 +110,12 @@ class Tier2TetWildGenerator:
                 tier=TIER_NAME,
                 status="failed",
                 time_seconds=elapsed,
-                error_message=f"pytetwild 모듈 import 실패: {exc}. pip install pytetwild",
+                error_message=format_missing_dependency_message(
+                    dependency="pytetwild",
+                    fallback="다른 tier로 fallback",
+                    action="pip install pytetwild",
+                    detail=str(exc),
+                ),
             )
 
         # 파일 존재 확인
@@ -159,8 +165,10 @@ class Tier2TetWildGenerator:
             tetra_kwargs: dict[str, Any] = {
                 "stop_energy": stop_energy,
             }
+            # NOTE: pytetwild.tetrahedralize()는 edge_len_r, epsilon 인자를 지원하지 않음
+            # edge_length는 무시되고, stop_energy만 적용됨
             if edge_length is not None:
-                tetra_kwargs["edge_len_r"] = edge_length
+                logger.debug("tetwild_edge_length_not_supported", edge_length=edge_length)
 
             tet_v, tet_f = pytetwild.tetrahedralize(vertices, faces, **tetra_kwargs)
 

@@ -302,6 +302,21 @@ class TestPipelineFlow:
         orch._checker.run.assert_called_once()
         orch._reporter.evaluate.assert_called_once()
 
+    def test_case_writer_receives_classified_patches(self, tmp_output):
+        orch = self._make_orchestrator()
+        patches = [{"name": "defaultWall", "type": "wall"}]
+
+        with patch("core.pipeline.orchestrator.classify_boundaries", return_value=patches), \
+             patch("core.pipeline.orchestrator.FoamCaseWriter") as writer_cls:
+            writer = writer_cls.return_value
+            writer.write_case.return_value = []
+
+            result = orch.run(Path("sphere.stl"), tmp_output)
+
+        assert result.success is True
+        writer.write_case.assert_called_once()
+        assert writer.write_case.call_args.kwargs["patches"] == patches
+
     def test_dry_run_stops_after_strategy(self, tmp_output):
         orch = self._make_orchestrator()
         result = orch.run(Path("sphere.stl"), tmp_output, dry_run=True)
@@ -325,6 +340,47 @@ class TestPipelineFlow:
 
         call_kwargs = orch._planner.plan.call_args
         assert call_kwargs.kwargs.get("tier_hint") == "netgen"
+
+    def test_max_cells_applied_in_dry_run_strategy(self, tmp_output):
+        orch = self._make_orchestrator()
+        max_cells = 1000
+        expected_base = (3000.0 / max_cells) ** (1.0 / 3.0)
+
+        result = orch.run(Path("sphere.stl"), tmp_output, dry_run=True, max_cells=max_cells)
+
+        assert result.success is True
+        assert result.strategy is not None
+        assert result.strategy.domain.base_cell_size == pytest.approx(expected_base)
+
+    def test_max_cells_applied_before_generate_normal_run(self, tmp_output):
+        orch = self._make_orchestrator(verdict="PASS")
+        max_cells = 1000
+        expected_base = (3000.0 / max_cells) ** (1.0 / 3.0)
+
+        result = orch.run(Path("sphere.stl"), tmp_output, max_cells=max_cells)
+
+        assert result.success is True
+        assert orch._generator.run.call_count == 1
+        strategy_arg = orch._generator.run.call_args.kwargs["strategy"]
+        assert strategy_arg.domain.base_cell_size == pytest.approx(expected_base)
+
+    def test_tier_specific_params_applied_before_generate(self, tmp_output):
+        orch = self._make_orchestrator(verdict="PASS")
+        overrides = {
+            "snappy_snap_tolerance": 1.25,
+            "snappy_snap_iterations": 42,
+        }
+
+        result = orch.run(
+            Path("sphere.stl"),
+            tmp_output,
+            tier_specific_params=overrides,
+        )
+
+        assert result.success is True
+        strategy_arg = orch._generator.run.call_args.kwargs["strategy"]
+        assert strategy_arg.tier_specific_params["snappy_snap_tolerance"] == pytest.approx(1.25)
+        assert strategy_arg.tier_specific_params["snappy_snap_iterations"] == 42
 
 
 class TestRetryLoop:
@@ -398,6 +454,55 @@ class TestRetryLoop:
         assert result.success is True
         assert result.iterations == 1
         assert orch._generator.run.call_count == 1
+
+    def test_max_cells_applied_again_after_restrategize(self, tmp_output):
+        analyzer = MagicMock()
+        analyzer.analyze.return_value = _make_geometry_report()
+
+        preprocessor = MagicMock()
+        preprocessor.run.return_value = (Path("/tmp/preprocessed.stl"), _make_preprocessed_report())
+
+        strategy_first = _make_strategy()
+        strategy_second = _make_strategy()
+        strategy_second.domain.base_cell_size = 0.2
+
+        planner = MagicMock()
+        planner.plan.side_effect = [strategy_first, strategy_second]
+
+        generator = MagicMock()
+        generator.run.return_value = _make_generator_log("success")
+
+        checker = MagicMock()
+        checker.run.return_value = _make_checkmesh_result()
+
+        metrics = MagicMock()
+        metrics.compute.return_value = AdditionalMetrics(
+            cell_volume_stats=_make_cell_volume_stats(),
+        )
+
+        reporter = MagicMock()
+        reporter.evaluate.side_effect = [_make_quality_report("FAIL"), _make_quality_report("PASS")]
+
+        orch = PipelineOrchestrator(
+            analyzer=analyzer,
+            preprocessor=preprocessor,
+            planner=planner,
+            generator=generator,
+            checker=checker,
+            metrics_computer=metrics,
+            reporter=reporter,
+        )
+
+        max_cells = 1000
+        expected_base = (3000.0 / max_cells) ** (1.0 / 3.0)
+        result = orch.run(Path("sphere.stl"), tmp_output, max_iterations=3, max_cells=max_cells)
+
+        assert result.success is True
+        assert generator.run.call_count == 2
+        first_strategy = generator.run.call_args_list[0].kwargs["strategy"]
+        second_strategy = generator.run.call_args_list[1].kwargs["strategy"]
+        assert first_strategy.domain.base_cell_size == pytest.approx(expected_base)
+        assert second_strategy.domain.base_cell_size == pytest.approx(expected_base)
 
 
 class TestAllTiersFailed:
@@ -482,6 +587,18 @@ class TestErrorHandling:
 
         assert result.success is False
         assert "checkMesh" in result.error
+
+    def test_unhandled_exception_includes_stage_and_type(self, tmp_output):
+        analyzer = MagicMock()
+        analyzer.analyze.side_effect = ValueError("broken input")
+
+        orch = PipelineOrchestrator(analyzer=analyzer)
+        result = orch.run(Path("broken.stl"), tmp_output)
+
+        assert result.success is False
+        assert result.error is not None
+        assert "[analyze]" in result.error
+        assert "ValueError" in result.error
 
 
 class TestPipelineResult:

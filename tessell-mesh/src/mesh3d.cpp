@@ -109,7 +109,7 @@ Mesh3D tetrahedralize_stl(const std::string& stl_path, const Mesh3DOptions& opts
     GEO::MeshTetrahedralizeParameters params;
     params.preprocess = opts.preprocess;
     params.refine     = opts.refine;
-    params.quality    = opts.quality;
+    params.refine_quality = opts.quality;
 
     bool ok = GEO::mesh_tetrahedralize(gm, params);
     if (!ok) {
@@ -153,7 +153,7 @@ Mesh3D tetrahedralize_surface(
     GEO::MeshTetrahedralizeParameters params;
     params.preprocess = opts.preprocess;
     params.refine     = opts.refine;
-    params.quality    = opts.quality;
+    params.refine_quality = opts.quality;
 
     bool ok = GEO::mesh_tetrahedralize(gm, params);
     if (!ok) {

@@ -108,30 +108,79 @@ def _parse_foam_faces(faces_file: Path) -> list[list[int]]:
     return faces
 
 
-def _parse_foam_boundary(boundary_file: Path) -> list[dict[str, int]]:
-    """polyMesh/boundary 파일을 파싱해 패치 정보(nFaces, startFace)를 반환한다."""
+def _parse_foam_boundary(boundary_file: Path) -> list[dict[str, int | str]]:
+    """polyMesh/boundary 파일을 파싱해 패치 정보(name, nFaces, startFace)를 반환한다."""
     text = boundary_file.read_text()
     # 주석 제거
     text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
     text = re.sub(r"//[^\n]*", "", text)
 
-    patches: list[dict[str, int]] = []
-    # 각 패치 블록: patchName\n{\n ... nFaces N; startFace M; ... \n}
-    patch_blocks = re.findall(
-        r"\w[\w\s]*?\{([^}]+)\}",
-        text,
-        re.DOTALL,
-    )
-    for block in patch_blocks:
+    patches: list[dict[str, int | str]] = []
+    # 각 패치 블록: patchName { ... nFaces N; startFace M; ... }
+    patch_blocks = re.findall(r"(\w[\w\s]*?)\s*\{([^}]+)\}", text, re.DOTALL)
+    for name_raw, block in patch_blocks:
         nfaces_m = re.search(r"nFaces\s+(\d+)", block)
         startface_m = re.search(r"startFace\s+(\d+)", block)
         if nfaces_m and startface_m:
             patches.append(
                 {
+                    "name": name_raw.strip(),
                     "nFaces": int(nfaces_m.group(1)),
                     "startFace": int(startface_m.group(1)),
                 }
             )
+    return patches
+
+
+def _select_geometry_patches(
+    patches: list[dict[str, int | str]],
+) -> list[dict[str, int | str]]:
+    """원본 형상과 비교할 경계 패치만 선택한다.
+
+    snappy/cfMesh 외부유동 케이스는 inlet/outlet/walls 같은 도메인 패치가
+    함께 존재하므로, 형상 패치(surface/defaultWall/object 계열)를 우선 선택한다.
+    """
+    if len(patches) <= 1:
+        return patches
+
+    preferred_tokens = ("surface", "object", "body", "geom", "model", "solid", "wallobject")
+    domain_tokens = (
+        "inlet",
+        "outlet",
+        "farfield",
+        "symmetry",
+        "front",
+        "back",
+        "left",
+        "right",
+        "top",
+        "bottom",
+        "walls",
+        "domain",
+    )
+
+    preferred = [
+        patch
+        for patch in patches
+        if any(token in str(patch.get("name", "")).lower() for token in preferred_tokens)
+    ]
+    if preferred:
+        return preferred
+
+    non_domain = [
+        patch
+        for patch in patches
+        if not any(token in str(patch.get("name", "")).lower() for token in domain_tokens)
+    ]
+    if non_domain:
+        return non_domain
+
+    default_wall = [
+        patch for patch in patches if str(patch.get("name", "")).strip().lower() == "defaultwall"
+    ]
+    if default_wall:
+        return default_wall
+
     return patches
 
 
@@ -256,11 +305,22 @@ class GeometryFidelityChecker:
 
         vertices = np.array(coords, dtype=float)
 
-        # 경계 패치의 face 인덱스 수집
+        selected_patches = _select_geometry_patches(patches)
+        selected_names = [str(p.get("name", "")) for p in selected_patches]
+        all_names = [str(p.get("name", "")) for p in patches]
+        log.debug(
+            "fidelity_patch_selection",
+            total_patches=len(patches),
+            selected_patches=len(selected_patches),
+            all_patch_names=all_names,
+            selected_patch_names=selected_names,
+        )
+
+        # 선택된 경계 패치의 face 인덱스 수집
         boundary_face_indices: list[int] = []
-        for patch in patches:
-            start = patch["startFace"]
-            n = patch["nFaces"]
+        for patch in selected_patches:
+            start = int(patch["startFace"])
+            n = int(patch["nFaces"])
             boundary_face_indices.extend(range(start, start + n))
 
         if not boundary_face_indices:

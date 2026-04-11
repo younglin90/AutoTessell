@@ -192,7 +192,7 @@ class GeometryAnalyzer:
         num_faces = len(mesh.faces)
 
         is_watertight = bool(mesh.is_watertight)
-        is_manifold = bool(mesh.is_volume)  # trimesh: volume mesh = watertight + manifold
+        is_manifold = self._is_surface_manifold(mesh, is_watertight)
 
         # connected components
         try:
@@ -247,6 +247,30 @@ class GeometryAnalyzer:
             max_edge_length=max_el,
             edge_length_ratio=el_ratio,
         )
+
+    @staticmethod
+    def _is_surface_manifold(mesh: trimesh.Trimesh, is_watertight: bool) -> bool:
+        """표면 manifold 여부를 판별한다.
+
+        trimesh.is_volume는 법선 방향/부피 부호에 영향을 받아
+        watertight 표면을 non-manifold로 오판정할 수 있으므로,
+        고유 엣지의 사용 횟수 기반으로 판정한다.
+        """
+        try:
+            counts = np.bincount(
+                mesh.edges_unique_inverse,
+                minlength=len(mesh.edges_unique),
+            )
+            if is_watertight:
+                # 폐곡면은 모든 고유 엣지가 정확히 2회 사용되어야 한다.
+                return bool(np.all(counts == 2))
+            # 열린 표면은 경계 엣지(1회)는 허용, 3회 이상 사용 엣지는 non-manifold.
+            return bool(np.all(counts <= 2))
+        except Exception:
+            # 최소 보수적 fallback
+            if not is_watertight:
+                return False
+            return bool(getattr(mesh, "is_winding_consistent", False))
 
     def _edge_length_stats(
         self, mesh: trimesh.Trimesh

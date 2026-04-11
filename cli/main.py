@@ -8,12 +8,21 @@ from pathlib import Path
 import click
 from rich.console import Console
 
-console = Console()
+from core.max_cells_policy import resolve_max_bg_cells_cap
+from core.utils.openfoam_utils import get_openfoam_label_size
 
+console = Console()
 
 def _setup_logging(verbose: bool, json_log: bool) -> None:
     from core.utils.logging import configure_logging
     configure_logging(verbose=verbose, json=json_log)
+
+
+def _resolve_effective_max_cells(max_cells: int, quality: str) -> tuple[int, int]:
+    """OpenFOAM label 크기와 quality에 따라 max_cells 상한을 적용한다."""
+    label_bits = get_openfoam_label_size()
+    cap = resolve_max_bg_cells_cap(str(quality).lower(), label_bits)
+    return min(max_cells, cap), label_bits
 
 
 @click.group()
@@ -26,6 +35,35 @@ def cli(ctx: click.Context, verbose: bool, json_log: bool) -> None:
     ctx.obj["verbose"] = verbose
     ctx.obj["json_log"] = json_log
     _setup_logging(verbose, json_log)
+
+
+# ---------------------------------------------------------------------------
+# doctor
+# ---------------------------------------------------------------------------
+
+
+@cli.command()
+def doctor() -> None:
+    """런타임 의존성 탐지 결과(설치/미설치/선택)를 표로 출력한다."""
+    from rich.table import Table
+
+    from core.runtime.dependency_status import collect_dependency_statuses
+
+    rows = collect_dependency_statuses()
+    table = Table(title="Runtime Dependency Status")
+    table.add_column("Dependency", style="cyan")
+    table.add_column("Category")
+    table.add_column("Type")
+    table.add_column("Status")
+    table.add_column("Fallback")
+    table.add_column("Action")
+
+    for row in rows:
+        status = "[green]installed[/green]" if row.detected else "[red]missing[/red]"
+        dtype = "optional" if row.optional else "required"
+        table.add_row(row.name, row.category, dtype, status, row.fallback, row.action)
+
+    console.print(table)
 
 
 # ---------------------------------------------------------------------------
@@ -361,8 +399,24 @@ def evaluate(
     metrics_computer = AdditionalMetricsComputer()
     metrics = metrics_computer.compute(case)
 
-    # geometry fidelity (현재는 선택사항 — geometry_report 기반 계산은 미구현)
+    # geometry fidelity 계산
     geo_fidelity: GeometryFidelity | None = None
+    try:
+        from core.evaluator.fidelity import GeometryFidelityChecker
+        from core.schemas import GeometryReport
+
+        geo_report = GeometryReport.model_validate_json(geometry_report.read_text())
+        if geo_report.file_path:
+            checker = GeometryFidelityChecker()
+            # diagonal은 strategy에서 또는 geometry_report에서 추출
+            diagonal = geo_report.geometry.bounding_box.diagonal if geo_report.geometry else 1.0
+            geo_fidelity = checker.compute(
+                original_file=Path(geo_report.file_path),
+                case_dir=case,
+                diagonal=diagonal,
+            )
+    except Exception as exc:  # noqa: BLE001
+        console.print(f"[yellow]⚠ geometry fidelity 계산 실패: {exc}[/yellow]")
 
     # 판정 및 리포트 생성
     reporter = EvaluationReporter()
@@ -409,7 +463,7 @@ def evaluate(
               type=click.Choice(["auto", "pymeshfix", "trimesh", "none"]),
               help="L1 표면 수리 라이브러리")
 @click.option("--remesh-engine", default="auto", show_default=True,
-              type=click.Choice(["auto", "vorpalite", "pyacvd", "pymeshlab", "none"]),
+              type=click.Choice(["auto", "quadwild", "vorpalite", "pyacvd", "pymeshlab", "none"]),
               help="L2 표면 리메쉬 라이브러리 (vorpalite=geogram, 최고 품질)")
 @click.option("--volume-engine", default="auto", show_default=True,
               type=click.Choice(["auto", "tetwild", "netgen", "snappy", "cfmesh"]),
@@ -434,7 +488,7 @@ def evaluate(
 @click.option("--domain-lateral", type=float, default=None, help="측면 배수 (기본: draft=2, std=3, fine=5)")
 @click.option("--domain-scale", type=float, default=1.0, help="도메인 전체 스케일 팩터")
 # --- Max cell limit ---
-@click.option("--max-cells", type=int, default=None, help="최대 셀 수 제한 (초과 시 셀 크기 자동 확대)")
+@click.option("--max-cells", type=click.IntRange(min=1), default=None, help="최대 셀 수 제한 (초과 시 셀 크기 자동 확대)")
 # --- Boundary Layer ---
 @click.option("--bl-layers", type=int, default=None, help="BL 레이어 수 (0=비활성)")
 @click.option("--bl-first-height", type=float, default=None, help="첫 번째 BL 높이 [m]")
@@ -444,6 +498,7 @@ def evaluate(
 @click.option("--force-remesh", is_flag=True, help="L2 리메쉬 강제 실행")
 @click.option("--remesh-target-faces", type=int, default=None, help="리메쉬 목표 삼각형 수")
 @click.option("--allow-ai-fallback", is_flag=True, help="L3 AI 표면 재생성 허용 (GPU 필요)")
+@click.option("--strict-tier", is_flag=True, help="명시 tier(auto 아님)에서 fallback tier 비활성화")
 # --- TetWild specific ---
 @click.option("--tetwild-epsilon", type=float, default=None, help="TetWild epsilon (draft=0.02, std=0.001)")
 @click.option("--tetwild-stop-energy", type=float, default=None, help="TetWild stop energy (draft=20, std=10)")
@@ -488,6 +543,7 @@ def run(
     force_remesh: bool,
     remesh_target_faces: int | None,
     allow_ai_fallback: bool,
+    strict_tier: bool,
     tetwild_epsilon: float | None,
     tetwild_stop_energy: float | None,
     snappy_castellated_level: str | None,
@@ -552,6 +608,36 @@ def run(
         if len(parts) == 2:
             tier_params["snappy_castellated_level"] = [int(parts[0]), int(parts[1])]
 
+    effective_max_cells: int | None = None
+    if max_cells is not None:
+        effective_max_cells, label_bits = _resolve_effective_max_cells(max_cells, quality)
+        if effective_max_cells < max_cells:
+            label_name = "Int64" if label_bits >= 64 else "Int32"
+            console.print(
+                f"[yellow]⚠ max_cells clamp: requested={max_cells:,}, capped={effective_max_cells:,}, "
+                f"label={label_name}[/yellow]"
+            )
+
+    # CLI override 옵션들을 orchestrator 전에 처리
+    # element_size가 없으면 base_cell_size 또는 base_cell_num에서 유도
+    effective_element_size = element_size
+    if effective_element_size is None and base_cell_size is not None:
+        # element_size = base_cell_size / 4 (orchestrator 내부 로직)
+        effective_element_size = base_cell_size / 4
+
+    # BL, domain 파라미터들을 tier_specific_params에 추가 (orchestrator 내부 처리용)
+    if bl_layers is not None:
+        tier_params["bl_layers"] = bl_layers
+    if bl_first_height is not None:
+        tier_params["bl_first_height"] = bl_first_height
+    if bl_growth_ratio is not None:
+        tier_params["bl_growth_ratio"] = bl_growth_ratio
+    if min_cell_size is not None:
+        tier_params["min_cell_size"] = min_cell_size
+    # base_cell_num는 geometry_report 필요하므로 post-processing에서 처리
+    if base_cell_num is not None:
+        tier_params["base_cell_num"] = base_cell_num
+
     orchestrator = PipelineOrchestrator()
     result = orchestrator.run(
         input_path=input_file,
@@ -560,44 +646,23 @@ def run(
         tier_hint=effective_tier,
         max_iterations=max_iterations,
         dry_run=dry_run,
-        element_size=element_size,
+        element_size=effective_element_size,
+        max_cells=effective_max_cells,
+        tier_specific_params=tier_params,
         no_repair=no_repair,
         surface_remesh=force_remesh,
+        remesh_engine=remesh_engine,
         allow_ai_fallback=allow_ai_fallback,
+        strict_tier=strict_tier,
     )
 
-    # Strategy override (dry-run이 아닌 경우 orchestrator 내부에서 이미 처리됨)
-    # 하지만 dry-run에서도 override를 보여주기 위해 여기서 추가 처리
-    if result.strategy:
+    # base_cell_num은 geometry_report 필요하므로 여기서만 처리
+    if result.strategy and base_cell_num is not None:
         s = result.strategy
-        if base_cell_size is not None:
-            s.domain.base_cell_size = base_cell_size
-        if base_cell_num is not None:
-            L = result.geometry_report.geometry.bounding_box.characteristic_length if result.geometry_report else 1.0
-            s.domain.base_cell_size = L / base_cell_num
-            s.surface_mesh.target_cell_size = s.domain.base_cell_size / 4
-            s.surface_mesh.min_cell_size = s.surface_mesh.target_cell_size / 4
-        if min_cell_size is not None:
-            s.surface_mesh.min_cell_size = min_cell_size
-        if bl_layers is not None:
-            s.boundary_layers.enabled = bl_layers > 0
-            s.boundary_layers.num_layers = bl_layers
-        if bl_first_height is not None:
-            s.boundary_layers.first_layer_thickness = bl_first_height
-        if bl_growth_ratio is not None:
-            s.boundary_layers.growth_ratio = bl_growth_ratio
-        if tier_params:
-            s.tier_specific_params.update(tier_params)
-        if max_cells is not None:
-            # 셀 수 제한: base_cell_size 자동 확대
-            domain_vol = 1.0
-            for i in range(3):
-                domain_vol *= (s.domain.max[i] - s.domain.min[i])
-            est_cells = domain_vol / (s.domain.base_cell_size ** 3)
-            if est_cells > max_cells:
-                new_base = (domain_vol / max_cells) ** (1.0 / 3.0)
-                console.print(f"[yellow]⚠ base_cell_size {s.domain.base_cell_size:.4f} → {new_base:.4f} (max_cells={max_cells:,})[/yellow]")
-                s.domain.base_cell_size = new_base
+        L = result.geometry_report.geometry.bounding_box.characteristic_length if result.geometry_report else 1.0
+        s.domain.base_cell_size = L / base_cell_num
+        s.surface_mesh.target_cell_size = s.domain.base_cell_size / 4
+        s.surface_mesh.min_cell_size = s.surface_mesh.target_cell_size / 4
 
     # 병렬 분해
     if parallel is not None and result.success:
@@ -610,6 +675,11 @@ def run(
         if result.strategy:
             s = result.strategy
             console.print(f"  Tier: {s.selected_tier}  Fallback: {s.fallback_tiers}")
+            sel = s.tier_specific_params.get("engine_selection", {})
+            if isinstance(sel, dict):
+                src = sel.get("source", "unknown")
+                reason = sel.get("reason", "unknown")
+                console.print(f"  Selection: source={src} reason={reason}")
             console.print(f"  Quality: {s.quality_level}  Flow: {s.flow_type}")
             console.print(f"  Cell size: {s.surface_mesh.target_cell_size}")
         return

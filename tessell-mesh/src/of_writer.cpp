@@ -21,6 +21,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <numeric>
 #include <set>
 #include <stdexcept>
 #include <tuple>

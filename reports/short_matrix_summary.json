@@ -1,0 +1,104 @@
+{
+  "total": 72,
+  "pass": 16,
+  "fail": 2,
+  "timeout": 54,
+  "by_tier": {
+    "auto": {
+      "pass": 3,
+      "fail": 0,
+      "timeout": 9,
+      "total": 12
+    },
+    "core": {
+      "pass": 7,
+      "fail": 2,
+      "timeout": 3,
+      "total": 12
+    },
+    "netgen": {
+      "pass": 0,
+      "fail": 0,
+      "timeout": 12,
+      "total": 12
+    },
+    "snappy": {
+      "pass": 0,
+      "fail": 0,
+      "timeout": 12,
+      "total": 12
+    },
+    "cfmesh": {
+      "pass": 3,
+      "fail": 0,
+      "timeout": 9,
+      "total": 12
+    },
+    "tetwild": {
+      "pass": 3,
+      "fail": 0,
+      "timeout": 9,
+      "total": 12
+    }
+  },
+  "by_quality": {
+    "draft": {
+      "pass": 12,
+      "fail": 0,
+      "timeout": 12,
+      "total": 24
+    },
+    "standard": {
+      "pass": 2,
+      "fail": 1,
+      "timeout": 21,
+      "total": 24
+    },
+    "fine": {
+      "pass": 2,
+      "fail": 1,
+      "timeout": 21,
+      "total": 24
+    }
+  },
+  "by_input": {
+    "/home/younglin90/work/claude_code/AutoTessell/test_cube.stl": {
+      "pass": 6,
+      "fail": 0,
+      "timeout": 12,
+      "total": 18
+    },
+    "/home/younglin90/work/claude_code/AutoTessell/tests/benchmarks/cylinder.stl": {
+      "pass": 4,
+      "fail": 2,
+      "timeout": 12,
+      "total": 18
+    },
+    "/home/younglin90/work/claude_code/AutoTessell/tests/benchmarks/broken_sphere.stl": {
+      "pass": 0,
+      "fail": 0,
+      "timeout": 18,
+      "total": 18
+    },
+    "/home/younglin90/work/claude_code/AutoTessell/tests/benchmarks/box.step": {
+      "pass": 6,
+      "fail": 0,
+      "timeout": 12,
+      "total": 18
+    }
+  },
+  "top_reasons": [
+    {
+      "reason": "timeout",
+      "count": 54
+    },
+    {
+      "reason": "2026-04-10T01:06:08.086895Z [warning  ] foamToVTK 실패                   [core.evaluator.metrics] error=\"OpenFOAM utility 'foamToVTK' failed with returncode=1.\\ns",
+      "count": 1
+    },
+    {
+      "reason": "2026-04-10T01:07:51.258574Z [warning  ] foamToVTK 실패                   [core.evaluator.metrics] error=\"OpenFOAM utility 'foamToVTK' failed with returncode=1.\\ns",
+      "count": 1
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+# Target labels
+ geogram-populate
+# Source files and their labels
+/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/CMakeFiles/geogram-populate
+/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/CMakeFiles/geogram-populate.rule
+/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/CMakeFiles/geogram-populate-complete.rule
+/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/geogram-populate-prefix/src/geogram-populate-stamp/geogram-populate-build.rule
+/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/geogram-populate-prefix/src/geogram-populate-stamp/geogram-populate-configure.rule
+/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/geogram-populate-prefix/src/geogram-populate-stamp/geogram-populate-download.rule
+/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/geogram-populate-prefix/src/geogram-populate-stamp/geogram-populate-install.rule
+/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/geogram-populate-prefix/src/geogram-populate-stamp/geogram-populate-mkdir.rule
+/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/geogram-populate-prefix/src/geogram-populate-stamp/geogram-populate-patch.rule
+/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/geogram-populate-prefix/src/geogram-populate-stamp/geogram-populate-test.rule
+/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/geogram-populate-prefix/src/geogram-populate-stamp/geogram-populate-update.rule

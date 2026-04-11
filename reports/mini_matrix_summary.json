@@ -1,0 +1,64 @@
+{
+  "total": 18,
+  "pass": 5,
+  "fail": 0,
+  "timeout": 13,
+  "by_tier": {
+    "auto": {
+      "pass": 1,
+      "fail": 0,
+      "timeout": 2,
+      "total": 3
+    },
+    "core": {
+      "pass": 3,
+      "fail": 0,
+      "timeout": 0,
+      "total": 3
+    },
+    "netgen": {
+      "pass": 0,
+      "fail": 0,
+      "timeout": 3,
+      "total": 3
+    },
+    "snappy": {
+      "pass": 0,
+      "fail": 0,
+      "timeout": 3,
+      "total": 3
+    },
+    "cfmesh": {
+      "pass": 0,
+      "fail": 0,
+      "timeout": 3,
+      "total": 3
+    },
+    "tetwild": {
+      "pass": 1,
+      "fail": 0,
+      "timeout": 2,
+      "total": 3
+    }
+  },
+  "by_quality": {
+    "draft": {
+      "pass": 3,
+      "fail": 0,
+      "timeout": 3,
+      "total": 6
+    },
+    "standard": {
+      "pass": 1,
+      "fail": 0,
+      "timeout": 5,
+      "total": 6
+    },
+    "fine": {
+      "pass": 1,
+      "fail": 0,
+      "timeout": 5,
+      "total": 6
+    }
+  }
+}

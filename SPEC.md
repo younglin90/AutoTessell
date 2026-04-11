@@ -5,6 +5,8 @@
 
 > 상세 로드맵: `agents/specs/open_source_roadmap.md`
 > 에이전트별 명세: `agents/specs/*.md`
+> 기준선/백로그: `CURRENT_STATUS_AND_BACKLOG.md`
+> 오너십: `TRACK_OWNERSHIP.md`
 
 ---
 
@@ -13,11 +15,12 @@
 | 항목 | 내용 |
 |------|------|
 | 이름 | Auto-Tessell |
-| 버전 | 0.1.0 |
+| 버전 | 1.0.0 |
 | 라이선스 | MIT (비상업 연구용) |
 | 플랫폼 | Windows 10/11 (설치형), Linux (개발) |
 | Python | 3.12+ |
-| GUI | PySide6 + PyVistaQt (검토 중, 현재 Godot 4.3) |
+| Primary Track | `core + cli` |
+| GUI | Godot + desktop.server (현재), PySide6 + PyVistaQt (전환 경로) |
 
 ---
 
@@ -157,7 +160,7 @@
 ## GUI 명세
 
 ### 현재
-- **Godot 4.3**: 3D 뷰어 + 메쉬 생성 UI
+- **Godot**: 3D 뷰어 + 메쉬 생성 UI
 - **FastAPI + WebSocket**: GUI ↔ 파이프라인 통신
 
 ### 전환 계획 (Phase 2)
@@ -267,6 +270,23 @@
 - Standard → Tet 또는 Hex-dominant (정확도 균형)
 - Fine → Hex-dominant 또는 Polyhedral (최고 품질)
 
+### 엔진 선택 로직 (코드 1:1)
+
+- 구현 위치:
+`core/strategist/tier_selector.py`, `core/strategist/strategy_planner.py`, `core/generator/pipeline.py`
+- 우선순위:
+`tier_hint` 강제 > `surface_quality_level=l3_ai` 강제 > 품질/형상 기반 자동 선택
+- 자동 선택 규칙:
+`draft -> tier2_tetwild`
+`standard -> cad_brep:tier05_netgen | external+watertight:tier1_snappy | internal+watertight:tier15_cfmesh | watertight+simple:tier0_core | else:tier2_tetwild`
+`fine -> cad_brep:tier05_netgen | external+watertight:tier1_snappy | watertight:tier15_cfmesh | else:tier2_tetwild`
+- 자동 선택 결과 기록:
+`mesh_strategy.json -> tier_specific_params.engine_selection`
+로그 이벤트: `tier_auto_selected`, `strategy_planned(selection_source/selection_reason)`
+- fine auto 실행 순서:
+`label=64`: `classy_blocks -> cfmesh -> snappy -> netgen -> tetwild`
+`label=32`: `classy_blocks -> cfmesh -> netgen -> tetwild -> snappy` (snappy 뒤로 이동)
+
 ---
 
 ## 품질 레벨 명세
@@ -277,6 +297,20 @@
 | **Standard** | L1-L2 (pyACVD/pymeshlab) | Netgen → pygalmesh → TetGen | ~수분 |
 | **Fine** | L1-L2 (geogram) | snappyHexMesh / cfMesh / MMG | ~30분+ |
 
+### max-cells 정책
+
+- 단일 정책 소스: `core/max_cells_policy.py`
+- cap은 `quality` + OpenFOAM label(Int32/Int64) 조합으로 결정한다.
+- 적용 지점:
+`cli/main.py`(입력 clamp), `core/strategist/param_optimizer.py`(초기 도메인 크기), `core/pipeline/orchestrator.py`(재시도 시 재적용)
+- 목표: 품질별 drift 방지 + Int32 오버플로 보호
+
+### 런타임 의존성 탐지
+
+- 명령: `auto-tessell doctor`
+- 상태 분류: `required/optional`, `installed/missing`, fallback, 사용자 액션(설치 가이드)
+- 탐지 기준: import 가능 여부 + binary `which(...)` + OpenFOAM label 감지
+
 ---
 
 ## 테스트 요구사항
@@ -285,5 +319,58 @@
 - 단위 테스트: 각 에이전트 모듈별
 - 통합 테스트: 전체 파이프라인 end-to-end
 - 벤치마크: `tests/` 디렉터리 내 STL/STEP 샘플
-- 현재 458+ 테스트 통과
+- 현재 테스트 스위트 운영 (단위/통합 포함)
 - 신규 툴 통합 시 해당 모듈 테스트 추가 필수
+
+### 최근 개선 사항 (2026-04)
+
+#### 1) Matrix QA 실행 정책 고도화
+
+- 구현 위치: `scripts/run_mesh_matrix.py`
+- `runtime-profile` 추가/강화:
+`balanced` / `fast` 프로파일로 실행 전략 분리.
+- `fast` 프로파일 정책:
+quality/tier별 timeout floor 적용, fine 조합에서 과도한 거친화 방지,
+tier별 실행 파라미터 보정.
+- 조합별 실행 가시성 개선:
+각 조합 시작 시 `quality/tier/remesh/timeout/max_iter` 즉시 출력.
+
+#### 2) 재시도/시간 예산 외부화
+
+- matrix 실행에서 조합별 재시도 횟수 제어 지원:
+`--max-iter-by-quality QUALITY=N`, `--max-iter-by-tier TIER=N`
+- 기본 프로파일 로직과 override를 함께 적용해 운영자가 코드 수정 없이
+실험 조건을 조절할 수 있도록 함.
+
+#### 3) 실패 원인 분류 정확도 개선
+
+- 최종 실패 문구 우선 추출:
+`Failed after N iterations`, `All mesh generation tiers failed`를
+중간 `FOAM FATAL` 로그보다 우선 해석.
+- failure category 정합성 개선:
+`openfoam_failure` 오분류를 줄이고 `iteration_exhausted`,
+`all_tiers_failed`, `timeout` 중심으로 분류.
+
+#### 4) CLI/Orchestrator 실행 일관성 보강
+
+- `run` 명령에 `--strict-tier` 옵션 추가:
+명시 tier(auto 아님)에서 fallback tier 비활성화 가능.
+- 오케스트레이터에 `strict_tier` 옵션 반영:
+전략 수립/재수립 시 fallback 체인 일관 제어.
+- CLI 파라미터 전달 버그 수정:
+`tier_specific_params`가 실제 `orchestrator.run(...)`에 전달되도록 수정
+(`tetwild_epsilon`, `tetwild_stop_energy` 등 runtime override 정상 반영).
+
+#### 5) 운영 커맨드 정리
+
+- Make target 추가:
+`qa-matrix-mini-fast`, `qa-matrix-fine-fast`
+- `qa-matrix-fine-fast`는 fine 운영 진단을 위해 tier별 재시도 override
+(`auto=2`, `netgen=2`, `tetwild=3`)를 기본 포함.
+
+#### 6) 회귀 테스트 보강
+
+- `tests/test_run_mesh_matrix.py`:
+프로파일 파라미터, timeout floor, max-iteration override, 에러 추출 로직 검증.
+- `tests/test_cli.py`:
+CLI tier-specific 파라미터가 orchestrator로 전달되는 회귀 테스트 추가.

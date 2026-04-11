@@ -1,4 +1,4 @@
-"""Tier 0: auto_tessell_core (geogram + CDT) 메쉬 생성기."""
+"""Tier 0: auto_tessell_core / tessell_mesh (geogram + CDT) 메쉬 생성기."""
 
 from __future__ import annotations
 
@@ -16,9 +16,32 @@ TIER_NAME = "tier0_core"
 class Tier0CoreGenerator:
     """geogram + CDT 기반 자체 테트라헤드럴 메쉬 생성기.
 
-    auto_tessell_core C++ 확장 모듈을 사용한다.
+    auto_tessell_core 또는 tessell_mesh C++ 확장 모듈을 사용한다.
     모듈이 빌드되지 않은 경우 ImportError로 graceful fail 처리한다.
     """
+
+    @staticmethod
+    def _import_core_module():
+        """Tier0 C++ 확장 모듈을 import한다."""
+        try:
+            import auto_tessell_core as atc  # type: ignore[import-not-found]
+            return atc, "auto_tessell_core"
+        except ImportError as exc_auto:
+            try:
+                import tessell_mesh as atc  # type: ignore[import-not-found]
+                return atc, "tessell_mesh"
+            except ImportError as exc_tessell:
+                try:
+                    from backend.mesh import tessell_mesh as atc  # type: ignore[import-not-found]
+                    return atc, "backend.mesh.tessell_mesh"
+                except ImportError as exc_backend:
+                    raise ImportError(
+                        "auto_tessell_core/tessell_mesh 모듈 import 실패. "
+                        "C++ 확장을 빌드하거나 다른 Tier를 사용하세요. "
+                        f"auto_tessell_core={exc_auto}; "
+                        f"tessell_mesh={exc_tessell}; "
+                        f"backend.mesh.tessell_mesh={exc_backend}"
+                    ) from exc_backend
 
     def run(
         self,
@@ -39,22 +62,22 @@ class Tier0CoreGenerator:
         t_start = time.monotonic()
         logger.info("tier0_core_start", preprocessed_path=str(preprocessed_path))
 
-        # auto_tessell_core 모듈 import 시도
+        # Tier0 C++ 모듈 import 시도 (auto_tessell_core -> tessell_mesh)
         try:
-            import auto_tessell_core as atc  # noqa: F401
+            atc, module_name = self._import_core_module()
         except ImportError as exc:
             elapsed = time.monotonic() - t_start
             logger.warning(
                 "tier0_core_import_failed",
                 error=str(exc),
-                hint="auto_tessell_core C++ 확장 미빌드. 'pip install -e .' 또는 cmake 빌드 필요.",
+                hint="Tier0 C++ 확장 미빌드. 'cd tessell-mesh && ./build.sh' 후 재시도.",
             )
             return TierAttempt(
                 tier=TIER_NAME,
                 status="failed",
                 time_seconds=elapsed,
                 error_message=(
-                    f"auto_tessell_core 모듈 import 실패: {exc}. "
+                    f"Tier0 모듈 import 실패: {exc}. "
                     "C++ 확장을 빌드하거나 다른 Tier를 사용하세요."
                 ),
             )
@@ -76,15 +99,44 @@ class Tier0CoreGenerator:
 
             logger.info(
                 "tier0_core_tetrahedralize",
+                module=module_name,
                 quality=quality,
                 max_vertices=max_vertices,
             )
 
-            result = atc.tetrahedralize_stl(
-                input_path=str(preprocessed_path),
-                quality=quality,
-                max_vertices=max_vertices,
-            )
+            tetra = atc.tetrahedralize_stl
+
+            # 바인딩마다 시그니처가 달라서 호출 패턴을 순차 시도한다.
+            call_errors: list[str] = []
+            result = None
+
+            # 1) pybind tessell_mesh 형태: tetrahedralize_stl(stl_path, quality=...)
+            try:
+                result = tetra(str(preprocessed_path), quality=quality)
+                if max_vertices is not None:
+                    logger.debug(
+                        "tier0_core_param_ignored",
+                        param="max_vertices",
+                        module=module_name,
+                        reason="binding_not_supported",
+                    )
+            except TypeError as exc:
+                call_errors.append(f"pattern1={exc}")
+
+            # 2) auto_tessell_core 형태: tetrahedralize_stl(input_path=..., quality=..., max_vertices=...)
+            if result is None:
+                try:
+                    result = tetra(
+                        input_path=str(preprocessed_path),
+                        quality=quality,
+                        max_vertices=max_vertices,
+                    )
+                except TypeError as exc:
+                    call_errors.append(f"pattern2={exc}")
+
+            if result is None:
+                raise RuntimeError("tetrahedralize_stl 호출 실패: " + " | ".join(call_errors))
+
             result.write_openfoam(str(case_dir))
 
             elapsed = time.monotonic() - t_start

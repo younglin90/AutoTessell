@@ -1,23 +1,38 @@
 # Auto-Tessell — 개발 계획서 (PLAN)
 
-CAD/메쉬 → OpenFOAM polyMesh 자동 생성 Windows 데스크톱 도구.
+CAD/메쉬 → OpenFOAM polyMesh 자동 생성 플랫폼 (core/cli 중심, desktop/web 트랙 병행).
 비상업 연구용 (MIT 라이선스). AI + 오픈소스 메쉬 툴 통합.
+
+> 기준선 문서: `CURRENT_STATUS_AND_BACKLOG.md`
+> 트랙 오너십: `TRACK_OWNERSHIP.md`
+> 릴리즈 점검: `RELEASE_CHECKLIST.md`
+> 테스트 수 표기 정책: `TEST_COUNTING_POLICY.md`
+> 현재 저장소는 Primary Track(`core+cli`) 외에 Web SaaS 트랙(`backend/`, `frontend/`)도 병행 개발 중
 
 ---
 
 ## 목표
 
-- 연구자/엔지니어가 Windows에서 STL/STEP 파일을 드래그앤드롭하면
-  자동으로 CFD 품질 메쉬(OpenFOAM polyMesh)를 얻을 수 있는 설치형 GUI 도구
+- 연구자/엔지니어가 STL/STEP 입력에서 자동으로 CFD 품질 메쉬(OpenFOAM polyMesh)를 얻을 수 있는 통합 플랫폼
 - 사용자 개입 최소화: 품질 레벨(draft/standard/fine)만 선택
 - 오픈소스 메쉬 툴 총동원, AI 보조 자동 수리
+
+## 현재 구현 정합 체크 (core+cli)
+
+- 엔진 선택 규칙은 `core/strategist/tier_selector.py`를 단일 기준으로 유지한다.
+- 자동 선택 결과(`source/reason/selected/fallback`)는 `mesh_strategy.json`의
+`tier_specific_params.engine_selection`에 기록한다.
+- `--max-cells` 상한 정책은 `core/max_cells_policy.py` 단일 소스로 유지한다.
+- 설치/미설치 런타임 탐지는 `auto-tessell doctor` 출력을 기준으로 운영한다.
+- 재시도 정책은 `core/pipeline/orchestrator.py`의 `retry_policy`, `retry_decision` 로그를 기준으로 추적한다.
+- 필수 회귀는 `make safeguard-regression` 하나로 빠르게 검증한다.
 
 ---
 
 ## 버전 로드맵 전체
 
 ```
-v0.1 (현재)
+v0.1 (초기 완료)
   │
   ├─ v0.2  Evaluator 강화
   ├─ v0.3  Generator 확장
@@ -32,7 +47,7 @@ v1.0  CLI 안정 릴리스
   ├─ v1.4  메쉬 조작 강화
   ├─ v1.5  파티셔닝·솔버·시각화
   │
-v2.0  Qt GUI (Godot 제거)
+v2.0  Qt GUI 전환
   │
   ├─ v2.1  Quad/Hex 메쉬 경로
   ├─ v2.2  AI 메쉬 강화
@@ -47,7 +62,7 @@ v3.0  Web SaaS
 
 ---
 
-## v0.1 — 현재 ✅ 완료
+## v0.1 — 초기 마일스톤 ✅ 완료
 
 **상태**: 배포 중
 
@@ -57,7 +72,7 @@ v3.0  Web SaaS
 - STEP/IGES CAD 지원 (cadquery + gmsh fallback)
 - 불량 STL 수리: pymeshfix → pyACVD + pymeshlab → MeshAnythingV2(AI)
 - Hausdorff 거리 기반 표면 충실도 검증
-- 458+ 테스트 통과 / MIT 라이선스
+- 테스트 스위트 운영 / MIT 라이선스
 
 **현재 의존성**: trimesh, pymeshfix, pyACVD, pyvista, pymeshlab, geogram, pytetwild, netgen-mesher, OpenFOAM, MMG, cadquery, gmsh, meshio, MeshAnythingV2, meshgpt-pytorch, torch, fastapi, uvicorn, websockets
 
@@ -133,7 +148,7 @@ v3.0  Web SaaS
 **목표**: v0.2~v0.5 통합 완료, 전체 파이프라인 안정화, 공개 릴리스
 
 - v0.2~v0.5 모든 툴 통합 완료
-- 테스트 600+ 통과 목표
+- 테스트 스위트 강화 및 안정화
 - `pyproject.toml` optional extras 정리 (`pip install auto-tessell[full]`)
 - Windows 설치 문서 완성
 - CHANGELOG, 사용자 가이드 작성
@@ -244,9 +259,9 @@ polyMesh 출력 + foamlib BC 설정 + 케이스 자동 생성
 
 ---
 
-## v2.0 — Qt GUI (Godot 제거)
+## v2.0 — Qt GUI 전환
 
-**목표**: Godot 4.3 제거, PySide6 + PyVistaQt 기반 Windows 네이티브 GUI
+**목표**: Godot 경로를 Qt 경로로 전환, PySide6 + PyVistaQt 기반 Windows 네이티브 GUI 정착
 
 ### GUI 아키텍처
 

@@ -1,0 +1,37 @@
+input,quality,tier,remesh_engine,status,elapsed_sec,timeout_sec,failure_category,error
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,auto,auto,timeout,12.0,12,timeout,timeout(12s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,auto,quadwild,timeout,12.0,12,timeout,timeout(12s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,auto,vorpalite,timeout,12.0,12,timeout,timeout(12s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,auto,pyacvd,timeout,12.0,12,timeout,timeout(12s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,auto,pymeshlab,timeout,12.0,12,timeout,timeout(12s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,auto,none,timeout,12.0,12,timeout,timeout(12s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,core,auto,pass,2.26,12,pass,"2026-04-10T01:48:01.197548Z [info     ] Evaluation complete            [core.evaluator.report] hard_fails=0 quality_level=standard soft_fails=0 verdict=PASS; 2026-04-10T01:48:01.198005Z [info     ] Pipeline PASS                  [core.pipeline.orchestrator] iteration=1 verdict=PASS; 2026-04-10T01:48:01.198261Z [warning  ] boundary_classification_failed [core.utils.boundary_classifier] error=""could not convert string to float: ''""; 2026-04-10T01:48:01.198368Z [info     ] boundary_patches_classifi"
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,core,quadwild,pass,2.26,12,pass,"2026-04-10T01:48:03.382758Z [info     ] Evaluation complete            [core.evaluator.report] hard_fails=0 quality_level=standard soft_fails=0 verdict=PASS; 2026-04-10T01:48:03.383284Z [info     ] Pipeline PASS                  [core.pipeline.orchestrator] iteration=1 verdict=PASS; 2026-04-10T01:48:03.383542Z [warning  ] boundary_classification_failed [core.utils.boundary_classifier] error=""could not convert string to float: ''""; 2026-04-10T01:48:03.383662Z [info     ] boundary_patches_classifi"
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,core,vorpalite,pass,2.23,12,pass,"2026-04-10T01:48:05.630118Z [info     ] Evaluation complete            [core.evaluator.report] hard_fails=0 quality_level=standard soft_fails=0 verdict=PASS; 2026-04-10T01:48:05.630589Z [info     ] Pipeline PASS                  [core.pipeline.orchestrator] iteration=1 verdict=PASS; 2026-04-10T01:48:05.630810Z [warning  ] boundary_classification_failed [core.utils.boundary_classifier] error=""could not convert string to float: ''""; 2026-04-10T01:48:05.630929Z [info     ] boundary_patches_classifi"
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,core,pyacvd,pass,2.22,12,pass,"2026-04-10T01:48:07.887102Z [info     ] Evaluation complete            [core.evaluator.report] hard_fails=0 quality_level=standard soft_fails=0 verdict=PASS; 2026-04-10T01:48:07.887607Z [info     ] Pipeline PASS                  [core.pipeline.orchestrator] iteration=1 verdict=PASS; 2026-04-10T01:48:07.887862Z [warning  ] boundary_classification_failed [core.utils.boundary_classifier] error=""could not convert string to float: ''""; 2026-04-10T01:48:07.888044Z [info     ] boundary_patches_classifi"
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,core,pymeshlab,pass,2.18,12,pass,"2026-04-10T01:48:10.074429Z [info     ] Evaluation complete            [core.evaluator.report] hard_fails=0 quality_level=standard soft_fails=0 verdict=PASS; 2026-04-10T01:48:10.074893Z [info     ] Pipeline PASS                  [core.pipeline.orchestrator] iteration=1 verdict=PASS; 2026-04-10T01:48:10.075134Z [warning  ] boundary_classification_failed [core.utils.boundary_classifier] error=""could not convert string to float: ''""; 2026-04-10T01:48:10.075239Z [info     ] boundary_patches_classifi"
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,core,none,pass,2.11,12,pass,"2026-04-10T01:48:12.217621Z [info     ] Evaluation complete            [core.evaluator.report] hard_fails=0 quality_level=standard soft_fails=0 verdict=PASS; 2026-04-10T01:48:12.218331Z [info     ] Pipeline PASS                  [core.pipeline.orchestrator] iteration=1 verdict=PASS; 2026-04-10T01:48:12.218550Z [warning  ] boundary_classification_failed [core.utils.boundary_classifier] error=""could not convert string to float: ''""; 2026-04-10T01:48:12.218656Z [info     ] boundary_patches_classifi"
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,netgen,auto,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,netgen,quadwild,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,netgen,vorpalite,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,netgen,pyacvd,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,netgen,pymeshlab,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,netgen,none,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,snappy,auto,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,snappy,quadwild,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,snappy,vorpalite,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,snappy,pyacvd,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,snappy,pymeshlab,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,snappy,none,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,cfmesh,auto,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,cfmesh,quadwild,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,cfmesh,vorpalite,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,cfmesh,pyacvd,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,cfmesh,pymeshlab,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,cfmesh,none,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,tetwild,auto,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,tetwild,quadwild,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,tetwild,vorpalite,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,tetwild,pyacvd,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,tetwild,pymeshlab,timeout,20.0,20,timeout,timeout(20s)
+/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,tetwild,none,timeout,20.0,20,timeout,timeout(20s)

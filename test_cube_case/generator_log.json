@@ -1,0 +1,34 @@
+{
+  "execution_summary": {
+    "selected_tier": "tier1_snappy",
+    "tiers_attempted": [
+      {
+        "tier": "tier1_snappy",
+        "status": "success",
+        "time_seconds": 74.59400000001187,
+        "steps": [
+          {
+            "name": "blockMesh",
+            "status": "success",
+            "time": 2.702999999979511
+          },
+          {
+            "name": "surfaceFeatureExtract",
+            "status": "success",
+            "time": 0.625
+          },
+          {
+            "name": "snappyHexMesh",
+            "status": "success",
+            "time": 71.21900000001187
+          }
+        ],
+        "mesh_stats": null,
+        "error_message": null
+      }
+    ],
+    "output_dir": "\\\\wsl.localhost\\Ubuntu\\home\\younglin90\\work\\claude_code\\AutoTessell\\test_cube_case\\constant\\polyMesh",
+    "total_time_seconds": 74.68799999999464,
+    "quality_level": "draft"
+  }
+}

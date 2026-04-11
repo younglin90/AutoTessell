@@ -1,0 +1,74 @@
+{
+  "total": 36,
+  "pass": 6,
+  "fail": 0,
+  "timeout": 30,
+  "by_failure_category": {
+    "timeout": {
+      "pass": 0,
+      "fail": 0,
+      "timeout": 30,
+      "total": 30
+    },
+    "pass": {
+      "pass": 6,
+      "fail": 0,
+      "timeout": 0,
+      "total": 6
+    }
+  },
+  "by_tier": {
+    "auto": {
+      "pass": 0,
+      "fail": 0,
+      "timeout": 6,
+      "total": 6
+    },
+    "core": {
+      "pass": 6,
+      "fail": 0,
+      "timeout": 0,
+      "total": 6
+    },
+    "netgen": {
+      "pass": 0,
+      "fail": 0,
+      "timeout": 6,
+      "total": 6
+    },
+    "snappy": {
+      "pass": 0,
+      "fail": 0,
+      "timeout": 6,
+      "total": 6
+    },
+    "cfmesh": {
+      "pass": 0,
+      "fail": 0,
+      "timeout": 6,
+      "total": 6
+    },
+    "tetwild": {
+      "pass": 0,
+      "fail": 0,
+      "timeout": 6,
+      "total": 6
+    }
+  },
+  "by_quality": {
+    "standard": {
+      "pass": 6,
+      "fail": 0,
+      "timeout": 30,
+      "total": 36
+    }
+  },
+  "by_input": {
+    "/home/younglin90/work/claude_code/AutoTessell/test_cube.stl": {
+      "pass": 6,
+      "fail": 0,
+      "timeout": 30,
+      "total": 36
+    }
+  }
+}

@@ -9,7 +9,9 @@ from core.schemas import (
     QualityLevel,
     QualityTargets,
 )
+from core.max_cells_policy import resolve_max_bg_cells_cap
 from core.utils.logging import get_logger
+from core.utils.openfoam_utils import get_openfoam_label_size
 
 log = get_logger(__name__)
 
@@ -19,16 +21,6 @@ _DOMAIN_FACTORS: dict[str, tuple[float, float, float]] = {
     "draft": (3.0, 5.0, 2.0),       # 빠른 검증용, 작은 도메인
     "standard": (5.0, 10.0, 3.0),   # 엔지니어링, 중간 도메인
     "fine": (10.0, 20.0, 5.0),      # 최종 CFD, 표준 도메인
-}
-
-# 최대 배경 셀 수 제한 (메모리 보호)
-# Note: blockMesh (snappy)는 OpenFOAM label=32일 때 ~2B 셀 한계.
-# cfMesh는 자체 배경 메쉬라 이 제한 없음.
-# Python 코드(PolyMeshWriter, NativeMeshChecker)는 int64로 제한 없음.
-_MAX_BG_CELLS: dict[str, int] = {
-    "draft": 500_000,
-    "standard": 5_000_000,
-    "fine": 200_000_000,  # 2억 (cfMesh 사용 시 가능, snappy는 label=64 필요)
 }
 
 # Legacy defaults (backward compatibility)
@@ -135,8 +127,8 @@ class ParamOptimizer:
         else:
             loc = list(bbox.center)
 
-        # 최대 셀 수 제한 — blockMesh int32 오버플로 방지
-        max_bg = _MAX_BG_CELLS.get(ql_str, _MAX_BG_CELLS["standard"])
+        # 최대 셀 수 제한 — label 크기에 따라 동적 조정
+        max_bg, label_bits = self._max_bg_cells(ql_str)
         domain_vol = 1.0
         for i in range(3):
             domain_vol *= domain_max[i] - domain_min[i]
@@ -147,6 +139,7 @@ class ParamOptimizer:
                 "base_cell_enlarged_for_max_cells",
                 est_cells=int(est_cells),
                 max_bg=max_bg,
+                label_bits=label_bits,
                 new_base_cell=base_cell_size,
             )
 
@@ -159,6 +152,12 @@ class ParamOptimizer:
         )
         log.debug("domain_computed", flow_type=flow_type, L=L, domain_min=domain_min, domain_max=domain_max)
         return cfg
+
+    @staticmethod
+    def _max_bg_cells(quality_level: str) -> tuple[int, int]:
+        """quality level과 OpenFOAM label 크기에 따라 최대 배경 셀 수를 반환한다."""
+        label_bits = get_openfoam_label_size()
+        return resolve_max_bg_cells_cap(quality_level, label_bits), label_bits
 
     # ------------------------------------------------------------------
     # 셀 크기

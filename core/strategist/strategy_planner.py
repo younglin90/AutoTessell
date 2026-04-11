@@ -20,6 +20,7 @@ from core.schemas import (
 from core.strategist.param_optimizer import ParamOptimizer
 from core.strategist.tier_selector import TierSelector
 from core.utils.logging import get_logger
+from core.utils.openfoam_utils import get_openfoam_label_size
 
 log = get_logger(__name__)
 
@@ -47,7 +48,7 @@ _TIER_PARAMS: dict[str, dict[str, object]] = {
         "core_lloyd_iterations": 10,
     },
     "tier2_tetwild": {
-        "tw_edge_length": None,
+        "tetwild_edge_length": None,
         "tw_epsilon": 1e-3,
         "tw_stop_energy": 10.0,
         "tw_max_iterations": 80,
@@ -72,6 +73,19 @@ _MIN_BL_GROWTH_RATIO = 1.0
 _MAX_SNAP_TOLERANCE = 10.0
 _MAX_SNAP_ITERATIONS = 30
 _MAX_CASTELLATED_LEVEL_BUMP = 5
+
+# snappy 대형 셀 전략: label 크기별 기본/상한 프로파일
+_SNAPPY_CELL_LIMITS_INT32: dict[str, tuple[int, int]] = {
+    # (max_local_cells, max_global_cells)
+    "draft": (2_000_000, 20_000_000),
+    "standard": (5_000_000, 50_000_000),
+    "fine": (20_000_000, 200_000_000),
+}
+_SNAPPY_CELL_LIMITS_INT64: dict[str, tuple[int, int]] = {
+    "draft": (20_000_000, 200_000_000),
+    "standard": (100_000_000, 1_000_000_000),
+    "fine": (500_000_000, 4_000_000_000),
+}
 
 
 @dataclass
@@ -162,6 +176,7 @@ class StrategyPlanner:
         selected_tier, fallback_tiers = self._selector.select(
             geometry_report, tier_hint, quality_level=ql, surface_quality_level=sql
         )
+        selection_context = dict(self._selector.last_selection_context)
 
         # 2. quality_report FAIL 피드백 반영
         previous_attempt: PreviousAttempt | None = None
@@ -227,10 +242,15 @@ class StrategyPlanner:
         # 8. Tier-specific params (deep copy + 런타임 값 채우기)
         tier_params = dict(_TIER_PARAMS.get(selected_tier, {}))
         self._fill_runtime_params(tier_params, selected_tier, cell_sizes, ql)
+        if selection_context:
+            tier_params["engine_selection"] = selection_context
 
         # 9. Apply tier-specific adjustments (snap tolerance, castellated level, etc.)
         if adjustments is not None:
             self._apply_tier_param_adjustments(tier_params, selected_tier, adjustments)
+
+        # 9.5 label-size 기반 guard/apply (snappy 고셀 전략)
+        self._apply_label_size_guards(tier_params, selected_tier, ql)
 
         # 10. 외부 유동이면 wake 리파인먼트 영역 추가
         refinement_regions = self._build_refinement_regions(
@@ -267,6 +287,8 @@ class StrategyPlanner:
             flow_type=flow_type,
             quality_level=ql.value,
             iteration=iteration,
+            selection_source=selection_context.get("source"),
+            selection_reason=selection_context.get("reason"),
         )
         return strategy
 
@@ -594,12 +616,54 @@ class StrategyPlanner:
             if params.get("ng_min_h") is None:
                 params["ng_min_h"] = cell_sizes["min_cell_size"]
         elif tier == "tier2_tetwild":
-            if params.get("tw_edge_length") is None:
-                params["tw_edge_length"] = cell_sizes["base_cell_size"]
+            if params.get("tetwild_edge_length") is None:
+                params["tetwild_edge_length"] = cell_sizes["base_cell_size"]
             # draft: coarse epsilon
             ql = quality_level.value if isinstance(quality_level, QualityLevel) else str(quality_level)
             if ql == QualityLevel.DRAFT.value:
                 params["tw_epsilon"] = _DRAFT_EPSILON
+
+    @staticmethod
+    def _apply_label_size_guards(
+        params: dict[str, object],
+        tier: str,
+        quality_level: QualityLevel,
+    ) -> None:
+        """OpenFOAM label 크기에 따라 tier 파라미터를 보정한다."""
+        if tier != "tier1_snappy":
+            return
+
+        ql = quality_level.value if isinstance(quality_level, QualityLevel) else str(quality_level)
+        label_bits = get_openfoam_label_size()
+
+        if label_bits >= 64:
+            local_default, global_default = _SNAPPY_CELL_LIMITS_INT64.get(
+                ql, _SNAPPY_CELL_LIMITS_INT64["standard"]
+            )
+            params.setdefault("snappy_max_local_cells", local_default)
+            params.setdefault("snappy_max_global_cells", global_default)
+            params["snappy_int64_mode"] = True
+            return
+
+        # Int32: 안전 상한 강제 (초대형 설정 차단)
+        local_cap, global_cap = _SNAPPY_CELL_LIMITS_INT32.get(
+            ql, _SNAPPY_CELL_LIMITS_INT32["standard"]
+        )
+        current_local = int(params.get("snappy_max_local_cells", local_cap))
+        current_global = int(params.get("snappy_max_global_cells", global_cap))
+        params["snappy_max_local_cells"] = min(current_local, local_cap)
+        params["snappy_max_global_cells"] = min(current_global, global_cap)
+        params["snappy_int64_mode"] = False
+
+        if current_local > local_cap or current_global > global_cap:
+            log.warning(
+                "snappy_cells_clamped_for_int32",
+                label_bits=label_bits,
+                local_before=current_local,
+                global_before=current_global,
+                local_after=params["snappy_max_local_cells"],
+                global_after=params["snappy_max_global_cells"],
+            )
 
     @staticmethod
     def _build_refinement_regions(

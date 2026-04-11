@@ -222,6 +222,17 @@ class NativeMeshChecker:
             mesh_ok=mesh_ok,
         )
 
+        # ------------------------------------------------------------------
+        # 12. neatmesh supplementary metrics (if available)
+        # ------------------------------------------------------------------
+        if self.neatmesh_available():
+            try:
+                neatmesh_metrics = self._run_neatmesh_from_polyMesh(case_dir, result)
+                if neatmesh_metrics:
+                    log.info("neatmesh supplementary metrics merged", **neatmesh_metrics)
+            except Exception as exc:  # noqa: BLE001
+                log.debug("neatmesh integration failed (non-fatal)", error=str(exc))
+
         log.info(
             "NativeMeshChecker done",
             cells=n_cells,
@@ -534,6 +545,62 @@ class NativeMeshChecker:
         if min_vol <= 0:
             return 0.0
         return float(np.clip(min_vol / mean_vol, 0.0, 1.0))
+
+    # ------------------------------------------------------------------
+    # polyMesh → neatmesh bridge
+    # ------------------------------------------------------------------
+
+    def _run_neatmesh_from_polyMesh(
+        self, case_dir: Path, result: CheckMeshResult
+    ) -> dict[str, Any] | None:
+        """Attempt to run neatmesh on the polyMesh using pyvista.
+
+        This constructs a meshio mesh from the polyMesh data and writes it
+        to a temporary file, then analyzes with neatmesh.
+
+        Args:
+            case_dir: OpenFOAM case directory.
+            result: Native CheckMeshResult for reference.
+
+        Returns:
+            Dictionary of merged neatmesh metrics, or None if conversion fails.
+        """
+        if not _NEATMESH_AVAILABLE:
+            return None
+
+        try:
+            import tempfile
+            import pyvista as pv
+        except ImportError:
+            log.debug("pyvista not available for polyMesh→neatmesh conversion")
+            return None
+
+        try:
+            # Read polyMesh using pyvista (supports OpenFOAM native format)
+            poly_dir = case_dir / "constant" / "polyMesh"
+            pv_mesh = pv.read(str(poly_dir))
+
+            # Create temporary VTK file
+            with tempfile.NamedTemporaryFile(suffix=".vtu", delete=False) as tmp:
+                tmp_path = Path(tmp.name)
+
+            pv_mesh.save(str(tmp_path))
+            log.debug("polyMesh converted to VTK", tmp_path=str(tmp_path))
+
+            # Run neatmesh on temporary file
+            neatmesh_metrics = self.run_neatmesh(tmp_path)
+
+            # Clean up temporary file
+            try:
+                tmp_path.unlink()
+            except Exception as exc:  # noqa: BLE001
+                log.debug("failed to clean temporary mesh file", error=str(exc))
+
+            return neatmesh_metrics if neatmesh_metrics else None
+
+        except Exception as exc:  # noqa: BLE001
+            log.debug("polyMesh neatmesh conversion failed", error=str(exc))
+            return None
 
     # ------------------------------------------------------------------
     # neatmesh supplementary quality layer

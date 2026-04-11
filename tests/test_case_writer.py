@@ -187,3 +187,17 @@ def test_turbulence_model_switching(
     # turbulenceProperties에 모델 이름이 기록돼야 함
     turb_props = (case_dir / "constant" / "turbulenceProperties").read_text()
     assert turb_model in turb_props, f"{turb_model} not in turbulenceProperties"
+
+
+def test_generated_scalar_bc_values_end_with_semicolon(tmp_path: Path) -> None:
+    """OpenFOAM field entries with explicit values must remain parseable."""
+    case_dir = tmp_path / "case"
+    mesh_dir = case_dir / "constant" / "polyMesh"
+    mesh_dir.mkdir(parents=True)
+
+    writer = FoamCaseWriter(turbulence_model="kEpsilon")
+    writer.write_case(mesh_dir=mesh_dir, case_dir=case_dir)
+
+    epsilon_content = (case_dir / "0" / "epsilon").read_text()
+    assert "value   uniform" in epsilon_content
+    assert "value   uniform 0.0022964;" in epsilon_content

@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/CMakeFiles/geogram-populate"
+		},
+		{
+			"file" : "/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/CMakeFiles/geogram-populate.rule"
+		},
+		{
+			"file" : "/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/CMakeFiles/geogram-populate-complete.rule"
+		},
+		{
+			"file" : "/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/geogram-populate-prefix/src/geogram-populate-stamp/geogram-populate-build.rule"
+		},
+		{
+			"file" : "/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/geogram-populate-prefix/src/geogram-populate-stamp/geogram-populate-configure.rule"
+		},
+		{
+			"file" : "/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/geogram-populate-prefix/src/geogram-populate-stamp/geogram-populate-download.rule"
+		},
+		{
+			"file" : "/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/geogram-populate-prefix/src/geogram-populate-stamp/geogram-populate-install.rule"
+		},
+		{
+			"file" : "/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/geogram-populate-prefix/src/geogram-populate-stamp/geogram-populate-mkdir.rule"
+		},
+		{
+			"file" : "/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/geogram-populate-prefix/src/geogram-populate-stamp/geogram-populate-patch.rule"
+		},
+		{
+			"file" : "/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/geogram-populate-prefix/src/geogram-populate-stamp/geogram-populate-test.rule"
+		},
+		{
+			"file" : "/home/younglin90/work/claude_code/AutoTessell/tessell-mesh/build_make/_deps/geogram-subbuild/geogram-populate-prefix/src/geogram-populate-stamp/geogram-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"geogram-populate"
+		],
+		"name" : "geogram-populate"
+	}
+}
