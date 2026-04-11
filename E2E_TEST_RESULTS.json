@@ -1,0 +1,168 @@
+{
+  "total": 20,
+  "passed": 8,
+  "failed": 3,
+  "timeout": 9,
+  "results": [
+    {
+      "file": "broken_sphere.stl",
+      "quality": "draft",
+      "status": "⏱ timeout",
+      "time_s": 0.0,
+      "cells": 0,
+      "error": "Timeout after 120s"
+    },
+    {
+      "file": "coarse_to_fine_gradation_two_spheres.stl",
+      "quality": "draft",
+      "status": "✅ success",
+      "time_s": 4.840719252999406,
+      "cells": 0,
+      "error": null
+    },
+    {
+      "file": "cylinder.stl",
+      "quality": "draft",
+      "status": "✅ success",
+      "time_s": 4.345799899001577,
+      "cells": 0,
+      "error": null
+    },
+    {
+      "file": "degenerate_faces_sliver_triangles.stl",
+      "quality": "draft",
+      "status": "✅ success",
+      "time_s": 3.627351784998609,
+      "cells": 0,
+      "error": null
+    },
+    {
+      "file": "external_flow_isolated_box.stl",
+      "quality": "draft",
+      "status": "✅ success",
+      "time_s": 3.258856765998644,
+      "cells": 0,
+      "error": null
+    },
+    {
+      "file": "extreme_aspect_ratio_needle.stl",
+      "quality": "draft",
+      "status": "⏱ timeout",
+      "time_s": 0.0,
+      "cells": 0,
+      "error": "Timeout after 120s"
+    },
+    {
+      "file": "five_disconnected_spheres.stl",
+      "quality": "draft",
+      "status": "✅ success",
+      "time_s": 3.1569238739975845,
+      "cells": 0,
+      "error": null
+    },
+    {
+      "file": "hemisphere_open.stl",
+      "quality": "draft",
+      "status": "❌ failed",
+      "time_s": 1.7008771679975325,
+      "cells": 0,
+      "error": "2026-04-11T05:58:51.495751Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "file": "hemisphere_open_partial.stl",
+      "quality": "draft",
+      "status": "⏱ timeout",
+      "time_s": 0.0,
+      "cells": 0,
+      "error": "Timeout after 120s"
+    },
+    {
+      "file": "high_genus_dual_torus.stl",
+      "quality": "draft",
+      "status": "✅ success",
+      "time_s": 4.500059451002016,
+      "cells": 0,
+      "error": null
+    },
+    {
+      "file": "highly_skewed_mesh_flat_triangles.stl",
+      "quality": "draft",
+      "status": "⏱ timeout",
+      "time_s": 0.0,
+      "cells": 0,
+      "error": "Timeout after 120s"
+    },
+    {
+      "file": "large_mesh_250k_faces.stl",
+      "quality": "draft",
+      "status": "✅ success",
+      "time_s": 11.088800361001631,
+      "cells": 0,
+      "error": null
+    },
+    {
+      "file": "many_small_features_perforated_plate.stl",
+      "quality": "draft",
+      "status": "⏱ timeout",
+      "time_s": 0.0,
+      "cells": 0,
+      "error": "Timeout after 120s"
+    },
+    {
+      "file": "mixed_features_wing_with_spike.stl",
+      "quality": "draft",
+      "status": "⏱ timeout",
+      "time_s": 0.0,
+      "cells": 0,
+      "error": "Timeout after 120s"
+    },
+    {
+      "file": "mixed_watertight_and_open.stl",
+      "quality": "draft",
+      "status": "❌ failed",
+      "time_s": 115.31179438600157,
+      "cells": 0,
+      "error": "2026-04-11T06:07:20.681416Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "file": "multi_scale_sphere_with_micro_spikes.stl",
+      "quality": "draft",
+      "status": "✅ success",
+      "time_s": 2.973783784000261,
+      "cells": 0,
+      "error": null
+    },
+    {
+      "file": "naca0012.stl",
+      "quality": "draft",
+      "status": "❌ failed",
+      "time_s": 93.823013352001,
+      "cells": 0,
+      "error": "2026-04-11T06:09:22.011305Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "file": "nonmanifold_disconnected.stl",
+      "quality": "draft",
+      "status": "⏱ timeout",
+      "time_s": 0.0,
+      "cells": 0,
+      "error": "Timeout after 120s"
+    },
+    {
+      "file": "self_intersecting_crossed_planes.stl",
+      "quality": "draft",
+      "status": "⏱ timeout",
+      "time_s": 0.0,
+      "cells": 0,
+      "error": "Timeout after 120s"
+    },
+    {
+      "file": "sharp_features_micro_ridge.stl",
+      "quality": "draft",
+      "status": "⏱ timeout",
+      "time_s": 0.0,
+      "cells": 0,
+      "error": "Timeout after 120s"
+    }
+  ]
+}
