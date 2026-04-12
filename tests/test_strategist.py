@@ -767,12 +767,13 @@ class TestStrategyPlanner:
         assert standard.surface_mesh.target_cell_size > fine.surface_mesh.target_cell_size
 
     def test_plan_draft_tetwild_epsilon_coarse(self):
-        """draft + tetwild: epsilon이 coarse (1e-2) 이어야 한다."""
+        """draft + tetwild: epsilon이 complexity tuning으로 결정되어야 한다."""
         report = _make_geometry_report(flow_type="external", is_watertight=True)
         strategy = self.planner.plan(report, quality_level=QualityLevel.DRAFT)
 
         assert strategy.selected_tier == "tier2_tetwild"
-        assert strategy.tier_specific_params.get("tw_epsilon") == 1e-2
+        # 단순 기하학(sphere)은 complexity tuning으로 epsilon=1e-3 (fine)
+        assert strategy.tier_specific_params.get("tetwild_epsilon") == 1e-3
 
     def test_plan_surface_quality_level_default(self):
         """기본 surface_quality_level은 l1_repair이어야 한다."""
@@ -1821,10 +1822,12 @@ class TestStrategyPlannerAdditional:
         )
 
     def test_plan_draft_tetwild_params_in_tier_specific(self):
-        """draft → tier_specific_params['tw_epsilon'] = 1e-2 이어야 한다."""
+        """draft → tier_specific_params['tetwild_epsilon'] = complexity-tuned value이어야 한다."""
         report = _make_geometry_report(flow_type="external", is_watertight=True)
         strategy = self.planner.plan(report, quality_level=QualityLevel.DRAFT)
-        assert strategy.tier_specific_params.get("tw_epsilon") == 1e-2
+        # 단순 기하학은 complexity tuning으로 epsilon=1e-3 (fine)
+        assert strategy.tier_specific_params.get("tetwild_epsilon") == 1e-3
+        assert strategy.tier_specific_params.get("tetwild_stop_energy") == 10.0
 
 
 # ---------------------------------------------------------------------------

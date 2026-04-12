@@ -1,0 +1,262 @@
+{
+  "timestamp": "2026-04-12T19:25:45.035023",
+  "total_cases": 25,
+  "summary": {
+    "successful": 9,
+    "failed": 16,
+    "timeout": 0,
+    "error": 1
+  },
+  "results": [
+    {
+      "test_case": "broken_sphere.stl",
+      "status": "failed",
+      "elapsed_seconds": 69.21,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "Quality validation failed"
+    },
+    {
+      "test_case": "coarse_to_fine_gradation_two_spheres.stl",
+      "status": "failed",
+      "elapsed_seconds": 1.82,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "Quality validation failed"
+    },
+    {
+      "test_case": "cylinder.stl",
+      "status": "failed",
+      "elapsed_seconds": 1.94,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "Quality validation failed"
+    },
+    {
+      "test_case": "degenerate_faces_sliver_triangles.stl",
+      "status": "failed",
+      "elapsed_seconds": 1.8,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "Quality validation failed"
+    },
+    {
+      "test_case": "external_flow_isolated_box.stl",
+      "status": "failed",
+      "elapsed_seconds": 1.79,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "Quality validation failed"
+    },
+    {
+      "test_case": "extreme_aspect_ratio_needle.stl",
+      "status": "failed",
+      "elapsed_seconds": 24.3,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "Quality validation failed"
+    },
+    {
+      "test_case": "five_disconnected_spheres.stl",
+      "status": "failed",
+      "elapsed_seconds": 1.84,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "Quality validation failed"
+    },
+    {
+      "test_case": "hemisphere_open.stl",
+      "status": "failed",
+      "elapsed_seconds": 1.65,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "Quality validation failed"
+    },
+    {
+      "test_case": "hemisphere_open_partial.stl",
+      "status": "failed",
+      "elapsed_seconds": 40.52,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "Quality validation failed"
+    },
+    {
+      "test_case": "high_genus_dual_torus.stl",
+      "status": "failed",
+      "elapsed_seconds": 1.9,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "Quality validation failed"
+    },
+    {
+      "test_case": "highly_skewed_mesh_flat_triangles.stl",
+      "status": "failed",
+      "elapsed_seconds": 23.12,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "Quality validation failed"
+    },
+    {
+      "test_case": "large_mesh_250k_faces.stl",
+      "status": "success",
+      "elapsed_seconds": 11.03,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": true,
+      "error": null
+    },
+    {
+      "test_case": "many_small_features_perforated_plate.stl",
+      "status": "failed",
+      "elapsed_seconds": 89.97,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "Quality validation failed"
+    },
+    {
+      "test_case": "mixed_features_wing_with_spike.stl",
+      "status": "failed",
+      "elapsed_seconds": 128.84,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "Quality validation failed"
+    },
+    {
+      "test_case": "mixed_watertight_and_open.stl",
+      "status": "failed",
+      "elapsed_seconds": 110.41,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "Quality validation failed"
+    },
+    {
+      "test_case": "multi_scale_sphere_with_micro_spikes.stl",
+      "status": "success",
+      "elapsed_seconds": 3.57,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": true,
+      "error": null
+    },
+    {
+      "test_case": "naca0012.stl",
+      "status": "failed",
+      "elapsed_seconds": 77.38,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "Quality validation failed"
+    },
+    {
+      "test_case": "nonmanifold_disconnected.stl",
+      "status": "success",
+      "elapsed_seconds": 336.49,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": true,
+      "error": null
+    },
+    {
+      "test_case": "self_intersecting_crossed_planes.stl",
+      "status": "success",
+      "elapsed_seconds": 352.53,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": true,
+      "error": null
+    },
+    {
+      "test_case": "sharp_features_micro_ridge.stl",
+      "status": "failed",
+      "elapsed_seconds": 169.9,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "Quality validation failed"
+    },
+    {
+      "test_case": "sphere.stl",
+      "status": "success",
+      "elapsed_seconds": 3.63,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": true,
+      "error": null
+    },
+    {
+      "test_case": "sphere_20k.stl",
+      "status": "success",
+      "elapsed_seconds": 7.84,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": true,
+      "error": null
+    },
+    {
+      "test_case": "sphere_watertight.stl",
+      "status": "success",
+      "elapsed_seconds": 3.93,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": true,
+      "error": null
+    },
+    {
+      "test_case": "trimesh_box.stl",
+      "status": "success",
+      "elapsed_seconds": 4.89,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": true,
+      "error": null
+    },
+    {
+      "test_case": "trimesh_duct.stl",
+      "status": "success",
+      "elapsed_seconds": 4.97,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": true,
+      "error": null
+    }
+  ]
+}

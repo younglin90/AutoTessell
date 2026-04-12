@@ -50,9 +50,8 @@ _TIER_PARAMS: dict[str, dict[str, object]] = {
     },
     "tier2_tetwild": {
         "tetwild_edge_length": None,
-        "tw_epsilon": 1e-3,
-        "tw_stop_energy": 10.0,
-        "tw_max_iterations": 80,
+        "tetwild_epsilon": 1e-3,
+        "tetwild_stop_energy": 10.0,
     },
 }
 
@@ -634,7 +633,8 @@ class StrategyPlanner:
             # draft: coarse epsilon
             ql = quality_level.value if isinstance(quality_level, QualityLevel) else str(quality_level)
             if ql == QualityLevel.DRAFT.value:
-                params["tw_epsilon"] = _DRAFT_EPSILON
+                params["tetwild_epsilon"] = _DRAFT_EPSILON
+                params["tetwild_stop_energy"] = 20.0
 
     @staticmethod
     def _apply_label_size_guards(
@@ -714,6 +714,17 @@ class StrategyPlanner:
                 classification=ComplexityAnalyzer.classify(complexity_score),
                 grading=netgen_params["grading"],
                 quality=netgen_params["quality"],
+            )
+
+        # TetWild 튜닝
+        elif tier == "tier2_tetwild":
+            tw_params = ComplexityAnalyzer.get_tetwild_tuning_params(complexity_score)
+            params.update(tw_params)
+            log.info(
+                "complexity_tuning_applied_tetwild",
+                classification=ComplexityAnalyzer.classify(complexity_score),
+                epsilon=tw_params["tetwild_epsilon"],
+                stop_energy=tw_params["tetwild_stop_energy"],
             )
 
     @staticmethod

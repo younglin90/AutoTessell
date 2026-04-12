@@ -81,9 +81,9 @@ class ComplexityAnalyzer:
 
         # 3. 종횡비 극단성
         #    bbox의 종횡비가 높을수록 극단적
-        bbox_size = bbox.max[:]  # Copy list
-        bbox_size_sorted = sorted(bbox_size)
-        aspect_min_max = bbox_size_sorted[2] / max(bbox_size_sorted[0], 1e-10)
+        bbox_dims = [bbox.max[i] - bbox.min[i] for i in range(3)]
+        bbox_dims_sorted = sorted(bbox_dims)
+        aspect_min_max = bbox_dims_sorted[2] / max(bbox_dims_sorted[0], 1e-10)
         if aspect_min_max > 100:
             aspect_ratio = 100.0
         elif aspect_min_max > 10:
@@ -275,6 +275,43 @@ class ComplexityAnalyzer:
                 "minh": 0.2,
                 "grading": 0.8,
                 "quality": 0.5,
+            }
+
+    @staticmethod
+    def get_tetwild_tuning_params(score: ComplexityScore) -> dict[str, float]:
+        """복잡도 점수에 따라 TetWild 파라미터를 반환한다.
+
+        Args:
+            score: ComplexityScore 객체.
+
+        Returns:
+            TetWild 메싱 파라미터 사전.
+        """
+        classification = ComplexityAnalyzer.classify(score)
+
+        if classification == "simple":
+            # 단순 형상: 세밀함
+            return {
+                "tetwild_epsilon": 1e-3,
+                "tetwild_stop_energy": 10.0,
+            }
+        elif classification == "moderate":
+            # 중간: 균형
+            return {
+                "tetwild_epsilon": 5e-3,
+                "tetwild_stop_energy": 15.0,
+            }
+        elif classification == "complex":
+            # 복잡: 빠른 메싱
+            return {
+                "tetwild_epsilon": 1e-2,
+                "tetwild_stop_energy": 18.0,
+            }
+        else:  # extreme
+            # 극도로 복잡: 매우 약함 (robustness 우선)
+            return {
+                "tetwild_epsilon": 2e-2,
+                "tetwild_stop_energy": 20.0,
             }
 
     @staticmethod

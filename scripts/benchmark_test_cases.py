@@ -39,7 +39,9 @@ def extract_mesh_info(case_dir: Path) -> dict[str, Any]:
         try:
             with open(quality_file) as f:
                 report = json.load(f)
-                stats["mesh_ok"] = report.get("verdict") == "PASS"
+                # QualityReport schema: { "evaluation_summary": { "verdict": "PASS", ... } }
+                summary = report.get("evaluation_summary", {})
+                stats["mesh_ok"] = summary.get("verdict") == "PASS"
                 stats["quality_report"] = report
         except Exception as e:
             print(f"  ⚠ quality_report.json 파싱 실패: {e}")
