@@ -17,6 +17,7 @@ from core.schemas import (
     SurfaceQualityLevel,
     Verdict,
 )
+from core.strategist.complexity_analyzer import ComplexityAnalyzer
 from core.strategist.param_optimizer import ParamOptimizer
 from core.strategist.tier_selector import TierSelector
 from core.utils.logging import get_logger
@@ -208,6 +209,15 @@ class StrategyPlanner:
         if flow_type not in ("external", "internal"):
             flow_type = "external"  # 알 수 없으면 외부 유동으로 보수적 처리
 
+        # 3.5. 형상 복잡도 분석
+        complexity_score = ComplexityAnalyzer.analyze(geometry_report)
+        complexity_class = ComplexityAnalyzer.classify(complexity_score)
+        log.info(
+            "geometry_complexity_classified",
+            classification=complexity_class,
+            overall_score=f"{complexity_score.overall:.1f}",
+        )
+
         # 4. 파라미터 계산
         domain = self._optimizer.compute_domain(geometry_report, flow_type, quality_level=ql)
         cell_sizes = self._optimizer.compute_cell_sizes(geometry_report, quality_level=ql)
@@ -244,6 +254,9 @@ class StrategyPlanner:
         self._fill_runtime_params(tier_params, selected_tier, cell_sizes, ql)
         if selection_context:
             tier_params["engine_selection"] = selection_context
+
+        # 8.5. Apply complexity-based tuning for snappyHexMesh
+        self._apply_complexity_tuning(tier_params, selected_tier, complexity_score)
 
         # 9. Apply tier-specific adjustments (snap tolerance, castellated level, etc.)
         if adjustments is not None:
@@ -663,6 +676,44 @@ class StrategyPlanner:
                 global_before=current_global,
                 local_after=params["snappy_max_local_cells"],
                 global_after=params["snappy_max_global_cells"],
+            )
+
+    @staticmethod
+    def _apply_complexity_tuning(
+        params: dict[str, object],
+        tier: str,
+        complexity_score: Any,
+    ) -> None:
+        """형상 복잡도에 따라 snappyHexMesh/Netgen 파라미터를 동적으로 조정한다."""
+        # snappyHexMesh 튜닝
+        if tier == "tier1_snappy":
+            snappy_params = ComplexityAnalyzer.get_snappy_tuning_params(complexity_score)
+            params.update(snappy_params)
+
+            # skip layers if geometry is extremely complex
+            if ComplexityAnalyzer.should_skip_layers(complexity_score):
+                params["skip_addLayers"] = True
+                log.info("complexity_tuning_skip_layers", classification=ComplexityAnalyzer.classify(complexity_score))
+
+            log.info(
+                "complexity_tuning_applied_snappy",
+                classification=ComplexityAnalyzer.classify(complexity_score),
+                maxLocalCells=snappy_params.get("maxLocalCells"),
+                castellatedLevel=snappy_params.get("castellatedLevel"),
+            )
+
+        # Netgen 튜닝
+        elif tier == "tier05_netgen":
+            netgen_params = ComplexityAnalyzer.get_netgen_tuning_params(complexity_score)
+            # ng_max_h, ng_min_h, ng_grading이 이미 설정되었을 수 있으므로, 기본값만 설정
+            params.setdefault("ng_grading", netgen_params["grading"])
+            params.setdefault("ng_quality", netgen_params["quality"])
+
+            log.info(
+                "complexity_tuning_applied_netgen",
+                classification=ComplexityAnalyzer.classify(complexity_score),
+                grading=netgen_params["grading"],
+                quality=netgen_params["quality"],
             )
 
     @staticmethod
