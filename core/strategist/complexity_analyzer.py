@@ -342,6 +342,44 @@ class ComplexityAnalyzer:
         return score.overall > 85 or score.topology > 80
 
     @staticmethod
+    def is_likely_2d_shape(report: "GeometryReport") -> bool:
+        """형상이 2D(에어포일 등)인지 판단한다.
+
+        2D 형상 특성:
+        - 한 방향의 bbox 크기가 매우 작음 (< 10% of largest)
+        - 정점 수가 적음 (< 1000)
+        - edge_length_ratio가 높음 (특징선 밀집)
+
+        Args:
+            report: GeometryReport 객체.
+
+        Returns:
+            True면 2D 형상으로 추정.
+        """
+        bbox = report.geometry.bounding_box
+        surface = report.geometry.surface
+
+        # 1. Bounding box 종횡비 확인
+        bbox_dims = [bbox.max[i] - bbox.min[i] for i in range(3)]
+        bbox_dims_sorted = sorted(bbox_dims)
+
+        # 가장 작은 차원이 전체 크기의 10% 미만이면 2D
+        if bbox_dims_sorted[2] > 1e-10:
+            aspect_2d = bbox_dims_sorted[0] / bbox_dims_sorted[2]
+            if aspect_2d < 0.1:
+                # 추가 확인: 정점 수
+                if surface.num_vertices < 1000:
+                    log.info(
+                        "likely_2d_shape_detected",
+                        aspect_2d=f"{aspect_2d:.4f}",
+                        num_vertices=surface.num_vertices,
+                        edge_ratio=f"{surface.edge_length_ratio:.1f}",
+                    )
+                    return True
+
+        return False
+
+    @staticmethod
     def get_estimated_time(score: ComplexityScore, quality_level: str) -> float:
         """예상 메싱 시간을 추정한다.
 
