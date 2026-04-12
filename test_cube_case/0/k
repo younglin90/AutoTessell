@@ -13,21 +13,7 @@ internalField   uniform 0.00375;
 
 boundaryField
 {
-    inlet
-    {
-        type    fixedValue;
-        value   uniform 0.00375;
-    }
-    outlet
-    {
-        type    zeroGradient;
-    }
-    walls
-    {
-        type    kqRWallFunction;
-        value   uniform 0.00375;
-    }
-    surface
+    defaultWall
     {
         type    kqRWallFunction;
         value   uniform 0.00375;

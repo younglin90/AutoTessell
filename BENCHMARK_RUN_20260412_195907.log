@@ -40,4 +40,27 @@ AutoTessell 성능 벤치마킹
 [23/26] sphere_watertight.stl... ✅    4.15s |        — cells | OK
 [24/26] trimesh_box.stl... ✅    7.63s |        — cells | OK
 [25/26] trimesh_duct.stl... ✅    6.06s |        — cells | OK
-[26/26] very_thin_disk_0_01mm.stl... 
+[26/26] very_thin_disk_0_01mm.stl... ⏱    0.00s |        — cells | FAIL
+      Error: Timeout after 600s
+
+======================================================================
+📊 벤치마킹 결과 요약
+======================================================================
+
+✅ 성공: 15/26
+❌ 실패: 10/26
+⏱ 타임아웃: 1/26
+⚠ 오류: 0/26
+
+⏱ 실행 시간 (성공한 경우):
+  최소: 3.80s
+  최대: 342.83s
+  평균: 50.20s
+  중앙값: 5.18s
+
+✓ 메시 품질:
+  OK: 15/15
+  FAIL: 0/15
+
+💾 상세 결과: /home/younglin90/work/claude_code/AutoTessell/PERFORMANCE_REPORT.json
+📄 Markdown 리포트: /home/younglin90/work/claude_code/AutoTessell/PERFORMANCE_REPORT.md

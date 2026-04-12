@@ -99,6 +99,7 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._quality_level: QualityLevel = QualityLevel.DRAFT
         self._worker: object | None = None
 
+        self._mesh_viewer: object | None = None
         self._log_edit: object | None = None
         self._quality_combo: object | None = None
         self._tier_combo: object | None = None
@@ -184,6 +185,7 @@ class AutoTessellWindow:  # type: ignore[misc]
             QProgressBar,
             QPushButton,
             QSpinBox,
+            QTabWidget,
             QTextBrowser,
             QToolButton,
             QVBoxLayout,
@@ -428,9 +430,23 @@ class AutoTessellWindow:  # type: ignore[misc]
         root_layout.addWidget(self._status_label)
         root_layout.addWidget(self._progress_bar)
 
+        # Tab widget: Log + Mesh Viewer
+        tabs = QTabWidget()
+
+        # 로그 탭
         self._log_edit = QPlainTextEdit()
         self._log_edit.setReadOnly(True)
-        root_layout.addWidget(self._log_edit, stretch=1)
+        tabs.addTab(self._log_edit, "로그")
+
+        # 메시 뷰어 탭
+        try:
+            from desktop.qt_app.mesh_viewer import MeshViewerWidget
+            self._mesh_viewer = MeshViewerWidget()
+            tabs.addTab(self._mesh_viewer, "3D 메시 뷰어")
+        except ImportError:
+            self._append_log("[경고] PyVista 또는 메시 뷰어 모듈을 찾을 수 없습니다.")
+
+        root_layout.addWidget(tabs, stretch=1)
 
     def show(self) -> None:  # pragma: no cover
         if not hasattr(self, "_qmain"):
@@ -704,8 +720,41 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._open_output_btn.setEnabled(self._output_dir.exists())  # type: ignore[union-attr]
 
         self._append_log(f"[완료] {'성공' if success else '실패'} ({elapsed:.1f}s)")
+
+        # 메시 뷰어에 메시 로드
+        if success and self._output_dir is not None:
+            self._load_mesh_to_viewer()
+
         if err:
             self._append_log(f"[오류] {err}")
+
+    def _load_mesh_to_viewer(self) -> None:  # pragma: no cover
+        """메시 파일을 뷰어에 로드."""
+        if self._mesh_viewer is None or self._output_dir is None:
+            return
+
+        try:
+            # polyMesh 또는 STL 파일 찾기
+            constant_dir = self._output_dir / "constant" / "polyMesh"
+
+            # 먼저 STL 파일 시도
+            stl_files = list(self._output_dir.glob("**/*.stl"))
+            if stl_files:
+                mesh_file = stl_files[0]
+                if self._mesh_viewer.load_mesh(str(mesh_file)):  # type: ignore[union-attr]
+                    self._append_log(f"[메시 뷰어] 메시 로드 성공: {mesh_file.name}")
+                    return
+
+            # polyMesh 로드 시도
+            if constant_dir.exists():
+                if self._mesh_viewer.load_polymesh(str(self._output_dir)):  # type: ignore[union-attr]
+                    self._append_log("[메시 뷰어] polyMesh 로드 성공")
+                    return
+
+            self._append_log("[경고] 로드할 메시 파일을 찾을 수 없습니다.")
+
+        except Exception as exc:  # noqa: BLE001
+            self._append_log(f"[경고] 메시 뷰어 로드 실패: {exc}")
 
     def _on_open_output(self) -> None:  # pragma: no cover
         if self._output_dir is None:

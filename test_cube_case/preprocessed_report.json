@@ -4,7 +4,7 @@
     "input_format": "STL",
     "output_file": "\\\\wsl.localhost\\Ubuntu\\home\\younglin90\\work\\claude_code\\AutoTessell\\test_cube_case\\_work\\preprocessed.stl",
     "passthrough_cad": false,
-    "total_time_seconds": 0.0279,
+    "total_time_seconds": 0.0355,
     "steps_performed": [
       {
         "step": "l1_repair",

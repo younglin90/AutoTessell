@@ -1,262 +1,988 @@
 {
-  "timestamp": "2026-04-12T19:25:45.035023",
-  "total_cases": 25,
+  "timestamp": "2026-04-12 20:49:36",
+  "total_cases": 26,
   "summary": {
-    "successful": 9,
-    "failed": 16,
-    "timeout": 0,
-    "error": 1
+    "successful": 15,
+    "failed": 10,
+    "timeout": 1,
+    "error": 0
   },
   "results": [
     {
       "test_case": "broken_sphere.stl",
+      "quality": "draft",
       "status": "failed",
-      "elapsed_seconds": 69.21,
+      "elapsed_seconds": 220.62289759800478,
       "cells": 0,
       "faces": 0,
       "points": 0,
       "mesh_ok": false,
-      "error": "Quality validation failed"
+      "error": "2026-04-12T10:59:10.269311Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
     },
     {
       "test_case": "coarse_to_fine_gradation_two_spheres.stl",
-      "status": "failed",
-      "elapsed_seconds": 1.82,
+      "quality": "draft",
+      "status": "success",
+      "elapsed_seconds": 5.176661497011082,
       "cells": 0,
       "faces": 0,
       "points": 0,
-      "mesh_ok": false,
-      "error": "Quality validation failed"
+      "mesh_ok": true,
+      "error": null,
+      "quality_report": {
+        "evaluation_summary": {
+          "verdict": "PASS",
+          "iteration": 1,
+          "tier_evaluated": "tier2_tetwild",
+          "evaluation_time_seconds": 1.3525202890014043,
+          "checkmesh": {
+            "cells": 12441,
+            "faces": 27442,
+            "points": 3574,
+            "max_non_orthogonality": 48.98,
+            "avg_non_orthogonality": 18.1185,
+            "max_skewness": 0.867627,
+            "max_aspect_ratio": 5.42013,
+            "min_face_area": 0.000355985,
+            "min_cell_volume": 3.61711e-06,
+            "min_determinant": 1.0,
+            "negative_volumes": 0,
+            "severely_non_ortho_faces": 0,
+            "failed_checks": 0,
+            "mesh_ok": true
+          },
+          "additional_metrics": {
+            "cell_volume_stats": {
+              "min": 3.6171069416295557e-06,
+              "max": 0.00020588855889110496,
+              "mean": 4.196309180251261e-05,
+              "std": 4.4941815205395635e-05,
+              "ratio_max_min": 56.92078288355759
+            },
+            "boundary_layer": {
+              "bl_coverage_percent": 0.0,
+              "avg_first_layer_height": 0.03080647932135338,
+              "min_first_layer_height": 0.015350426612128121,
+              "max_first_layer_height": 0.05904875400311881
+            }
+          },
+          "geometry_fidelity": {
+            "hausdorff_distance": 0.03298582651233667,
+            "hausdorff_relative": 0.004180783636892202,
+            "surface_area_deviation_percent": 0.04952961933683202
+          },
+          "hard_fails": [],
+          "soft_fails": [],
+          "recommendations": [],
+          "quality_level": "draft"
+        }
+      }
     },
     {
       "test_case": "cylinder.stl",
-      "status": "failed",
-      "elapsed_seconds": 1.94,
+      "quality": "draft",
+      "status": "success",
+      "elapsed_seconds": 4.419100176994107,
       "cells": 0,
       "faces": 0,
       "points": 0,
-      "mesh_ok": false,
-      "error": "Quality validation failed"
+      "mesh_ok": true,
+      "error": null,
+      "quality_report": {
+        "evaluation_summary": {
+          "verdict": "PASS",
+          "iteration": 1,
+          "tier_evaluated": "tier2_tetwild",
+          "evaluation_time_seconds": 1.1771518110035686,
+          "checkmesh": {
+            "cells": 7317,
+            "faces": 15291,
+            "points": 1599,
+            "max_non_orthogonality": 57.1813,
+            "avg_non_orthogonality": 15.2856,
+            "max_skewness": 0.736898,
+            "max_aspect_ratio": 4.11068,
+            "min_face_area": 0.000702826,
+            "min_cell_volume": 1.32536e-05,
+            "min_determinant": 1.0,
+            "negative_volumes": 0,
+            "severely_non_ortho_faces": 0,
+            "failed_checks": 1,
+            "mesh_ok": false
+          },
+          "additional_metrics": {
+            "cell_volume_stats": {
+              "min": 1.3253603072838041e-05,
+              "max": 0.00029186616652661395,
+              "mean": 0.00010663407105416624,
+              "std": 3.787627453075199e-05,
+              "ratio_max_min": 22.021646862562605
+            },
+            "boundary_layer": {
+              "bl_coverage_percent": 0.0,
+              "avg_first_layer_height": 0.04661512803382732,
+              "min_first_layer_height": 0.023665262165469422,
+              "max_first_layer_height": 0.06633273709224081
+            }
+          },
+          "geometry_fidelity": {
+            "hausdorff_distance": 0.03938035907690544,
+            "hausdorff_relative": 0.022736260913835477,
+            "surface_area_deviation_percent": 0.007614875690270319
+          },
+          "hard_fails": [],
+          "soft_fails": [],
+          "recommendations": [],
+          "quality_level": "draft"
+        }
+      }
     },
     {
       "test_case": "degenerate_faces_sliver_triangles.stl",
-      "status": "failed",
-      "elapsed_seconds": 1.8,
+      "quality": "draft",
+      "status": "success",
+      "elapsed_seconds": 5.221844101004535,
       "cells": 0,
       "faces": 0,
       "points": 0,
-      "mesh_ok": false,
-      "error": "Quality validation failed"
+      "mesh_ok": true,
+      "error": null,
+      "quality_report": {
+        "evaluation_summary": {
+          "verdict": "PASS",
+          "iteration": 1,
+          "tier_evaluated": "tier2_tetwild",
+          "evaluation_time_seconds": 1.1951077450066805,
+          "checkmesh": {
+            "cells": 8105,
+            "faces": 17008,
+            "points": 1803,
+            "max_non_orthogonality": 61.8636,
+            "avg_non_orthogonality": 14.943,
+            "max_skewness": 0.651243,
+            "max_aspect_ratio": 5.31494,
+            "min_face_area": 3.02013e-05,
+            "min_cell_volume": 1.56434e-07,
+            "min_determinant": 1.0,
+            "negative_volumes": 0,
+            "severely_non_ortho_faces": 0,
+            "failed_checks": 1,
+            "mesh_ok": false
+          },
+          "additional_metrics": {
+            "cell_volume_stats": {
+              "min": 1.564336188498441e-07,
+              "max": 0.0013900008307132783,
+              "mean": 0.000484263719735546,
+              "std": 0.0002775858553366881,
+              "ratio_max_min": 8885.563352258047
+            },
+            "boundary_layer": {
+              "bl_coverage_percent": 0.0,
+              "avg_first_layer_height": 0.07413263357542882,
+              "min_first_layer_height": 0.00538819573819145,
+              "max_first_layer_height": 0.11160192522450516
+            }
+          },
+          "geometry_fidelity": {
+            "hausdorff_distance": 0.06927257472103662,
+            "hausdorff_relative": 0.01999726983132448,
+            "surface_area_deviation_percent": 0.06563402818829561
+          },
+          "hard_fails": [],
+          "soft_fails": [],
+          "recommendations": [],
+          "quality_level": "draft"
+        }
+      }
     },
     {
       "test_case": "external_flow_isolated_box.stl",
-      "status": "failed",
-      "elapsed_seconds": 1.79,
+      "quality": "draft",
+      "status": "success",
+      "elapsed_seconds": 4.278842517989688,
       "cells": 0,
       "faces": 0,
       "points": 0,
-      "mesh_ok": false,
-      "error": "Quality validation failed"
+      "mesh_ok": true,
+      "error": null,
+      "quality_report": {
+        "evaluation_summary": {
+          "verdict": "PASS",
+          "iteration": 1,
+          "tier_evaluated": "tier2_tetwild",
+          "evaluation_time_seconds": 1.234141773005831,
+          "checkmesh": {
+            "cells": 9951,
+            "faces": 20875,
+            "points": 2225,
+            "max_non_orthogonality": 52.1368,
+            "avg_non_orthogonality": 14.1065,
+            "max_skewness": 0.636177,
+            "max_aspect_ratio": 4.54645,
+            "min_face_area": 0.000520652,
+            "min_cell_volume": 8.20293e-06,
+            "min_determinant": 1.0,
+            "negative_volumes": 0,
+            "severely_non_ortho_faces": 0,
+            "failed_checks": 1,
+            "mesh_ok": false
+          },
+          "additional_metrics": {
+            "cell_volume_stats": {
+              "min": 8.202924985176621e-06,
+              "max": 0.00027194006993446195,
+              "mean": 0.0001004918948234181,
+              "std": 4.016960781353953e-05,
+              "ratio_max_min": 33.1515978051586
+            },
+            "boundary_layer": {
+              "bl_coverage_percent": 0.0,
+              "avg_first_layer_height": 0.04549681044016853,
+              "min_first_layer_height": 0.020167694157964038,
+              "max_first_layer_height": 0.06478747709397072
+            }
+          },
+          "geometry_fidelity": {
+            "hausdorff_distance": 0.04379540545289734,
+            "hausdorff_relative": 0.025285289127499083,
+            "surface_area_deviation_percent": 0.0032853917782145934
+          },
+          "hard_fails": [],
+          "soft_fails": [],
+          "recommendations": [],
+          "quality_level": "draft"
+        }
+      }
     },
     {
       "test_case": "extreme_aspect_ratio_needle.stl",
+      "quality": "draft",
       "status": "failed",
-      "elapsed_seconds": 24.3,
+      "elapsed_seconds": 87.7379186850012,
       "cells": 0,
       "faces": 0,
       "points": 0,
       "mesh_ok": false,
-      "error": "Quality validation failed"
+      "error": "2026-04-12T11:03:31.496218Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
     },
     {
       "test_case": "five_disconnected_spheres.stl",
-      "status": "failed",
-      "elapsed_seconds": 1.84,
+      "quality": "draft",
+      "status": "success",
+      "elapsed_seconds": 3.8076896230049897,
       "cells": 0,
       "faces": 0,
       "points": 0,
-      "mesh_ok": false,
-      "error": "Quality validation failed"
+      "mesh_ok": true,
+      "error": null,
+      "quality_report": {
+        "evaluation_summary": {
+          "verdict": "PASS",
+          "iteration": 1,
+          "tier_evaluated": "tier2_tetwild",
+          "evaluation_time_seconds": 1.108349106987589,
+          "checkmesh": {
+            "cells": 6376,
+            "faces": 13367,
+            "points": 1429,
+            "max_non_orthogonality": 43.1322,
+            "avg_non_orthogonality": 15.1468,
+            "max_skewness": 0.465173,
+            "max_aspect_ratio": 3.79862,
+            "min_face_area": 0.000381308,
+            "min_cell_volume": 3.65347e-06,
+            "min_determinant": 1.0,
+            "negative_volumes": 0,
+            "severely_non_ortho_faces": 0,
+            "failed_checks": 0,
+            "mesh_ok": true
+          },
+          "additional_metrics": {
+            "cell_volume_stats": {
+              "min": 3.65346575047969e-06,
+              "max": 5.311550584456119e-05,
+              "mean": 1.713132704945463e-05,
+              "std": 8.137774093954349e-06,
+              "ratio_max_min": 14.538388881184193
+            },
+            "boundary_layer": {
+              "bl_coverage_percent": 0.0,
+              "avg_first_layer_height": 0.025137850873452994,
+              "min_first_layer_height": 0.015401688900172515,
+              "max_first_layer_height": 0.0375901253504938
+            }
+          },
+          "geometry_fidelity": {
+            "hausdorff_distance": 0.01823016348887123,
+            "hausdorff_relative": 0.002739597390966886,
+            "surface_area_deviation_percent": 0.01827319369174087
+          },
+          "hard_fails": [],
+          "soft_fails": [],
+          "recommendations": [],
+          "quality_level": "draft"
+        }
+      }
     },
     {
       "test_case": "hemisphere_open.stl",
+      "quality": "draft",
       "status": "failed",
-      "elapsed_seconds": 1.65,
+      "elapsed_seconds": 1.5949668469984317,
       "cells": 0,
       "faces": 0,
       "points": 0,
       "mesh_ok": false,
-      "error": "Quality validation failed"
+      "error": "2026-04-12T11:05:12.233702Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
     },
     {
       "test_case": "hemisphere_open_partial.stl",
+      "quality": "draft",
       "status": "failed",
-      "elapsed_seconds": 40.52,
+      "elapsed_seconds": 155.42214117900585,
       "cells": 0,
       "faces": 0,
       "points": 0,
       "mesh_ok": false,
-      "error": "Quality validation failed"
+      "error": "2026-04-12T11:05:13.812071Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
     },
     {
       "test_case": "high_genus_dual_torus.stl",
-      "status": "failed",
-      "elapsed_seconds": 1.9,
+      "quality": "draft",
+      "status": "success",
+      "elapsed_seconds": 4.645655779007939,
       "cells": 0,
       "faces": 0,
       "points": 0,
-      "mesh_ok": false,
-      "error": "Quality validation failed"
+      "mesh_ok": true,
+      "error": null,
+      "quality_report": {
+        "evaluation_summary": {
+          "verdict": "PASS",
+          "iteration": 1,
+          "tier_evaluated": "tier2_tetwild",
+          "evaluation_time_seconds": 1.122173722993466,
+          "checkmesh": {
+            "cells": 5648,
+            "faces": 12615,
+            "points": 1657,
+            "max_non_orthogonality": 69.8159,
+            "avg_non_orthogonality": 31.0143,
+            "max_skewness": 1.15311,
+            "max_aspect_ratio": 6.98571,
+            "min_face_area": 0.00508038,
+            "min_cell_volume": 0.000221786,
+            "min_determinant": 1.0,
+            "negative_volumes": 0,
+            "severely_non_ortho_faces": 0,
+            "failed_checks": 1,
+            "mesh_ok": false
+          },
+          "additional_metrics": {
+            "cell_volume_stats": {
+              "min": 0.00022178615006657353,
+              "max": 0.008484580771886815,
+              "mean": 0.0017232978133751816,
+              "std": 0.0012808154191958669,
+              "ratio_max_min": 38.25568354624488
+            },
+            "boundary_layer": {
+              "bl_coverage_percent": 0.0,
+              "avg_first_layer_height": 0.11422252775685075,
+              "min_first_layer_height": 0.060531040699121394,
+              "max_first_layer_height": 0.20395927653637425
+            }
+          },
+          "geometry_fidelity": {
+            "hausdorff_distance": 0.10201234434455449,
+            "hausdorff_relative": 0.009087981946641172,
+            "surface_area_deviation_percent": 0.05907137910953395
+          },
+          "hard_fails": [],
+          "soft_fails": [],
+          "recommendations": [],
+          "quality_level": "draft"
+        }
+      }
     },
     {
       "test_case": "highly_skewed_mesh_flat_triangles.stl",
+      "quality": "draft",
       "status": "failed",
-      "elapsed_seconds": 23.12,
+      "elapsed_seconds": 404.5551270599972,
       "cells": 0,
       "faces": 0,
       "points": 0,
       "mesh_ok": false,
-      "error": "Quality validation failed"
+      "error": "2026-04-12T11:08:08.586643Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
     },
     {
       "test_case": "large_mesh_250k_faces.stl",
+      "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 11.03,
+      "elapsed_seconds": 9.72154591800063,
       "cells": 0,
       "faces": 0,
       "points": 0,
       "mesh_ok": true,
-      "error": null
+      "error": null,
+      "quality_report": {
+        "evaluation_summary": {
+          "verdict": "PASS",
+          "iteration": 1,
+          "tier_evaluated": "tier2_tetwild",
+          "evaluation_time_seconds": 1.3219112100050552,
+          "checkmesh": {
+            "cells": 13038,
+            "faces": 28242,
+            "points": 3428,
+            "max_non_orthogonality": 51.8658,
+            "avg_non_orthogonality": 16.8178,
+            "max_skewness": 0.792492,
+            "max_aspect_ratio": 4.68986,
+            "min_face_area": 0.00124815,
+            "min_cell_volume": 1.8011e-05,
+            "min_determinant": 1.0,
+            "negative_volumes": 0,
+            "severely_non_ortho_faces": 0,
+            "failed_checks": 0,
+            "mesh_ok": true
+          },
+          "additional_metrics": {
+            "cell_volume_stats": {
+              "min": 1.8011025699897835e-05,
+              "max": 0.0015911762418656808,
+              "mean": 0.0003203431527318459,
+              "std": 0.0002868872371690602,
+              "ratio_max_min": 88.34456562208484
+            },
+            "boundary_layer": {
+              "bl_coverage_percent": 0.0,
+              "avg_first_layer_height": 0.06288341417018795,
+              "min_first_layer_height": 0.026212763869914,
+              "max_first_layer_height": 0.11674530619209919
+            }
+          },
+          "geometry_fidelity": {
+            "hausdorff_distance": 0.06224547341109866,
+            "hausdorff_relative": 0.017968720414866753,
+            "surface_area_deviation_percent": 0.150405957806532
+          },
+          "hard_fails": [],
+          "soft_fails": [],
+          "recommendations": [],
+          "quality_level": "draft"
+        }
+      }
     },
     {
       "test_case": "many_small_features_perforated_plate.stl",
+      "quality": "draft",
       "status": "failed",
-      "elapsed_seconds": 89.97,
+      "elapsed_seconds": 86.24246813199716,
       "cells": 0,
       "faces": 0,
       "points": 0,
       "mesh_ok": false,
-      "error": "Quality validation failed"
+      "error": "2026-04-12T11:15:37.844069Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
     },
     {
       "test_case": "mixed_features_wing_with_spike.stl",
+      "quality": "draft",
       "status": "failed",
-      "elapsed_seconds": 128.84,
+      "elapsed_seconds": 119.49315735900018,
       "cells": 0,
       "faces": 0,
       "points": 0,
       "mesh_ok": false,
-      "error": "Quality validation failed"
+      "error": "2026-04-12T11:17:13.679931Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
     },
     {
       "test_case": "mixed_watertight_and_open.stl",
+      "quality": "draft",
       "status": "failed",
-      "elapsed_seconds": 110.41,
+      "elapsed_seconds": 109.69704604499566,
       "cells": 0,
       "faces": 0,
       "points": 0,
       "mesh_ok": false,
-      "error": "Quality validation failed"
+      "error": "2026-04-12T11:19:24.568052Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
     },
     {
       "test_case": "multi_scale_sphere_with_micro_spikes.stl",
+      "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 3.57,
+      "elapsed_seconds": 3.8041866019921144,
       "cells": 0,
       "faces": 0,
       "points": 0,
       "mesh_ok": true,
-      "error": null
+      "error": null,
+      "quality_report": {
+        "evaluation_summary": {
+          "verdict": "PASS",
+          "iteration": 1,
+          "tier_evaluated": "tier2_tetwild",
+          "evaluation_time_seconds": 1.1124044760072138,
+          "checkmesh": {
+            "cells": 6443,
+            "faces": 13499,
+            "points": 1442,
+            "max_non_orthogonality": 41.717,
+            "avg_non_orthogonality": 15.2754,
+            "max_skewness": 0.468398,
+            "max_aspect_ratio": 3.79605,
+            "min_face_area": 0.0167429,
+            "min_cell_volume": 0.00107158,
+            "min_determinant": 1.0,
+            "negative_volumes": 0,
+            "severely_non_ortho_faces": 0,
+            "failed_checks": 0,
+            "mesh_ok": true
+          },
+          "additional_metrics": {
+            "cell_volume_stats": {
+              "min": 0.0010715775732334696,
+              "max": 0.013378705023432335,
+              "mean": 0.005023386555145319,
+              "std": 0.0023850176794807357,
+              "ratio_max_min": 12.485055079178533
+            },
+            "boundary_layer": {
+              "bl_coverage_percent": 0.0,
+              "avg_first_layer_height": 0.1670363304541918,
+              "min_first_layer_height": 0.10233115404458992,
+              "max_first_layer_height": 0.23739488621826724
+            }
+          },
+          "geometry_fidelity": {
+            "hausdorff_distance": 0.12221793280418357,
+            "hausdorff_relative": 0.017640639101073746,
+            "surface_area_deviation_percent": 0.017342739327010293
+          },
+          "hard_fails": [],
+          "soft_fails": [],
+          "recommendations": [],
+          "quality_level": "draft"
+        }
+      }
     },
     {
       "test_case": "naca0012.stl",
+      "quality": "draft",
       "status": "failed",
-      "elapsed_seconds": 77.38,
+      "elapsed_seconds": 67.78053065700806,
       "cells": 0,
       "faces": 0,
       "points": 0,
       "mesh_ok": false,
-      "error": "Quality validation failed"
+      "error": "2026-04-12T11:21:26.928009Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
     },
     {
       "test_case": "nonmanifold_disconnected.stl",
+      "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 336.49,
+      "elapsed_seconds": 337.71816145400226,
       "cells": 0,
       "faces": 0,
       "points": 0,
       "mesh_ok": true,
-      "error": null
+      "error": null,
+      "quality_report": {
+        "evaluation_summary": {
+          "verdict": "PASS",
+          "iteration": 1,
+          "tier_evaluated": "tier2_tetwild",
+          "evaluation_time_seconds": 1.0950394160026917,
+          "checkmesh": {
+            "cells": 0,
+            "faces": 0,
+            "points": 0,
+            "max_non_orthogonality": 0.0,
+            "avg_non_orthogonality": 0.0,
+            "max_skewness": -1e+300,
+            "max_aspect_ratio": -1e+300,
+            "min_face_area": 1000000000000000.0,
+            "min_cell_volume": 1000000000000000.0,
+            "min_determinant": 1.0,
+            "negative_volumes": 0,
+            "severely_non_ortho_faces": 0,
+            "failed_checks": 0,
+            "mesh_ok": false
+          },
+          "additional_metrics": {
+            "cell_volume_stats": null,
+            "boundary_layer": null
+          },
+          "geometry_fidelity": null,
+          "hard_fails": [],
+          "soft_fails": [],
+          "recommendations": [],
+          "quality_level": "draft"
+        }
+      }
     },
     {
       "test_case": "self_intersecting_crossed_planes.stl",
+      "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 352.53,
+      "elapsed_seconds": 342.8305937319965,
       "cells": 0,
       "faces": 0,
       "points": 0,
       "mesh_ok": true,
-      "error": null
+      "error": null,
+      "quality_report": {
+        "evaluation_summary": {
+          "verdict": "PASS",
+          "iteration": 1,
+          "tier_evaluated": "tier2_tetwild",
+          "evaluation_time_seconds": 1.2584776879957644,
+          "checkmesh": {
+            "cells": 0,
+            "faces": 0,
+            "points": 0,
+            "max_non_orthogonality": 0.0,
+            "avg_non_orthogonality": 0.0,
+            "max_skewness": -1e+300,
+            "max_aspect_ratio": -1e+300,
+            "min_face_area": 1000000000000000.0,
+            "min_cell_volume": 1000000000000000.0,
+            "min_determinant": 1.0,
+            "negative_volumes": 0,
+            "severely_non_ortho_faces": 0,
+            "failed_checks": 0,
+            "mesh_ok": false
+          },
+          "additional_metrics": {
+            "cell_volume_stats": null,
+            "boundary_layer": null
+          },
+          "geometry_fidelity": null,
+          "hard_fails": [],
+          "soft_fails": [],
+          "recommendations": [],
+          "quality_level": "draft"
+        }
+      }
     },
     {
       "test_case": "sharp_features_micro_ridge.stl",
+      "quality": "draft",
       "status": "failed",
-      "elapsed_seconds": 169.9,
+      "elapsed_seconds": 166.77433285699226,
       "cells": 0,
       "faces": 0,
       "points": 0,
       "mesh_ok": false,
-      "error": "Quality validation failed"
+      "error": "2026-04-12T11:35:08.991433Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
     },
     {
       "test_case": "sphere.stl",
+      "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 3.63,
+      "elapsed_seconds": 4.232010390987853,
       "cells": 0,
       "faces": 0,
       "points": 0,
       "mesh_ok": true,
-      "error": null
+      "error": null,
+      "quality_report": {
+        "evaluation_summary": {
+          "verdict": "PASS",
+          "iteration": 1,
+          "tier_evaluated": "tier2_tetwild",
+          "evaluation_time_seconds": 1.2222586720017716,
+          "checkmesh": {
+            "cells": 6006,
+            "faces": 12652,
+            "points": 1373,
+            "max_non_orthogonality": 44.6583,
+            "avg_non_orthogonality": 14.3139,
+            "max_skewness": 0.466037,
+            "max_aspect_ratio": 3.29596,
+            "min_face_area": 0.00429351,
+            "min_cell_volume": 0.000175976,
+            "min_determinant": 1.0,
+            "negative_volumes": 0,
+            "severely_non_ortho_faces": 0,
+            "failed_checks": 0,
+            "mesh_ok": true
+          },
+          "additional_metrics": {
+            "cell_volume_stats": {
+              "min": 0.00017597608223099382,
+              "max": 0.0015178949506817118,
+              "mean": 0.0006909544870024047,
+              "std": 0.00028849516649697034,
+              "ratio_max_min": 8.62557531363414
+            },
+            "boundary_layer": {
+              "bl_coverage_percent": 0.0,
+              "avg_first_layer_height": 0.0866152746081655,
+              "min_first_layer_height": 0.05603824791744314,
+              "max_first_layer_height": 0.1149248393739131
+            }
+          },
+          "geometry_fidelity": {
+            "hausdorff_distance": 0.058011460414028486,
+            "hausdorff_relative": 0.016746466143061335,
+            "surface_area_deviation_percent": 0.04467840776044233
+          },
+          "hard_fails": [],
+          "soft_fails": [],
+          "recommendations": [],
+          "quality_level": "draft"
+        }
+      }
     },
     {
       "test_case": "sphere_20k.stl",
+      "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 7.84,
+      "elapsed_seconds": 9.356830912001897,
       "cells": 0,
       "faces": 0,
       "points": 0,
       "mesh_ok": true,
-      "error": null
+      "error": null,
+      "quality_report": {
+        "evaluation_summary": {
+          "verdict": "PASS",
+          "iteration": 1,
+          "tier_evaluated": "tier2_tetwild",
+          "evaluation_time_seconds": 1.456812318006996,
+          "checkmesh": {
+            "cells": 13592,
+            "faces": 29392,
+            "points": 3542,
+            "max_non_orthogonality": 53.53,
+            "avg_non_orthogonality": 16.8039,
+            "max_skewness": 0.793147,
+            "max_aspect_ratio": 4.11937,
+            "min_face_area": 0.000612178,
+            "min_cell_volume": 6.75801e-06,
+            "min_determinant": 1.0,
+            "negative_volumes": 0,
+            "severely_non_ortho_faces": 0,
+            "failed_checks": 0,
+            "mesh_ok": true
+          },
+          "additional_metrics": {
+            "cell_volume_stats": {
+              "min": 6.758009628647668e-06,
+              "max": 0.001562943041801019,
+              "mean": 0.000307174456964167,
+              "std": 0.0002832791037969131,
+              "ratio_max_min": 231.27268643945044
+            },
+            "boundary_layer": {
+              "bl_coverage_percent": 0.0,
+              "avg_first_layer_height": 0.06184338267890308,
+              "min_first_layer_height": 0.018906287978645752,
+              "max_first_layer_height": 0.11605068736588484
+            }
+          },
+          "geometry_fidelity": {
+            "hausdorff_distance": 0.06172045824116028,
+            "hausdorff_relative": 0.01781716159002047,
+            "surface_area_deviation_percent": 0.15238644377530275
+          },
+          "hard_fails": [],
+          "soft_fails": [],
+          "recommendations": [],
+          "quality_level": "draft"
+        }
+      }
     },
     {
       "test_case": "sphere_watertight.stl",
+      "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 3.93,
+      "elapsed_seconds": 4.148876799008576,
       "cells": 0,
       "faces": 0,
       "points": 0,
       "mesh_ok": true,
-      "error": null
+      "error": null,
+      "quality_report": {
+        "evaluation_summary": {
+          "verdict": "PASS",
+          "iteration": 1,
+          "tier_evaluated": "tier2_tetwild",
+          "evaluation_time_seconds": 1.215367608005181,
+          "checkmesh": {
+            "cells": 5987,
+            "faces": 12614,
+            "points": 1369,
+            "max_non_orthogonality": 44.7533,
+            "avg_non_orthogonality": 14.3693,
+            "max_skewness": 0.500038,
+            "max_aspect_ratio": 3.29862,
+            "min_face_area": 0.00429037,
+            "min_cell_volume": 0.000175819,
+            "min_determinant": 1.0,
+            "negative_volumes": 0,
+            "severely_non_ortho_faces": 0,
+            "failed_checks": 0,
+            "mesh_ok": true
+          },
+          "additional_metrics": {
+            "cell_volume_stats": {
+              "min": 0.00017581897752973273,
+              "max": 0.0015385289238172394,
+              "mean": 0.0006931502997446499,
+              "std": 0.0002898226948736554,
+              "ratio_max_min": 8.750641969562466
+            },
+            "boundary_layer": {
+              "bl_coverage_percent": 0.0,
+              "avg_first_layer_height": 0.08669499763272649,
+              "min_first_layer_height": 0.056021566685716076,
+              "max_first_layer_height": 0.1154432527672245
+            }
+          },
+          "geometry_fidelity": {
+            "hausdorff_distance": 0.05954958054306573,
+            "hausdorff_relative": 0.017190483178334152,
+            "surface_area_deviation_percent": 0.044323664529912404
+          },
+          "hard_fails": [],
+          "soft_fails": [],
+          "recommendations": [],
+          "quality_level": "draft"
+        }
+      }
     },
     {
       "test_case": "trimesh_box.stl",
+      "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 4.89,
+      "elapsed_seconds": 7.625987663996057,
       "cells": 0,
       "faces": 0,
       "points": 0,
       "mesh_ok": true,
-      "error": null
+      "error": null,
+      "quality_report": {
+        "evaluation_summary": {
+          "verdict": "PASS",
+          "iteration": 1,
+          "tier_evaluated": "tier2_tetwild",
+          "evaluation_time_seconds": 1.6795339439995587,
+          "checkmesh": {
+            "cells": 13756,
+            "faces": 28765,
+            "points": 3067,
+            "max_non_orthogonality": 70.5406,
+            "avg_non_orthogonality": 14.8689,
+            "max_skewness": 0.832967,
+            "max_aspect_ratio": 7.78023,
+            "min_face_area": 2.44228e-05,
+            "min_cell_volume": 1.02626e-07,
+            "min_determinant": 1.0,
+            "negative_volumes": 0,
+            "severely_non_ortho_faces": 1,
+            "failed_checks": 1,
+            "mesh_ok": false
+          },
+          "additional_metrics": {
+            "cell_volume_stats": {
+              "min": 1.026267382756994e-07,
+              "max": 0.000691842302061204,
+              "mean": 0.0002180780911617593,
+              "std": 0.00013404147529945415,
+              "ratio_max_min": 6741.34551760399
+            },
+            "boundary_layer": {
+              "bl_coverage_percent": 0.0,
+              "avg_first_layer_height": 0.055636911734976084,
+              "min_first_layer_height": 0.0046818788915763765,
+              "max_first_layer_height": 0.08844413476886036
+            }
+          },
+          "geometry_fidelity": {
+            "hausdorff_distance": 0.0700935399746669,
+            "hausdorff_relative": 0.026032087219244947,
+            "surface_area_deviation_percent": 0.03186334287665733
+          },
+          "hard_fails": [],
+          "soft_fails": [],
+          "recommendations": [],
+          "quality_level": "draft"
+        }
+      }
     },
     {
       "test_case": "trimesh_duct.stl",
+      "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 4.97,
+      "elapsed_seconds": 6.057055174998823,
       "cells": 0,
       "faces": 0,
       "points": 0,
       "mesh_ok": true,
-      "error": null
+      "error": null,
+      "quality_report": {
+        "evaluation_summary": {
+          "verdict": "PASS",
+          "iteration": 1,
+          "tier_evaluated": "tier2_tetwild",
+          "evaluation_time_seconds": 1.5069537660019705,
+          "checkmesh": {
+            "cells": 8296,
+            "faces": 17295,
+            "points": 1820,
+            "max_non_orthogonality": 48.6735,
+            "avg_non_orthogonality": 15.7954,
+            "max_skewness": 0.623905,
+            "max_aspect_ratio": 4.85816,
+            "min_face_area": 0.00421565,
+            "min_cell_volume": 0.000190204,
+            "min_determinant": 1.0,
+            "negative_volumes": 0,
+            "severely_non_ortho_faces": 0,
+            "failed_checks": 1,
+            "mesh_ok": false
+          },
+          "additional_metrics": {
+            "cell_volume_stats": {
+              "min": 0.00019020416844630318,
+              "max": 0.0028503173545611125,
+              "mean": 0.0011282153946496512,
+              "std": 0.0005440670455603891,
+              "ratio_max_min": 14.985567234641284
+            },
+            "boundary_layer": {
+              "bl_coverage_percent": 0.0,
+              "avg_first_layer_height": 0.10132463656567652,
+              "min_first_layer_height": 0.05750955540720141,
+              "max_first_layer_height": 0.14178525622431395
+            }
+          },
+          "geometry_fidelity": {
+            "hausdorff_distance": 0.08414257425153211,
+            "hausdorff_relative": 0.020407571838261397,
+            "surface_area_deviation_percent": 0.02191000534005054
+          },
+          "hard_fails": [],
+          "soft_fails": [],
+          "recommendations": [],
+          "quality_level": "draft"
+        }
+      }
+    },
+    {
+      "test_case": "very_thin_disk_0_01mm.stl",
+      "quality": "draft",
+      "status": "timeout",
+      "elapsed_seconds": 0.0,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "Timeout after 600s"
     }
   ]
 }

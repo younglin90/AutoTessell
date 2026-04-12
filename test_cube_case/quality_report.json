@@ -1,23 +1,23 @@
 {
   "evaluation_summary": {
     "verdict": "FAIL",
-    "iteration": 3,
-    "tier_evaluated": "tier1_snappy",
-    "evaluation_time_seconds": 17.442236100003356,
+    "iteration": 1,
+    "tier_evaluated": "tier05_netgen",
+    "evaluation_time_seconds": 1.8779718999867328,
     "checkmesh": {
-      "cells": 726904,
-      "faces": 2266476,
-      "points": 812789,
-      "max_non_orthogonality": 26.9303,
-      "avg_non_orthogonality": 5.38314,
-      "max_skewness": 0.544288,
-      "max_aspect_ratio": 1.44644,
-      "min_face_area": 0.0000577428,
-      "min_cell_volume": 8.45924e-7,
+      "cells": 21092,
+      "faces": 43342,
+      "points": 22288,
+      "max_non_orthogonality": 72.204,
+      "avg_non_orthogonality": 25.775,
+      "max_skewness": 1.11129,
+      "max_aspect_ratio": 7.81068,
+      "min_face_area": 0.0000768442,
+      "min_cell_volume": 3.32555e-7,
       "min_determinant": 1.0,
       "negative_volumes": 0,
-      "severely_non_ortho_faces": 0,
-      "failed_checks": 1,
+      "severely_non_ortho_faces": 1,
+      "failed_checks": 2,
       "mesh_ok": false
     },
     "additional_metrics": {
@@ -29,21 +29,21 @@
         "ratio_max_min": 30.19947128170528
       },
       "boundary_layer": {
-        "bl_coverage_percent": 100.0,
+        "bl_coverage_percent": 0.0,
         "avg_first_layer_height": 0.046071893716045996,
         "min_first_layer_height": 0.020537795230221235,
         "max_first_layer_height": 0.06395683040038184
       }
     },
     "geometry_fidelity": {
-      "hausdorff_distance": 5.72552814083074,
-      "hausdorff_relative": 3.305635213361405,
-      "surface_area_deviation_percent": 3832.871496547318
+      "hausdorff_distance": 0.5472232807520576,
+      "hausdorff_relative": 0.3159395084490306,
+      "surface_area_deviation_percent": 82.10035559216809
     },
     "hard_fails": [
       {
         "criterion": "hausdorff_relative",
-        "value": 3.305635213361405,
+        "value": 0.3159395084490306,
         "threshold": 0.1,
         "location_hint": "표면 지오메트리 충실도 불량"
       }
@@ -51,7 +51,7 @@
     "soft_fails": [
       {
         "criterion": "surface_area_deviation_percent",
-        "value": 3832.871496547318,
+        "value": 82.10035559216809,
         "threshold": 20.0,
         "location_hint": "표면적 편차 과다"
       }

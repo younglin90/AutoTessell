@@ -13,21 +13,7 @@ internalField   uniform 0.0022964;
 
 boundaryField
 {
-    inlet
-    {
-        type    fixedValue;
-        value   uniform 0.0022964;
-    }
-    outlet
-    {
-        type    zeroGradient;
-    }
-    walls
-    {
-        type    epsilonWallFunction;
-        value   uniform 0.0022964;
-    }
-    surface
+    defaultWall
     {
         type    epsilonWallFunction;
         value   uniform 0.0022964;
