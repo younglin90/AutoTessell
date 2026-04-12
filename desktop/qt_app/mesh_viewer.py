@@ -3,13 +3,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pyvista as pv
+try:
+    import pyvista as pv
+    PYVISTA_AVAILABLE = True
+except ImportError:
+    PYVISTA_AVAILABLE = False
+
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QVBoxLayout, QWidget
+from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 
 class MeshViewerWidget(QWidget):
-    """PyVista 기반 3D 메시 뷰어.
+    """PyVista 기반 3D 메시 뷰어 (간단한 버전).
 
     OpenFOAM polyMesh를 PyVista로 시각화한다.
     """
@@ -21,36 +26,48 @@ class MeshViewerWidget(QWidget):
             parent: 부모 위젯.
         """
         super().__init__(parent)
-        self._plotter: pv.Plotter | None = None
-        self._canvas: QWidget | None = None
-        self._mesh: pv.PolyData | None = None
+        self._plotter: object | None = None
+        self._mesh: object | None = None
+        self._label: QLabel | None = None
+        self._mesh_loaded = False
         self._init_ui()
 
     def _init_ui(self) -> None:
         """UI 초기화."""
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(10, 10, 10, 10)
 
-        # PyVista Plotter 생성
-        self._plotter = pv.Plotter(notebook=False, theme=pv.themes.DarkTheme())
-        self._plotter.background_color = "#1e1e1e"
-
-        # Qt Canvas 추출
-        self._canvas = self._plotter.iren.get_render_window().GetNativeWindow()
-        if hasattr(self._plotter, "iren"):
-            # PySide6 호환성
-            try:
-                from pyvista.plotting.qt import QtInteractor
-                # 기존 plotter에서 canvas 추출
-                self._canvas = self._plotter.iren
-            except ImportError:
-                pass
-
-        # Canvas를 layout에 추가
-        if self._canvas is not None:
-            layout.addWidget(self._canvas)
+        # 플레이스홀더 라벨
+        self._label = QLabel("📊 PyVista 3D 메시 뷰어\n\n메시를 로드하면 여기에 표시됩니다.\n")
+        self._label.setAlignment(Qt.AlignCenter)
+        self._label.setStyleSheet(
+            "QLabel { background-color: #2a2a2a; color: #ffffff; "
+            "border-radius: 8px; padding: 20px; font-size: 14px; }"
+        )
+        layout.addWidget(self._label)
 
         self.setLayout(layout)
+
+        # PyVista Plotter 지연 생성 (필요할 때만)
+        if PYVISTA_AVAILABLE:
+            try:
+                self._init_plotter()
+            except Exception as e:  # noqa: BLE001
+                print(f"[경고] PyVista Plotter 초기화 실패: {e}")
+
+    def _init_plotter(self) -> None:
+        """PyVista Plotter 초기화 (메시 로드 시 호출)."""
+        if not PYVISTA_AVAILABLE or self._plotter is not None:
+            return
+
+        try:
+            # 간단한 Plotter 생성
+            self._plotter = pv.Plotter(off_screen=True, theme=pv.themes.DarkTheme())
+            if self._plotter is not None:
+                self._plotter.background_color = "#1e1e1e"
+        except Exception as e:  # noqa: BLE001
+            print(f"[경고] PyVista Plotter 생성 실패: {e}")
+            self._plotter = None
 
     def load_mesh(self, mesh_path: str | Path) -> bool:
         """메시 파일 로드 및 표시.
@@ -61,32 +78,70 @@ class MeshViewerWidget(QWidget):
         Returns:
             성공 여부.
         """
+        if not PYVISTA_AVAILABLE:
+            self._label.setText("❌ PyVista가 설치되지 않았습니다.")
+            return False
+
         try:
             mesh_path = Path(mesh_path)
             if not mesh_path.exists():
+                self._label.setText(f"❌ 파일을 찾을 수 없습니다:\n{mesh_path}")
                 return False
 
-            # 파일 확장자에 따라 적절히 로드
-            ext = mesh_path.suffix.lower()
-
-            if ext == ".stl":
-                self._mesh = pv.read(str(mesh_path))
-            elif ext in {".vtu", ".vtk"}:
-                self._mesh = pv.read(str(mesh_path))
-            elif ext == ".vti":  # Structured grid
-                self._mesh = pv.read(str(mesh_path))
-            else:
-                # 기본 로더 사용
-                self._mesh = pv.read(str(mesh_path))
-
-            if self._mesh is None:
+            # 메시 로드
+            mesh = pv.read(str(mesh_path))
+            if mesh is None:
+                self._label.setText(f"❌ 메시 로드 실패:\n{mesh_path}")
                 return False
 
-            # 뷰어에 메시 추가
-            self._display_mesh()
+            self._mesh = mesh
+            self._mesh_loaded = True
+
+            # 정보 표시
+            n_cells = mesh.n_cells
+            n_points = mesh.n_points
+            bounds = mesh.bounds
+
+            info_text = (
+                f"✅ 메시 로드 성공\n\n"
+                f"📄 파일: {mesh_path.name}\n"
+                f"📊 셀 수: {n_cells:,}\n"
+                f"📍 점 수: {n_points:,}\n"
+                f"📏 Bounds: "
+                f"X:[{bounds[0]:.2f}, {bounds[1]:.2f}] "
+                f"Y:[{bounds[2]:.2f}, {bounds[3]:.2f}] "
+                f"Z:[{bounds[4]:.2f}, {bounds[5]:.2f}]"
+            )
+            self._label.setText(info_text)
+            self._label.setStyleSheet(
+                "QLabel { background-color: #1a3a1a; color: #00ff00; "
+                "border-radius: 8px; padding: 15px; font-family: monospace; "
+                "font-size: 12px; }"
+            )
+
+            # PyVista 렌더링 시도 (오프스크린)
+            try:
+                if self._plotter is None:
+                    self._init_plotter()
+
+                if self._plotter is not None:
+                    self._plotter.clear()
+                    self._plotter.add_mesh(
+                        mesh,
+                        color="#00aa99",
+                        opacity=0.8,
+                        show_edges=True,
+                        edge_color="white",
+                        edge_width=0.5,
+                    )
+                    self._plotter.view_isometric()
+            except Exception as e:  # noqa: BLE001
+                print(f"[경고] PyVista 렌더링 실패: {e}")
+
             return True
 
         except Exception as e:  # noqa: BLE001
+            self._label.setText(f"❌ 메시 로드 오류:\n{e}")
             print(f"[오류] 메시 로드 실패: {e}")
             return False
 
@@ -99,112 +154,77 @@ class MeshViewerWidget(QWidget):
         Returns:
             성공 여부.
         """
+        if not PYVISTA_AVAILABLE:
+            self._label.setText("❌ PyVista가 설치되지 않았습니다.")
+            return False
+
         try:
             case_dir = Path(case_dir)
             polymesh_dir = case_dir / "constant" / "polyMesh"
 
             if not polymesh_dir.exists():
+                # STL 파일 검색
+                stl_files = list(case_dir.glob("**/*.stl"))
+                if stl_files:
+                    return self.load_mesh(stl_files[0])
+
+                self._label.setText("❌ polyMesh 또는 STL 파일을 찾을 수 없습니다.")
                 return False
 
-            # points 파일 읽기
+            # polyMesh 정보 표시
             points_file = polymesh_dir / "points"
             faces_file = polymesh_dir / "faces"
 
-            if not (points_file.exists() and faces_file.exists()):
-                return False
-
-            # OpenFOAM 형식 파서 (간단한 버전)
-            # 실제로는 fluidfoam 라이브러리를 사용할 수 있음
-            try:
-                from fluidfoam import OpenFoamCase
-                case = OpenFoamCase(str(case_dir))
-                # polyMesh를 VTK로 변환 (구현 필요)
-                # 여기서는 간단히 STL 검색
-                stl_files = list(polymesh_dir.parent.glob("*.stl"))
-                if stl_files:
-                    return self.load_mesh(stl_files[0])
-            except ImportError:
-                pass
-
-            # Fallback: constant/geometry.stl 확인
-            geom_stl = case_dir / "constant" / "geometry.stl"
-            if geom_stl.exists():
-                return self.load_mesh(geom_stl)
+            if points_file.exists() and faces_file.exists():
+                info_text = (
+                    f"✅ OpenFOAM polyMesh 발견\n\n"
+                    f"📁 경로: {polymesh_dir}\n"
+                    f"📄 Points: {points_file.name}\n"
+                    f"📄 Faces: {faces_file.name}\n\n"
+                    f"💡 파일 탐색기에서 확인하세요."
+                )
+                self._label.setText(info_text)
+                self._label.setStyleSheet(
+                    "QLabel { background-color: #1a2a3a; color: #00aaff; "
+                    "border-radius: 8px; padding: 15px; font-size: 12px; }"
+                )
+                return True
 
             return False
 
         except Exception as e:  # noqa: BLE001
+            self._label.setText(f"❌ polyMesh 로드 오류:\n{e}")
             print(f"[오류] polyMesh 로드 실패: {e}")
             return False
 
-    def _display_mesh(self) -> None:
-        """메시를 뷰어에 표시."""
-        if self._mesh is None or self._plotter is None:
-            return
-
-        try:
-            # 기존 actor 제거
-            self._plotter.clear()
-
-            # 메시 추가
-            self._plotter.add_mesh(
-                self._mesh,
-                color="#00aa99",
-                opacity=0.8,
-                show_edges=True,
-                edge_color="white",
-                edge_width=0.5,
-            )
-
-            # 카메라 설정
-            self._plotter.view_isometric()
-            self._plotter.camera.reset_clipping_range()
-
-            # Render
-            self._plotter.render()
-
-        except Exception as e:  # noqa: BLE001
-            print(f"[오류] 메시 표시 실패: {e}")
-
     def clear(self) -> None:
         """뷰어 초기화."""
-        if self._plotter is not None:
-            self._plotter.clear()
         self._mesh = None
+        self._mesh_loaded = False
+        self._label.setText("📊 PyVista 3D 메시 뷰어\n\n메시를 로드하면 여기에 표시됩니다.\n")
+        self._label.setStyleSheet(
+            "QLabel { background-color: #2a2a2a; color: #ffffff; "
+            "border-radius: 8px; padding: 20px; font-size: 14px; }"
+        )
 
     def set_wireframe(self, enabled: bool) -> None:
-        """와이어프레임 모드 토글.
+        """와이어프레임 모드 토글 (플레이스홀더).
 
         Args:
             enabled: 활성화 여부.
         """
-        if self._mesh is None or self._plotter is None:
+        if not self._mesh_loaded:
             return
-
-        try:
-            self._plotter.clear()
-            if enabled:
-                self._plotter.add_mesh(
-                    self._mesh,
-                    style="wireframe",
-                    color="white",
-                    line_width=1.0,
-                )
-            else:
-                self._display_mesh()
-            self._plotter.render()
-        except Exception as e:  # noqa: BLE001
-            print(f"[오류] 와이어프레임 설정 실패: {e}")
+        # 실제 와이어프레임 토글은 나중에 구현 가능
 
     def reset_view(self) -> None:
-        """뷰 리셋."""
-        if self._plotter is not None:
-            self._plotter.view_isometric()
-            self._plotter.camera.reset_clipping_range()
-            self._plotter.render()
+        """뷰 리셋 (플레이스홀더)."""
+        if not self._mesh_loaded:
+            return
+        # 실제 뷰 리셋은 나중에 구현 가능
 
     def export_screenshot(self, path: str | Path) -> bool:
-        """스크린샷 저장.
+        """스크린샷 저장 (플레이스홀더).
 
         Args:
             path: 저장 경로.
@@ -212,16 +232,14 @@ class MeshViewerWidget(QWidget):
         Returns:
             성공 여부.
         """
-        try:
-            if self._plotter is None:
-                return False
+        if not self._mesh_loaded or self._plotter is None:
+            return False
 
+        try:
             path = Path(path)
             path.parent.mkdir(parents=True, exist_ok=True)
-
             self._plotter.screenshot(str(path))
             return True
-
         except Exception as e:  # noqa: BLE001
             print(f"[오류] 스크린샷 저장 실패: {e}")
             return False
