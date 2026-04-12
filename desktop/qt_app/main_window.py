@@ -184,6 +184,7 @@ class AutoTessellWindow:  # type: ignore[misc]
             QPlainTextEdit,
             QProgressBar,
             QPushButton,
+            QSplitter,
             QSpinBox,
             QTabWidget,
             QTextBrowser,
@@ -197,7 +198,7 @@ class AutoTessellWindow:  # type: ignore[misc]
 
         self._qmain = QMainWindow()
         self._qmain.setWindowTitle("AutoTessell Qt")
-        self._qmain.resize(1180, 760)
+        self._qmain.resize(1600, 900)
 
         central = QWidget()
         self._qmain.setCentralWidget(central)
@@ -430,23 +431,31 @@ class AutoTessellWindow:  # type: ignore[misc]
         root_layout.addWidget(self._status_label)
         root_layout.addWidget(self._progress_bar)
 
-        # Tab widget: Log + Mesh Viewer
-        tabs = QTabWidget()
+        # Splitter layout: Log (left) + Mesh Viewer (right) — Fluent GUI style
+        splitter = QSplitter(Qt.Horizontal)
 
-        # 로그 탭
+        # Left: Log editor
         self._log_edit = QPlainTextEdit()
         self._log_edit.setReadOnly(True)
-        tabs.addTab(self._log_edit, "로그")
+        splitter.addWidget(self._log_edit)
 
-        # 메시 뷰어 탭
+        # Right: Mesh viewer
         try:
             from desktop.qt_app.mesh_viewer import MeshViewerWidget
             self._mesh_viewer = MeshViewerWidget()
-            tabs.addTab(self._mesh_viewer, "3D 메시 뷰어")
+            splitter.addWidget(self._mesh_viewer)
         except ImportError:
-            self._append_log("[경고] PyVista 또는 메시 뷰어 모듈을 찾을 수 없습니다.")
+            fallback_label = QLabel("[경고] PyVista 또는 메시 뷰어 모듈을 찾을 수 없습니다.")
+            fallback_label.setAlignment(Qt.AlignCenter)
+            splitter.addWidget(fallback_label)
+            self._mesh_viewer = None
 
-        root_layout.addWidget(tabs, stretch=1)
+        # Set initial splitter sizes: 40% log, 60% viewer
+        splitter.setSizes([640, 960])
+        splitter.setCollapsible(0, False)
+        splitter.setCollapsible(1, False)
+
+        root_layout.addWidget(splitter, stretch=1)
 
     def show(self) -> None:  # pragma: no cover
         if not hasattr(self, "_qmain"):
@@ -465,8 +474,38 @@ class AutoTessellWindow:  # type: ignore[misc]
             try:
                 self.set_input_path(path)
                 self._append_log(f"입력 설정: {path}")
+                # 입력 파일 미리보기를 비동기로 로드 (UI 블로킹 방지)
+                if self._mesh_viewer is not None:
+                    from PySide6.QtCore import QTimer
+                    self._append_log("[미리보기] 입력 파일을 3D 뷰어에 로드 중...")
+                    QTimer.singleShot(
+                        50,
+                        lambda: self._load_input_preview()
+                    )
             except ValueError as exc:
                 self._append_log(f"[오류] {exc}")
+
+    def _load_input_preview(self) -> None:  # pragma: no cover
+        """입력 파일 미리보기를 별도 스레드에서 로드 (UI 블로킹 방지)."""
+        if self._mesh_viewer is None or self._input_path is None:
+            return
+        try:
+            from desktop.qt_app.mesh_preview_worker import MeshPreviewWorker
+
+            loader = MeshPreviewWorker(self._mesh_viewer, self._input_path)
+            loader.finished.connect(  # type: ignore[union-attr]
+                lambda success: (
+                    self._append_log(f"[미리보기] 입력 파일 로드 성공: {self._input_path.name}")
+                    if success
+                    else self._append_log("[미리보기] 입력 파일 로드 실패")
+                )
+            )
+            loader.error.connect(  # type: ignore[union-attr]
+                lambda msg: self._append_log(f"[미리보기] 오류: {msg}")
+            )
+            loader.start()  # type: ignore[union-attr]
+        except Exception as exc:  # noqa: BLE001
+            self._append_log(f"[미리보기] 워커 생성 실패: {exc}")
 
     def _on_pick_output(self) -> None:  # pragma: no cover
         if not hasattr(self, "_qt_file_dialog"):
