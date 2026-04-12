@@ -1,0 +1,43 @@
+
+======================================================================
+AutoTessell 성능 벤치마킹
+======================================================================
+
+🎯 26개 테스트 케이스 발견
+
+[1/26] broken_sphere.stl... ❌  220.62s |        — cells | FAIL
+      Error: 2026-04-12T10:59:10.269311Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax
+[2/26] coarse_to_fine_gradation_two_spheres.stl... ✅    5.18s |        — cells | OK
+[3/26] cylinder.stl... ✅    4.42s |        — cells | OK
+[4/26] degenerate_faces_sliver_triangles.stl... ✅    5.22s |        — cells | OK
+[5/26] external_flow_isolated_box.stl... ✅    4.28s |        — cells | OK
+[6/26] extreme_aspect_ratio_needle.stl... ❌   87.74s |        — cells | FAIL
+      Error: 2026-04-12T11:03:31.496218Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax
+[7/26] five_disconnected_spheres.stl... ✅    3.81s |        — cells | OK
+[8/26] hemisphere_open.stl... ❌    1.59s |        — cells | FAIL
+      Error: 2026-04-12T11:05:12.233702Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax
+[9/26] hemisphere_open_partial.stl... ❌  155.42s |        — cells | FAIL
+      Error: 2026-04-12T11:05:13.812071Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax
+[10/26] high_genus_dual_torus.stl... ✅    4.65s |        — cells | OK
+[11/26] highly_skewed_mesh_flat_triangles.stl... ❌  404.56s |        — cells | FAIL
+      Error: 2026-04-12T11:08:08.586643Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax
+[12/26] large_mesh_250k_faces.stl... ✅    9.72s |        — cells | OK
+[13/26] many_small_features_perforated_plate.stl... ❌   86.24s |        — cells | FAIL
+      Error: 2026-04-12T11:15:37.844069Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax
+[14/26] mixed_features_wing_with_spike.stl... ❌  119.49s |        — cells | FAIL
+      Error: 2026-04-12T11:17:13.679931Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax
+[15/26] mixed_watertight_and_open.stl... ❌  109.70s |        — cells | FAIL
+      Error: 2026-04-12T11:19:24.568052Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax
+[16/26] multi_scale_sphere_with_micro_spikes.stl... ✅    3.80s |        — cells | OK
+[17/26] naca0012.stl... ❌   67.78s |        — cells | FAIL
+      Error: 2026-04-12T11:21:26.928009Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax
+[18/26] nonmanifold_disconnected.stl... ✅  337.72s |        — cells | OK
+[19/26] self_intersecting_crossed_planes.stl... ✅  342.83s |        — cells | OK
+[20/26] sharp_features_micro_ridge.stl... ❌  166.77s |        — cells | FAIL
+      Error: 2026-04-12T11:35:08.991433Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax
+[21/26] sphere.stl... ✅    4.23s |        — cells | OK
+[22/26] sphere_20k.stl... ✅    9.36s |        — cells | OK
+[23/26] sphere_watertight.stl... ✅    4.15s |        — cells | OK
+[24/26] trimesh_box.stl... ✅    7.63s |        — cells | OK
+[25/26] trimesh_duct.stl... ✅    6.06s |        — cells | OK
+[26/26] very_thin_disk_0_01mm.stl... 
