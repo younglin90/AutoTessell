@@ -95,6 +95,29 @@ class TierSelector:
             }
             return canonical, fallbacks
 
+        # Check for critical issues that prevent meshing
+        from core.schemas import Severity
+        critical_issues = [issue for issue in report.issues if issue.severity == Severity.CRITICAL]
+        if critical_issues:
+            log.warning(
+                "critical_issues_detected",
+                count=len(critical_issues),
+                issues=[f"{i.type}:{i.description}" for i in critical_issues[:2]]
+            )
+            # Use most robust fallback for critical issues
+            fallbacks = [t for t in _TIER_ORDER if t != "tier_jigsaw_fallback"]
+            self.last_selection_context = {
+                "source": "auto",
+                "hint": tier_hint,
+                "reason": "critical_input_issues",
+                "quality_level": ql,
+                "surface_quality_level": sql,
+                "selected_tier": "tier_jigsaw_fallback",
+                "fallback_tiers": list(fallbacks),
+            }
+            log.info("tier_auto_selected", tier="tier_jigsaw_fallback", quality_level=ql, fallbacks=fallbacks)
+            return "tier_jigsaw_fallback", fallbacks
+
         # l3_ai 표면 → tetwild 강제
         if sql == SurfaceQualityLevel.L3_AI.value:
             log.info("tier_forced_l3ai", tier="tier2_tetwild")

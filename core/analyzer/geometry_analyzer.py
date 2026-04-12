@@ -398,6 +398,34 @@ class GeometryAnalyzer:
     ) -> list[Issue]:
         issues: list[Issue] = []
         surface = geometry.surface
+        bbox = geometry.bounding_box
+
+        # 0. Critical: Empty or minimal geometry
+        if surface.num_faces == 0 or surface.num_vertices == 0:
+            issues.append(
+                Issue(
+                    severity=Severity.CRITICAL,
+                    type="empty_geometry",
+                    count=1,
+                    description="메쉬가 비어있습니다 (삼각형 또는 정점 수 = 0).",
+                    recommended_action="skip",
+                )
+            )
+
+        # 0b. Critical: Degenerate bounding box (collapsed to line/point)
+        bbox_dims = [bbox.max[i] - bbox.min[i] for i in range(3)]
+        bbox_dims_sorted = sorted(bbox_dims)
+        # 가장 작은 차원이 0에 가까우면 2D 또는 더 심한 문제
+        if bbox_dims_sorted[0] < 1e-6 and bbox_dims_sorted[1] < 1e-6:
+            issues.append(
+                Issue(
+                    severity=Severity.CRITICAL,
+                    type="degenerate_geometry",
+                    count=1,
+                    description="메쉬가 선이나 점으로 축퇴되었습니다.",
+                    recommended_action="skip",
+                )
+            )
 
         # 1. non-watertight (열린 표면)
         if not surface.is_watertight:
@@ -482,6 +510,27 @@ class GeometryAnalyzer:
                     recommended_action="review",
                 )
             )
+
+        # 7. Broken/incomplete watertight check
+        # watertight하지만 volume이 0에 가까우면 수치적으로 닫혀있지만 구조적으로 문제
+        try:
+            volume = mesh.volume if hasattr(mesh, "volume") else 0.0
+            bbox_volume = bbox.max[0] - bbox.min[0]
+            bbox_volume *= bbox.max[1] - bbox.min[1]
+            bbox_volume *= bbox.max[2] - bbox.min[2]
+
+            if bbox_volume > 1e-10 and abs(volume) < 1e-10:
+                issues.append(
+                    Issue(
+                        severity=Severity.MAJOR,
+                        type="invalid_volume",
+                        count=1,
+                        description="메쉬가 닫혀있으나 내부 부피가 거의 0입니다. 구조적으로 손상된 것으로 추정.",
+                        recommended_action="repair",
+                    )
+                )
+        except Exception:
+            pass  # 부피 계산 실패는 무시
 
         return issues
 
