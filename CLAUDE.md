@@ -108,14 +108,17 @@ auto-tessell/
 │   ├── analyzer/              # 파일 로딩 + 지오메트리 분석
 │   ├── preprocessor/          # L1→L2→L3 표면 전처리
 │   ├── strategist/            # QualityLevel별 전략 수립
-│   ├── generator/             # 볼륨 메쉬 생성 + PolyMeshWriter
+│   ├── generator/             # 볼륨 메쉬 생성 + 9-Tier fallback + PolyMeshWriter
+│   │   ├── tier0_2d_meshpy.py       # Tier 0: 2D MeshPy
+│   │   ├── tier_hex_classy_blocks.py # Tier Hex: classy_blocks
+│   │   ├── tier_jigsaw_fallback.py   # Tier JIGSAW: 강건한 fallback
 │   ├── evaluator/             # checkMesh + NativeMeshChecker + Hausdorff
 │   ├── pipeline/              # Orchestrator (전체 파이프라인)
 │   └── utils/                 # OpenFOAM 래퍼, 로깅, polyMesh 리더
 ├── desktop/                   # Windows 데스크톱 서버 (FastAPI + WebSocket)
 ├── godot/                     # Godot 4.3 GUI (3D 뷰어 + 메쉬 생성 UI)
 ├── auto_tessell_core/         # C++/pybind11 확장 (Tier 0, 추후)
-├── tests/                     # pytest 458+ 테스트 + 벤치마크 STL/STEP
+├── tests/                     # pytest 1028+ 테스트 + 벤치마크 STL/STEP
 ├── backend/                   # Phase 2: FastAPI 백엔드 (기존 Web SaaS)
 ├── frontend/                  # Phase 2: Next.js 프론트엔드
 └── infra/                     # 인프라 설정
@@ -138,7 +141,7 @@ CAD: cadquery, gmsh
 - 로깅: structlog JSON
 - CLI 파라미터 상세: `agents/specs/generator.md` 참조
 
-## 현재 구현 상태 (458+ tests)
+## 현재 구현 상태 (1028+ tests, v0.3)
 
 ```bash
 auto-tessell run input.stl -o ./case --quality draft     # ~1초, TetWild
@@ -148,9 +151,21 @@ auto-tessell run input.step -o ./case --quality draft      # STEP CAD 지원
 ```
 
 - ✅ 전체 파이프라인: Analyzer → Preprocessor → Strategist → Generator → Evaluator
-- ✅ Generator↔Evaluator 재시도 루프 (최대 N회)
-- ✅ PolyMeshWriter: tet mesh → OpenFOAM polyMesh 직접 변환 (OpenFOAM 없이도 동작)
+- ✅ Generator↔Evaluator 재시도 루프 (최대 3회)
+- ✅ **9-Tier Volume Mesh 자동 선택 (v0.3 완성)**:
+  - Tier 0: 2D MeshPy (입구/출구 단면용)
+  - Tier Hex: classy_blocks 기반 Hex 메시
+  - Tier JIGSAW: 강건한 Tet fallback
+  - Tier TetWild (Draft)
+  - Tier Netgen (Standard)
+  - Tier cfMesh (Standard Hex)
+  - Tier snappyHexMesh (Fine)
+  - Tier MMG3D (Fine)
+  - Tier MeshAnything (AI fallback)
+- ✅ PolyMeshWriter: tet/hex mesh → OpenFOAM polyMesh 직접 변환 (OpenFOAM 없이도 동작)
 - ✅ OpenFOAM 자동 감지 (/usr/lib/openfoam/, /opt/, OPENFOAM_DIR)
 - ✅ STEP/IGES CAD 파일 지원 (cadquery + gmsh fallback)
 - ✅ Geometry Fidelity (Hausdorff 거리 기반 표면 충실도 검증)
 - ✅ 불량 STL 수리 (L1 pymeshfix → L2 pyACVD+pymeshlab → L3 AI fallback)
+- ✅ 회귀 테스트: 1028 테스트 (98.8% PASSED)
+- ✅ E2E 검증: 8/20 성공 (Draft quality, 120s timeout)
