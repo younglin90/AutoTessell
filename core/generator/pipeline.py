@@ -6,13 +6,16 @@ import shutil
 import time
 from pathlib import Path
 
+from core.generator.tier0_2d_meshpy import Tier2DMeshPyGenerator
 from core.generator.tier0_core import Tier0CoreGenerator
 from core.generator.tier05_netgen import Tier05NetgenGenerator
 from core.generator.tier1_snappy import Tier1SnappyGenerator
 from core.generator.tier2_tetwild import Tier2TetWildGenerator
 from core.generator.tier15_cfmesh import Tier15CfMeshGenerator
 from core.generator.tier_classy_blocks import TierClassyBlocksGenerator
+from core.generator.tier_hex_classy_blocks import TierHexClassyBlocksGenerator
 from core.generator.tier_jigsaw import TierJigsawGenerator
+from core.generator.tier_jigsaw_fallback import TierJigsawFallbackGenerator
 from core.generator.tier_meshpy import TierMeshPyGenerator
 from core.schemas import ExecutionSummary, GeneratorLog, MeshStrategy, TierAttempt
 from core.utils.logging import get_logger
@@ -22,18 +25,23 @@ logger = get_logger(__name__)
 
 # Tier 이름 → 클래스 매핑
 _TIER_REGISTRY: dict[str, type] = {
+    "tier0_2d_meshpy": Tier2DMeshPyGenerator,
     "tier0_core": Tier0CoreGenerator,
     "tier05_netgen": Tier05NetgenGenerator,
     "tier1_snappy": Tier1SnappyGenerator,
     "tier15_cfmesh": Tier15CfMeshGenerator,
     "tier2_tetwild": Tier2TetWildGenerator,
     "tier_meshpy": TierMeshPyGenerator,
+    "tier_hex_classy_blocks": TierHexClassyBlocksGenerator,
     "tier_classy_blocks": TierClassyBlocksGenerator,
     "tier_jigsaw": TierJigsawGenerator,
+    "tier_jigsaw_fallback": TierJigsawFallbackGenerator,
 }
 
 # CLI --tier 별칭 → 정규 Tier 이름
 _TIER_ALIASES: dict[str, str] = {
+    "2d": "tier0_2d_meshpy",
+    "hex": "tier_hex_classy_blocks",
     "core": "tier0_core",
     "netgen": "tier05_netgen",
     "snappy": "tier1_snappy",
@@ -42,15 +50,19 @@ _TIER_ALIASES: dict[str, str] = {
     "meshpy": "tier_meshpy",
     "classy_blocks": "tier_classy_blocks",
     "jigsaw": "tier_jigsaw",
+    "jigsaw_fallback": "tier_jigsaw_fallback",
     # 정규 이름 자체도 허용
+    "tier0_2d_meshpy": "tier0_2d_meshpy",
     "tier0_core": "tier0_core",
     "tier05_netgen": "tier05_netgen",
     "tier1_snappy": "tier1_snappy",
     "tier15_cfmesh": "tier15_cfmesh",
     "tier2_tetwild": "tier2_tetwild",
     "tier_meshpy": "tier_meshpy",
+    "tier_hex_classy_blocks": "tier_hex_classy_blocks",
     "tier_classy_blocks": "tier_classy_blocks",
     "tier_jigsaw": "tier_jigsaw",
+    "tier_jigsaw_fallback": "tier_jigsaw_fallback",
 }
 
 

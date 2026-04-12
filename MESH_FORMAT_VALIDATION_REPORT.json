@@ -1,0 +1,321 @@
+{
+  "total": 33,
+  "passed": 15,
+  "failed": 14,
+  "timeout": 4,
+  "error": 0,
+  "results": [
+    {
+      "file": "box.step",
+      "format": ".step",
+      "size_mb": 0.014774322509765625,
+      "status": "✅ success",
+      "time_s": 5.351822712000285,
+      "cells": 0,
+      "error": null,
+      "verdict": "unknown"
+    },
+    {
+      "file": "broken_sphere.stl",
+      "format": ".stl",
+      "size_mb": 0.0587310791015625,
+      "status": "❌ failed",
+      "time_s": 216.76130970599843,
+      "cells": 0,
+      "error": "2026-04-11T04:33:12.758869Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "file": "coarse_to_fine_gradation_two_spheres.stl",
+      "format": ".stl",
+      "size_mb": 0.24803543090820312,
+      "status": "✅ success",
+      "time_s": 4.433074368000234,
+      "cells": 0,
+      "error": null,
+      "verdict": "unknown"
+    },
+    {
+      "file": "cylinder.stl",
+      "format": ".stl",
+      "size_mb": 0.006183624267578125,
+      "status": "✅ success",
+      "time_s": 4.067780698998831,
+      "cells": 0,
+      "error": null,
+      "verdict": "unknown"
+    },
+    {
+      "file": "cylinder_cad.step",
+      "format": ".step",
+      "size_mb": 0.0054759979248046875,
+      "status": "✅ success",
+      "time_s": 11.015737932000775,
+      "cells": 0,
+      "error": null,
+      "verdict": "unknown"
+    },
+    {
+      "file": "degenerate_faces_sliver_triangles.stl",
+      "format": ".stl",
+      "size_mb": 0.015338897705078125,
+      "status": "✅ success",
+      "time_s": 3.5947619620019395,
+      "cells": 0,
+      "error": null,
+      "verdict": "unknown"
+    },
+    {
+      "file": "external_flow_isolated_box.stl",
+      "format": ".stl",
+      "size_mb": 0.000652313232421875,
+      "status": "✅ success",
+      "time_s": 3.2529429309979605,
+      "cells": 0,
+      "error": null,
+      "verdict": "unknown"
+    },
+    {
+      "file": "extreme_aspect_ratio_needle.stl",
+      "format": ".stl",
+      "size_mb": 0.001605987548828125,
+      "status": "❌ failed",
+      "time_s": 115.33349960300256,
+      "cells": 0,
+      "error": "2026-04-11T04:37:20.460178Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "file": "five_disconnected_spheres.stl",
+      "format": ".stl",
+      "size_mb": 0.07637405395507812,
+      "status": "✅ success",
+      "time_s": 2.930500182999822,
+      "cells": 0,
+      "error": null,
+      "verdict": "unknown"
+    },
+    {
+      "file": "hemisphere_open.stl",
+      "format": ".stl",
+      "size_mb": 0.0,
+      "status": "❌ failed",
+      "time_s": 1.5928968510015693,
+      "cells": 0,
+      "error": "2026-04-11T04:39:21.206919Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "file": "hemisphere_open_partial.stl",
+      "format": ".stl",
+      "size_mb": 0.007328033447265625,
+      "status": "❌ failed",
+      "time_s": 250.9678255459985,
+      "cells": 0,
+      "error": "2026-04-11T04:39:22.806853Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "file": "high_genus_dual_torus.stl",
+      "format": ".stl",
+      "size_mb": 0.19539260864257812,
+      "status": "✅ success",
+      "time_s": 3.76756231300169,
+      "cells": 0,
+      "error": null,
+      "verdict": "unknown"
+    },
+    {
+      "file": "highly_skewed_mesh_flat_triangles.stl",
+      "format": ".stl",
+      "size_mb": 0.0003662109375,
+      "status": "❌ failed",
+      "time_s": 292.8029385899972,
+      "cells": 0,
+      "error": "2026-04-11T04:43:42.273882Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "file": "large_mesh_250k_faces.stl",
+      "format": ".stl",
+      "size_mb": 3.906330108642578,
+      "status": "✅ success",
+      "time_s": 10.279003952000494,
+      "cells": 0,
+      "error": null,
+      "verdict": "unknown"
+    },
+    {
+      "file": "many_small_features_perforated_plate.stl",
+      "format": ".stl",
+      "size_mb": 0.3912773132324219,
+      "status": "❌ failed",
+      "time_s": 120.18710384699807,
+      "cells": 0,
+      "error": "2026-04-11T04:48:50.945173Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "file": "mixed_features_wing_with_spike.stl",
+      "format": ".stl",
+      "size_mb": 0.001033782958984375,
+      "status": "❌ failed",
+      "time_s": 135.09060553100062,
+      "cells": 0,
+      "error": "2026-04-11T04:50:53.842767Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "file": "mixed_watertight_and_open.stl",
+      "format": ".stl",
+      "size_mb": 0.01543426513671875,
+      "status": "❌ failed",
+      "time_s": 125.37370897599976,
+      "cells": 0,
+      "error": "2026-04-11T04:53:11.535661Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "file": "multi_scale_sphere_with_micro_spikes.stl",
+      "format": ".stl",
+      "size_mb": 0.019916534423828125,
+      "status": "✅ success",
+      "time_s": 2.8621690019972448,
+      "cells": 0,
+      "error": null,
+      "verdict": "unknown"
+    },
+    {
+      "file": "naca0012.stl",
+      "format": ".stl",
+      "size_mb": 0.030406951904296875,
+      "status": "❌ failed",
+      "time_s": 92.12392810600068,
+      "cells": 0,
+      "error": "2026-04-11T04:55:22.282945Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "file": "nonmanifold_disconnected.stl",
+      "format": ".stl",
+      "size_mb": 0.00017547607421875,
+      "status": "⏱ timeout",
+      "time_s": 0.0,
+      "cells": 0,
+      "error": "Timeout after 300s"
+    },
+    {
+      "file": "pipe.step",
+      "format": ".step",
+      "size_mb": 0.009593009948730469,
+      "status": "❌ failed",
+      "time_s": 295.10840075099986,
+      "cells": 0,
+      "error": "2026-04-11T05:02:02.452621Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "file": "self_intersecting_crossed_planes.stl",
+      "format": ".stl",
+      "size_mb": 0.000270843505859375,
+      "status": "⏱ timeout",
+      "time_s": 0.0,
+      "cells": 0,
+      "error": "Timeout after 300s"
+    },
+    {
+      "file": "sharp_features_micro_ridge.stl",
+      "format": ".stl",
+      "size_mb": 0.0003662109375,
+      "status": "❌ failed",
+      "time_s": 177.4438531880005,
+      "cells": 0,
+      "error": "2026-04-11T05:12:10.378711Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "file": "sphere.geometry_report.json",
+      "format": ".json",
+      "size_mb": 0.0022935867309570312,
+      "status": "❌ failed",
+      "time_s": 2.0135362159999204,
+      "cells": 0,
+      "error": "2026-04-11T05:15:10.963147Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "file": "sphere.stl",
+      "format": ".stl",
+      "size_mb": 0.061115264892578125,
+      "status": "✅ success",
+      "time_s": 3.624041486000351,
+      "cells": 0,
+      "error": null,
+      "verdict": "unknown"
+    },
+    {
+      "file": "sphere_20k.stl",
+      "format": ".stl",
+      "size_mb": 0.9766426086425781,
+      "status": "✅ success",
+      "time_s": 10.33873432999826,
+      "cells": 0,
+      "error": null,
+      "verdict": "unknown"
+    },
+    {
+      "file": "sphere_watertight.stl",
+      "format": ".stl",
+      "size_mb": 0.061115264892578125,
+      "status": "✅ success",
+      "time_s": 3.1413400239980547,
+      "cells": 0,
+      "error": null,
+      "verdict": "unknown"
+    },
+    {
+      "file": "streamlined.step",
+      "format": ".step",
+      "size_mb": 0.0055561065673828125,
+      "status": "❌ failed",
+      "time_s": 197.53523370499897,
+      "cells": 0,
+      "error": "2026-04-11T05:15:30.578026Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "file": "t_junction.step",
+      "format": ".step",
+      "size_mb": 0.0827484130859375,
+      "status": "⏱ timeout",
+      "time_s": 0.0,
+      "cells": 0,
+      "error": "Timeout after 300s"
+    },
+    {
+      "file": "trimesh_box.stl",
+      "format": ".stl",
+      "size_mb": 0.000652313232421875,
+      "status": "✅ success",
+      "time_s": 16.737905638001394,
+      "cells": 0,
+      "error": null,
+      "verdict": "unknown"
+    },
+    {
+      "file": "trimesh_duct.stl",
+      "format": ".stl",
+      "size_mb": 0.006183624267578125,
+      "status": "✅ success",
+      "time_s": 6.467574189999141,
+      "cells": 0,
+      "error": null,
+      "verdict": "unknown"
+    },
+    {
+      "file": "valve.step",
+      "format": ".step",
+      "size_mb": 0.040955543518066406,
+      "status": "❌ failed",
+      "time_s": 120.13007913900219,
+      "cells": 0,
+      "error": "2026-04-11T05:24:22.525913Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "file": "very_thin_disk_0_01mm.stl",
+      "format": ".stl",
+      "size_mb": 0.006183624267578125,
+      "status": "⏱ timeout",
+      "time_s": 0.0,
+      "cells": 0,
+      "error": "Timeout after 300s"
+    }
+  ]
+}
