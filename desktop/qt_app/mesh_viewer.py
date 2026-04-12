@@ -132,7 +132,7 @@ class MeshViewerWidget(QWidget):
                         opacity=0.8,
                         show_edges=True,
                         edge_color="white",
-                        edge_width=0.5,
+                        line_width=1.0,
                     )
                     self._plotter.view_isometric()
             except Exception as e:  # noqa: BLE001
