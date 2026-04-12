@@ -118,11 +118,13 @@ class ComplexityAnalyzer:
             size_variation = max(0.0, (edge_ratio - 1) / 49 * 60)
 
         # 6. 전체 복잡도 점수 (가중 평균)
+        # surface_quality를 역으로 변환: 품질이 나쁠수록 복잡도가 높음
+        surface_quality_complexity = 100.0 - surface_quality
         overall = (
             feature_density * 0.25 +  # 특징선이 가장 중요
             topology * 0.20 +          # 위상도 중요
             aspect_ratio * 0.20 +      # 종횡비도 중요
-            surface_quality * (-0.20) +  # 품질이 나쁠수록 복잡함 (역부호)
+            surface_quality_complexity * 0.20 +  # 품질이 나쁠수록 복잡함
             size_variation * 0.15      # 셀 크기 변화
         )
         overall = max(0.0, min(100.0, overall))
