@@ -38,6 +38,13 @@ except ImportError:
     _IGL_AVAILABLE = False
     log.debug("igl_unavailable", msg="igl 미설치 — self-intersection detection 비활성화")
 
+try:
+    import seagullmesh
+    _SEAGULLMESH_AVAILABLE = True
+except ImportError:
+    _SEAGULLMESH_AVAILABLE = False
+    log.debug("seagullmesh_unavailable", msg="seagullmesh 미설치 — Alpha Wrap fallback 비활성화")
+
 
 def gate_check(mesh: trimesh.Trimesh) -> bool:
     """Gate 검사: watertight + manifold 여부 확인.
@@ -148,8 +155,20 @@ class SurfaceRepairer:
             actions=actions,
         )
 
+        # L1 수리 후에도 watertight 실패 시 seagullmesh Alpha Wrap 시도
+        if not passed and not repaired.is_watertight and _SEAGULLMESH_AVAILABLE:
+            log.info("l1_repair_gate_failed_trying_alpha_wrap")
+            wrapped = self._apply_alpha_wrap(repaired)
+            if wrapped is not None and gate_check(wrapped):
+                repaired = wrapped
+                passed = True
+                actions.append("seagullmesh.alpha_wrap()")
+                log.info("l1_alpha_wrap_success")
+
         if not actions:
             method = "skipped"
+        elif any("seagullmesh" in a for a in actions):
+            method = "seagullmesh_alpha_wrap"
         elif any("pymeshfix" in a for a in actions):
             method = "pymeshfix"
         else:
@@ -394,3 +413,56 @@ class SurfaceRepairer:
         actions.append("trimesh.fix_normals()")
 
         return mesh, actions
+
+    @staticmethod
+    def _apply_alpha_wrap(mesh: trimesh.Trimesh) -> trimesh.Trimesh | None:
+        """seagullmesh Alpha Wrap으로 watertight 메쉬 강제화.
+
+        CGAL Alpha Wrap을 사용하여 개방 경계 또는 불량 표면을
+        수학적으로 watertight 메쉬로 변환한다.
+
+        Args:
+            mesh: 입력 trimesh.Trimesh 객체.
+
+        Returns:
+            Wrapped trimesh 또는 실패 시 None.
+        """
+        if not _SEAGULLMESH_AVAILABLE:
+            return None
+
+        try:
+            import numpy as np
+
+            log.info("alpha_wrap_start", input_faces=len(mesh.faces))
+
+            # seagullmesh Alpha Wrap (CGAL 기반)
+            wrapped_verts, wrapped_faces = seagullmesh.alpha_wrap(
+                mesh.vertices.astype(np.float32),
+                mesh.faces.astype(np.uint32),
+                relative_alpha=0.02,      # 형상 세부 사항 보존 (0.01~0.05)
+                relative_offset=0.001,     # 내부 offset 비율
+            )
+
+            if wrapped_verts is None or wrapped_faces is None or len(wrapped_faces) == 0:
+                log.warning("alpha_wrap_empty_result")
+                return None
+
+            # 결과 메쉬 생성
+            wrapped = trimesh.Trimesh(
+                vertices=wrapped_verts,
+                faces=wrapped_faces,
+                process=False,
+            )
+
+            log.info(
+                "alpha_wrap_done",
+                input_faces=len(mesh.faces),
+                output_faces=len(wrapped.faces),
+                is_watertight=wrapped.is_watertight,
+            )
+
+            return wrapped if wrapped.is_watertight else None
+
+        except Exception as exc:
+            log.warning("alpha_wrap_failed", error=str(exc))
+            return None

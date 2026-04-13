@@ -11,6 +11,7 @@ extends Control
 # Node references (paths match main.tscn)
 # -----------------------------------------------------------------------
 const _SB := "VBoxContainer/HSplitContainer/Sidebar/SidebarScroll/SidebarContent"
+const AppTheme := preload("res://scripts/app_theme.gd")
 
 @onready var file_button: Button = get_node(_SB + "/FileSection/FileButton")
 @onready var file_info: RichTextLabel = get_node(_SB + "/FileSection/FileInfo")

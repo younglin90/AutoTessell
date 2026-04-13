@@ -170,6 +170,14 @@ class TierSelector:
                       classic_check=is_2d_classic, complexity_check=is_2d_complexity)
             return "tier0_2d_meshpy", "2d_geometry_detected"
 
+        # ── Thin-wall 조기 감지 (극도 얇은 형상)
+        # aspect ratio > 100 또는 극도로 작은 차원 → 2D 메쉬 기술 사용
+        is_thin_wall = self._is_thin_wall(report)
+        if is_thin_wall:
+            log.debug("tier_decision", reason="thin_wall_detected", tier="tier0_2d_meshpy",
+                      note="extreme aspect ratio — 2D 메쉬 기술 권장")
+            return "tier0_2d_meshpy", "thin_wall_detected"
+
         # ── Open boundary 감지 (모든 quality level)
         # Open boundary는 전처리 강화 필요 → TetWild 우선 (L2/L3 후처리 안정성)
         if not is_watertight and not is_cad:
@@ -292,3 +300,34 @@ class TierSelector:
             and surface.num_connected_components == 1
             and features.num_sharp_edges < 100
         )
+
+    @staticmethod
+    def _is_thin_wall(report: GeometryReport) -> bool:
+        """극도 얇은 형상 판별: aspect ratio > 100 또는 한 차원이 매우 작음."""
+        bounds = report.geometry.bounding_box
+        if bounds is None:
+            return False
+
+        dx = bounds.max[0] - bounds.min[0]
+        dy = bounds.max[1] - bounds.min[1]
+        dz = bounds.max[2] - bounds.min[2]
+
+        # aspect ratio 계산
+        dims = sorted([dx, dy, dz])
+        min_dim = dims[0]
+        max_dim = dims[2]
+        aspect_ratio = max_dim / max(min_dim, 1e-10)
+
+        # 극도 얇은 형상 판정: aspect_ratio > 100
+        is_thin_wall = aspect_ratio > 100
+
+        if is_thin_wall:
+            log.debug(
+                "thin_wall_detected",
+                aspect_ratio=aspect_ratio,
+                min_dim=min_dim,
+                max_dim=max_dim,
+                dims=(dx, dy, dz),
+            )
+
+        return is_thin_wall
