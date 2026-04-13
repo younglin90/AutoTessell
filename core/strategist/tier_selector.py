@@ -161,8 +161,13 @@ class TierSelector:
         has_degenerate = report.geometry.surface.has_degenerate_faces
 
         # ── 2D 감지 (모든 quality level)
-        if self._is_2d(report):
-            log.debug("tier_decision", reason="2d_geometry_detected", tier="tier0_2d_meshpy")
+        # ComplexityAnalyzer의 추가 2D 감지 로직과 OR-결합하여 감지 범위 확장
+        from core.strategist.complexity_analyzer import ComplexityAnalyzer
+        is_2d_classic = self._is_2d(report)
+        is_2d_complexity = ComplexityAnalyzer.is_likely_2d_shape(report)
+        if is_2d_classic or is_2d_complexity:
+            log.debug("tier_decision", reason="2d_geometry_detected", tier="tier0_2d_meshpy",
+                      classic_check=is_2d_classic, complexity_check=is_2d_complexity)
             return "tier0_2d_meshpy", "2d_geometry_detected"
 
         # ── Open boundary 감지 (모든 quality level)

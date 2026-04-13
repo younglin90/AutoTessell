@@ -66,3 +66,6 @@ case_fine/
 godot/**/*.import
 godot/**/*.uid
 *.obj
+
+# E2E test runtime artifacts (auto-generated)
+test_cube_case/

@@ -366,6 +366,11 @@ class EvaluationSummary(BaseModel):
     soft_fails: list[FailCriterion] = Field(default_factory=list)
     recommendations: list[Recommendation] = Field(default_factory=list)
     quality_level: str | None = None
+    verdict_reasoning: str = ""
+    checkmesh_note: str = (
+        "mesh_ok/failed_checks는 OpenFOAM checkMesh raw 출력값. "
+        "verdict는 AutoTessell quality_level별 임계값으로 독립 계산됨."
+    )
 
 
 class QualityReport(BaseModel):

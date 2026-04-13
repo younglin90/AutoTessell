@@ -221,6 +221,24 @@ class EvaluationReporter:
         else:
             verdict = Verdict.PASS
 
+        # Generate verdict_reasoning for transparency
+        reasoning_parts = []
+        if hard_fails:
+            criteria = ", ".join(f.criterion for f in hard_fails)
+            reasoning_parts.append(f"Hard FAIL: {criteria}")
+        if len(soft_fails) >= 2:
+            criteria = ", ".join(f.criterion for f in soft_fails)
+            reasoning_parts.append(f"Soft FAIL (2+): {criteria}")
+        elif soft_fails:
+            criteria = ", ".join(f.criterion for f in soft_fails)
+            reasoning_parts.append(f"경고 (soft fail 1): {criteria}")
+        if checkmesh.mesh_ok is False and verdict != Verdict.FAIL:
+            reasoning_parts.append(
+                f"OpenFOAM checkMesh FAIL(failed_checks={checkmesh.failed_checks})이나 "
+                f"{effective_quality_level} 기준 내 허용 범위 → AutoTessell {verdict.value}"
+            )
+        verdict_reasoning = "; ".join(reasoning_parts) if reasoning_parts else "모든 기준 통과"
+
         recommendations = self._generate_recommendations(
             checkmesh=checkmesh,
             metrics=metrics,
@@ -250,6 +268,7 @@ class EvaluationReporter:
             soft_fails=soft_fails,
             recommendations=recommendations,
             quality_level=effective_quality_level,
+            verdict_reasoning=verdict_reasoning,
         )
         return QualityReport(evaluation_summary=summary)
 

@@ -2321,3 +2321,101 @@ class TestOfppIntegration:
 
         result = mod.load_polymesh_with_ofpp(Path("/any/case"))
         assert result is None
+
+    def test_verdict_reasoning_field_exists(self) -> None:
+        """verdict_reasoning 필드가 EvaluationSummary에 존재."""
+        from core.schemas import EvaluationSummary, CheckMeshResult, Verdict, AdditionalMetrics
+
+        # EvaluationSummary의 기본 인스턴스 생성 가능성 검증
+        summary = EvaluationSummary(
+            verdict=Verdict.PASS,
+            iteration=1,
+            tier_evaluated="tier2_tetwild",
+            evaluation_time_seconds=1.0,
+            checkmesh=CheckMeshResult(
+                cells=100,
+                faces=400,
+                points=50,
+                mesh_ok=True,
+                failed_checks=0,
+                max_non_orthogonality=45.0,
+                avg_non_orthogonality=25.0,
+                max_skewness=0.8,
+                max_aspect_ratio=10.0,
+                min_face_area=1e-6,
+                min_cell_volume=1e-8,
+                min_determinant=0.5,
+                negative_volumes=0,
+                severely_non_ortho_faces=0,
+            ),
+            additional_metrics=AdditionalMetrics(),
+        )
+
+        # verdict_reasoning 필드가 존재하고 기본값을 가져야 함
+        assert hasattr(summary, "verdict_reasoning")
+        assert isinstance(summary.verdict_reasoning, str)
+        assert summary.verdict_reasoning == ""  # 기본값 빈 문자열
+
+    def test_checkmesh_note_always_present(self) -> None:
+        """checkmesh_note 필드가 항상 존재하며 설명 포함."""
+        from core.schemas import EvaluationSummary, CheckMeshResult, Verdict, AdditionalMetrics
+
+        summary = EvaluationSummary(
+            verdict=Verdict.PASS,
+            iteration=1,
+            tier_evaluated="tier2_tetwild",
+            evaluation_time_seconds=1.0,
+            checkmesh=CheckMeshResult(
+                cells=100,
+                faces=400,
+                points=50,
+                mesh_ok=True,
+                failed_checks=0,
+                max_non_orthogonality=45.0,
+                avg_non_orthogonality=25.0,
+                max_skewness=0.8,
+                max_aspect_ratio=10.0,
+                min_face_area=1e-6,
+                min_cell_volume=1e-8,
+                min_determinant=0.5,
+                negative_volumes=0,
+                severely_non_ortho_faces=0,
+            ),
+            additional_metrics=AdditionalMetrics(),
+        )
+
+        # checkmesh_note가 항상 존재해야 하고 설명 포함
+        assert summary.checkmesh_note
+        assert "mesh_ok" in summary.checkmesh_note
+        assert "OpenFOAM" in summary.checkmesh_note
+
+    def test_evaluation_summary_with_verdict_reasoning(self) -> None:
+        """EvaluationSummary가 verdict_reasoning과 함께 생성 가능."""
+        from core.schemas import EvaluationSummary, CheckMeshResult, Verdict, AdditionalMetrics
+
+        summary = EvaluationSummary(
+            verdict=Verdict.PASS,
+            iteration=1,
+            tier_evaluated="tier2_tetwild",
+            evaluation_time_seconds=1.0,
+            checkmesh=CheckMeshResult(
+                cells=100,
+                faces=400,
+                points=50,
+                mesh_ok=True,
+                failed_checks=0,
+                max_non_orthogonality=45.0,
+                avg_non_orthogonality=25.0,
+                max_skewness=0.8,
+                max_aspect_ratio=10.0,
+                min_face_area=1e-6,
+                min_cell_volume=1e-8,
+                min_determinant=0.5,
+                negative_volumes=0,
+                severely_non_ortho_faces=0,
+            ),
+            additional_metrics=AdditionalMetrics(),
+            verdict_reasoning="모든 기준 통과",
+        )
+
+        assert summary.verdict_reasoning == "모든 기준 통과"

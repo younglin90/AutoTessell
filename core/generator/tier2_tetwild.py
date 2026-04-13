@@ -157,10 +157,29 @@ class Tier2TetWildGenerator:
 
             import pytetwild
             import trimesh as _trimesh
+            import concurrent.futures as _cf
 
             surf: _trimesh.Trimesh = _trimesh.load(str(preprocessed_path), force="mesh")  # type: ignore[assignment]
             vertices = surf.vertices
             faces = surf.faces
+
+            # TetWild 진입 전 열린 표면 닫기 시도
+            if not surf.is_watertight:
+                logger.info("tetwild_pre_close_open_surface", method="trimesh_fill_holes")
+                surf.fill_holes()
+                if not surf.is_watertight:
+                    try:
+                        import pymeshfix
+                        mf = pymeshfix.MeshFix(surf.vertices, surf.faces)
+                        mf.repair()
+                        surf = _trimesh.Trimesh(vertices=mf.v, faces=mf.f)
+                        logger.info("tetwild_pre_close_pymeshfix_success")
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning("tetwild_pre_close_pymeshfix_failed", error=str(e))
+                if not surf.is_watertight:
+                    logger.warning("tetwild_surface_still_open_proceeding")
+                vertices = surf.vertices
+                faces = surf.faces
 
             tetra_kwargs: dict[str, Any] = {
                 "stop_energy": stop_energy,
@@ -170,7 +189,22 @@ class Tier2TetWildGenerator:
             if edge_length is not None:
                 logger.debug("tetwild_edge_length_not_supported", edge_length=edge_length)
 
-            tet_v, tet_f = pytetwild.tetrahedralize(vertices, faces, **tetra_kwargs)
+            # quality_level별 타임아웃 적용 (E2E 120초 한도 고려)
+            _TW_TIMEOUT_SEC = {"draft": 50, "standard": 100, "fine": 200}
+            timeout_sec = _TW_TIMEOUT_SEC.get(quality_level, 60)
+
+            def _run_tetwild() -> tuple[Any, Any]:
+                return pytetwild.tetrahedralize(vertices, faces, **tetra_kwargs)
+
+            try:
+                with _cf.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(_run_tetwild)
+                    tet_v, tet_f = future.result(timeout=timeout_sec)
+            except _cf.TimeoutError as e:
+                raise RuntimeError(
+                    f"pytetwild timeout after {timeout_sec}s (quality_level={quality_level}) "
+                    "— fallback to next tier"
+                ) from e
 
             # meshio로 .msh 저장 (gmshToFoam 경로에서 사용)
             import meshio as _meshio
