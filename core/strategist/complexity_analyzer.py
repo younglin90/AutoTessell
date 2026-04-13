@@ -347,7 +347,7 @@ class ComplexityAnalyzer:
 
         2D 형상 특성:
         - 한 방향의 bbox 크기가 매우 작음 (< 10% of largest)
-        - 정점 수가 적음 (< 1000)
+        - 정점 수가 적음 (< 5000) — 고해상도 에어포일도 포함
         - edge_length_ratio가 높음 (특징선 밀집)
 
         Args:
@@ -363,12 +363,12 @@ class ComplexityAnalyzer:
         bbox_dims = [bbox.max[i] - bbox.min[i] for i in range(3)]
         bbox_dims_sorted = sorted(bbox_dims)
 
-        # 가장 작은 차원이 전체 크기의 10% 미만이면 2D
+        # 가장 작은 차원이 전체 크기의 10% 이하이면 2D (부동소수점 오차 고려 ≤ 0.105)
         if bbox_dims_sorted[2] > 1e-10:
             aspect_2d = bbox_dims_sorted[0] / bbox_dims_sorted[2]
-            if aspect_2d < 0.1:
-                # 추가 확인: 정점 수
-                if surface.num_vertices < 1000:
+            if aspect_2d <= 0.105:  # 부동소수점 오차를 고려한 임계값
+                # 추가 확인: 정점 수 (확장된 한계값 5000까지 허용)
+                if surface.num_vertices < 5000:
                     log.info(
                         "likely_2d_shape_detected",
                         aspect_2d=f"{aspect_2d:.4f}",
