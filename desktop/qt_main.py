@@ -26,7 +26,11 @@ def main() -> None:  # pragma: no cover
         import pyvista as pv
         pv.OFF_SCREEN = True
         try:
-            pv.start_xvfb(suppress_messages=True)
+            try:
+                pv.start_xvfb(suppress_messages=True)
+            except TypeError:
+                # suppress_messages 파라미터 미지원 시
+                pv.start_xvfb()
         except Exception:
             pass  # Xvfb 이미 실행 또는 사용 불가능
     except Exception:

@@ -98,6 +98,7 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._output_dir: Path | None = None
         self._quality_level: QualityLevel = QualityLevel.DRAFT
         self._worker: object | None = None
+        self._preview_loader: object | None = None
 
         self._mesh_viewer: object | None = None
         self._log_edit: object | None = None
@@ -492,17 +493,37 @@ class AutoTessellWindow:  # type: ignore[misc]
         try:
             from desktop.qt_app.mesh_preview_worker import MeshPreviewWorker
 
+            # 기존 preview loader 정리
+            if hasattr(self, "_preview_loader") and self._preview_loader is not None:
+                try:
+                    self._preview_loader.quit()  # type: ignore[union-attr]
+                    self._preview_loader.wait()  # type: ignore[union-attr]
+                except Exception:
+                    pass
+
             loader = MeshPreviewWorker(self._mesh_viewer, self._input_path)
+
+            # Cleanup 함수: 스레드 완료 후 참조 해제
+            def cleanup() -> None:
+                self._preview_loader = None
+
             loader.finished.connect(  # type: ignore[union-attr]
                 lambda success: (
                     self._append_log(f"[미리보기] 입력 파일 로드 성공: {self._input_path.name}")
                     if success
-                    else self._append_log("[미리보기] 입력 파일 로드 실패")
+                    else self._append_log("[미리보기] 입력 파일 로드 실패"),
+                    cleanup()
                 )
             )
             loader.error.connect(  # type: ignore[union-attr]
-                lambda msg: self._append_log(f"[미리보기] 오류: {msg}")
+                lambda msg: (
+                    self._append_log(f"[미리보기] 오류: {msg}"),
+                    cleanup()
+                )
             )
+
+            # 스레드 참조 저장 (GC 방지)
+            self._preview_loader = loader  # type: ignore[assignment]
             loader.start()  # type: ignore[union-attr]
         except Exception as exc:  # noqa: BLE001
             self._append_log(f"[미리보기] 워커 생성 실패: {exc}")

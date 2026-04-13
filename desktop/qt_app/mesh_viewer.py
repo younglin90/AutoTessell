@@ -10,9 +10,14 @@ try:
     import pyvista as pv
     # 오프스크린 렌더링 자동 초기화
     pv.OFF_SCREEN = True
-    # Xvfb 자동 시작 (무음)
+    # Xvfb 자동 시작
     try:
-        pv.start_xvfb(suppress_messages=True)
+        # suppress_messages 파라미터는 버전에 따라 다를 수 있음
+        try:
+            pv.start_xvfb(suppress_messages=True)
+        except TypeError:
+            # 파라미터 미지원 시 그냥 시작
+            pv.start_xvfb()
     except Exception:
         pass  # Xvfb 이미 실행 중이거나 사용 불가능
     PYVISTA_AVAILABLE = True
