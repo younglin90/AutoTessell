@@ -14,6 +14,9 @@ import tempfile
 import threading
 import gc
 from typing import Optional
+import logging
+
+log = logging.getLogger(__name__)
 
 try:
     import pyvista as pv
@@ -139,31 +142,47 @@ class RenderWorker(QObject):
             )
 
             # 이미지로 렌더링
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                screenshot = plotter.screenshot(tmp.name, transparent_background=False)
-                plotter.close()
+            try:
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                    log.info(f"[PyVista 렌더링 시작] {tmp.name}")
+                    screenshot = plotter.screenshot(tmp.name, transparent_background=False)
+                    log.info(f"[PyVista 렌더링 완료] size={screenshot.shape if screenshot is not None else None}")
 
-                # 메모리 정리
-                del mesh
-                del plotter
-                gc.collect()
+                    # 메모리 정리
+                    try:
+                        plotter.close()
+                    except Exception as e:
+                        log.warning(f"[Plotter 종료 오류] {e}")
 
-                if screenshot is not None:
-                    # 메시 정보 반환
-                    mesh_info = {
-                        "filename": mesh_path.name,
-                        "vertices": num_vertices,
-                        "cells": num_cells,
-                        "scale": round(scale, 4),
-                        "decimated": decimated,
-                    }
-                    self.render_finished.emit(tmp.name, mesh_info)
-                else:
-                    self.render_error.emit("렌더링 실패")
+                    del mesh
+                    del plotter
+                    gc.collect()
+
+                    if screenshot is not None:
+                        # 메시 정보 반환
+                        mesh_info = {
+                            "filename": mesh_path.name,
+                            "vertices": num_vertices,
+                            "cells": num_cells,
+                            "scale": round(scale, 4),
+                            "decimated": decimated,
+                        }
+                        log.info(f"[렌더링 성공] {mesh_path.name} → {tmp.name}")
+                        self.render_finished.emit(tmp.name, mesh_info)
+                    else:
+                        log.error("[PyVista 렌더링] screenshot is None")
+                        self.render_error.emit("렌더링 실패: screenshot is None")
+            except Exception as render_exc:
+                log.error(f"[렌더링 단계 오류] {render_exc}")
+                self.render_error.emit(f"렌더링 오류: {str(render_exc)[:80]}")
+                import traceback
+                traceback.print_exc()
 
         except Exception as e:  # noqa: BLE001
-            self.render_error.emit(str(e)[:100])
-            print(f"[렌더링 워커 오류] {e}")
+            error_msg = f"[RenderWorker 최상위 오류] {str(e)[:100]}"
+            log.error(error_msg)
+            self.render_error.emit(error_msg)
+            print(error_msg)
             import traceback
             traceback.print_exc()
 
@@ -280,19 +299,20 @@ class MeshViewerWidget(QWidget):
                 self._info_label.setText("❌ PyVista 미설치 — pip install pyvista")
             return False
 
-        # 기존 스레드 대기
-        if self._render_thread is not None and isinstance(self._render_thread, QThread):
-            if self._render_thread.isRunning():
-                self._set_placeholder_image("⏳ 렌더링 중...")
-                if self._info_label:
-                    self._info_label.setText("⏳ 기존 렌더링이 진행 중입니다...")
-                return False
-        elif self._render_thread is not None and hasattr(self._render_thread, 'is_alive'):
-            if self._render_thread.is_alive():
-                self._set_placeholder_image("⏳ 렌더링 중...")
-                if self._info_label:
-                    self._info_label.setText("⏳ 기존 렌더링이 진행 중입니다...")
-                return False
+        # 기존 스레드 종료 대기
+        if self._render_thread is not None:
+            try:
+                if isinstance(self._render_thread, QThread):
+                    if self._render_thread.isRunning():
+                        self._render_thread.quit()
+                        self._render_thread.wait(timeout=2000)
+            except Exception:
+                pass
+
+        # 새 렌더링 시작 전 기다림
+        self._set_placeholder_image("⏳ 파일 분석 중...\n(대용량 메시는 시간이 걸릴 수 있습니다)")
+        if self._info_label:
+            self._info_label.setText("⏳ 메시 로딩 중...")
 
         try:
             # 설정 저장
