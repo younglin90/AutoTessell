@@ -32,7 +32,7 @@ _QUALITY_THRESHOLDS: dict[str, dict[str, Any]] = {
     "draft": {
         "hard_non_ortho": 85.0,
         "hard_skewness": 8.0,
-        "hard_hausdorff": 0.10,
+        "hard_hausdorff": 0.10,  # Draft: 표면 충실도 검증 스킵 (_check_hard_fails에서 조건 확인)
         "soft_non_ortho": 80.0,
         "soft_skewness": 6.0,
         "soft_aspect_ratio": 1000.0,
@@ -324,16 +324,18 @@ class EvaluationReporter:
             )
 
         # QualityLevel-aware: Hausdorff relative
-        hausdorff_threshold = thresholds["hard_hausdorff"]
-        if fidelity is not None and fidelity.hausdorff_relative > hausdorff_threshold:
-            fails.append(
-                FailCriterion(
-                    criterion="hausdorff_relative",
-                    value=fidelity.hausdorff_relative,
-                    threshold=hausdorff_threshold,
-                    location_hint="표면 지오메트리 충실도 불량",
+        # Draft는 속도 우선이므로 표면 충실도 검증 스킵
+        if quality_level != "draft":
+            hausdorff_threshold = thresholds["hard_hausdorff"]
+            if fidelity is not None and fidelity.hausdorff_relative > hausdorff_threshold:
+                fails.append(
+                    FailCriterion(
+                        criterion="hausdorff_relative",
+                        value=fidelity.hausdorff_relative,
+                        threshold=hausdorff_threshold,
+                        location_hint="표면 지오메트리 충실도 불량",
+                    )
                 )
-            )
 
         return fails
 
@@ -662,17 +664,31 @@ def render_terminal(report: QualityReport) -> None:
         ),
     ]
 
-    # BL coverage
+    # BL coverage (quality_level에 따라 검증 여부 결정)
     if summary.additional_metrics.boundary_layer is not None:
         bl = summary.additional_metrics.boundary_layer
-        rows.append(
-            _MetricRow(
-                "BL Coverage",
-                f"{bl.bl_coverage_percent:.1f}%",
-                "> 80%",
-                bl.bl_coverage_percent >= 80.0,
+        # draft: BL 검증 스킵 (속도 우선)
+        # standard: > 50% (느슨한 검증)
+        # fine: > 80% (엄격한 검증)
+        if quality_level == "draft":
+            bl_required = False  # draft는 BL 검증 비활성화
+            bl_threshold = 0.0
+        elif quality_level == "fine":
+            bl_required = True
+            bl_threshold = 80.0
+        else:  # standard
+            bl_required = True
+            bl_threshold = 50.0
+
+        if bl_required:
+            rows.append(
+                _MetricRow(
+                    "BL Coverage",
+                    f"{bl.bl_coverage_percent:.1f}%",
+                    f"> {bl_threshold:.0f}%",
+                    bl.bl_coverage_percent >= bl_threshold,
+                )
             )
-        )
 
     # Hausdorff
     if summary.geometry_fidelity is not None:
