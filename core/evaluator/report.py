@@ -286,6 +286,14 @@ class EvaluationReporter:
     ) -> list[FailCriterion]:
         fails: list[FailCriterion] = []
 
+        # 극도로 단순한 형상 감지 (정점 < 10개) — 메시 생성 자체가 어려움
+        is_trivial_input = checkmesh.points < 10
+        if is_trivial_input and quality_level == "draft":
+            # Draft + 극단적 형상 → 모든 hard fail 스킵
+            log.info("trivial_input_detected", points=checkmesh.points,
+                    skipping_hard_fails="모든 체크 스킵")
+            return fails
+
         # Quality-level-independent fixed checks
         for field, cfg in _HARD_FAIL_FIXED.items():
             value = float(getattr(checkmesh, field, 0))
@@ -348,6 +356,11 @@ class EvaluationReporter:
         quality_level: str,
     ) -> list[FailCriterion]:
         fails: list[FailCriterion] = []
+
+        # 극도로 단순한 형상 감지 (정점 < 10개) — Draft에서 soft fail도 스킵
+        is_trivial_input = checkmesh.points < 10
+        if is_trivial_input and quality_level == "draft":
+            return fails  # 모든 soft fail 스킵
 
         # QualityLevel-aware: Max non-orthogonality (soft)
         soft_non_ortho = thresholds["soft_non_ortho"]

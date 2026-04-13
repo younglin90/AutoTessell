@@ -229,9 +229,21 @@ func _on_upload_completed(job_id: String) -> void:
 # -----------------------------------------------------------------------
 func _on_progress_updated(stage: String, progress: float, message: String) -> void:
 	progress_bar.value = progress * 100
-	progress_label.text = message
+	# 진행률 표시: [50%] Analyzer 실행 중...
+	var stage_icon := _get_stage_icon(stage)
+	progress_label.text = "[%.0f%%] %s %s" % [progress * 100, stage_icon, message]
 	status_label.text = "[%s] %s" % [stage, message]
 	_log("[%.0f%%] %s: %s" % [progress * 100, stage, message])
+
+func _get_stage_icon(stage: String) -> String:
+	"""파이프라인 단계별 아이콘 반환."""
+	match stage.to_lower():
+		"analyzer": return "📊"
+		"preprocessor": return "🔧"
+		"strategist": return "🎯"
+		"generator": return "🔨"
+		"evaluator": return "✅"
+		_: return "⏳"
 
 
 func _on_strategy_received(tier: String, quality: String, cell_size: float) -> void:
@@ -240,9 +252,14 @@ func _on_strategy_received(tier: String, quality: String, cell_size: float) -> v
 
 
 func _on_evaluation_received(iteration: int, verdict: String, cells: int, non_ortho: float) -> void:
-	status_label.text = "평가 #%d: %s (cells=%d, non-ortho=%.1f°)" % [iteration, verdict, cells, non_ortho]
+	var verdict_icon := "✅" if "PASS" in verdict else "❌"
+	status_label.text = "[평가 #%d] %s %s | %s cells | %.1f° non-ortho" % [
+		iteration, verdict_icon, verdict, _format_number(cells), non_ortho
+	]
 	var level := "success" if "PASS" in verdict else "error"
-	_log("평가 #%d: %s | cells=%d | non-ortho=%.1f°" % [iteration, verdict, cells, non_ortho], level)
+	_log("평가 #%d: %s | cells=%s | non-ortho=%.1f°" % [
+		iteration, verdict, _format_number(cells), non_ortho
+	], level)
 
 
 func _on_mesh_completed(success: bool, data: Dictionary) -> void:
@@ -262,16 +279,20 @@ func _on_mesh_completed(success: bool, data: Dictionary) -> void:
 		var tier: String = data.get("tier", "")
 		var non_ortho: float = data.get("max_non_ortho", 0.0)
 		var skewness: float = data.get("max_skewness", 0.0)
+		var quality_level: String = data.get("quality_level", "draft")
+		var elapsed: float = data.get("elapsed_seconds", 0.0)
 
 		result_info.text = (
-			"[b][color=green]PASS[/color][/b]\n\n"
+			"[b][color=green]✅ PASS[/color][/b]\n\n"
+			+ "[b]품질:[/b] %s\n" % quality_level.to_upper()
 			+ "[b]Tier:[/b] %s\n" % tier
-			+ "[b]Cells:[/b] %s\n" % _format_number(cells)
+			+ "[b]셀:[/b] %s\n" % _format_number(cells)
 			+ "[b]Non-ortho:[/b] %.1f°\n" % non_ortho
-			+ "[b]Skewness:[/b] %.3f\n" % skewness
+			+ "[b]왜곡도:[/b] %.3f\n" % skewness
+			+ "[b]소요시간:[/b] %.1fs\n" % elapsed
 		)
-		progress_label.text = "완료!"
-		status_label.text = "메쉬 생성 완료: %s" % verdict
+		progress_label.text = "완료! (%ds)" % int(elapsed)
+		status_label.text = "✅ 메쉬 생성 완료: %s (%s, %d cells)" % [verdict, quality_level, cells]
 
 		# 3D 뷰어에 서버 STL 자동 로드
 		_load_mesh_into_viewer(AppState.current_job_id)
