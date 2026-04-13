@@ -21,6 +21,17 @@ def main() -> None:  # pragma: no cover
     """QApplication 을 생성하고 AutoTessellWindow 를 표시한다."""
     import sys
 
+    # PyVista 오프스크린 렌더링 초기화
+    try:
+        import pyvista as pv
+        pv.OFF_SCREEN = True
+        try:
+            pv.start_xvfb(suppress_messages=True)
+        except Exception:
+            pass  # Xvfb 이미 실행 또는 사용 불가능
+    except Exception:
+        pass  # PyVista 미설치
+
     from PySide6.QtCore import QTimer, Qt
     from PySide6.QtWidgets import QApplication
 

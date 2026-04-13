@@ -3,9 +3,17 @@ from __future__ import annotations
 
 from pathlib import Path
 import tempfile
+import os
 
 try:
     import pyvista as pv
+    # 오프스크린 렌더링 자동 초기화
+    pv.OFF_SCREEN = True
+    # Xvfb 자동 시작 (무음)
+    try:
+        pv.start_xvfb(suppress_messages=True)
+    except Exception:
+        pass  # Xvfb 이미 실행 중이거나 사용 불가능
     PYVISTA_AVAILABLE = True
 except ImportError:
     PYVISTA_AVAILABLE = False
@@ -90,41 +98,59 @@ class MeshViewerWidget(QWidget):
             self._current_mesh = mesh
 
             # 오프스크린 렌더링
-            plotter = pv.Plotter(
-                off_screen=True,
-                window_size=(400, 300),
-                theme=pv.themes.DarkTheme()
-            )
-            plotter.background_color = "#1e1e1e"
+            try:
+                plotter = pv.Plotter(
+                    off_screen=True,
+                    window_size=(400, 300),
+                    theme=pv.themes.DarkTheme()
+                )
+                plotter.background_color = "#1e1e1e"
 
-            # 메시 추가
-            plotter.add_mesh(
-                mesh,
-                color="#00aa99",
-                opacity=0.8,
-                show_edges=True,
-                edge_color="white",
-                line_width=1.0,
-            )
-            plotter.view_isometric()
+                # 메시 추가
+                plotter.add_mesh(
+                    mesh,
+                    color="#00aa99",
+                    opacity=0.8,
+                    show_edges=True,
+                    edge_color="white",
+                    line_width=1.0,
+                )
+                plotter.view_isometric()
 
-            # 이미지로 렌더링
-            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                plotter.screenshot(tmp.name)
-                plotter.close()
+                # 이미지로 렌더링
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                    screenshot = plotter.screenshot(tmp.name, transparent_background=False)
+                    plotter.close()
 
-                # QPixmap으로 로드
-                pixmap = QPixmap(tmp.name)
-                if not pixmap.isNull():
-                    self._label.setPixmap(pixmap)
-                    Path(tmp.name).unlink()  # 임시 파일 삭제
-                    return True
+                    # QPixmap으로 로드
+                    if screenshot is not None:
+                        pixmap = QPixmap(tmp.name)
+                        if not pixmap.isNull():
+                            self._label.setPixmap(pixmap)
+                            try:
+                                Path(tmp.name).unlink()  # 임시 파일 삭제
+                            except Exception:
+                                pass
+                            return True
+
+                    # 임시 파일이 없으면 OpenGL 오류 가능성
+                    try:
+                        Path(tmp.name).unlink()
+                    except Exception:
+                        pass
+
+            except Exception as render_error:  # noqa: BLE001
+                self._set_placeholder_image(f"❌ 렌더링 오류:\n{str(render_error)[:40]}")
+                print(f"[렌더링 오류] {render_error}")
+                return False
 
             return False
 
         except Exception as e:  # noqa: BLE001
             self._set_placeholder_image(f"❌ 오류:\n{str(e)[:30]}")
             print(f"[오류] 메시 로드 실패: {e}")
+            import traceback
+            traceback.print_exc()
             return False
 
     def load_polymesh(self, case_dir: str | Path) -> bool:
