@@ -99,7 +99,11 @@ class Tier05NetgenGenerator:
             )
 
             if is_cad:
-                geo = OCCGeometry(str(preprocessed_path))
+                # CAD 파일: sewing + tolerance 수정 시도 (cadquery)
+                cad_path = self._preprocess_cad_geometry(preprocessed_path)
+                geo = OCCGeometry(str(cad_path))
+                if cad_path != preprocessed_path:
+                    logger.info("cad_preprocessed", method="cadquery_clean", src=str(preprocessed_path))
             else:
                 geo = STLGeometry(str(preprocessed_path))
 
@@ -158,3 +162,54 @@ class Tier05NetgenGenerator:
                 time_seconds=elapsed,
                 error_message=f"Tier 0.5 실행 실패: {exc}",
             )
+
+    @staticmethod
+    def _preprocess_cad_geometry(cad_path: Path) -> Path:
+        """CAD 파일 전처리: sewing + tolerance 수정 (cadquery).
+
+        cadquery가 설치된 경우 STEP/IGES를 로드해 .clean()을 적용하고
+        일시 파일로 저장. 실패 시 원본 경로 반환 (passthrough).
+
+        Args:
+            cad_path: 입력 STEP/IGES 파일 경로.
+
+        Returns:
+            전처리된 CAD 파일 경로 (또는 원본 경로).
+        """
+        try:
+            import cadquery as cq
+
+            logger.info("cad_sewing_start", input_path=str(cad_path))
+
+            # STEP/IGES 로드
+            if cad_path.suffix.lower() == ".brep":
+                shape = cq.importers.importBrep(str(cad_path))
+            else:
+                # STEP (.step, .stp) 또는 IGES (.iges, .igs)
+                shape = cq.importers.importStep(str(cad_path))
+
+            # Sewing + 불필요한 엣지 제거
+            shape = shape.clean()
+
+            # 일시 파일로 저장
+            output_path = cad_path.parent / f"{cad_path.stem}_sewed{cad_path.suffix}"
+            cq.exporters.export(shape, str(output_path), "STEP")
+
+            logger.info("cad_sewing_done", output_path=str(output_path))
+            return output_path
+
+        except ImportError:
+            logger.debug(
+                "cadquery_unavailable",
+                msg="cadquery 미설치 — CAD sewing 건너뜀. Netgen이 직접 처리.",
+                input_path=str(cad_path),
+            )
+            return cad_path
+
+        except Exception as exc:
+            logger.warning(
+                "cad_sewing_failed",
+                error=str(exc),
+                fallback="원본 CAD 파일 사용",
+            )
+            return cad_path
