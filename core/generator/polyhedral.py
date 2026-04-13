@@ -6,8 +6,10 @@ OpenFOAM polyDualMesh 또는 자체 듀얼 변환을 사용한다.
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
+from core.schemas import MeshStrategy, TierAttempt
 from core.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -134,3 +136,105 @@ def is_polyhedral_available() -> bool:
         return _find_openfoam_bashrc() is not None
     except Exception:
         return False
+
+
+class PolyhedralGenerator:
+    """Polyhedral 메시 생성기 (Tier).
+
+    Tet/Hex 메시를 다면체(polyhedral) 메시로 변환한다.
+    OpenFOAM polyDualMesh를 사용하여 원본 메시의 듀얼을 생성한다.
+
+    사용 목적:
+    - 셀 수 최소화 (최적화된 계산)
+    - 복합 내부 유동 (cavity 형상 등)
+    - OpenFOAM 네이티브 지원
+    """
+
+    TIER_NAME = "tier_polyhedral"
+
+    def run(
+        self,
+        strategy: MeshStrategy,
+        preprocessed_path: Path,
+        case_dir: Path,
+    ) -> TierAttempt:
+        """Polyhedral 변환을 실행한다.
+
+        주의: 이 Tier는 기존 tet/hex 메시를 입력으로 받아 변환한다.
+        따라서 다른 Tier 이후에만 사용 가능하다.
+
+        Args:
+            strategy: 메쉬 전략.
+            preprocessed_path: 전처리된 STL 파일 경로 (사용되지 않음).
+            case_dir: OpenFOAM 케이스 디렉터리 경로.
+
+        Returns:
+            실행 결과를 담은 TierAttempt.
+        """
+        t_start = time.monotonic()
+        log.info("tier_polyhedral_start", case_dir=str(case_dir))
+
+        try:
+            # OpenFOAM polyDualMesh 사용 가능한지 확인
+            if not is_polyhedral_available():
+                elapsed = time.monotonic() - t_start
+                log.warning(
+                    "tier_polyhedral_openfoam_unavailable",
+                    hint="OpenFOAM 미설치 또는 설정 오류",
+                )
+                return TierAttempt(
+                    tier=self.TIER_NAME,
+                    success=False,
+                    reason="openfoam_unavailable",
+                    elapsed=elapsed,
+                )
+
+            # 기존 polyMesh가 있는지 확인
+            poly_dir = case_dir / "constant" / "polyMesh"
+            if not poly_dir.exists():
+                elapsed = time.monotonic() - t_start
+                log.warning(
+                    "tier_polyhedral_no_existing_mesh",
+                    case_dir=str(case_dir),
+                )
+                return TierAttempt(
+                    tier=self.TIER_NAME,
+                    success=False,
+                    reason="no_existing_mesh",
+                    elapsed=elapsed,
+                )
+
+            # Polyhedral 변환 수행
+            success = convert_to_polyhedral(
+                case_dir,
+                feature_angle=strategy.tier_specific_params.get("feature_angle", 5.0),
+                concave_multi_cells=strategy.tier_specific_params.get("concave_multi_cells", True),
+            )
+
+            elapsed = time.monotonic() - t_start
+            if success:
+                log.info("tier_polyhedral_success", elapsed=elapsed)
+                return TierAttempt(
+                    tier=self.TIER_NAME,
+                    success=True,
+                    reason="polyhedral_conversion_success",
+                    elapsed=elapsed,
+                )
+            else:
+                log.warning("tier_polyhedral_conversion_failed", elapsed=elapsed)
+                return TierAttempt(
+                    tier=self.TIER_NAME,
+                    success=False,
+                    reason="polyhedral_conversion_failed",
+                    elapsed=elapsed,
+                )
+
+        except Exception as exc:  # noqa: BLE001
+            elapsed = time.monotonic() - t_start
+            log.error("tier_polyhedral_exception", error=str(exc), elapsed=elapsed)
+            return TierAttempt(
+                tier=self.TIER_NAME,
+                success=False,
+                reason=f"exception: {str(exc)[:50]}",
+                elapsed=elapsed,
+            )

@@ -12,6 +12,7 @@ _TIER_ORDER = [
     "tier0_2d_meshpy",          # 2D 감지 시 먼저 시도
     "tier1_snappy",             # 외부유동 + 경계층
     "tier_hex_classy_blocks",   # 구조화 Hex (단순 형상)
+    "tier_polyhedral",          # 다면체 메시 (셀 수 최소화)
     "tier15_cfmesh",            # 내부유동
     "tier05_netgen",            # CAD/일반
     "tier0_core",               # 단순 형상
@@ -25,6 +26,7 @@ _HINT_MAP: dict[str, str] = {
     "auto": "auto",
     "2d": "tier0_2d_meshpy",
     "hex": "tier_hex_classy_blocks",
+    "polyhedral": "tier_polyhedral",
     "core": "tier0_core",
     "netgen": "tier05_netgen",
     "snappy": "tier1_snappy",
@@ -39,6 +41,7 @@ _HINT_MAP: dict[str, str] = {
     "tier15_cfmesh": "tier15_cfmesh",
     "tier2_tetwild": "tier2_tetwild",
     "tier_hex_classy_blocks": "tier_hex_classy_blocks",
+    "tier_polyhedral": "tier_polyhedral",
     "tier_jigsaw_fallback": "tier_jigsaw_fallback",
 }
 

@@ -17,6 +17,7 @@ from core.generator.tier_hex_classy_blocks import TierHexClassyBlocksGenerator
 from core.generator.tier_jigsaw import TierJigsawGenerator
 from core.generator.tier_jigsaw_fallback import TierJigsawFallbackGenerator
 from core.generator.tier_meshpy import TierMeshPyGenerator
+from core.generator.polyhedral import PolyhedralGenerator
 from core.schemas import ExecutionSummary, GeneratorLog, MeshStrategy, TierAttempt
 from core.utils.logging import get_logger
 from core.utils.openfoam_utils import get_openfoam_label_size
@@ -33,6 +34,7 @@ _TIER_REGISTRY: dict[str, type] = {
     "tier2_tetwild": Tier2TetWildGenerator,
     "tier_meshpy": TierMeshPyGenerator,
     "tier_hex_classy_blocks": TierHexClassyBlocksGenerator,
+    "tier_polyhedral": PolyhedralGenerator,
     "tier_classy_blocks": TierClassyBlocksGenerator,
     "tier_jigsaw": TierJigsawGenerator,
     "tier_jigsaw_fallback": TierJigsawFallbackGenerator,
@@ -42,6 +44,7 @@ _TIER_REGISTRY: dict[str, type] = {
 _TIER_ALIASES: dict[str, str] = {
     "2d": "tier0_2d_meshpy",
     "hex": "tier_hex_classy_blocks",
+    "polyhedral": "tier_polyhedral",
     "core": "tier0_core",
     "netgen": "tier05_netgen",
     "snappy": "tier1_snappy",
@@ -60,6 +63,7 @@ _TIER_ALIASES: dict[str, str] = {
     "tier2_tetwild": "tier2_tetwild",
     "tier_meshpy": "tier_meshpy",
     "tier_hex_classy_blocks": "tier_hex_classy_blocks",
+    "tier_polyhedral": "tier_polyhedral",
     "tier_classy_blocks": "tier_classy_blocks",
     "tier_jigsaw": "tier_jigsaw",
     "tier_jigsaw_fallback": "tier_jigsaw_fallback",

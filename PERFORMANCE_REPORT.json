@@ -1,18 +1,18 @@
 {
   "metadata": {
-    "suite_id": "9d3c5152-ac73-4137-bfb9-7cc76897da60",
-    "timestamp": "2026-04-13T11:39:11Z",
-    "git_sha": "9ab712898ae0da63ca24e17b3219abdc54b035ce",
+    "suite_id": "a2fdf4e3-19ba-4f79-a177-d22eb98bdd78",
+    "timestamp": "2026-04-13T12:48:30Z",
+    "git_sha": "5a14deffd18b75a2a4e888ddbc817ed106888f76",
     "git_branch": "master",
-    "git_dirty": true,
+    "git_dirty": false,
     "quality_level": "draft",
     "timeout_seconds": 600
   },
-  "timestamp": "2026-04-13 20:49:09",
+  "timestamp": "2026-04-13 21:56:24",
   "total_cases": 26,
   "summary": {
-    "successful": 24,
-    "failed": 2,
+    "successful": 23,
+    "failed": 3,
     "timeout": 0,
     "error": 0
   },
@@ -21,7 +21,7 @@
       "test_case": "broken_sphere.stl",
       "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 52.968083337997086,
+      "elapsed_seconds": 47.26978049299214,
       "cells": 0,
       "faces": 0,
       "points": 0,
@@ -32,78 +32,17 @@
           "verdict": "PASS",
           "iteration": 1,
           "tier_evaluated": "tier2_tetwild",
-          "evaluation_time_seconds": 1.4322083400038537,
+          "evaluation_time_seconds": 1.5259346539969556,
           "checkmesh": {
-            "cells": 9655,
-            "faces": 20463,
-            "points": 2292,
-            "max_non_orthogonality": 56.239,
-            "avg_non_orthogonality": 16.1365,
-            "max_skewness": 0.814314,
-            "max_aspect_ratio": 5.2756,
-            "min_face_area": 0.000367803,
-            "min_cell_volume": 8.17073e-06,
-            "min_determinant": 1.0,
-            "negative_volumes": 0,
-            "severely_non_ortho_faces": 0,
-            "failed_checks": 1,
-            "mesh_ok": false
-          },
-          "additional_metrics": {
-            "cell_volume_stats": {
-              "min": 8.17073192414066e-06,
-              "max": 0.0014187885807898336,
-              "mean": 0.00042709149480861866,
-              "std": 0.0002940125417866733,
-              "ratio_max_min": 173.64277692160996
-            },
-            "boundary_layer": {
-              "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.07123969970765898,
-              "min_first_layer_height": 0.020141276303969953,
-              "max_first_layer_height": 0.11236711436012968
-            }
-          },
-          "geometry_fidelity": {
-            "hausdorff_distance": 0.06654648987877089,
-            "hausdorff_relative": 0.019210316922566542,
-            "surface_area_deviation_percent": 0.15078755230348845
-          },
-          "hard_fails": [],
-          "soft_fails": [],
-          "recommendations": [],
-          "quality_level": "draft",
-          "verdict_reasoning": "OpenFOAM checkMesh FAIL(failed_checks=1)\uc774\ub098 draft \uae30\uc900 \ub0b4 \ud5c8\uc6a9 \ubc94\uc704 \u2192 AutoTessell PASS",
-          "checkmesh_note": "mesh_ok/failed_checks\ub294 OpenFOAM checkMesh raw \ucd9c\ub825\uac12. verdict\ub294 AutoTessell quality_level\ubcc4 \uc784\uacc4\uac12\uc73c\ub85c \ub3c5\ub9bd \uacc4\uc0b0\ub428."
-        }
-      }
-    },
-    {
-      "test_case": "coarse_to_fine_gradation_two_spheres.stl",
-      "quality": "draft",
-      "status": "success",
-      "elapsed_seconds": 6.460643791011535,
-      "cells": 0,
-      "faces": 0,
-      "points": 0,
-      "mesh_ok": true,
-      "error": null,
-      "quality_report": {
-        "evaluation_summary": {
-          "verdict": "PASS",
-          "iteration": 1,
-          "tier_evaluated": "tier2_tetwild",
-          "evaluation_time_seconds": 1.5281592149985954,
-          "checkmesh": {
-            "cells": 12286,
-            "faces": 27132,
-            "points": 3547,
-            "max_non_orthogonality": 50.6661,
-            "avg_non_orthogonality": 18.1044,
-            "max_skewness": 0.876931,
-            "max_aspect_ratio": 4.41739,
-            "min_face_area": 0.000356863,
-            "min_cell_volume": 3.68336e-06,
+            "cells": 13073,
+            "faces": 28355,
+            "points": 3457,
+            "max_non_orthogonality": 52.5671,
+            "avg_non_orthogonality": 17.0779,
+            "max_skewness": 0.77893,
+            "max_aspect_ratio": 4.5399,
+            "min_face_area": 1.06587e-06,
+            "min_cell_volume": 5.70645e-10,
             "min_determinant": 1.0,
             "negative_volumes": 0,
             "severely_non_ortho_faces": 0,
@@ -112,23 +51,84 @@
           },
           "additional_metrics": {
             "cell_volume_stats": {
-              "min": 3.683374474181738e-06,
-              "max": 0.0002552330564393945,
-              "mean": 4.2492190482111494e-05,
-              "std": 4.587895200140479e-05,
-              "ratio_max_min": 69.29326850376638
+              "min": 5.706441617808763e-10,
+              "max": 4.262359962069363e-08,
+              "mean": 9.141863071660166e-09,
+              "std": 8.230769798568925e-09,
+              "ratio_max_min": 74.69383282161891
             },
             "boundary_layer": {
               "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.03085999502924686,
-              "min_first_layer_height": 0.015443602849624925,
-              "max_first_layer_height": 0.06343256995295796
+              "avg_first_layer_height": 0.001919131066122337,
+              "min_first_layer_height": 0.0008294466538599453,
+              "max_first_layer_height": 0.003493145759080681
             }
           },
           "geometry_fidelity": {
-            "hausdorff_distance": 0.029868720344323127,
-            "hausdorff_relative": 0.00378570648286628,
-            "surface_area_deviation_percent": 0.04997631765266323
+            "hausdorff_distance": 0.0019267582499048845,
+            "hausdorff_relative": 0.0005562071971229587,
+            "surface_area_deviation_percent": 0.15391715032775377
+          },
+          "hard_fails": [],
+          "soft_fails": [],
+          "recommendations": [],
+          "quality_level": "draft",
+          "verdict_reasoning": "\ubaa8\ub4e0 \uae30\uc900 \ud1b5\uacfc",
+          "checkmesh_note": "mesh_ok/failed_checks\ub294 OpenFOAM checkMesh raw \ucd9c\ub825\uac12. verdict\ub294 AutoTessell quality_level\ubcc4 \uc784\uacc4\uac12\uc73c\ub85c \ub3c5\ub9bd \uacc4\uc0b0\ub428."
+        }
+      }
+    },
+    {
+      "test_case": "coarse_to_fine_gradation_two_spheres.stl",
+      "quality": "draft",
+      "status": "success",
+      "elapsed_seconds": 5.579127582008368,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": true,
+      "error": null,
+      "quality_report": {
+        "evaluation_summary": {
+          "verdict": "PASS",
+          "iteration": 1,
+          "tier_evaluated": "tier2_tetwild",
+          "evaluation_time_seconds": 1.3780849839968141,
+          "checkmesh": {
+            "cells": 12363,
+            "faces": 27286,
+            "points": 3559,
+            "max_non_orthogonality": 49.3052,
+            "avg_non_orthogonality": 18.0983,
+            "max_skewness": 0.870506,
+            "max_aspect_ratio": 4.49628,
+            "min_face_area": 0.000355976,
+            "min_cell_volume": 3.99582e-06,
+            "min_determinant": 1.0,
+            "negative_volumes": 0,
+            "severely_non_ortho_faces": 0,
+            "failed_checks": 0,
+            "mesh_ok": true
+          },
+          "additional_metrics": {
+            "cell_volume_stats": {
+              "min": 3.995839308718875e-06,
+              "max": 0.00021857072096825815,
+              "mean": 4.222717456031535e-05,
+              "std": 4.563940242278777e-05,
+              "ratio_max_min": 54.69957725560669
+            },
+            "boundary_layer": {
+              "bl_coverage_percent": 0.0,
+              "avg_first_layer_height": 0.030812898289095468,
+              "min_first_layer_height": 0.01586850470547726,
+              "max_first_layer_height": 0.06023709161138592
+            }
+          },
+          "geometry_fidelity": {
+            "hausdorff_distance": 0.032773029725230975,
+            "hausdorff_relative": 0.004153812740007688,
+            "surface_area_deviation_percent": 0.05056545648974099
           },
           "hard_fails": [],
           "soft_fails": [],
@@ -143,7 +143,7 @@
       "test_case": "cylinder.stl",
       "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 5.304985843002214,
+      "elapsed_seconds": 4.671099138999125,
       "cells": 0,
       "faces": 0,
       "points": 0,
@@ -154,17 +154,17 @@
           "verdict": "PASS",
           "iteration": 1,
           "tier_evaluated": "tier2_tetwild",
-          "evaluation_time_seconds": 1.3402911730081541,
+          "evaluation_time_seconds": 1.2300275239977054,
           "checkmesh": {
-            "cells": 7449,
-            "faces": 15579,
-            "points": 1635,
-            "max_non_orthogonality": 56.2519,
-            "avg_non_orthogonality": 15.7355,
-            "max_skewness": 0.759413,
-            "max_aspect_ratio": 5.88735,
-            "min_face_area": 0.000602389,
-            "min_cell_volume": 1.02355e-05,
+            "cells": 7205,
+            "faces": 15083,
+            "points": 1591,
+            "max_non_orthogonality": 55.5229,
+            "avg_non_orthogonality": 15.3154,
+            "max_skewness": 0.769835,
+            "max_aspect_ratio": 5.77205,
+            "min_face_area": 0.000694447,
+            "min_cell_volume": 1.08493e-05,
             "min_determinant": 1.0,
             "negative_volumes": 0,
             "severely_non_ortho_faces": 0,
@@ -173,23 +173,23 @@
           },
           "additional_metrics": {
             "cell_volume_stats": {
-              "min": 1.0235533890240764e-05,
-              "max": 0.00027810051353724656,
-              "mean": 0.00010474556286136468,
-              "std": 4.014558741863989e-05,
-              "ratio_max_min": 27.170103339934812
+              "min": 1.0849320186497181e-05,
+              "max": 0.00031415892909623174,
+              "mean": 0.0001082858845840582,
+              "std": 3.960388441001099e-05,
+              "ratio_max_min": 28.956554299800906
             },
             "boundary_layer": {
               "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.04620009957471081,
-              "min_first_layer_height": 0.021712183471854336,
-              "max_first_layer_height": 0.06527305359503123
+              "avg_first_layer_height": 0.046793242219731704,
+              "min_first_layer_height": 0.022137785516974234,
+              "max_first_layer_height": 0.06798030925662411
             }
           },
           "geometry_fidelity": {
-            "hausdorff_distance": 0.03632285117939356,
-            "hausdorff_relative": 0.02097100790615759,
-            "surface_area_deviation_percent": 0.009955942772456303
+            "hausdorff_distance": 0.03606899899523606,
+            "hausdorff_relative": 0.020824446279299882,
+            "surface_area_deviation_percent": 0.009003239322923405
           },
           "hard_fails": [],
           "soft_fails": [],
@@ -204,7 +204,7 @@
       "test_case": "degenerate_faces_sliver_triangles.stl",
       "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 6.433020661992487,
+      "elapsed_seconds": 5.64016610699764,
       "cells": 0,
       "faces": 0,
       "points": 0,
@@ -215,17 +215,17 @@
           "verdict": "PASS",
           "iteration": 1,
           "tier_evaluated": "tier2_tetwild",
-          "evaluation_time_seconds": 1.3679520580044482,
+          "evaluation_time_seconds": 1.3123106150014792,
           "checkmesh": {
-            "cells": 8006,
-            "faces": 16804,
-            "points": 1787,
-            "max_non_orthogonality": 62.3429,
-            "avg_non_orthogonality": 15.0614,
-            "max_skewness": 0.950904,
-            "max_aspect_ratio": 5.6901,
-            "min_face_area": 3.14847e-05,
-            "min_cell_volume": 1.62802e-07,
+            "cells": 8034,
+            "faces": 16870,
+            "points": 1795,
+            "max_non_orthogonality": 59.1476,
+            "avg_non_orthogonality": 14.7733,
+            "max_skewness": 0.708486,
+            "max_aspect_ratio": 5.38259,
+            "min_face_area": 2.97636e-05,
+            "min_cell_volume": 1.27678e-07,
             "min_determinant": 1.0,
             "negative_volumes": 0,
             "severely_non_ortho_faces": 0,
@@ -234,23 +234,23 @@
           },
           "additional_metrics": {
             "cell_volume_stats": {
-              "min": 1.6280183408744256e-07,
-              "max": 0.0013814541614009912,
-              "mean": 0.0004902364961312108,
-              "std": 0.00026478985259142945,
-              "ratio_max_min": 8485.49507531345
+              "min": 1.2767764637808607e-07,
+              "max": 0.0014377664098269311,
+              "mean": 0.0004885461923214413,
+              "std": 0.00028435397783714605,
+              "ratio_max_min": 11260.90941220312
             },
             "boundary_layer": {
               "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.07502596285566192,
-              "min_first_layer_height": 0.005460340987880059,
-              "max_first_layer_height": 0.11137271999560856
+              "avg_first_layer_height": 0.07433734079862711,
+              "min_first_layer_height": 0.005035450016965016,
+              "max_first_layer_height": 0.11286590745145535
             }
           },
           "geometry_fidelity": {
-            "hausdorff_distance": 0.06897938388580088,
-            "hausdorff_relative": 0.019912632927500836,
-            "surface_area_deviation_percent": 0.06338285800962301
+            "hausdorff_distance": 0.06401750052050685,
+            "hausdorff_relative": 0.01848026057918082,
+            "surface_area_deviation_percent": 0.05662012675456247
           },
           "hard_fails": [],
           "soft_fails": [],
@@ -265,7 +265,7 @@
       "test_case": "external_flow_isolated_box.stl",
       "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 5.167435252005816,
+      "elapsed_seconds": 4.612342445005197,
       "cells": 0,
       "faces": 0,
       "points": 0,
@@ -276,17 +276,17 @@
           "verdict": "PASS",
           "iteration": 1,
           "tier_evaluated": "tier2_tetwild",
-          "evaluation_time_seconds": 1.4262761660065735,
+          "evaluation_time_seconds": 1.2892219990026206,
           "checkmesh": {
-            "cells": 9586,
-            "faces": 20137,
-            "points": 2146,
-            "max_non_orthogonality": 57.5563,
-            "avg_non_orthogonality": 14.1021,
-            "max_skewness": 0.694789,
-            "max_aspect_ratio": 4.42335,
-            "min_face_area": 0.00061659,
-            "min_cell_volume": 9.94345e-06,
+            "cells": 9660,
+            "faces": 20265,
+            "points": 2149,
+            "max_non_orthogonality": 58.2763,
+            "avg_non_orthogonality": 14.3455,
+            "max_skewness": 0.605355,
+            "max_aspect_ratio": 4.83514,
+            "min_face_area": 0.000560236,
+            "min_cell_volume": 9.50933e-06,
             "min_determinant": 1.0,
             "negative_volumes": 0,
             "severely_non_ortho_faces": 0,
@@ -295,23 +295,23 @@
           },
           "additional_metrics": {
             "cell_volume_stats": {
-              "min": 9.943449943606625e-06,
-              "max": 0.0002368888773935508,
-              "mean": 0.00010431749549767713,
-              "std": 3.8855607711965345e-05,
-              "ratio_max_min": 23.823610390462527
+              "min": 9.5093310586202e-06,
+              "max": 0.0002955573939030375,
+              "mean": 0.00010351933449494733,
+              "std": 4.0260668282582536e-05,
+              "ratio_max_min": 31.080776563680054
             },
             "boundary_layer": {
               "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.046208237435083184,
-              "min_first_layer_height": 0.021503658972436647,
-              "max_first_layer_height": 0.0618749541246298
+              "avg_first_layer_height": 0.04601854963740245,
+              "min_first_layer_height": 0.021186049813311934,
+              "max_first_layer_height": 0.06661120285645508
             }
           },
           "geometry_fidelity": {
-            "hausdorff_distance": 0.042514225022346655,
-            "hausdorff_relative": 0.024545599261040166,
-            "surface_area_deviation_percent": 0.005183023278461837
+            "hausdorff_distance": 0.042760488357528284,
+            "hausdorff_relative": 0.024687779463898815,
+            "surface_area_deviation_percent": 0.00208248871695164
           },
           "hard_fails": [],
           "soft_fails": [],
@@ -326,7 +326,7 @@
       "test_case": "extreme_aspect_ratio_needle.stl",
       "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 19.531595783002558,
+      "elapsed_seconds": 17.63075373499305,
       "cells": 0,
       "faces": 0,
       "points": 0,
@@ -337,7 +337,7 @@
           "verdict": "PASS_WITH_WARNINGS",
           "iteration": 1,
           "tier_evaluated": "tier1_snappy",
-          "evaluation_time_seconds": 6.6122083960071905,
+          "evaluation_time_seconds": 6.057508983998559,
           "checkmesh": {
             "cells": 89844,
             "faces": 275979,
@@ -359,7 +359,7 @@
               "min": 0.22413272322771743,
               "max": 1.7934508938607083,
               "mean": 1.782200468933851,
-              "std": 0.13030060677928826,
+              "std": 0.13030060677928823,
               "ratio_max_min": 8.001736060818631
             },
             "boundary_layer": {
@@ -370,15 +370,15 @@
             }
           },
           "geometry_fidelity": {
-            "hausdorff_distance": 57.39559675985764,
-            "hausdorff_relative": 5.7395367178858345,
-            "surface_area_deviation_percent": 3003657.142552523
+            "hausdorff_distance": 57.18220608515053,
+            "hausdorff_relative": 5.718197735770877,
+            "surface_area_deviation_percent": 3003657.142552524
           },
           "hard_fails": [],
           "soft_fails": [
             {
               "criterion": "surface_area_deviation_percent",
-              "value": 3003657.142552523,
+              "value": 3003657.142552524,
               "threshold": 20.0,
               "location_hint": "\ud45c\uba74\uc801 \ud3b8\ucc28 \uacfc\ub2e4"
             }
@@ -416,7 +416,7 @@
       "test_case": "five_disconnected_spheres.stl",
       "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 48.78276221899432,
+      "elapsed_seconds": 45.9370081829984,
       "cells": 0,
       "faces": 0,
       "points": 0,
@@ -427,17 +427,17 @@
           "verdict": "PASS",
           "iteration": 1,
           "tier_evaluated": "tier1_snappy",
-          "evaluation_time_seconds": 16.933966583004803,
+          "evaluation_time_seconds": 16.087901734004845,
           "checkmesh": {
             "cells": 291668,
             "faces": 889200,
             "points": 306088,
-            "max_non_orthogonality": 27.3476,
-            "avg_non_orthogonality": 0.569612,
-            "max_skewness": 0.501323,
-            "max_aspect_ratio": 1.28711,
-            "min_face_area": 0.0317471,
-            "min_cell_volume": 0.0167628,
+            "max_non_orthogonality": 27.3576,
+            "avg_non_orthogonality": 0.569618,
+            "max_skewness": 0.50216,
+            "max_aspect_ratio": 1.28712,
+            "min_face_area": 0.0316596,
+            "min_cell_volume": 0.0167396,
             "min_determinant": 1.0,
             "negative_volumes": 0,
             "severely_non_ortho_faces": 0,
@@ -446,23 +446,23 @@
           },
           "additional_metrics": {
             "cell_volume_stats": {
-              "min": 0.01641544419653135,
-              "max": 0.15027412719394506,
-              "mean": 0.14846510230519314,
-              "std": 0.004840345269225143,
-              "ratio_max_min": 9.154435627498803
+              "min": 0.016389615025107752,
+              "max": 0.15027437259355864,
+              "mean": 0.14846510221795742,
+              "std": 0.004840354321384056,
+              "ratio_max_min": 9.168877509529585
             },
             "boundary_layer": {
               "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.5293590328924064,
-              "min_first_layer_height": 0.2541465467414397,
-              "max_first_layer_height": 0.5316527582999372
+              "avg_first_layer_height": 0.5293590314932246,
+              "min_first_layer_height": 0.2540131796388692,
+              "max_first_layer_height": 0.5316530476984137
             }
           },
           "geometry_fidelity": {
-            "hausdorff_distance": 0.05354928735768521,
-            "hausdorff_relative": 0.008047294146473614,
-            "surface_area_deviation_percent": 12.43485610895296
+            "hausdorff_distance": 0.05361864882763454,
+            "hausdorff_relative": 0.008057717668030227,
+            "surface_area_deviation_percent": 12.4402993954645
           },
           "hard_fails": [],
           "soft_fails": [],
@@ -477,7 +477,7 @@
       "test_case": "hemisphere_open.stl",
       "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 137.01532976199815,
+      "elapsed_seconds": 43.915669676993275,
       "cells": 0,
       "faces": 0,
       "points": 0,
@@ -487,18 +487,18 @@
         "evaluation_summary": {
           "verdict": "PASS",
           "iteration": 1,
-          "tier_evaluated": "tier1_snappy",
-          "evaluation_time_seconds": 23.636623708996922,
+          "tier_evaluated": "tier2_tetwild",
+          "evaluation_time_seconds": 1.2745380859996658,
           "checkmesh": {
-            "cells": 394673,
-            "faces": 1202423,
-            "points": 413521,
-            "max_non_orthogonality": 33.3887,
-            "avg_non_orthogonality": 1.53417,
-            "max_skewness": 0.78161,
-            "max_aspect_ratio": 2.95183,
-            "min_face_area": 0.00288126,
-            "min_cell_volume": 0.000127759,
+            "cells": 8704,
+            "faces": 18975,
+            "points": 2334,
+            "max_non_orthogonality": 57.8611,
+            "avg_non_orthogonality": 20.5051,
+            "max_skewness": 0.803711,
+            "max_aspect_ratio": 7.1507,
+            "min_face_area": 5.76015e-08,
+            "min_cell_volume": 8.21156e-12,
             "min_determinant": 1.0,
             "negative_volumes": 0,
             "severely_non_ortho_faces": 0,
@@ -507,23 +507,23 @@
           },
           "additional_metrics": {
             "cell_volume_stats": {
-              "min": 0.0001573636909096204,
-              "max": 0.004250275639620199,
-              "mean": 0.004099513081213686,
-              "std": 0.000489183080581784,
-              "ratio_max_min": 27.00925235708461
+              "min": 8.210834473240299e-12,
+              "max": 3.1096428563098554e-09,
+              "mean": 5.886645526740374e-10,
+              "std": 5.538930960132995e-10,
+              "ratio_max_min": 378.7243387312709
             },
             "boundary_layer": {
               "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.15942779365590004,
-              "min_first_layer_height": 0.05398853104734285,
-              "max_first_layer_height": 0.1619840918131383
+              "avg_first_layer_height": 0.0007426910954023716,
+              "min_first_layer_height": 0.0002017417415926384,
+              "max_first_layer_height": 0.0014596100253734042
             }
           },
           "geometry_fidelity": {
-            "hausdorff_distance": 0.06005214347113182,
-            "hausdorff_relative": 0.02001738115704394,
-            "surface_area_deviation_percent": 1.1978964772632388
+            "hausdorff_distance": 0.0008154158091583689,
+            "hausdorff_relative": 0.0002718052697194563,
+            "surface_area_deviation_percent": 0.1660349350207212
           },
           "hard_fails": [],
           "soft_fails": [],
@@ -538,7 +538,7 @@
       "test_case": "hemisphere_open_partial.stl",
       "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 35.99063150199072,
+      "elapsed_seconds": 38.715445143010584,
       "cells": 0,
       "faces": 0,
       "points": 0,
@@ -549,48 +549,48 @@
           "verdict": "PASS",
           "iteration": 1,
           "tier_evaluated": "tier2_tetwild",
-          "evaluation_time_seconds": 1.2979657530086115,
+          "evaluation_time_seconds": 1.2917722269921796,
           "checkmesh": {
-            "cells": 4526,
-            "faces": 9557,
-            "points": 1049,
-            "max_non_orthogonality": 63.8911,
-            "avg_non_orthogonality": 17.4885,
-            "max_skewness": 0.778496,
-            "max_aspect_ratio": 5.45784,
-            "min_face_area": 0.0016435,
-            "min_cell_volume": 5.15798e-05,
+            "cells": 8721,
+            "faces": 18972,
+            "points": 2320,
+            "max_non_orthogonality": 62.3066,
+            "avg_non_orthogonality": 20.1692,
+            "max_skewness": 0.657965,
+            "max_aspect_ratio": 5.40423,
+            "min_face_area": 1.90565e-08,
+            "min_cell_volume": 1.18736e-12,
             "min_determinant": 1.0,
             "negative_volumes": 0,
             "severely_non_ortho_faces": 0,
-            "failed_checks": 1,
-            "mesh_ok": false
+            "failed_checks": 0,
+            "mesh_ok": true
           },
           "additional_metrics": {
             "cell_volume_stats": {
-              "min": 5.157980249909107e-05,
-              "max": 0.00115704515938208,
-              "mean": 0.00043992981230181504,
-              "std": 0.00020175614571092993,
-              "ratio_max_min": 22.432136288278134
+              "min": 1.1873737174595677e-12,
+              "max": 2.560342657356109e-09,
+              "mean": 4.81844122201381e-10,
+              "std": 4.952581445854191e-10,
+              "ratio_max_min": 2156.307335852154
             },
             "boundary_layer": {
               "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.07421766386019031,
-              "min_first_layer_height": 0.03722430159974621,
-              "max_first_layer_height": 0.10498246598770583
+              "avg_first_layer_height": 0.0006746907419260737,
+              "min_first_layer_height": 0.0001058918357149651,
+              "max_first_layer_height": 0.001368041789601382
             }
           },
           "geometry_fidelity": {
-            "hausdorff_distance": 0.05153817507436393,
-            "hausdorff_relative": 0.017179391691454642,
-            "surface_area_deviation_percent": 0.01641552862253038
+            "hausdorff_distance": 0.0008403755628622334,
+            "hausdorff_relative": 0.00028012518762074445,
+            "surface_area_deviation_percent": 0.1641662199981652
           },
           "hard_fails": [],
           "soft_fails": [],
           "recommendations": [],
           "quality_level": "draft",
-          "verdict_reasoning": "OpenFOAM checkMesh FAIL(failed_checks=1)\uc774\ub098 draft \uae30\uc900 \ub0b4 \ud5c8\uc6a9 \ubc94\uc704 \u2192 AutoTessell PASS",
+          "verdict_reasoning": "\ubaa8\ub4e0 \uae30\uc900 \ud1b5\uacfc",
           "checkmesh_note": "mesh_ok/failed_checks\ub294 OpenFOAM checkMesh raw \ucd9c\ub825\uac12. verdict\ub294 AutoTessell quality_level\ubcc4 \uc784\uacc4\uac12\uc73c\ub85c \ub3c5\ub9bd \uacc4\uc0b0\ub428."
         }
       }
@@ -599,7 +599,7 @@
       "test_case": "high_genus_dual_torus.stl",
       "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 57.115209562005475,
+      "elapsed_seconds": 53.92136586699053,
       "cells": 0,
       "faces": 0,
       "points": 0,
@@ -610,17 +610,17 @@
           "verdict": "PASS",
           "iteration": 1,
           "tier_evaluated": "tier1_snappy",
-          "evaluation_time_seconds": 18.251153532008175,
+          "evaluation_time_seconds": 17.66318646799482,
           "checkmesh": {
             "cells": 321643,
             "faces": 980378,
             "points": 337318,
             "max_non_orthogonality": 27.2985,
-            "avg_non_orthogonality": 0.993528,
-            "max_skewness": 0.685699,
-            "max_aspect_ratio": 1.62334,
-            "min_face_area": 0.0713222,
-            "min_cell_volume": 0.0355415,
+            "avg_non_orthogonality": 0.993529,
+            "max_skewness": 0.6858,
+            "max_aspect_ratio": 1.62349,
+            "min_face_area": 0.0713174,
+            "min_cell_volume": 0.0355432,
             "min_determinant": 1.0,
             "negative_volumes": 0,
             "severely_non_ortho_faces": 0,
@@ -629,23 +629,23 @@
           },
           "additional_metrics": {
             "cell_volume_stats": {
-              "min": 0.04017839274927536,
-              "max": 0.5313740228966553,
-              "mean": 0.5162288309529233,
-              "std": 0.03596215322755969,
-              "ratio_max_min": 13.225367829235502
+              "min": 0.040177701458915055,
+              "max": 0.5313816167749903,
+              "mean": 0.5162288307559296,
+              "std": 0.03596214099049743,
+              "ratio_max_min": 13.225784389840491
             },
             "boundary_layer": {
               "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.8011494333162761,
-              "min_first_layer_height": 0.3425028475775833,
-              "max_first_layer_height": 0.8099659706766079
+              "avg_first_layer_height": 0.8011494346977279,
+              "min_first_layer_height": 0.34250088325249356,
+              "max_first_layer_height": 0.809969829072309
             }
           },
           "geometry_fidelity": {
-            "hausdorff_distance": 0.11563702535613457,
-            "hausdorff_relative": 0.010301765002579677,
-            "surface_area_deviation_percent": 2.1384742751139267
+            "hausdorff_distance": 0.12724055351086067,
+            "hausdorff_relative": 0.01133548945097897,
+            "surface_area_deviation_percent": 2.1383710694225737
           },
           "hard_fails": [],
           "soft_fails": [],
@@ -660,7 +660,7 @@
       "test_case": "highly_skewed_mesh_flat_triangles.stl",
       "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 7.593271170000662,
+      "elapsed_seconds": 6.905974616995081,
       "cells": 0,
       "faces": 0,
       "points": 0,
@@ -671,17 +671,17 @@
           "verdict": "PASS_WITH_WARNINGS",
           "iteration": 1,
           "tier_evaluated": "tier1_snappy",
-          "evaluation_time_seconds": 1.3394353500043508,
+          "evaluation_time_seconds": 1.1518378799955826,
           "checkmesh": {
-            "cells": 1469,
-            "faces": 5127,
-            "points": 2222,
-            "max_non_orthogonality": 43.2322,
-            "avg_non_orthogonality": 12.7094,
-            "max_skewness": 0.828502,
-            "max_aspect_ratio": 1.93664,
-            "min_face_area": 0.00650049,
-            "min_cell_volume": 0.00608313,
+            "cells": 167,
+            "faces": 651,
+            "points": 351,
+            "max_non_orthogonality": 31.139,
+            "avg_non_orthogonality": 13.397,
+            "max_skewness": 0.333333,
+            "max_aspect_ratio": 1.3125,
+            "min_face_area": 0.2,
+            "min_cell_volume": 0.105,
             "min_determinant": 1.0,
             "negative_volumes": 0,
             "severely_non_ortho_faces": 0,
@@ -690,29 +690,29 @@
           },
           "additional_metrics": {
             "cell_volume_stats": {
-              "min": 0.005565866292423961,
-              "max": 0.8399514972140145,
-              "mean": 0.0514810439799876,
-              "std": 0.09075654767776013,
-              "ratio_max_min": 150.91118849860328
+              "min": 0.10499989733100179,
+              "max": 0.840000218749051,
+              "mean": 0.4526946159180053,
+              "std": 0.36696593158059876,
+              "ratio_max_min": 8.000009905733844
             },
             "boundary_layer": {
               "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.3204100219176944,
-              "min_first_layer_height": 0.17721926174555158,
-              "max_first_layer_height": 0.9435206352930076
+              "avg_first_layer_height": 0.6949417542007496,
+              "min_first_layer_height": 0.47176924426623346,
+              "max_first_layer_height": 0.9435388779673536
             }
           },
           "geometry_fidelity": {
-            "hausdorff_distance": 3.7827378660513373,
-            "hausdorff_relative": 0.3763778536472771,
-            "surface_area_deviation_percent": 30.560655196772508
+            "hausdorff_distance": 3.752500131686445,
+            "hausdorff_relative": 0.3733692355610086,
+            "surface_area_deviation_percent": 4596821.450424274
           },
           "hard_fails": [],
           "soft_fails": [
             {
               "criterion": "surface_area_deviation_percent",
-              "value": 30.560655196772508,
+              "value": 4596821.450424274,
               "threshold": 20.0,
               "location_hint": "\ud45c\uba74\uc801 \ud3b8\ucc28 \uacfc\ub2e4"
             }
@@ -750,7 +750,7 @@
       "test_case": "large_mesh_250k_faces.stl",
       "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 12.119682556003681,
+      "elapsed_seconds": 9.899570683992351,
       "cells": 0,
       "faces": 0,
       "points": 0,
@@ -761,17 +761,17 @@
           "verdict": "PASS",
           "iteration": 1,
           "tier_evaluated": "tier2_tetwild",
-          "evaluation_time_seconds": 1.5342584699974395,
+          "evaluation_time_seconds": 1.3937344580044737,
           "checkmesh": {
-            "cells": 13115,
-            "faces": 28374,
-            "points": 3428,
-            "max_non_orthogonality": 53.5474,
-            "avg_non_orthogonality": 16.7741,
-            "max_skewness": 0.875601,
-            "max_aspect_ratio": 4.17165,
-            "min_face_area": 0.00135559,
-            "min_cell_volume": 2.92099e-05,
+            "cells": 12695,
+            "faces": 27566,
+            "points": 3371,
+            "max_non_orthogonality": 52.6305,
+            "avg_non_orthogonality": 17.5455,
+            "max_skewness": 0.882529,
+            "max_aspect_ratio": 4.67877,
+            "min_face_area": 0.00138473,
+            "min_cell_volume": 3.26851e-05,
             "min_determinant": 1.0,
             "negative_volumes": 0,
             "severely_non_ortho_faces": 0,
@@ -780,23 +780,23 @@
           },
           "additional_metrics": {
             "cell_volume_stats": {
-              "min": 2.9209901065483893e-05,
-              "max": 0.0014431988678276747,
-              "mean": 0.00031845171099838585,
-              "std": 0.00028718336370583974,
-              "ratio_max_min": 49.407865661450046
+              "min": 3.268508953503178e-05,
+              "max": 0.0015313425263535014,
+              "mean": 0.0003289991947671894,
+              "std": 0.0003007762627373773,
+              "ratio_max_min": 46.85140986724888
             },
             "boundary_layer": {
               "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.06283152987820777,
-              "min_first_layer_height": 0.030797114569704166,
-              "max_first_layer_height": 0.11300787967679303
+              "avg_first_layer_height": 0.06321726403775213,
+              "min_first_layer_height": 0.031972988121467746,
+              "max_first_layer_height": 0.11526322881583513
             }
           },
           "geometry_fidelity": {
-            "hausdorff_distance": 0.0636611876601017,
-            "hausdorff_relative": 0.0183774019162455,
-            "surface_area_deviation_percent": 0.15202892072368202
+            "hausdorff_distance": 0.06063754667566907,
+            "hausdorff_relative": 0.017504551948098017,
+            "surface_area_deviation_percent": 0.1500324860136558
           },
           "hard_fails": [],
           "soft_fails": [],
@@ -811,7 +811,115 @@
       "test_case": "many_small_features_perforated_plate.stl",
       "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 5.657408465995104,
+      "elapsed_seconds": 5.408487430002424,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": null,
+      "quality_report": {
+        "evaluation_summary": {
+          "verdict": "PASS_WITH_WARNINGS",
+          "iteration": 1,
+          "tier_evaluated": "tier2_tetwild",
+          "evaluation_time_seconds": 1.1603839129966218,
+          "checkmesh": {
+            "cells": 2570,
+            "faces": 6003,
+            "points": 925,
+            "max_non_orthogonality": 81.0318,
+            "avg_non_orthogonality": 42.5417,
+            "max_skewness": 1.2368,
+            "max_aspect_ratio": 20.5727,
+            "min_face_area": 0.000310931,
+            "min_cell_volume": 1.47649e-06,
+            "min_determinant": 1.0,
+            "negative_volumes": 0,
+            "severely_non_ortho_faces": 43,
+            "failed_checks": 2,
+            "mesh_ok": false
+          },
+          "additional_metrics": {
+            "cell_volume_stats": {
+              "min": 1.4764648590703502e-06,
+              "max": 0.0004449748079203596,
+              "mean": 8.172804879616677e-05,
+              "std": 4.596851257323382e-05,
+              "ratio_max_min": 301.3785293884584
+            },
+            "boundary_layer": {
+              "bl_coverage_percent": 0.0,
+              "avg_first_layer_height": 0.04216586835153546,
+              "min_first_layer_height": 0.011386957637629279,
+              "max_first_layer_height": 0.07634462650143954
+            }
+          },
+          "geometry_fidelity": {
+            "hausdorff_distance": 0.032118958375610476,
+            "hausdorff_relative": 0.004181532212759139,
+            "surface_area_deviation_percent": 0.1482413510921839
+          },
+          "hard_fails": [],
+          "soft_fails": [
+            {
+              "criterion": "max_non_orthogonality",
+              "value": 81.0318,
+              "threshold": 80.0,
+              "location_hint": ""
+            }
+          ],
+          "recommendations": [
+            {
+              "priority": 1,
+              "action": "snap_tolerance \uc99d\uac00",
+              "current_value": 2.0,
+              "suggested_value": 4.0,
+              "rationale": "snappyHexMesh snap tolerance \uc0c1\ud5a5\uc73c\ub85c \ud45c\uba74 \uc801\ud569\ub3c4 \ud5a5\uc0c1"
+            },
+            {
+              "priority": 2,
+              "action": "snap_iterations \uc99d\uac00",
+              "current_value": 5,
+              "suggested_value": 10,
+              "rationale": "\ucd94\uac00 snap \ubc18\ubcf5\uc73c\ub85c \ube44\uc9c1\uad50 \uc140 \uac10\uc18c"
+            },
+            {
+              "priority": 3,
+              "action": "feature_extract_level \uc0c1\ud5a5",
+              "current_value": 1,
+              "suggested_value": 2,
+              "rationale": "\ub0a0\uce74\ub85c\uc6b4 \uc5e3\uc9c0 \ud2b9\uc9d5\uc120\uc744 \ub354 \uc815\ubc00\ud558\uac8c \ud3ec\ucc29"
+            },
+            {
+              "priority": 4,
+              "action": "local refinement \ucd94\uac00",
+              "current_value": null,
+              "suggested_value": null,
+              "rationale": "\ud574\ub2f9 \uc601\uc5ed\uc758 \uc140 \ud06c\uae30 \ucd95\uc18c"
+            }
+          ],
+          "quality_level": "draft",
+          "verdict_reasoning": "\uacbd\uace0 (soft fail 1): max_non_orthogonality; OpenFOAM checkMesh FAIL(failed_checks=2)\uc774\ub098 draft \uae30\uc900 \ub0b4 \ud5c8\uc6a9 \ubc94\uc704 \u2192 AutoTessell PASS_WITH_WARNINGS",
+          "checkmesh_note": "mesh_ok/failed_checks\ub294 OpenFOAM checkMesh raw \ucd9c\ub825\uac12. verdict\ub294 AutoTessell quality_level\ubcc4 \uc784\uacc4\uac12\uc73c\ub85c \ub3c5\ub9bd \uacc4\uc0b0\ub428."
+        }
+      }
+    },
+    {
+      "test_case": "mixed_features_wing_with_spike.stl",
+      "quality": "draft",
+      "status": "failed",
+      "elapsed_seconds": 6.198166636997485,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "2026-04-13T12:53:48.094156Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "test_case": "mixed_watertight_and_open.stl",
+      "quality": "draft",
+      "status": "success",
+      "elapsed_seconds": 42.93587991599634,
       "cells": 0,
       "faces": 0,
       "points": 0,
@@ -822,57 +930,201 @@
           "verdict": "PASS",
           "iteration": 1,
           "tier_evaluated": "tier2_tetwild",
-          "evaluation_time_seconds": 1.2679199440026423,
+          "evaluation_time_seconds": 1.3673197419993812,
           "checkmesh": {
-            "cells": 3327,
-            "faces": 7554,
-            "points": 1058,
-            "max_non_orthogonality": 74.0757,
-            "avg_non_orthogonality": 39.0975,
-            "max_skewness": 1.0222,
-            "max_aspect_ratio": 18.0402,
-            "min_face_area": 0.000233099,
-            "min_cell_volume": 2.37018e-06,
+            "cells": 13376,
+            "faces": 28973,
+            "points": 3524,
+            "max_non_orthogonality": 49.8233,
+            "avg_non_orthogonality": 17.0654,
+            "max_skewness": 0.852446,
+            "max_aspect_ratio": 4.06692,
+            "min_face_area": 8.08293e-07,
+            "min_cell_volume": 3.66975e-10,
             "min_determinant": 1.0,
             "negative_volumes": 0,
-            "severely_non_ortho_faces": 27,
-            "failed_checks": 2,
-            "mesh_ok": false
+            "severely_non_ortho_faces": 0,
+            "failed_checks": 0,
+            "mesh_ok": true
           },
           "additional_metrics": {
             "cell_volume_stats": {
-              "min": 2.370153023289643e-06,
-              "max": 0.0003736148400397433,
-              "mean": 6.31314453144575e-05,
-              "std": 3.847182318350965e-05,
-              "ratio_max_min": 157.63321455134837
+              "min": 3.669753163844694e-10,
+              "max": 3.818396360358141e-08,
+              "mean": 7.99718631104767e-09,
+              "std": 7.165022202358264e-09,
+              "ratio_max_min": 104.05049576570752
             },
             "boundary_layer": {
               "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.0384298098428093,
-              "min_first_layer_height": 0.01333292579510054,
-              "max_first_layer_height": 0.07202358024206686
+              "avg_first_layer_height": 0.001836747316968546,
+              "min_first_layer_height": 0.0007159438308259715,
+              "max_first_layer_height": 0.0033673919483243105
             }
           },
           "geometry_fidelity": {
-            "hausdorff_distance": 0.029085814511658665,
-            "hausdorff_relative": 0.003786650516263085,
-            "surface_area_deviation_percent": 0.15113247275653707
+            "hausdorff_distance": 0.0018910481104732757,
+            "hausdorff_relative": 0.0003291892223706394,
+            "surface_area_deviation_percent": 0.15125403104029295
           },
           "hard_fails": [],
           "soft_fails": [],
           "recommendations": [],
           "quality_level": "draft",
-          "verdict_reasoning": "OpenFOAM checkMesh FAIL(failed_checks=2)\uc774\ub098 draft \uae30\uc900 \ub0b4 \ud5c8\uc6a9 \ubc94\uc704 \u2192 AutoTessell PASS",
+          "verdict_reasoning": "\ubaa8\ub4e0 \uae30\uc900 \ud1b5\uacfc",
           "checkmesh_note": "mesh_ok/failed_checks\ub294 OpenFOAM checkMesh raw \ucd9c\ub825\uac12. verdict\ub294 AutoTessell quality_level\ubcc4 \uc784\uacc4\uac12\uc73c\ub85c \ub3c5\ub9bd \uacc4\uc0b0\ub428."
         }
       }
     },
     {
-      "test_case": "mixed_features_wing_with_spike.stl",
+      "test_case": "multi_scale_sphere_with_micro_spikes.stl",
       "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 7.636076454000431,
+      "elapsed_seconds": 4.053614899006789,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": true,
+      "error": null,
+      "quality_report": {
+        "evaluation_summary": {
+          "verdict": "PASS",
+          "iteration": 1,
+          "tier_evaluated": "tier2_tetwild",
+          "evaluation_time_seconds": 1.1521081999962917,
+          "checkmesh": {
+            "cells": 6453,
+            "faces": 13519,
+            "points": 1443,
+            "max_non_orthogonality": 41.717,
+            "avg_non_orthogonality": 15.2373,
+            "max_skewness": 0.445732,
+            "max_aspect_ratio": 3.79605,
+            "min_face_area": 0.0167138,
+            "min_cell_volume": 0.00106954,
+            "min_determinant": 1.0,
+            "negative_volumes": 0,
+            "severely_non_ortho_faces": 0,
+            "failed_checks": 0,
+            "mesh_ok": true
+          },
+          "additional_metrics": {
+            "cell_volume_stats": {
+              "min": 0.0010695450176257252,
+              "max": 0.013379604107237241,
+              "mean": 0.005015573341803559,
+              "std": 0.002384709222489108,
+              "ratio_max_min": 12.50962221014177
+            },
+            "boundary_layer": {
+              "bl_coverage_percent": 0.0,
+              "avg_first_layer_height": 0.1669456550660106,
+              "min_first_layer_height": 0.10226641292157948,
+              "max_first_layer_height": 0.23740020395059327
+            }
+          },
+          "geometry_fidelity": {
+            "hausdorff_distance": 0.11871613697925218,
+            "hausdorff_relative": 0.017135198410530933,
+            "surface_area_deviation_percent": 0.017567132072385225
+          },
+          "hard_fails": [],
+          "soft_fails": [],
+          "recommendations": [],
+          "quality_level": "draft",
+          "verdict_reasoning": "\ubaa8\ub4e0 \uae30\uc900 \ud1b5\uacfc",
+          "checkmesh_note": "mesh_ok/failed_checks\ub294 OpenFOAM checkMesh raw \ucd9c\ub825\uac12. verdict\ub294 AutoTessell quality_level\ubcc4 \uc784\uacc4\uac12\uc73c\ub85c \ub3c5\ub9bd \uacc4\uc0b0\ub428."
+        }
+      }
+    },
+    {
+      "test_case": "naca0012.stl",
+      "quality": "draft",
+      "status": "success",
+      "elapsed_seconds": 19.99042102599924,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": true,
+      "error": null,
+      "quality_report": {
+        "evaluation_summary": {
+          "verdict": "PASS",
+          "iteration": 1,
+          "tier_evaluated": "tier1_snappy",
+          "evaluation_time_seconds": 5.997493735005264,
+          "checkmesh": {
+            "cells": 91532,
+            "faces": 282236,
+            "points": 99337,
+            "max_non_orthogonality": 35.9348,
+            "avg_non_orthogonality": 2.80269,
+            "max_skewness": 1.87746,
+            "max_aspect_ratio": 3.59418,
+            "min_face_area": 0.000191966,
+            "min_cell_volume": 9.03894e-06,
+            "min_determinant": 1.0,
+            "negative_volumes": 0,
+            "severely_non_ortho_faces": 0,
+            "failed_checks": 1,
+            "mesh_ok": false
+          },
+          "additional_metrics": {
+            "cell_volume_stats": {
+              "min": 8.16205706953104e-06,
+              "max": 0.0017791501656674409,
+              "mean": 0.0016608583300023092,
+              "std": 0.0003815826411509092,
+              "ratio_max_min": 217.97815801962577
+            },
+            "boundary_layer": {
+              "bl_coverage_percent": 0.0,
+              "avg_first_layer_height": 0.11612665190434167,
+              "min_first_layer_height": 0.020134145791633508,
+              "max_first_layer_height": 0.12117253726623567
+            }
+          },
+          "geometry_fidelity": {
+            "hausdorff_distance": 0.017763122860202103,
+            "hausdorff_relative": 0.017550234835591184,
+            "surface_area_deviation_percent": 6.318805537855961
+          },
+          "hard_fails": [],
+          "soft_fails": [],
+          "recommendations": [],
+          "quality_level": "draft",
+          "verdict_reasoning": "OpenFOAM checkMesh FAIL(failed_checks=1)\uc774\ub098 draft \uae30\uc900 \ub0b4 \ud5c8\uc6a9 \ubc94\uc704 \u2192 AutoTessell PASS",
+          "checkmesh_note": "mesh_ok/failed_checks\ub294 OpenFOAM checkMesh raw \ucd9c\ub825\uac12. verdict\ub294 AutoTessell quality_level\ubcc4 \uc784\uacc4\uac12\uc73c\ub85c \ub3c5\ub9bd \uacc4\uc0b0\ub428."
+        }
+      }
+    },
+    {
+      "test_case": "nonmanifold_disconnected.stl",
+      "quality": "draft",
+      "status": "failed",
+      "elapsed_seconds": 13.956709446007153,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "2026-04-13T12:55:04.339764Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "test_case": "self_intersecting_crossed_planes.stl",
+      "quality": "draft",
+      "status": "failed",
+      "elapsed_seconds": 1.9260656260012183,
+      "cells": 0,
+      "faces": 0,
+      "points": 0,
+      "mesh_ok": false,
+      "error": "2026-04-13T12:55:22.589588Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
+    },
+    {
+      "test_case": "sharp_features_micro_ridge.stl",
+      "quality": "draft",
+      "status": "success",
+      "elapsed_seconds": 6.644893325006706,
       "cells": 0,
       "faces": 0,
       "points": 0,
@@ -883,17 +1135,17 @@
           "verdict": "PASS_WITH_WARNINGS",
           "iteration": 1,
           "tier_evaluated": "tier1_snappy",
-          "evaluation_time_seconds": 1.3645752290030941,
+          "evaluation_time_seconds": 1.0986468290066114,
           "checkmesh": {
-            "cells": 357,
-            "faces": 1277,
-            "points": 596,
-            "max_non_orthogonality": 26.4071,
-            "avg_non_orthogonality": 10.6187,
-            "max_skewness": 0.333352,
-            "max_aspect_ratio": 1.06946,
-            "min_face_area": 0.0171426,
-            "min_cell_volume": 0.00235711,
+            "cells": 157,
+            "faces": 595,
+            "points": 307,
+            "max_non_orthogonality": 30.9761,
+            "avg_non_orthogonality": 6.39224,
+            "max_skewness": 0.333333,
+            "max_aspect_ratio": 1.40625,
+            "min_face_area": 0.0288,
+            "min_cell_volume": 0.00648,
             "min_determinant": 1.0,
             "negative_volumes": 0,
             "severely_non_ortho_faces": 0,
@@ -902,29 +1154,29 @@
           },
           "additional_metrics": {
             "cell_volume_stats": {
-              "min": 0.0023571098039544248,
-              "max": 0.01885769618977574,
-              "mean": 0.008873949816246994,
-              "std": 0.008065884453669745,
-              "ratio_max_min": 8.000346932560786
+              "min": 0.0064799988412856625,
+              "max": 0.05184003064155734,
+              "mean": 0.04952866422446669,
+              "std": 0.009974968320635973,
+              "ratio_max_min": 8.00000615914802
             },
             "boundary_layer": {
               "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.18564780459736585,
-              "min_first_layer_height": 0.1330842326191092,
-              "max_first_layer_height": 0.2661723127870692
+              "avg_first_layer_height": 0.36336808643241825,
+              "min_first_layer_height": 0.18643393924490106,
+              "max_first_layer_height": 0.3728679741792965
             }
           },
           "geometry_fidelity": {
-            "hausdorff_distance": 1.8473874254624545,
-            "hausdorff_relative": 0.6061081533651939,
-            "surface_area_deviation_percent": 16028.563239583886
+            "hausdorff_distance": 3.826549238901589,
+            "hausdorff_relative": 0.9278016686554801,
+            "surface_area_deviation_percent": 20240597793.418236
           },
           "hard_fails": [],
           "soft_fails": [
             {
               "criterion": "surface_area_deviation_percent",
-              "value": 16028.563239583886,
+              "value": 20240597793.418236,
               "threshold": 20.0,
               "location_hint": "\ud45c\uba74\uc801 \ud3b8\ucc28 \uacfc\ub2e4"
             }
@@ -959,276 +1211,10 @@
       }
     },
     {
-      "test_case": "mixed_watertight_and_open.stl",
-      "quality": "draft",
-      "status": "success",
-      "elapsed_seconds": 34.66859628399834,
-      "cells": 0,
-      "faces": 0,
-      "points": 0,
-      "mesh_ok": true,
-      "error": null,
-      "quality_report": {
-        "evaluation_summary": {
-          "verdict": "PASS",
-          "iteration": 1,
-          "tier_evaluated": "tier2_tetwild",
-          "evaluation_time_seconds": 1.3608164430042962,
-          "checkmesh": {
-            "cells": 6627,
-            "faces": 13950,
-            "points": 1513,
-            "max_non_orthogonality": 54.651,
-            "avg_non_orthogonality": 15.2639,
-            "max_skewness": 0.641473,
-            "max_aspect_ratio": 4.72024,
-            "min_face_area": 0.000856603,
-            "min_cell_volume": 2.61538e-05,
-            "min_determinant": 1.0,
-            "negative_volumes": 0,
-            "severely_non_ortho_faces": 0,
-            "failed_checks": 0,
-            "mesh_ok": true
-          },
-          "additional_metrics": {
-            "cell_volume_stats": {
-              "min": 2.6153838622268846e-05,
-              "max": 0.001648407172095933,
-              "mean": 0.000610255065683546,
-              "std": 0.0002901423607790958,
-              "ratio_max_min": 63.02735120084386
-            },
-            "boundary_layer": {
-              "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.08256253948290546,
-              "min_first_layer_height": 0.029683274837000156,
-              "max_first_layer_height": 0.11812853876062417
-            }
-          },
-          "geometry_fidelity": {
-            "hausdorff_distance": 0.06536467815619787,
-            "hausdorff_relative": 0.01137852995572953,
-            "surface_area_deviation_percent": 0.03332097345301764
-          },
-          "hard_fails": [],
-          "soft_fails": [],
-          "recommendations": [],
-          "quality_level": "draft",
-          "verdict_reasoning": "\ubaa8\ub4e0 \uae30\uc900 \ud1b5\uacfc",
-          "checkmesh_note": "mesh_ok/failed_checks\ub294 OpenFOAM checkMesh raw \ucd9c\ub825\uac12. verdict\ub294 AutoTessell quality_level\ubcc4 \uc784\uacc4\uac12\uc73c\ub85c \ub3c5\ub9bd \uacc4\uc0b0\ub428."
-        }
-      }
-    },
-    {
-      "test_case": "multi_scale_sphere_with_micro_spikes.stl",
-      "quality": "draft",
-      "status": "success",
-      "elapsed_seconds": 4.535230362002039,
-      "cells": 0,
-      "faces": 0,
-      "points": 0,
-      "mesh_ok": true,
-      "error": null,
-      "quality_report": {
-        "evaluation_summary": {
-          "verdict": "PASS",
-          "iteration": 1,
-          "tier_evaluated": "tier2_tetwild",
-          "evaluation_time_seconds": 1.3165294890059158,
-          "checkmesh": {
-            "cells": 6452,
-            "faces": 13517,
-            "points": 1443,
-            "max_non_orthogonality": 41.717,
-            "avg_non_orthogonality": 15.256,
-            "max_skewness": 0.445732,
-            "max_aspect_ratio": 3.79605,
-            "min_face_area": 0.0167253,
-            "min_cell_volume": 0.0010582,
-            "min_determinant": 1.0,
-            "negative_volumes": 0,
-            "severely_non_ortho_faces": 0,
-            "failed_checks": 0,
-            "mesh_ok": true
-          },
-          "additional_metrics": {
-            "cell_volume_stats": {
-              "min": 0.0010582015991648286,
-              "max": 0.01338125868617897,
-              "mean": 0.005016318908458691,
-              "std": 0.0023789422592437656,
-              "ratio_max_min": 12.645282994034359
-            },
-            "boundary_layer": {
-              "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.16697050271850933,
-              "min_first_layer_height": 0.10190358694235753,
-              "max_first_layer_height": 0.23740998952134004
-            }
-          },
-          "geometry_fidelity": {
-            "hausdorff_distance": 0.1315055588345684,
-            "hausdorff_relative": 0.01898119244826756,
-            "surface_area_deviation_percent": 0.01780809534259028
-          },
-          "hard_fails": [],
-          "soft_fails": [],
-          "recommendations": [],
-          "quality_level": "draft",
-          "verdict_reasoning": "\ubaa8\ub4e0 \uae30\uc900 \ud1b5\uacfc",
-          "checkmesh_note": "mesh_ok/failed_checks\ub294 OpenFOAM checkMesh raw \ucd9c\ub825\uac12. verdict\ub294 AutoTessell quality_level\ubcc4 \uc784\uacc4\uac12\uc73c\ub85c \ub3c5\ub9bd \uacc4\uc0b0\ub428."
-        }
-      }
-    },
-    {
-      "test_case": "naca0012.stl",
-      "quality": "draft",
-      "status": "success",
-      "elapsed_seconds": 22.705544162992737,
-      "cells": 0,
-      "faces": 0,
-      "points": 0,
-      "mesh_ok": true,
-      "error": null,
-      "quality_report": {
-        "evaluation_summary": {
-          "verdict": "PASS",
-          "iteration": 1,
-          "tier_evaluated": "tier1_snappy",
-          "evaluation_time_seconds": 6.615037477997248,
-          "checkmesh": {
-            "cells": 91532,
-            "faces": 282236,
-            "points": 99337,
-            "max_non_orthogonality": 35.9348,
-            "avg_non_orthogonality": 2.80269,
-            "max_skewness": 1.87746,
-            "max_aspect_ratio": 3.59418,
-            "min_face_area": 0.000191966,
-            "min_cell_volume": 9.03894e-06,
-            "min_determinant": 1.0,
-            "negative_volumes": 0,
-            "severely_non_ortho_faces": 0,
-            "failed_checks": 1,
-            "mesh_ok": false
-          },
-          "additional_metrics": {
-            "cell_volume_stats": {
-              "min": 8.16205706953104e-06,
-              "max": 0.0017791501656674409,
-              "mean": 0.0016608583300023088,
-              "std": 0.0003815826411509092,
-              "ratio_max_min": 217.97815801962577
-            },
-            "boundary_layer": {
-              "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.11612665190434165,
-              "min_first_layer_height": 0.020134145791633508,
-              "max_first_layer_height": 0.12117253726623567
-            }
-          },
-          "geometry_fidelity": {
-            "hausdorff_distance": 0.019138786381098664,
-            "hausdorff_relative": 0.0189094112617467,
-            "surface_area_deviation_percent": 6.318805537855961
-          },
-          "hard_fails": [],
-          "soft_fails": [],
-          "recommendations": [],
-          "quality_level": "draft",
-          "verdict_reasoning": "OpenFOAM checkMesh FAIL(failed_checks=1)\uc774\ub098 draft \uae30\uc900 \ub0b4 \ud5c8\uc6a9 \ubc94\uc704 \u2192 AutoTessell PASS",
-          "checkmesh_note": "mesh_ok/failed_checks\ub294 OpenFOAM checkMesh raw \ucd9c\ub825\uac12. verdict\ub294 AutoTessell quality_level\ubcc4 \uc784\uacc4\uac12\uc73c\ub85c \ub3c5\ub9bd \uacc4\uc0b0\ub428."
-        }
-      }
-    },
-    {
-      "test_case": "nonmanifold_disconnected.stl",
-      "quality": "draft",
-      "status": "failed",
-      "elapsed_seconds": 14.45330423800624,
-      "cells": 0,
-      "faces": 0,
-      "points": 0,
-      "mesh_ok": false,
-      "error": "2026-04-13T11:47:46.951947Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
-    },
-    {
-      "test_case": "self_intersecting_crossed_planes.stl",
-      "quality": "draft",
-      "status": "failed",
-      "elapsed_seconds": 1.8072941089922097,
-      "cells": 0,
-      "faces": 0,
-      "points": 0,
-      "mesh_ok": false,
-      "error": "2026-04-13T11:48:01.365320Z [info     ] retry_policy                   [core.pipeline.orchestrator] max_iterations=3 rules=['failed_checks_or_cells0 -> tier fallback', 'quality_fail -> parameter relax"
-    },
-    {
-      "test_case": "sharp_features_micro_ridge.stl",
-      "quality": "draft",
-      "status": "success",
-      "elapsed_seconds": 7.355083015994751,
-      "cells": 0,
-      "faces": 0,
-      "points": 0,
-      "mesh_ok": true,
-      "error": null,
-      "quality_report": {
-        "evaluation_summary": {
-          "verdict": "PASS",
-          "iteration": 1,
-          "tier_evaluated": "tier1_snappy",
-          "evaluation_time_seconds": 1.25281744300446,
-          "checkmesh": {
-            "cells": 1522,
-            "faces": 5332,
-            "points": 2317,
-            "max_non_orthogonality": 49.3422,
-            "avg_non_orthogonality": 12.4302,
-            "max_skewness": 1.07061,
-            "max_aspect_ratio": 1.81802,
-            "min_face_area": 0.0013559,
-            "min_cell_volume": 0.000432034,
-            "min_determinant": 1.0,
-            "negative_volumes": 0,
-            "severely_non_ortho_faces": 0,
-            "failed_checks": 1,
-            "mesh_ok": false
-          },
-          "additional_metrics": {
-            "cell_volume_stats": {
-              "min": 0.00043404960337842485,
-              "max": 0.05229493568261462,
-              "mean": 0.005104283654929433,
-              "std": 0.010985974905692699,
-              "ratio_max_min": 120.48147325922433
-            },
-            "boundary_layer": {
-              "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.135515029640321,
-              "min_first_layer_height": 0.0757146271253485,
-              "max_first_layer_height": 0.3739554592562746
-            }
-          },
-          "geometry_fidelity": {
-            "hausdorff_distance": 0.20521150436021324,
-            "hausdorff_relative": 0.0497564683702751,
-            "surface_area_deviation_percent": 6.06393782867118
-          },
-          "hard_fails": [],
-          "soft_fails": [],
-          "recommendations": [],
-          "quality_level": "draft",
-          "verdict_reasoning": "OpenFOAM checkMesh FAIL(failed_checks=1)\uc774\ub098 draft \uae30\uc900 \ub0b4 \ud5c8\uc6a9 \ubc94\uc704 \u2192 AutoTessell PASS",
-          "checkmesh_note": "mesh_ok/failed_checks\ub294 OpenFOAM checkMesh raw \ucd9c\ub825\uac12. verdict\ub294 AutoTessell quality_level\ubcc4 \uc784\uacc4\uac12\uc73c\ub85c \ub3c5\ub9bd \uacc4\uc0b0\ub428."
-        }
-      }
-    },
-    {
       "test_case": "sphere.stl",
       "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 4.0697309440001845,
+      "elapsed_seconds": 3.9930402700119885,
       "cells": 0,
       "faces": 0,
       "points": 0,
@@ -1239,17 +1225,17 @@
           "verdict": "PASS",
           "iteration": 1,
           "tier_evaluated": "tier2_tetwild",
-          "evaluation_time_seconds": 1.2478171900002053,
+          "evaluation_time_seconds": 1.170874752002419,
           "checkmesh": {
-            "cells": 5990,
-            "faces": 12620,
-            "points": 1370,
-            "max_non_orthogonality": 44.6523,
-            "avg_non_orthogonality": 14.3446,
-            "max_skewness": 0.489486,
-            "max_aspect_ratio": 3.6565,
-            "min_face_area": 0.00429351,
-            "min_cell_volume": 0.000173434,
+            "cells": 6008,
+            "faces": 12656,
+            "points": 1373,
+            "max_non_orthogonality": 44.8322,
+            "avg_non_orthogonality": 14.3481,
+            "max_skewness": 0.472674,
+            "max_aspect_ratio": 3.71184,
+            "min_face_area": 0.00429037,
+            "min_cell_volume": 0.000175819,
             "min_determinant": 1.0,
             "negative_volumes": 0,
             "severely_non_ortho_faces": 0,
@@ -1258,23 +1244,23 @@
           },
           "additional_metrics": {
             "cell_volume_stats": {
-              "min": 0.00017343358538776505,
-              "max": 0.00156138166063731,
-              "mean": 0.0006928083921196806,
-              "std": 0.0002902185052194927,
-              "ratio_max_min": 9.002764125220342
+              "min": 0.0001758189775297327,
+              "max": 0.0015616298717259156,
+              "mean": 0.0006907385487730416,
+              "std": 0.00028976580350583293,
+              "ratio_max_min": 8.88203249539333
             },
             "boundary_layer": {
               "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.08667394067843594,
-              "min_first_layer_height": 0.05576705803770643,
-              "max_first_layer_height": 0.11601202958472485
+              "avg_first_layer_height": 0.08658661850386735,
+              "min_first_layer_height": 0.056021566685716076,
+              "max_first_layer_height": 0.11601817669301018
             }
           },
           "geometry_fidelity": {
-            "hausdorff_distance": 0.06448535500332377,
-            "hausdorff_relative": 0.01861531853497878,
-            "surface_area_deviation_percent": 0.043807150890302606
+            "hausdorff_distance": 0.06003813367705545,
+            "hausdorff_relative": 0.01733151632004535,
+            "surface_area_deviation_percent": 0.043201276580480584
           },
           "hard_fails": [],
           "soft_fails": [],
@@ -1289,7 +1275,7 @@
       "test_case": "sphere_20k.stl",
       "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 9.102075032002176,
+      "elapsed_seconds": 9.27364470300381,
       "cells": 0,
       "faces": 0,
       "points": 0,
@@ -1300,17 +1286,17 @@
           "verdict": "PASS",
           "iteration": 1,
           "tier_evaluated": "tier2_tetwild",
-          "evaluation_time_seconds": 1.4602674150082748,
+          "evaluation_time_seconds": 1.4608801180002047,
           "checkmesh": {
-            "cells": 13093,
-            "faces": 28375,
-            "points": 3449,
-            "max_non_orthogonality": 50.6775,
-            "avg_non_orthogonality": 17.072,
-            "max_skewness": 0.791512,
-            "max_aspect_ratio": 4.50915,
-            "min_face_area": 0.00131727,
-            "min_cell_volume": 2.42986e-05,
+            "cells": 14115,
+            "faces": 30460,
+            "points": 3658,
+            "max_non_orthogonality": 58.0595,
+            "avg_non_orthogonality": 16.5493,
+            "max_skewness": 0.802895,
+            "max_aspect_ratio": 5.23106,
+            "min_face_area": 0.000155199,
+            "min_cell_volume": 1.49133e-06,
             "min_determinant": 1.0,
             "negative_volumes": 0,
             "severely_non_ortho_faces": 0,
@@ -1319,23 +1305,23 @@
           },
           "additional_metrics": {
             "cell_volume_stats": {
-              "min": 2.429860448471442e-05,
-              "max": 0.0013950914524889875,
-              "mean": 0.00031887552776661414,
-              "std": 0.0002885743018669276,
-              "ratio_max_min": 57.414468117566216
+              "min": 1.4913233858497748e-06,
+              "max": 0.0014225344937041102,
+              "mean": 0.00029580325925412503,
+              "std": 0.0002752464389037297,
+              "ratio_max_min": 953.8739264747278
             },
             "boundary_layer": {
               "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.06272100349211736,
-              "min_first_layer_height": 0.028964127060396323,
-              "max_first_layer_height": 0.11173799973541629
+              "avg_first_layer_height": 0.060897041947134974,
+              "min_first_layer_height": 0.011425028078207066,
+              "max_first_layer_height": 0.1124659187285936
             }
           },
           "geometry_fidelity": {
-            "hausdorff_distance": 0.061901282096558645,
-            "hausdorff_relative": 0.017869360940815548,
-            "surface_area_deviation_percent": 0.15344880166643207
+            "hausdorff_distance": 0.0628780883243783,
+            "hausdorff_relative": 0.01815134061010444,
+            "surface_area_deviation_percent": 0.15071231426564843
           },
           "hard_fails": [],
           "soft_fails": [],
@@ -1350,7 +1336,7 @@
       "test_case": "sphere_watertight.stl",
       "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 4.1094306579907425,
+      "elapsed_seconds": 3.967465205001645,
       "cells": 0,
       "faces": 0,
       "points": 0,
@@ -1361,17 +1347,17 @@
           "verdict": "PASS",
           "iteration": 1,
           "tier_evaluated": "tier2_tetwild",
-          "evaluation_time_seconds": 1.2628781029925449,
+          "evaluation_time_seconds": 1.198173789991415,
           "checkmesh": {
-            "cells": 6033,
-            "faces": 12706,
-            "points": 1378,
-            "max_non_orthogonality": 44.9153,
-            "avg_non_orthogonality": 14.3609,
-            "max_skewness": 0.475943,
-            "max_aspect_ratio": 3.71349,
-            "min_face_area": 0.00429037,
-            "min_cell_volume": 0.000175819,
+            "cells": 6011,
+            "faces": 12662,
+            "points": 1374,
+            "max_non_orthogonality": 45.0438,
+            "avg_non_orthogonality": 14.3764,
+            "max_skewness": 0.489468,
+            "max_aspect_ratio": 3.48101,
+            "min_face_area": 0.00428965,
+            "min_cell_volume": 0.000175802,
             "min_determinant": 1.0,
             "negative_volumes": 0,
             "severely_non_ortho_faces": 0,
@@ -1380,23 +1366,23 @@
           },
           "additional_metrics": {
             "cell_volume_stats": {
-              "min": 0.0001758189775297327,
-              "max": 0.0015619293996784777,
-              "mean": 0.0006878730945112449,
-              "std": 0.000289370781314018,
-              "ratio_max_min": 8.883736110991434
+              "min": 0.00017580193319580213,
+              "max": 0.0015581314270970185,
+              "mean": 0.0006903990904701632,
+              "std": 0.00029104276154581917,
+              "ratio_max_min": 8.862993704179722
             },
             "boundary_layer": {
               "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.0864579564101487,
-              "min_first_layer_height": 0.056021566685716076,
-              "max_first_layer_height": 0.11602559382942837
+              "avg_first_layer_height": 0.0865492456152985,
+              "min_first_layer_height": 0.05601975633668516,
+              "max_first_layer_height": 0.1159314752610017
             }
           },
           "geometry_fidelity": {
-            "hausdorff_distance": 0.06983917469605462,
-            "hausdorff_relative": 0.02016083315537422,
-            "surface_area_deviation_percent": 0.043509637168836594
+            "hausdorff_distance": 0.06834514161215818,
+            "hausdorff_relative": 0.019729542953791313,
+            "surface_area_deviation_percent": 0.042764938864496026
           },
           "hard_fails": [],
           "soft_fails": [],
@@ -1411,7 +1397,7 @@
       "test_case": "trimesh_box.stl",
       "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 6.496139202994527,
+      "elapsed_seconds": 4.417930459007039,
       "cells": 0,
       "faces": 0,
       "points": 0,
@@ -1422,17 +1408,17 @@
           "verdict": "PASS",
           "iteration": 1,
           "tier_evaluated": "tier2_tetwild",
-          "evaluation_time_seconds": 1.3983111929992447,
+          "evaluation_time_seconds": 1.2529692509997403,
           "checkmesh": {
-            "cells": 11739,
-            "faces": 24491,
-            "points": 2584,
-            "max_non_orthogonality": 67.0716,
-            "avg_non_orthogonality": 14.4795,
-            "max_skewness": 0.634402,
-            "max_aspect_ratio": 6.15595,
-            "min_face_area": 2.13728e-05,
-            "min_cell_volume": 8.18516e-08,
+            "cells": 7917,
+            "faces": 16678,
+            "points": 1810,
+            "max_non_orthogonality": 59.1116,
+            "avg_non_orthogonality": 16.013,
+            "max_skewness": 0.630246,
+            "max_aspect_ratio": 4.42726,
+            "min_face_area": 0.00170904,
+            "min_cell_volume": 3.41859e-05,
             "min_determinant": 1.0,
             "negative_volumes": 0,
             "severely_non_ortho_faces": 0,
@@ -1441,23 +1427,23 @@
           },
           "additional_metrics": {
             "cell_volume_stats": {
-              "min": 8.185247698783092e-08,
-              "max": 0.0007149707981353513,
-              "mean": 0.000255550021129629,
-              "std": 0.00012868855996479896,
-              "ratio_max_min": 8734.870641014892
+              "min": 3.418586977570735e-05,
+              "max": 0.0010682854285172423,
+              "mean": 0.00037892713541849585,
+              "std": 0.0001716894109253699,
+              "ratio_max_min": 31.24932714967432
             },
             "boundary_layer": {
               "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.06077127445720322,
-              "min_first_layer_height": 0.004341874592574633,
-              "max_first_layer_height": 0.08941892299194147
+              "avg_first_layer_height": 0.07052974470220963,
+              "min_first_layer_height": 0.032455044677209964,
+              "max_first_layer_height": 0.10222625121473172
             }
           },
           "geometry_fidelity": {
-            "hausdorff_distance": 0.06379993169356797,
-            "hausdorff_relative": 0.02369469978301983,
-            "surface_area_deviation_percent": 0.017426306254774405
+            "hausdorff_distance": 0.06389806124599777,
+            "hausdorff_relative": 0.023731144183867056,
+            "surface_area_deviation_percent": 0.0051846060235706
           },
           "hard_fails": [],
           "soft_fails": [],
@@ -1472,7 +1458,7 @@
       "test_case": "trimesh_duct.stl",
       "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 5.264419925006223,
+      "elapsed_seconds": 5.0817499609984225,
       "cells": 0,
       "faces": 0,
       "points": 0,
@@ -1483,17 +1469,17 @@
           "verdict": "PASS",
           "iteration": 1,
           "tier_evaluated": "tier2_tetwild",
-          "evaluation_time_seconds": 1.3732042009942234,
+          "evaluation_time_seconds": 1.2720162399928086,
           "checkmesh": {
-            "cells": 8457,
-            "faces": 17621,
-            "points": 1849,
-            "max_non_orthogonality": 62.087,
-            "avg_non_orthogonality": 15.6261,
-            "max_skewness": 0.557812,
-            "max_aspect_ratio": 6.89963,
-            "min_face_area": 0.00319978,
-            "min_cell_volume": 0.000153782,
+            "cells": 8252,
+            "faces": 17232,
+            "points": 1824,
+            "max_non_orthogonality": 53.0284,
+            "avg_non_orthogonality": 15.8041,
+            "max_skewness": 0.559879,
+            "max_aspect_ratio": 4.41705,
+            "min_face_area": 0.00456169,
+            "min_cell_volume": 0.000190629,
             "min_determinant": 1.0,
             "negative_volumes": 0,
             "severely_non_ortho_faces": 0,
@@ -1502,23 +1488,23 @@
           },
           "additional_metrics": {
             "cell_volume_stats": {
-              "min": 0.00015378217824843976,
-              "max": 0.0029406645376507806,
-              "mean": 0.0011067035019209346,
-              "std": 0.0005520471989996149,
-              "ratio_max_min": 19.12227132652555
+              "min": 0.00019062868973228892,
+              "max": 0.0029838190727974646,
+              "mean": 0.0011342681825158788,
+              "std": 0.0005665677179855275,
+              "ratio_max_min": 15.652518395776717
             },
             "boundary_layer": {
               "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.10048808154529974,
-              "min_first_layer_height": 0.05357580057921761,
-              "max_first_layer_height": 0.14326776793152973
+              "avg_first_layer_height": 0.10129878783217808,
+              "min_first_layer_height": 0.05755230927126214,
+              "max_first_layer_height": 0.1439651901584107
             }
           },
           "geometry_fidelity": {
-            "hausdorff_distance": 0.10292659296736485,
-            "hausdorff_relative": 0.024963365558200067,
-            "surface_area_deviation_percent": 0.02258230435010771
+            "hausdorff_distance": 0.08492400468888793,
+            "hausdorff_relative": 0.020597096557807906,
+            "surface_area_deviation_percent": 0.02109932312145951
           },
           "hard_fails": [],
           "soft_fails": [],
@@ -1533,7 +1519,7 @@
       "test_case": "very_thin_disk_0_01mm.stl",
       "quality": "draft",
       "status": "success",
-      "elapsed_seconds": 25.849097990008886,
+      "elapsed_seconds": 22.938667527996586,
       "cells": 0,
       "faces": 0,
       "points": 0,
@@ -1544,7 +1530,7 @@
           "verdict": "PASS",
           "iteration": 1,
           "tier_evaluated": "tier1_snappy",
-          "evaluation_time_seconds": 8.397001258999808,
+          "evaluation_time_seconds": 7.065724039988709,
           "checkmesh": {
             "cells": 110071,
             "faces": 339774,
@@ -1565,20 +1551,20 @@
             "cell_volume_stats": {
               "min": 0.00011051684104644944,
               "max": 0.01487301338553851,
-              "mean": 0.013098564368341115,
+              "mean": 0.013098564368341116,
               "std": 0.0037239756104077634,
               "ratio_max_min": 134.576895654188
             },
             "boundary_layer": {
               "bl_coverage_percent": 0.0,
-              "avg_first_layer_height": 0.2286039379475643,
+              "avg_first_layer_height": 0.2286039379475644,
               "min_first_layer_height": 0.04798912384459883,
               "max_first_layer_height": 0.24592328774224625
             }
           },
           "geometry_fidelity": {
-            "hausdorff_distance": 0.03380495825282839,
-            "hausdorff_relative": 0.011951782910745128,
+            "hausdorff_distance": 0.036884201012831144,
+            "hausdorff_relative": 0.013040452824838495,
             "surface_area_deviation_percent": 0.89244985575873
           },
           "hard_fails": [],
