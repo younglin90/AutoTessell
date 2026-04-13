@@ -487,46 +487,19 @@ class AutoTessellWindow:  # type: ignore[misc]
                 self._append_log(f"[오류] {exc}")
 
     def _load_input_preview(self) -> None:  # pragma: no cover
-        """입력 파일 미리보기를 별도 스레드에서 로드 (UI 블로킹 방지)."""
+        """입력 파일 미리보기 로드.
+
+        MeshViewerWidget.load_mesh()가 이미 내부적으로 QThread를 사용하므로
+        메인 스레드에서 직접 호출한다. 추가 QThread 래퍼(MeshPreviewWorker)는
+        중첩된 스레드 구조로 인해 Signal 전달이 차단되므로 사용하지 않는다.
+        """
         if self._mesh_viewer is None or self._input_path is None:
             return
         try:
-            from desktop.qt_app.mesh_preview_worker import MeshPreviewWorker
-
-            # 기존 preview loader 정리
-            if hasattr(self, "_preview_loader") and self._preview_loader is not None:
-                try:
-                    self._preview_loader.quit()  # type: ignore[union-attr]
-                    self._preview_loader.wait()  # type: ignore[union-attr]
-                except Exception:
-                    pass
-
-            loader = MeshPreviewWorker(self._mesh_viewer, self._input_path)
-
-            # Cleanup 함수: 스레드 완료 후 참조 해제
-            def cleanup() -> None:
-                self._preview_loader = None
-
-            loader.finished.connect(  # type: ignore[union-attr]
-                lambda success: (
-                    self._append_log(f"[미리보기] 입력 파일 로드 성공: {self._input_path.name}")
-                    if success
-                    else self._append_log("[미리보기] 입력 파일 로드 실패"),
-                    cleanup()
-                )
-            )
-            loader.error.connect(  # type: ignore[union-attr]
-                lambda msg: (
-                    self._append_log(f"[미리보기] 오류: {msg}"),
-                    cleanup()
-                )
-            )
-
-            # 스레드 참조 저장 (GC 방지)
-            self._preview_loader = loader  # type: ignore[assignment]
-            loader.start()  # type: ignore[union-attr]
+            self._append_log(f"[미리보기] 로드 시작: {self._input_path.name}")
+            self._mesh_viewer.load_mesh(str(self._input_path))  # type: ignore[union-attr]
         except Exception as exc:  # noqa: BLE001
-            self._append_log(f"[미리보기] 워커 생성 실패: {exc}")
+            self._append_log(f"[미리보기] 로드 실패: {exc}")
 
     def _on_pick_output(self) -> None:  # pragma: no cover
         if not hasattr(self, "_qt_file_dialog"):
