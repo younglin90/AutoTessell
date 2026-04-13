@@ -6,10 +6,59 @@ import shutil
 import subprocess
 import tempfile
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+
+def get_git_metadata() -> dict[str, str]:
+    """Git 커밋 SHA와 브랜치 정보 수집."""
+    metadata = {
+        "git_sha": "unknown",
+        "git_branch": "unknown",
+        "git_dirty": False,
+    }
+
+    try:
+        repo_root = Path(__file__).parent.parent
+        # 현재 커밋 SHA
+        sha_result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if sha_result.returncode == 0:
+            metadata["git_sha"] = sha_result.stdout.strip()
+
+        # 현재 브랜치
+        branch_result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if branch_result.returncode == 0:
+            metadata["git_branch"] = branch_result.stdout.strip()
+
+        # 워킹 디렉터리 변경 상태
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if status_result.returncode == 0:
+            metadata["git_dirty"] = bool(status_result.stdout.strip())
+    except Exception as e:
+        print(f"⚠ Git 메타데이터 수집 실패: {e}")
+
+    return metadata
 
 
 def get_test_cases() -> list[Path]:
@@ -142,6 +191,17 @@ def main():
 
     print(f"🎯 {len(test_cases)}개 테스트 케이스 발견\n")
 
+    # Git 메타데이터 및 suite ID 수집
+    git_meta = get_git_metadata()
+    suite_id = str(uuid.uuid4())
+    timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    print(f"📌 Suite ID: {suite_id}")
+    print(f"🔗 Commit: {git_meta['git_sha'][:7]} ({git_meta['git_branch']})")
+    if git_meta["git_dirty"]:
+        print(f"⚠ Dirty working tree detected")
+    print()
+
     results = []
 
     for i, test_case in enumerate(test_cases, 1):
@@ -202,11 +262,20 @@ def main():
         print(f"  OK: {mesh_ok_count}/{len(successful)}")
         print(f"  FAIL: {len(successful) - mesh_ok_count}/{len(successful)}")
 
-    # 상세 결과 저장
+    # 상세 결과 저장 (메타데이터 포함)
     report_file = Path(__file__).parent.parent / "PERFORMANCE_REPORT.json"
     with open(report_file, "w") as f:
         json.dump({
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "metadata": {
+                "suite_id": suite_id,
+                "timestamp": timestamp,
+                "git_sha": git_meta["git_sha"],
+                "git_branch": git_meta["git_branch"],
+                "git_dirty": git_meta["git_dirty"],
+                "quality_level": "draft",
+                "timeout_seconds": 600,
+            },
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),  # Legacy field
             "total_cases": len(results),
             "summary": {
                 "successful": len(successful),
@@ -219,16 +288,33 @@ def main():
 
     print(f"\n💾 상세 결과: {report_file}")
 
-    # Markdown 리포트 생성
-    generate_markdown_report(results, report_file.parent / "PERFORMANCE_REPORT.md")
+    # Markdown 리포트 생성 (메타데이터 포함)
+    markdown_file = report_file.parent / "PERFORMANCE_REPORT.md"
+    generate_markdown_report(results, markdown_file, git_meta, suite_id, timestamp)
 
 
-def generate_markdown_report(results: list[dict[str, Any]], output_file: Path) -> None:
-    """Markdown 형식의 성능 리포트 생성."""
+def generate_markdown_report(
+    results: list[dict[str, Any]],
+    output_file: Path,
+    git_meta: dict[str, str] = None,
+    suite_id: str = "",
+    timestamp: str = "",
+) -> None:
+    """Markdown 형식의 성능 리포트 생성 (메타데이터 포함)."""
+    if git_meta is None:
+        git_meta = {"git_sha": "unknown", "git_branch": "unknown", "git_dirty": False}
+
     lines = [
         "# AutoTessell 성능 벤치마킹 리포트\n",
-        f"생성 시간: {time.strftime('%Y-%m-%d %H:%M:%S')}\n",
+        f"생성 시간: {timestamp or time.strftime('%Y-%m-%d %H:%M:%S')}\n",
         f"테스트 케이스: {len(results)}개\n",
+        "\n---\n",
+        "## 📌 메타데이터\n",
+        f"- **Suite ID**: `{suite_id}`\n",
+        f"- **Git Commit**: `{git_meta['git_sha'][:7]}` ({git_meta['git_branch']})\n",
+        f"- **Dirty**: {'⚠ Yes' if git_meta['git_dirty'] else '✓ No'}\n",
+        f"- **Quality Level**: `draft`\n",
+        f"- **Timeout**: `600s`\n",
         "\n---\n",
         "## 📊 요약\n",
         "| 상태 | 개수 |\n",
