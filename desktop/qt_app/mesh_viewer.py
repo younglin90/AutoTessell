@@ -19,7 +19,7 @@ try:
 except ImportError:
     PYVISTA_AVAILABLE = False
 
-from PySide6.QtCore import Qt, QObject, Signal
+from PySide6.QtCore import Qt, QObject, Signal, QThread
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
@@ -109,7 +109,12 @@ class MeshViewerWidget(QWidget):
         self._render_thread: threading.Thread | None = None
         self._render_worker: RenderWorker | None = None
         self._temp_files: list[Path] = []
-        self._init_ui()
+
+        try:
+            self._init_ui()
+        except Exception as e:
+            print(f"[경고] UI 초기화 실패: {e}")
+            # UI 초기화 실패해도 렌더링은 계속 가능
 
     def _init_ui(self) -> None:
         """UI 초기화."""
@@ -162,26 +167,46 @@ class MeshViewerWidget(QWidget):
             return False
 
         # 기존 스레드 대기
-        if self._render_thread is not None and self._render_thread.is_alive():
-            self._set_placeholder_image("⏳ 렌더링 중...")
+        if self._render_thread is not None and isinstance(self._render_thread, QThread):
+            if self._render_thread.isRunning():
+                self._set_placeholder_image("⏳ 렌더링 중...")
+                return False
+        elif self._render_thread is not None and hasattr(self._render_thread, 'is_alive'):
+            if self._render_thread.is_alive():
+                self._set_placeholder_image("⏳ 렌더링 중...")
+                return False
+
+        try:
+            # 플레이스홀더 표시
+            self._set_placeholder_image("⏳ 렌더링 중...\n(대용량 메시는 시간이 걸릴 수 있습니다)")
+
+            # 렌더링 워커 생성
+            self._render_worker = RenderWorker()
+            self._render_worker.render_finished.connect(self._on_render_finished)
+            self._render_worker.render_error.connect(self._on_render_error)
+
+            # QThread 사용 (더 안전함)
+            self._render_thread = QThread()
+            self._render_worker.moveToThread(self._render_thread)
+
+            # 스레드 시작 시 렌더링 수행
+            self._render_thread.started.connect(
+                lambda: self._render_worker.render_mesh(mesh_path)
+            )
+
+            # 렌더링 완료 시 스레드 종료
+            self._render_worker.render_finished.connect(self._render_thread.quit)
+            self._render_worker.render_error.connect(self._render_thread.quit)
+
+            self._render_thread.start()
+            return True
+
+        except Exception as e:
+            self._set_placeholder_image(f"❌ 오류:\n{str(e)[:30]}")
+            print(f"[로드 오류] {e}")
+            import traceback
+            traceback.print_exc()
             return False
-
-        # 플레이스홀더 표시
-        self._set_placeholder_image("⏳ 렌더링 중...\n(대용량 메시는 시간이 걸릴 수 있습니다)")
-
-        # 렌더링 워커 생성 및 시작
-        self._render_worker = RenderWorker()
-        self._render_worker.render_finished.connect(self._on_render_finished)
-        self._render_worker.render_error.connect(self._on_render_error)
-
-        self._render_thread = threading.Thread(
-            target=self._render_worker.render_mesh,
-            args=(mesh_path,),
-            daemon=True
-        )
-        self._render_thread.start()
-
-        return True
 
     def _on_render_finished(self, image_path: str) -> None:
         """렌더링 완료 콜백."""
