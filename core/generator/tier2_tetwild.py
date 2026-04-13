@@ -172,7 +172,7 @@ class Tier2TetWildGenerator:
                         import pymeshfix
                         mf = pymeshfix.MeshFix(surf.vertices, surf.faces)
                         mf.repair()
-                        surf = _trimesh.Trimesh(vertices=mf.v, faces=mf.f)
+                        surf = _trimesh.Trimesh(vertices=mf.points, faces=mf.faces)
                         logger.info("tetwild_pre_close_pymeshfix_success")
                     except Exception as e:  # noqa: BLE001
                         logger.warning("tetwild_pre_close_pymeshfix_failed", error=str(e))

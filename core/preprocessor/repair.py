@@ -243,8 +243,8 @@ class SurfaceRepairer:
             )
             meshfix.repair()
             repaired = trimesh.Trimesh(
-                vertices=meshfix.v,
-                faces=meshfix.f,
+                vertices=meshfix.points,
+                faces=meshfix.faces,
                 process=False,
             )
             actions.append("pymeshfix.repair(non_manifold+holes+self_intersections)")
