@@ -21,20 +21,42 @@ log = logging.getLogger(__name__)
 try:
     import pyvista as pv
     import numpy as np
+    import os
+
     # 오프스크린 렌더링 자동 초기화
     pv.OFF_SCREEN = True
-    # Xvfb 자동 시작
-    try:
-        # suppress_messages 파라미터는 버전에 따라 다를 수 있음
+
+    # WSL 또는 헤드리스 환경 감지
+    has_display = os.environ.get("DISPLAY") is not None
+    is_wsl = "wsl" in os.environ.get("PATH", "").lower() or os.path.exists("/proc/version") and "microsoft" in open("/proc/version").read().lower()
+
+    # Xvfb 시도 (X11이 없으면 OSMesa로 자동 전환)
+    if not is_wsl or has_display:
         try:
-            pv.start_xvfb(suppress_messages=True)
-        except TypeError:
-            # 파라미터 미지원 시 그냥 시작
-            pv.start_xvfb()
-    except Exception:
-        pass  # Xvfb 이미 실행 중이거나 사용 불가능
+            try:
+                pv.start_xvfb(suppress_messages=True)
+            except TypeError:
+                pv.start_xvfb()
+        except Exception as e:
+            log.debug(f"Xvfb 초기화 실패 (OSMesa 사용): {e}")
+            # OSMesa로 자동 전환 (PyVista 0.43+)
+            try:
+                os.environ["PYOPENGL_PLATFORM"] = "osmesa"
+            except Exception:
+                pass
+    else:
+        # WSL 환경: OSMesa 강제 사용
+        log.info("WSL 환경 감지 - OSMesa 사용")
+        try:
+            os.environ["PYOPENGL_PLATFORM"] = "osmesa"
+        except Exception:
+            pass
+
     PYVISTA_AVAILABLE = True
 except ImportError:
+    PYVISTA_AVAILABLE = False
+except Exception as e:
+    log.warning(f"PyVista 초기화 부분 실패: {e}")
     PYVISTA_AVAILABLE = False
 
 from PySide6.QtCore import Qt, QObject, Signal, QThread

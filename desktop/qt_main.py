@@ -21,20 +21,36 @@ def main() -> None:  # pragma: no cover
     """QApplication 을 생성하고 AutoTessellWindow 를 표시한다."""
     import sys
 
-    # PyVista 오프스크린 렌더링 초기화
+    # PyVista 오프스크린 렌더링 초기화 (WSL 감지)
     try:
         import pyvista as pv
+        import os
+
         pv.OFF_SCREEN = True
-        try:
+
+        # WSL 환경 감지
+        is_wsl = "wsl" in os.environ.get("PATH", "").lower() or (
+            os.path.exists("/proc/version") and "microsoft" in open("/proc/version").read().lower()
+        )
+
+        if not is_wsl:
+            # Linux/Mac: Xvfb 시도
             try:
-                pv.start_xvfb(suppress_messages=True)
-            except TypeError:
-                # suppress_messages 파라미터 미지원 시
-                pv.start_xvfb()
-        except Exception:
-            pass  # Xvfb 이미 실행 또는 사용 불가능
+                try:
+                    pv.start_xvfb(suppress_messages=True)
+                except TypeError:
+                    pv.start_xvfb()
+            except Exception:
+                pass
+        else:
+            # WSL: OSMesa 강제
+            try:
+                os.environ["PYOPENGL_PLATFORM"] = "osmesa"
+            except Exception:
+                pass
+
     except Exception:
-        pass  # PyVista 미설치
+        pass  # PyVista 미설치 또는 초기화 실패
 
     from PySide6.QtCore import QTimer, Qt
     from PySide6.QtWidgets import QApplication
