@@ -1,9 +1,10 @@
-"""PyVista 3D 메시 뷰어 — Qt 통합 (이미지 기반)."""
+"""PyVista 3D 메시 뷰어 — Qt 통합 (비동기 렌더링)."""
 from __future__ import annotations
 
 from pathlib import Path
 import tempfile
-import os
+import threading
+import gc
 
 try:
     import pyvista as pv
@@ -18,19 +19,96 @@ try:
 except ImportError:
     PYVISTA_AVAILABLE = False
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QObject, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
 
 
+class RenderWorker(QObject):
+    """PyVista 렌더링 워커 (스레드 안전)."""
+
+    render_finished = Signal(str)  # 이미지 경로
+    render_error = Signal(str)     # 오류 메시지
+
+    def render_mesh(self, mesh_path: str | Path, window_size: tuple[int, int] = (400, 300)) -> None:
+        """메시를 렌더링하여 PNG로 저장.
+
+        Args:
+            mesh_path: 메시 파일 경로
+            window_size: 렌더링 윈도우 크기
+        """
+        try:
+            mesh_path = Path(mesh_path)
+            if not mesh_path.exists():
+                self.render_error.emit(f"파일 없음: {mesh_path.name}")
+                return
+
+            # 메시 로드
+            mesh = pv.read(str(mesh_path))
+            if mesh is None:
+                self.render_error.emit(f"로드 실패: {mesh_path.name}")
+                return
+
+            # 대용량 메시 간단화 (decimation)
+            num_cells = mesh.n_cells if hasattr(mesh, 'n_cells') else 0
+            if num_cells > 100_000:
+                try:
+                    # 면 수를 50% 감소
+                    mesh = mesh.decimate(target_reduction=0.5)
+                    print(f"[메시 간단화] {num_cells} → {mesh.n_cells} cells")
+                except Exception as e:
+                    print(f"[간단화 실패] {e}")
+
+            # 오프스크린 렌더링
+            plotter = pv.Plotter(
+                off_screen=True,
+                window_size=window_size,
+                theme=pv.themes.DarkTheme()
+            )
+            plotter.background_color = "#1e1e1e"
+
+            # 메시 추가
+            plotter.add_mesh(
+                mesh,
+                color="#00aa99",
+                opacity=0.9,
+                show_edges=False,  # 엣지 제거 (성능 개선)
+            )
+            plotter.view_isometric()
+
+            # 이미지로 렌더링
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                screenshot = plotter.screenshot(tmp.name, transparent_background=False)
+                plotter.close()
+
+                # 메모리 정리
+                del mesh
+                del plotter
+                gc.collect()
+
+                if screenshot is not None:
+                    self.render_finished.emit(tmp.name)
+                else:
+                    self.render_error.emit("렌더링 실패")
+
+        except Exception as e:  # noqa: BLE001
+            self.render_error.emit(str(e)[:60])
+            print(f"[렌더링 워커 오류] {e}")
+            import traceback
+            traceback.print_exc()
+
+
 class MeshViewerWidget(QWidget):
-    """PyVista 기반 3D 메시 뷰어 (오프스크린 렌더링)."""
+    """PyVista 기반 3D 메시 뷰어 (비동기 렌더링)."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
         """초기화."""
         super().__init__(parent)
         self._label: QLabel | None = None
         self._current_mesh: object | None = None
+        self._render_thread: threading.Thread | None = None
+        self._render_worker: RenderWorker | None = None
+        self._temp_files: list[Path] = []
         self._init_ui()
 
     def _init_ui(self) -> None:
@@ -71,7 +149,7 @@ class MeshViewerWidget(QWidget):
         self._label.setPixmap(pixmap.scaledToWidth(400, Qt.SmoothTransformation))
 
     def load_mesh(self, mesh_path: str | Path) -> bool:
-        """메시 파일 로드 및 표시.
+        """메시 파일 로드 및 표시 (비동기).
 
         Args:
             mesh_path: 메시 파일 경로.
@@ -83,75 +161,91 @@ class MeshViewerWidget(QWidget):
             self._set_placeholder_image("❌ PyVista 미설치")
             return False
 
+        # 기존 스레드 대기
+        if self._render_thread is not None and self._render_thread.is_alive():
+            self._set_placeholder_image("⏳ 렌더링 중...")
+            return False
+
+        # 플레이스홀더 표시
+        self._set_placeholder_image("⏳ 렌더링 중...\n(대용량 메시는 시간이 걸릴 수 있습니다)")
+
+        # 렌더링 워커 생성 및 시작
+        self._render_worker = RenderWorker()
+        self._render_worker.render_finished.connect(self._on_render_finished)
+        self._render_worker.render_error.connect(self._on_render_error)
+
+        self._render_thread = threading.Thread(
+            target=self._render_worker.render_mesh,
+            args=(mesh_path,),
+            daemon=True
+        )
+        self._render_thread.start()
+
+        return True
+
+    def _on_render_finished(self, image_path: str) -> None:
+        """렌더링 완료 콜백."""
         try:
-            mesh_path = Path(mesh_path)
-            if not mesh_path.exists():
-                self._set_placeholder_image(f"❌ 파일 없음:\n{mesh_path.name}")
-                return False
-
-            # 메시 로드
-            mesh = pv.read(str(mesh_path))
-            if mesh is None:
-                self._set_placeholder_image(f"❌ 로드 실패:\n{mesh_path.name}")
-                return False
-
-            self._current_mesh = mesh
-
-            # 오프스크린 렌더링
-            try:
-                plotter = pv.Plotter(
-                    off_screen=True,
-                    window_size=(400, 300),
-                    theme=pv.themes.DarkTheme()
-                )
-                plotter.background_color = "#1e1e1e"
-
-                # 메시 추가
-                plotter.add_mesh(
-                    mesh,
-                    color="#00aa99",
-                    opacity=0.8,
-                    show_edges=True,
-                    edge_color="white",
-                    line_width=1.0,
-                )
-                plotter.view_isometric()
-
-                # 이미지로 렌더링
-                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                    screenshot = plotter.screenshot(tmp.name, transparent_background=False)
-                    plotter.close()
-
-                    # QPixmap으로 로드
-                    if screenshot is not None:
-                        pixmap = QPixmap(tmp.name)
-                        if not pixmap.isNull():
-                            self._label.setPixmap(pixmap)
-                            try:
-                                Path(tmp.name).unlink()  # 임시 파일 삭제
-                            except Exception:
-                                pass
-                            return True
-
-                    # 임시 파일이 없으면 OpenGL 오류 가능성
+            image_path = Path(image_path)
+            pixmap = QPixmap(str(image_path))
+            if not pixmap.isNull():
+                self._label.setPixmap(pixmap)
+                self._temp_files.append(image_path)
+                # 이전 임시 파일 정리
+                if len(self._temp_files) > 3:
+                    old_file = self._temp_files.pop(0)
                     try:
-                        Path(tmp.name).unlink()
+                        old_file.unlink()
                     except Exception:
                         pass
+            else:
+                self._set_placeholder_image("❌ 렌더링 실패")
+        except Exception as e:
+            self._set_placeholder_image(f"❌ 오류:\n{str(e)[:30]}")
+            print(f"[렌더링 완료 오류] {e}")
 
-            except Exception as render_error:  # noqa: BLE001
-                self._set_placeholder_image(f"❌ 렌더링 오류:\n{str(render_error)[:40]}")
-                print(f"[렌더링 오류] {render_error}")
-                return False
+    def _on_render_error(self, error_msg: str) -> None:
+        """렌더링 오류 콜백."""
+        self._set_placeholder_image(f"❌ 오류:\n{error_msg}")
+        print(f"[렌더링 오류] {error_msg}")
+
+    def load_polymesh(self, case_dir: str | Path) -> bool:
+        """OpenFOAM polyMesh 로드.
+
+        Args:
+            case_dir: OpenFOAM case 디렉터리.
+
+        Returns:
+            성공 여부.
+        """
+        try:
+            case_dir = Path(case_dir)
+
+            # 먼저 STL 파일 검색
+            stl_files = list(case_dir.glob("**/*.stl"))
+            if stl_files:
+                # 가장 최신 STL 파일 사용
+                latest_stl = max(stl_files, key=lambda p: p.stat().st_mtime)
+                return self.load_mesh(latest_stl)
+
+            # polyMesh 정보 표시
+            polymesh_dir = case_dir / "constant" / "polyMesh"
+            if polymesh_dir.exists():
+                self._set_placeholder_image(
+                    "✅ OpenFOAM\nmesh 생성됨\n\n(3D 미리보기 미지원)"
+                )
+                return True
 
             return False
 
         except Exception as e:  # noqa: BLE001
             self._set_placeholder_image(f"❌ 오류:\n{str(e)[:30]}")
-            print(f"[오류] 메시 로드 실패: {e}")
-            import traceback
-            traceback.print_exc()
             return False
+
+    def clear(self) -> None:
+        """뷰어 초기화."""
+        self._current_mesh = None
+        self._set_placeholder_image("3D 메시 뷰어\n\n파일을 선택하면 기하학이 표시됩니다")
 
     def load_polymesh(self, case_dir: str | Path) -> bool:
         """OpenFOAM polyMesh 로드.
