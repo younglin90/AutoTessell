@@ -846,59 +846,52 @@ QScrollArea { border: none; }
             viewer_tab_layout.addWidget(fallback_frame, stretch=1)
             self._mesh_viewer = None
 
-        # 메시 통계 오버레이 (좌상단 카드)
-        stats_overlay = QFrame(viewer_tab)
-        stats_overlay.setStyleSheet(
-            "QFrame { background: rgba(28,27,27,220); border: 1px solid #3f4852; "
-            "border-radius: 6px; }"
+        # 메시 통계 바 (뷰어 아래 — 오버레이 방식 아님, 뷰어를 가리지 않음)
+        stats_bar = QFrame()
+        stats_bar.setStyleSheet(
+            "QFrame { background: #1c1b1b; border-top: 1px solid #3f4852; border-radius: 0; }"
         )
-        stats_overlay.setFixedWidth(160)
-        stats_overlay.move(12, 12)
-        stats_overlay.setVisible(False)
-        stats_layout = QVBoxLayout(stats_overlay)
-        stats_layout.setContentsMargins(10, 8, 10, 8)
-        stats_layout.setSpacing(2)
-
-        stats_title = QLabel("Mesh Statistics")
-        stats_title.setStyleSheet(
-            "color: #98cbff; font-size: 10px; font-weight: bold; background: transparent; border: none;"
-        )
-        stats_layout.addWidget(stats_title)
+        stats_bar.setFixedHeight(40)
+        stats_bar.setVisible(False)
+        stats_bar_layout = QHBoxLayout(stats_bar)
+        stats_bar_layout.setContentsMargins(12, 4, 12, 4)
+        stats_bar_layout.setSpacing(20)
 
         self._kpi_labels = {}
-        for stat_key, stat_title, stat_default in [
-            ("vertices", "Vertices:", "—"),
-            ("cells", "Cells:", "—"),
-            ("quality", "Quality:", "—"),
-            ("non_ortho", "Non-Ortho:", "—"),
-            ("skewness", "Skewness:", "—"),
-            ("aspect_ratio", "Aspect Ratio:", "—"),
+        for stat_key, stat_title in [
+            ("vertices", "Points"),
+            ("cells", "Cells"),
+            ("non_ortho", "Non-Ortho"),
+            ("skewness", "Skewness"),
+            ("aspect_ratio", "Aspect Ratio"),
         ]:
-            stat_row = QWidget()
-            stat_row.setStyleSheet("background: transparent; border: none;")
-            stat_row_layout = QHBoxLayout(stat_row)
-            stat_row_layout.setContentsMargins(0, 0, 0, 0)
-            stat_row_layout.setSpacing(4)
-            stat_lbl = QLabel(stat_title)
-            stat_lbl.setStyleSheet("color: #bec7d4; font-size: 9px; background: transparent; border: none;")
-            stat_val = QLabel(stat_default)
-            stat_val.setStyleSheet("color: #e5e2e1; font-size: 9px; font-weight: bold; background: transparent; border: none;")
-            stat_row_layout.addWidget(stat_lbl)
-            stat_row_layout.addStretch()
-            stat_row_layout.addWidget(stat_val)
-            stats_layout.addWidget(stat_row)
-            self._kpi_labels[stat_key] = stat_val
+            col = QWidget()
+            col.setStyleSheet("background: transparent;")
+            col_layout = QVBoxLayout(col)
+            col_layout.setContentsMargins(0, 0, 0, 0)
+            col_layout.setSpacing(0)
+            val_lbl = QLabel("—")
+            val_lbl.setStyleSheet(
+                "color: #98cbff; font-size: 13px; font-weight: bold; background: transparent;"
+            )
+            title_lbl = QLabel(stat_title)
+            title_lbl.setStyleSheet(
+                "color: #8b949e; font-size: 10px; background: transparent;"
+            )
+            col_layout.addWidget(val_lbl)
+            col_layout.addWidget(title_lbl)
+            stats_bar_layout.addWidget(col)
+            self._kpi_labels[stat_key] = val_lbl
 
-        stats_overlay.adjustSize()
-        self._mesh_stats_overlay = stats_overlay
+        stats_bar_layout.addStretch()
+        self._mesh_stats_overlay = stats_bar
+        viewer_tab_layout.addWidget(stats_bar)
 
-        # 파이프라인 스텝 인디케이터 (뷰어 탭 내 hidden, compat)
+        # 파이프라인 스텝 인디케이터 (compat, hidden)
         self._pipeline_step_labels = []
         _PIPELINE_STEPS = [
-            ("01", "ANALYZE"),
-            ("02", "PREPROCESS"),
-            ("03", "GENERATE"),
-            ("04", "EVALUATE"),
+            ("01", "ANALYZE"), ("02", "PREPROCESS"),
+            ("03", "GENERATE"), ("04", "EVALUATE"),
         ]
         for _num, _name in _PIPELINE_STEPS:
             step_label = QLabel(f" {_num} {_name} ")
@@ -1438,9 +1431,22 @@ QScrollArea { border: none; }
 
         self._append_log(f"[완료] {'성공' if success else '실패'} ({elapsed:.1f}s)")
 
-        # 메시 통계 오버레이 표시
-        if success and self._mesh_stats_overlay is not None:
-            self._mesh_stats_overlay.setVisible(True)  # type: ignore[union-attr]
+        # 메시 통계 바 표시 + KPI 업데이트
+        if self._mesh_stats_overlay is not None:
+            self._mesh_stats_overlay.setVisible(success)  # type: ignore[union-attr]
+        if success:
+            qr = getattr(result, "quality_report", None)
+            if qr is not None:
+                ev_sum = getattr(qr, "evaluation_summary", None)
+                cm = getattr(ev_sum, "checkmesh", None) if ev_sum is not None else None
+                if cm is not None:
+                    self.update_kpi(
+                        non_ortho=getattr(cm, "max_non_orthogonality", None),
+                        skewness=getattr(cm, "max_skewness", None),
+                        aspect_ratio=getattr(cm, "max_aspect_ratio", None),
+                        vertices=getattr(cm, "points", None),
+                        cells=getattr(cm, "cells", None),
+                    )
 
         # 메시 뷰어에 메시 로드
         if success and self._output_dir is not None:
@@ -1483,7 +1489,19 @@ QScrollArea { border: none; }
         header_layout = QVBoxLayout(header_card)
         header_layout.setContentsMargins(16, 12, 16, 12)
 
-        tier_used = getattr(result, "tier_used", "auto") or "auto"
+        # tier_used: evaluation_summary에서 가져오거나 generator_log에서 fallback
+        tier_used = "auto"
+        if ev_summary is not None:
+            tier_used = getattr(ev_summary, "tier_evaluated", None) or tier_used
+        if tier_used == "auto":
+            gen_log = getattr(result, "generator_log", None)
+            if gen_log is not None:
+                ex_sum = getattr(gen_log, "execution_summary", None)
+                if ex_sum is not None:
+                    tiers = getattr(ex_sum, "tiers_attempted", [])
+                    success_tiers = [t for t in tiers if getattr(t, "status", "") == "success"]
+                    if success_tiers:
+                        tier_used = getattr(success_tiers[-1], "tier", tier_used)
         checks_ok = "All Checks ✓" if success else "Checks Failed ✗"
         checks_color = "#40e56c" if success else "#e55a40"
 
@@ -1507,18 +1525,29 @@ QScrollArea { border: none; }
         kpi_row_layout.setContentsMargins(0, 8, 0, 0)
         kpi_row_layout.setSpacing(12)
 
-        eval_report = getattr(result, "evaluation_report", None)
+        # result.quality_report.evaluation_summary.checkmesh 경로
+        quality_report = getattr(result, "quality_report", None)
+        ev_summary = getattr(quality_report, "evaluation_summary", None) if quality_report else None
+        checkmesh = getattr(ev_summary, "checkmesh", None) if ev_summary else None
+        geo_fidelity = getattr(ev_summary, "geometry_fidelity", None) if ev_summary else None
+
         n_vertices = "—"
         n_cells = "—"
         quality_score = "—"
-        if eval_report:
-            n_vertices = str(getattr(eval_report, "n_vertices", "—") or "—")
-            n_cells = str(getattr(eval_report, "n_cells", "—") or "—")
-            qs = getattr(eval_report, "quality_score", None)
-            if qs is not None:
-                quality_score = f"{float(qs) * 100:.1f}%"
+        if checkmesh is not None:
+            pts = getattr(checkmesh, "points", None)
+            cls = getattr(checkmesh, "cells", None)
+            if pts is not None:
+                n_vertices = f"{pts:,}"
+            if cls is not None:
+                n_cells = f"{cls:,}"
+            # verdict 기반 quality_score
+            verdict = getattr(ev_summary, "verdict", None) if ev_summary else None
+            if verdict is not None:
+                verdict_str = verdict.value if hasattr(verdict, "value") else str(verdict)
+                quality_score = "PASS ✓" if verdict_str == "PASS" else "FAIL ✗"
 
-        for val, title in [(n_vertices, "Vertices"), (n_cells, "Cells"), (quality_score, "Quality Score")]:
+        for val, title in [(n_vertices, "Points"), (n_cells, "Cells"), (quality_score, "Verdict")]:
             kpi_card = QFrame()
             kpi_card.setStyleSheet(
                 "QFrame { background: #201f1f; border: 1px solid #3f4852; border-radius: 6px; padding: 8px; }"
@@ -1552,10 +1581,11 @@ QScrollArea { border: none; }
         non_ortho_val = None
         skewness_val = None
         hausdorff_val = None
-        if eval_report:
-            non_ortho_val = getattr(eval_report, "max_non_orthogonality", None)
-            skewness_val = getattr(eval_report, "max_skewness", None)
-            hausdorff_val = getattr(eval_report, "hausdorff_distance", None)
+        if checkmesh is not None:
+            non_ortho_val = getattr(checkmesh, "max_non_orthogonality", None)
+            skewness_val = getattr(checkmesh, "max_skewness", None)
+        if geo_fidelity is not None:
+            hausdorff_val = getattr(geo_fidelity, "hausdorff_relative", None)
 
         for metric_title, metric_val, threshold, unit in [
             ("Non-Orthogonality", non_ortho_val, 70.0, "°"),
@@ -1596,25 +1626,21 @@ QScrollArea { border: none; }
 
         report_inner_layout.addWidget(metrics_row)
 
-        # 권장 조치 표시
-        if hasattr(result, "evaluation") and result.evaluation is not None:  # type: ignore[union-attr]
-            ev = result.evaluation  # type: ignore[union-attr]
-            if hasattr(ev, "evaluation_summary"):
-                summary = ev.evaluation_summary
-                if hasattr(summary, "recommendations") and summary.recommendations:
-                    rec_label = QLabel("<b>권장 조치</b>")
-                    rec_label.setStyleSheet(
-                        "color: #f0883e; font-size: 13px; margin-top: 8px; background: transparent;"
-                    )
-                    report_inner_layout.addWidget(rec_label)
-                    for rec in summary.recommendations[:5]:
-                        action = getattr(rec, "action", str(rec))
-                        rl = QLabel(f"• {action}")
-                        rl.setStyleSheet(
-                            "color: #c9d1d9; font-size: 12px; padding-left: 8px; background: transparent;"
-                        )
-                        rl.setWordWrap(True)
-                        report_inner_layout.addWidget(rl)
+        # 권장 조치 표시 (quality_report.evaluation_summary.recommendations)
+        if ev_summary is not None and hasattr(ev_summary, "recommendations") and ev_summary.recommendations:
+            rec_label = QLabel("<b>권장 조치</b>")
+            rec_label.setStyleSheet(
+                "color: #f0883e; font-size: 13px; margin-top: 8px; background: transparent;"
+            )
+            report_inner_layout.addWidget(rec_label)
+            for rec in ev_summary.recommendations[:5]:
+                action = getattr(rec, "action", str(rec))
+                rl = QLabel(f"• {action}")
+                rl.setStyleSheet(
+                    "color: #c9d1d9; font-size: 12px; padding-left: 8px; background: transparent;"
+                )
+                rl.setWordWrap(True)
+                report_inner_layout.addWidget(rl)
 
         # 내보내기 버튼들
         from PySide6.QtWidgets import QPushButton
@@ -1837,30 +1863,37 @@ QScrollArea { border: none; }
         non_ortho: float | None = None,
         skewness: float | None = None,
         aspect_ratio: float | None = None,
+        vertices: int | None = None,
+        cells: int | None = None,
     ) -> None:  # pragma: no cover
         """메시 품질 KPI 스코어카드 수치를 업데이트한다."""
-        mapping = {
-            "non_ortho": non_ortho,
-            "skewness": skewness,
-            "aspect_ratio": aspect_ratio,
-        }
-        for key, val in mapping.items():
+        # 정수 필드 (vertices, cells) — 색상 기준 없음
+        for key, val in [("vertices", vertices), ("cells", cells)]:
+            lbl = self._kpi_labels.get(key)
+            if lbl is None:
+                continue
+            lbl.setText(f"{val:,}" if val is not None else "—")  # type: ignore[union-attr]
+            lbl.setStyleSheet(  # type: ignore[union-attr]
+                "color: #98cbff; font-size: 13px; font-weight: bold; background: transparent;"
+            )
+
+        # 품질 지표 (non_ortho, skewness, aspect_ratio)
+        thresholds = {"non_ortho": 70.0, "skewness": 0.85, "aspect_ratio": 1000.0}
+        for key, val in [("non_ortho", non_ortho), ("skewness", skewness), ("aspect_ratio", aspect_ratio)]:
             lbl = self._kpi_labels.get(key)
             if lbl is None:
                 continue
             if val is None:
                 lbl.setText("—")  # type: ignore[union-attr]
                 lbl.setStyleSheet(  # type: ignore[union-attr]
-                    "color: #98cbff; font-size: 9px; font-weight: bold; background: transparent; border: none;"
+                    "color: #98cbff; font-size: 13px; font-weight: bold; background: transparent;"
                 )
             else:
-                text = f"{val:.2f}"
-                thresholds = {"non_ortho": 70.0, "skewness": 0.85, "aspect_ratio": 1000.0}
                 threshold = thresholds.get(key, float("inf"))
                 color = "#40e56c" if val <= threshold else "#e55a40"
-                lbl.setText(text)  # type: ignore[union-attr]
+                lbl.setText(f"{val:.2f}")  # type: ignore[union-attr]
                 lbl.setStyleSheet(  # type: ignore[union-attr]
-                    f"color: {color}; font-size: 9px; font-weight: bold; background: transparent; border: none;"
+                    f"color: {color}; font-size: 13px; font-weight: bold; background: transparent;"
                 )
 
     def _build_3d_viewer(self, parent: object) -> object:  # pragma: no cover
@@ -1917,30 +1950,46 @@ QScrollArea { border: none; }
             self._append_log("[Export] polyMesh 디렉터리를 찾을 수 없습니다.")
 
     def _on_export_vtk(self) -> None:  # pragma: no cover
-        """생성된 메시를 VTK 형식으로 내보낸다."""
+        """생성된 메시를 VTK 형식으로 내보낸다 (파일 저장 다이얼로그)."""
         if self._output_dir is None:
+            return
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(
+            None, "VTK 파일 저장", str(self._output_dir / "mesh.vtu"), "VTK (*.vtu *.vtk)"
+        )
+        if not path:
             return
         try:
             from core.utils.vtk_exporter import export_vtk
-            result = export_vtk(self._output_dir)
+            result = export_vtk(self._output_dir, Path(path))
             if result:
-                self._append_log(f"[Export] VTK -> {result}")
+                self._append_log(f"[Export] VTK → {result}")
             else:
                 self._append_log("[Export] VTK 내보내기 실패")
         except ImportError:
             self._append_log("[Export] VTK 내보내기 모듈을 찾을 수 없습니다.")
 
     def _on_export_fmt(self, fmt: str) -> None:  # pragma: no cover
-        """생성된 메시를 지정 형식으로 내보낸다."""
+        """생성된 메시를 지정 형식으로 내보낸다 (파일 저장 다이얼로그)."""
         if self._output_dir is None:
+            return
+        from PySide6.QtWidgets import QFileDialog
+        _ext_map = {"su2": "SU2 (*.su2)", "fluent": "Fluent MSH (*.msh)", "cgns": "CGNS (*.cgns)"}
+        _default_ext = {"su2": ".su2", "fluent": ".msh", "cgns": ".cgns"}
+        file_filter = _ext_map.get(fmt, f"{fmt.upper()} (*.*)")
+        default_name = f"mesh{_default_ext.get(fmt, '')}"
+        path, _ = QFileDialog.getSaveFileName(
+            None, f"{fmt.upper()} 파일 저장", str(self._output_dir / default_name), file_filter
+        )
+        if not path:
             return
         try:
             from core.utils.mesh_exporter import export_mesh
-            result = export_mesh(self._output_dir, fmt=fmt)  # type: ignore[arg-type]
+            result = export_mesh(self._output_dir, Path(path), fmt=fmt)  # type: ignore[arg-type]
             if result:
-                self._append_log(f"[Export] {fmt.upper()} -> {result}")
+                self._append_log(f"[Export] {fmt.upper()} → {result}")
             else:
-                self._append_log(f"[Export] {fmt.upper()} 내보내기 실패")
+                self._append_log(f"[Export] {fmt.upper()} 내보내기 실패 (polyMesh 없음 또는 meshio 오류)")
         except ImportError:
             self._append_log(f"[Export] {fmt.upper()} 내보내기 모듈을 찾을 수 없습니다.")
 
