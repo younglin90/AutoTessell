@@ -69,3 +69,24 @@ godot/**/*.uid
 
 # E2E test runtime artifacts (auto-generated)
 test_cube_case/
+*_case/
+_matrix_runs/
+
+# Benchmark / session reports (transient)
+reports/
+BENCHMARK_RUN_*.log
+PERFORMANCE_REPORT.json
+E2E_TEST_RESULTS.json
+MESH_FORMAT_VALIDATION_REPORT.json
+
+# OpenFOAM install packages
+openfoam*.deb
+
+# C++ extension build artifacts
+auto_tessell_core/build/
+auto_tessell_core/*.so
+
+# Next.js reference UI
+b_aYczSLScZNH/.next/
+b_aYczSLScZNH/node_modules/
+b_aYczSLScZNH/tsconfig.tsbuildinfo

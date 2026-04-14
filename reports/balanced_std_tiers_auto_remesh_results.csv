@@ -1,7 +1,0 @@
-input,quality,tier,remesh_engine,status,elapsed_sec,timeout_sec,failure_category,error
-/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,auto,auto,timeout,12.0,12,timeout,timeout(12s)
-/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,core,auto,pass,2.79,12,pass,"2026-04-10T04:52:57.214013Z [info     ] Evaluation complete            [core.evaluator.report] hard_fails=0 quality_level=standard soft_fails=0 verdict=PASS; 2026-04-10T04:52:57.214419Z [info     ] Pipeline PASS                  [core.pipeline.orchestrator] iteration=1 verdict=PASS; 2026-04-10T04:52:57.214655Z [warning  ] boundary_classification_failed [core.utils.boundary_classifier] error=""could not convert string to float: ''""; 2026-04-10T04:52:57.214784Z [info     ] boundary_patches_classifi"
-/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,netgen,auto,timeout,30.0,30,timeout,timeout(30s)
-/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,snappy,auto,timeout,30.0,30,timeout,timeout(30s)
-/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,cfmesh,auto,timeout,30.0,30,timeout,timeout(30s)
-/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,standard,tetwild,auto,timeout,30.0,30,timeout,timeout(30s)

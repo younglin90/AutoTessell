@@ -1,2 +1,0 @@
-input,quality,tier,remesh_engine,status,elapsed_sec,timeout_sec,failure_category,error
-/home/younglin90/work/claude_code/AutoTessell/test_cube.stl,fine,tetwild,auto,fail,13.16,60,iteration_exhausted,Failed after 2 iterations
