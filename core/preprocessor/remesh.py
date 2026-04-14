@@ -429,6 +429,13 @@ class SurfaceRemesher:
             True이면 리메쉬 권장.
         """
         surface = report.geometry.surface
+
+        # 극소 메쉬(< 100면)는 edge_length_ratio가 아무리 높아도 리메쉬 불필요.
+        # 6면 등 toy 형상에 pyACVD/quadwild를 돌리면 수백 초 낭비 발생.
+        if surface.num_faces < 100:
+            log.info("remesh_skipped_tiny_mesh", num_faces=surface.num_faces)
+            return False
+
         if surface.edge_length_ratio > 100:
             log.info(
                 "remesh_recommended",

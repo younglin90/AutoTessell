@@ -759,6 +759,44 @@ def export_vtk_cmd(case_dir: Path, output: Path | None, no_quality: bool) -> Non
 
 
 # ---------------------------------------------------------------------------
+# export (multi-format)
+# ---------------------------------------------------------------------------
+
+
+@cli.command("export")
+@click.argument("case_dir", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--format", "-f", "fmt",
+    type=click.Choice(["su2", "fluent", "cgns"], case_sensitive=False),
+    default="su2",
+    show_default=True,
+    help="출력 포맷 (su2 | fluent | cgns)",
+)
+@click.option("--output", "-o", type=click.Path(path_type=Path), default=None,
+              help="출력 파일 경로 (기본: <case_dir>/mesh.<ext>)")
+def export_cmd(case_dir: Path, fmt: str, output: Path | None) -> None:
+    """생성된 메쉬를 CFD 솔버 포맷으로 내보낸다.
+
+    지원 포맷: SU2(.su2), ANSYS Fluent(.msh), CGNS(.cgns)
+
+    예시::
+
+        auto-tessell export ./case --format su2 --output mesh.su2
+        auto-tessell export ./case --format fluent
+        auto-tessell export ./case -f cgns -o mesh.cgns
+    """
+    from core.utils.mesh_exporter import export_mesh
+
+    console.print(f"[bold cyan]Exporting mesh[/bold cyan] {case_dir} → [bold]{fmt.upper()}[/bold]")
+    result = export_mesh(case_dir, output, fmt=fmt)  # type: ignore[arg-type]
+    if result:
+        console.print(f"[bold green]✓[/bold green] {fmt.upper()} 파일 → {result}")
+    else:
+        console.print(f"[bold red]✗ {fmt.upper()} 내보내기 실패[/bold red]")
+        sys.exit(1)
+
+
+# ---------------------------------------------------------------------------
 # interactive
 # ---------------------------------------------------------------------------
 

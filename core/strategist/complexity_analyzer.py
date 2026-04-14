@@ -364,18 +364,17 @@ class ComplexityAnalyzer:
         bbox_dims_sorted = sorted(bbox_dims)
 
         # 가장 작은 차원이 전체 크기의 10% 이하이면 2D (부동소수점 오차 고려 ≤ 0.105)
+        # 정점 수 제한 없이 bbox ratio만으로 판단 (고해상도 에어포일도 정확히 감지)
         if bbox_dims_sorted[2] > 1e-10:
             aspect_2d = bbox_dims_sorted[0] / bbox_dims_sorted[2]
             if aspect_2d <= 0.105:  # 부동소수점 오차를 고려한 임계값
-                # 추가 확인: 정점 수 (확장된 한계값 5000까지 허용)
-                if surface.num_vertices < 5000:
-                    log.info(
-                        "likely_2d_shape_detected",
-                        aspect_2d=f"{aspect_2d:.4f}",
-                        num_vertices=surface.num_vertices,
-                        edge_ratio=f"{surface.edge_length_ratio:.1f}",
-                    )
-                    return True
+                log.info(
+                    "likely_2d_shape_detected",
+                    aspect_2d=f"{aspect_2d:.4f}",
+                    num_vertices=surface.num_vertices,
+                    edge_ratio=f"{surface.edge_length_ratio:.1f}",
+                )
+                return True
 
         return False
 

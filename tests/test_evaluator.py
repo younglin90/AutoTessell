@@ -1636,14 +1636,18 @@ class TestFailCriterionDetails:
         assert len(hard_fails[0].location_hint) > 0
 
     def test_hausdorff_relative_in_hard_fail(self) -> None:
-        """Hausdorff 상대값 > hard threshold → hard_fails에 hausdorff_relative 포함."""
+        """Hausdorff 상대값 > hard threshold → hard_fails에 hausdorff_relative 포함.
+
+        Note: Draft quality_level은 속도 우선으로 hausdorff 검증을 스킵한다.
+        Standard/Fine에서만 hausdorff가 hard_fail에 포함된다.
+        """
         cm = _make_checkmesh()
         fidelity = GeometryFidelity(
             hausdorff_distance=1.0,
-            hausdorff_relative=0.15,  # > 0.10 draft
+            hausdorff_relative=0.06,  # > 0.05 standard threshold
             surface_area_deviation_percent=1.0,
         )
-        report = _make_report(cm, quality_level="draft", geometry_fidelity=fidelity)
+        report = _make_report(cm, quality_level="standard", geometry_fidelity=fidelity)
         hard_criteria = [f.criterion for f in report.evaluation_summary.hard_fails]
         assert "hausdorff_relative" in hard_criteria
 
