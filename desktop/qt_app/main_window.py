@@ -31,6 +31,8 @@ class AutoTessellWindow:  # type: ignore[misc]
         ("netgen_closeedgefac", "Netgen CloseEdgeFac", "float", "2.0"),
         ("ng_max_h", "Netgen maxh", "float", "auto"),
         ("ng_min_h", "Netgen minh", "float", "auto"),
+        ("ng_fineness", "Netgen Fineness", "float", "0.5"),
+        ("ng_second_order", "Netgen 2nd Order", "bool", "false"),
         # ── MeshPy (TetGen) ─────────────────────────────────────────
         ("meshpy_min_angle", "MeshPy Min Angle", "float", "25.0"),
         ("meshpy_max_volume", "MeshPy MaxVolume", "float", "auto"),
@@ -55,6 +57,8 @@ class AutoTessellWindow:  # type: ignore[misc]
         ("mmg_hmax", "MMG hmax", "float", "auto"),
         ("mmg_hgrad", "MMG hgrad", "float", "1.3"),
         ("mmg_hausd", "MMG hausd", "float", "0.01"),
+        # ── cfMesh 추가 파라미터 ─────────────────────────────────────
+        ("cf_surface_feature_angle", "CF Surface Feature Angle", "float", "30.0"),
         # ── Polyhedral ──────────────────────────────────────────────
         ("feature_angle", "Polyhedral FeatureAngle", "float", "5.0"),
         ("concave_multi_cells", "Polyhedral ConcaveCells", "bool", "true"),
@@ -150,6 +154,9 @@ class AutoTessellWindow:  # type: ignore[misc]
         "netgen_closeedgefac": {"netgen"},
         "ng_max_h": {"netgen"},
         "ng_min_h": {"netgen"},
+        "ng_fineness": {"netgen"},
+        "ng_second_order": {"netgen"},
+        "cf_surface_feature_angle": {"cfmesh"},
         # MeshPy
         "meshpy_min_angle": {"core", "jigsaw"},
         "meshpy_max_volume": {"core", "jigsaw"},
@@ -665,14 +672,100 @@ QScrollArea { border: none; }
             adv_content_layout.addWidget(hidden_edit)
             setattr(self, attr, hidden_edit)
 
-        # Tier param edits (hidden)
-        self._tier_param_edits = {}
-        for key, _label, _kind, placeholder in self.TIER_PARAM_SPECS:
-            hidden_edit = QLineEdit()
-            hidden_edit.setPlaceholderText(placeholder)
-            hidden_edit.setVisible(False)
-            adv_content_layout.addWidget(hidden_edit)
-            self._tier_param_edits[key] = hidden_edit
+        # ── Tier 파라미터 탭 위젯 (가시적 입력 필드) ──────────────────
+        from PySide6.QtWidgets import (
+            QTabWidget, QFormLayout, QCheckBox as _QCB, QSpinBox as _QSpin,
+            QDoubleSpinBox, QScrollArea,
+        )
+
+        tier_tabs = QTabWidget()
+        tier_tabs.setStyleSheet(
+            "QTabWidget::pane { border: 1px solid #30363d; background: #0d1117; }"
+            "QTabBar::tab { background: #161b22; color: #8b949e; padding: 3px 7px; "
+            "font-size: 10px; border: 1px solid #30363d; border-bottom: none; }"
+            "QTabBar::tab:selected { background: #21262d; color: #c9d1d9; }"
+        )
+        adv_content_layout.addWidget(tier_tabs)
+
+        # tier → 탭 순서 정의
+        _tab_groups: list[tuple[str, list[str]]] = [
+            ("공통", ["element_size_tier", "max_cells_tier", "bl_layers_tier"]),
+            ("Snappy", [
+                "snappy_max_local_cells", "snappy_max_global_cells",
+                "snappy_min_refinement_cells", "snappy_n_cells_between_levels",
+                "snappy_snap_smooth_patch", "snappy_snap_relax_iter",
+                "snappy_feature_snap_iter",
+            ]),
+            ("cfMesh", ["cf_surface_feature_angle"]),
+            ("Netgen", [
+                "netgen_grading", "netgen_curvaturesafety",
+                "netgen_segmentsperedge", "netgen_closeedgefac",
+                "ng_max_h", "ng_min_h", "ng_fineness", "ng_second_order",
+            ]),
+            ("TetWild", ["tetwild_edge_length", "tw_max_iterations"]),
+            ("MMG", ["mmg_hmin", "mmg_hmax", "mmg_hgrad", "mmg_hausd"]),
+            ("JIGSAW", ["jigsaw_hmax", "jigsaw_hmin", "jigsaw_optm_iter"]),
+            ("MeshPy", ["meshpy_min_angle", "meshpy_max_volume", "meshpy_max_area_2d"]),
+            ("Core", ["core_quality", "core_max_vertices"]),
+            ("Polyhedral", ["feature_angle", "concave_multi_cells"]),
+        ]
+
+        # key → (label, kind, placeholder) 빠른 조회
+        _spec_map = {k: (lbl, knd, ph) for k, lbl, knd, ph in self.TIER_PARAM_SPECS}
+
+        self._tier_param_edits: dict[str, object] = {}
+
+        _tab_style = (
+            "QLineEdit { background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; "
+            "border-radius: 3px; padding: 2px 4px; font-size: 10px; }"
+            "QCheckBox { color: #c9d1d9; font-size: 10px; background: transparent; }"
+            "QSpinBox, QDoubleSpinBox { background: #0d1117; color: #c9d1d9; "
+            "border: 1px solid #30363d; border-radius: 3px; font-size: 10px; }"
+            "QLabel { color: #8b949e; font-size: 10px; }"
+        )
+
+        for tab_name, keys in _tab_groups:
+            tab_widget = QWidget()
+            tab_widget.setStyleSheet(_tab_style)
+            form = QFormLayout(tab_widget)
+            form.setContentsMargins(6, 6, 6, 6)
+            form.setSpacing(4)
+            form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+
+            for key in keys:
+                if key not in _spec_map:
+                    continue
+                label_text, kind, placeholder = _spec_map[key]
+                help_text = self.PARAM_HELP.get(key, "")
+
+                if kind == "bool":
+                    widget: object = _QCB()
+                    widget.setChecked(placeholder.lower() == "true")  # type: ignore[union-attr]
+                    widget.setToolTip(help_text)  # type: ignore[union-attr]
+                elif kind == "int":
+                    spin = _QSpin()
+                    spin.setRange(0, 100_000_000)
+                    try:
+                        spin.setValue(int(placeholder))
+                    except (ValueError, TypeError):
+                        spin.setValue(0)
+                    spin.setSpecialValueText("auto")
+                    spin.setToolTip(help_text)
+                    widget = spin
+                else:  # float / str
+                    edit = QLineEdit()
+                    edit.setPlaceholderText(placeholder)
+                    edit.setToolTip(help_text)
+                    widget = edit
+
+                row_label = QLabel(label_text + ":")
+                row_label.setToolTip(help_text)
+                form.addRow(row_label, widget)  # type: ignore[arg-type]
+                self._tier_param_edits[key] = widget
+
+            tier_tabs.addTab(tab_widget, tab_name)
+
+        self._tier_tabs_widget = tier_tabs
 
         sidebar_layout.addWidget(adv_content)
 
@@ -1156,21 +1249,36 @@ QScrollArea { border: none; }
                         return
 
         for key, _label, kind, _placeholder in self.TIER_PARAM_SPECS:
-            edit = self._tier_param_edits.get(key)
-            if edit is None:
+            widget = self._tier_param_edits.get(key)
+            if widget is None:
                 continue
-            raw = edit.text().strip()  # type: ignore[union-attr]
-            if not raw or not self._is_param_active(key):
+            if not self._is_param_active(key):
                 continue
             try:
+                # QCheckBox
+                if kind == "bool":
+                    from PySide6.QtWidgets import QCheckBox as _ChkBox
+                    if isinstance(widget, _ChkBox):
+                        tier_params[key] = widget.isChecked()
+                    continue
+                # QSpinBox (int)
                 if kind == "int":
-                    tier_params[key] = int(raw)
-                elif kind == "float":
-                    tier_params[key] = float(raw)
-                elif kind == "bool":
-                    tier_params[key] = raw.lower() in ("true", "1", "yes", "on")
-                else:
-                    tier_params[key] = raw
+                    from PySide6.QtWidgets import QSpinBox as _SB
+                    if isinstance(widget, _SB):
+                        val = widget.value()
+                        if val != 0:  # 0 == "auto" (special value)
+                            tier_params[key] = val
+                    continue
+                # QLineEdit (float / str)
+                from PySide6.QtWidgets import QLineEdit as _LE
+                if isinstance(widget, _LE):
+                    raw = widget.text().strip()
+                    if not raw:
+                        continue
+                    if kind == "float":
+                        tier_params[key] = float(raw)
+                    else:
+                        tier_params[key] = raw
             except Exception as exc:
                 self._append_log(f"[오류] {key} 파싱 실패: {exc}")
                 return
@@ -1487,6 +1595,55 @@ QScrollArea { border: none; }
             metrics_row_layout.addWidget(metric_card)
 
         report_inner_layout.addWidget(metrics_row)
+
+        # 권장 조치 표시
+        if hasattr(result, "evaluation") and result.evaluation is not None:  # type: ignore[union-attr]
+            ev = result.evaluation  # type: ignore[union-attr]
+            if hasattr(ev, "evaluation_summary"):
+                summary = ev.evaluation_summary
+                if hasattr(summary, "recommendations") and summary.recommendations:
+                    rec_label = QLabel("<b>권장 조치</b>")
+                    rec_label.setStyleSheet(
+                        "color: #f0883e; font-size: 13px; margin-top: 8px; background: transparent;"
+                    )
+                    report_inner_layout.addWidget(rec_label)
+                    for rec in summary.recommendations[:5]:
+                        action = getattr(rec, "action", str(rec))
+                        rl = QLabel(f"• {action}")
+                        rl.setStyleSheet(
+                            "color: #c9d1d9; font-size: 12px; padding-left: 8px; background: transparent;"
+                        )
+                        rl.setWordWrap(True)
+                        report_inner_layout.addWidget(rl)
+
+        # 내보내기 버튼들
+        from PySide6.QtWidgets import QPushButton
+        export_row_widget = QWidget()
+        export_row_widget.setStyleSheet("background: transparent;")
+        export_row = QHBoxLayout(export_row_widget)
+        export_row.setContentsMargins(0, 8, 0, 0)
+        export_row.setSpacing(8)
+
+        btn_dl_polymesh = QPushButton("polyMesh 저장")
+        btn_dl_polymesh.clicked.connect(self._on_export_polymesh)
+        btn_dl_su2 = QPushButton("SU2 내보내기")
+        btn_dl_su2.clicked.connect(lambda: self._on_export_fmt("su2"))
+        btn_dl_fluent = QPushButton("Fluent 내보내기")
+        btn_dl_fluent.clicked.connect(lambda: self._on_export_fmt("fluent"))
+        btn_dl_vtk = QPushButton("VTK 내보내기")
+        btn_dl_vtk.clicked.connect(self._on_export_vtk)
+
+        _btn_style = (
+            "QPushButton { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; "
+            "border-radius: 4px; padding: 6px 10px; font-size: 12px; } "
+            "QPushButton:hover { background: #30363d; }"
+        )
+        for btn in [btn_dl_polymesh, btn_dl_su2, btn_dl_fluent, btn_dl_vtk]:
+            btn.setStyleSheet(_btn_style)
+            export_row.addWidget(btn)
+        export_row.addStretch()
+        report_inner_layout.addWidget(export_row_widget)
+
         report_inner_layout.addStretch()
 
         if self._report_content is not None:
@@ -1613,6 +1770,26 @@ QScrollArea { border: none; }
                 if hasattr(widget, "setVisible"):
                     widget.setVisible(visible)  # type: ignore[union-attr]
 
+        # 선택된 엔진에 맞는 Tier 탭으로 자동 전환
+        if hasattr(self, "_tier_tabs_widget") and self._tier_tabs_widget is not None:
+            _engine_to_tab: dict[str, str] = {
+                "snappy": "Snappy",
+                "cfmesh": "cfMesh",
+                "netgen": "Netgen",
+                "tetwild": "TetWild",
+                "mmg": "MMG",
+                "jigsaw": "JIGSAW",
+                "meshpy": "MeshPy",
+                "core": "Core",
+                "polyhedral": "Polyhedral",
+            }
+            target_tab = _engine_to_tab.get(tier.lower(), "공통")
+            tabs = self._tier_tabs_widget  # type: ignore[union-attr]
+            for i in range(tabs.count()):
+                if tabs.tabText(i) == target_tab:
+                    tabs.setCurrentIndex(i)
+                    break
+
     def _refresh_quality_seg_btns(self) -> None:
         """현재 _quality_level에 맞게 세그먼트 버튼 스타일을 갱신한다."""
         active = self._quality_level.value
@@ -1685,6 +1862,87 @@ QScrollArea { border: none; }
                 lbl.setStyleSheet(  # type: ignore[union-attr]
                     f"color: {color}; font-size: 9px; font-weight: bold; background: transparent; border: none;"
                 )
+
+    def _build_3d_viewer(self, parent: object) -> object:  # pragma: no cover
+        """3D 메시 뷰어 위젯 생성. pyvistaqt -> Trimesh+Matplotlib -> 플레이스홀더 순서."""
+        from PySide6.QtCore import Qt
+        from PySide6.QtWidgets import QLabel
+
+        try:
+            from pyvistaqt import BackgroundPlotter
+            viewer = BackgroundPlotter(show=False, off_screen=False)
+            self._mesh_viewer = viewer
+            return viewer
+        except Exception:
+            pass
+        try:
+            import matplotlib
+            matplotlib.use("Agg")
+            from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots(subplot_kw={"projection": "3d"}, figsize=(6, 5))
+            ax.set_facecolor("#0d1117")
+            fig.patch.set_facecolor("#0d1117")
+            canvas = FigureCanvasQTAgg(fig)
+            self._mesh_viewer = canvas
+            self._mesh_fig = fig
+            self._mesh_ax = ax
+            return canvas
+        except Exception:
+            pass
+        # 플레이스홀더
+        lbl = QLabel(
+            "3D 뷰어를 사용하려면\npyvistaqt 또는 matplotlib 설치 필요\n\n"
+            "pip install pyvistaqt"
+        )
+        lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl.setStyleSheet("color: #8b949e; font-size: 13px;")
+        return lbl
+
+    def _on_export_polymesh(self) -> None:  # pragma: no cover
+        """생성된 polyMesh 디렉터리를 사용자가 선택한 위치에 복사한다."""
+        if self._output_dir is None:
+            return
+        from PySide6.QtWidgets import QFileDialog
+        target = QFileDialog.getExistingDirectory(self._qmain if hasattr(self, "_qmain") else None, "polyMesh 저장 위치 선택")
+        if not target:
+            return
+        import shutil
+        src = self._output_dir / "constant" / "polyMesh"
+        if src.exists():
+            dst = Path(target) / "polyMesh"
+            shutil.copytree(str(src), str(dst), dirs_exist_ok=True)
+            self._append_log(f"[Export] polyMesh -> {dst}")
+        else:
+            self._append_log("[Export] polyMesh 디렉터리를 찾을 수 없습니다.")
+
+    def _on_export_vtk(self) -> None:  # pragma: no cover
+        """생성된 메시를 VTK 형식으로 내보낸다."""
+        if self._output_dir is None:
+            return
+        try:
+            from core.utils.vtk_exporter import export_vtk
+            result = export_vtk(self._output_dir)
+            if result:
+                self._append_log(f"[Export] VTK -> {result}")
+            else:
+                self._append_log("[Export] VTK 내보내기 실패")
+        except ImportError:
+            self._append_log("[Export] VTK 내보내기 모듈을 찾을 수 없습니다.")
+
+    def _on_export_fmt(self, fmt: str) -> None:  # pragma: no cover
+        """생성된 메시를 지정 형식으로 내보낸다."""
+        if self._output_dir is None:
+            return
+        try:
+            from core.utils.mesh_exporter import export_mesh
+            result = export_mesh(self._output_dir, fmt=fmt)  # type: ignore[arg-type]
+            if result:
+                self._append_log(f"[Export] {fmt.upper()} -> {result}")
+            else:
+                self._append_log(f"[Export] {fmt.upper()} 내보내기 실패")
+        except ImportError:
+            self._append_log(f"[Export] {fmt.upper()} 내보내기 모듈을 찾을 수 없습니다.")
 
     def _param_is_applicable(self, key: str, tier: str, remesh_engine: str) -> bool:
         if key in {

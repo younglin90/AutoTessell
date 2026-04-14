@@ -428,29 +428,33 @@ async def _run_mesh_pipeline(
         # extra_params로 strategy override (GUI에서 설정한 값)
         if extra_params:
             ep = extra_params
+            # surface mesh 공통 파라미터
             if ep.get("element_size", 0) > 0:
-                strategy.surface_mesh.target_cell_size = ep["element_size"]
-                strategy.surface_mesh.min_cell_size = ep["element_size"] / 4
+                strategy.surface_mesh.target_cell_size = float(ep["element_size"])
+                strategy.surface_mesh.min_cell_size = float(ep["element_size"]) / 4
             if ep.get("base_cell_size", 0) > 0:
                 strategy.domain.base_cell_size = ep["base_cell_size"]
             if ep.get("max_cells", 0) > 0:
+                strategy.mesh_params["max_cells"] = int(ep["max_cells"])
                 domain_vol = 1.0
                 for i in range(3):
                     domain_vol *= strategy.domain.max[i] - strategy.domain.min[i]
                 est = domain_vol / (strategy.domain.base_cell_size ** 3)
                 if est > ep["max_cells"]:
                     strategy.domain.base_cell_size = (domain_vol / ep["max_cells"]) ** (1/3)
-            if "bl_layers" in ep and ep["bl_layers"] > 0:
-                strategy.boundary_layers.enabled = True
-                strategy.boundary_layers.num_layers = ep["bl_layers"]
-            if ep.get("tetwild_epsilon", 0) > 0:
-                strategy.tier_specific_params["tetwild_epsilon"] = ep["tetwild_epsilon"]
-            if ep.get("tetwild_stop_energy", 0) > 0:
-                strategy.tier_specific_params["tetwild_stop_energy"] = ep["tetwild_stop_energy"]
-            if ep.get("snappy_snap_tolerance", 0) > 0:
-                strategy.tier_specific_params["snappy_snap_tolerance"] = ep["snappy_snap_tolerance"]
-            if ep.get("snappy_snap_iterations", 0) > 0:
-                strategy.tier_specific_params["snappy_snap_iterations"] = ep["snappy_snap_iterations"]
+            # bl_layers
+            if ep.get("bl_layers", 0) > 0:
+                strategy.boundary_layer.n_layers = int(ep["bl_layers"])
+            # 모든 나머지 파라미터를 tier_specific_params에 자동 머지
+            # (element_size, max_cells, bl_layers, action, quality, tier, max_iterations 제외)
+            _skip = {
+                "element_size", "max_cells", "bl_layers", "action", "quality", "tier",
+                "max_iterations", "no_repair", "surface_remesh", "allow_ai_fallback",
+                "remesh_engine", "base_cell_size",
+            }
+            for k, v in ep.items():
+                if k not in _skip and v is not None and v != "" and v != 0:
+                    strategy.tier_specific_params[k] = v
 
         await ws.send_json({
             "type": "strategy",
