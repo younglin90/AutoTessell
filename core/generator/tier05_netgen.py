@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
+import os
 import time
 from pathlib import Path
 
@@ -87,6 +90,8 @@ class Tier05NetgenGenerator:
             grading = params.get("netgen_grading", 0.3)
             curvaturesafety = params.get("netgen_curvaturesafety", 2.0)
             segmentsperedge = params.get("netgen_segmentsperedge", 1.0)
+            # GUI에서 직접 설정 가능 (0 = 근접 엣지 검출 비활성화)
+            user_closeedgefac = params.get("netgen_closeedgefac", None)
 
             is_cad = preprocessed_path.suffix.lower() in _CAD_EXTENSIONS
 
@@ -107,13 +112,78 @@ class Tier05NetgenGenerator:
             else:
                 geo = STLGeometry(str(preprocessed_path))
 
-            mesh = geo.GenerateMesh(
-                maxh=maxh,
-                minh=minh,
-                grading=grading,
-                curvaturesafety=curvaturesafety,
-                segmentsperedge=segmentsperedge,
-            )
+            # Netgen C++ 라이브러리가 stdout/stderr로 직접 출력하므로
+            # fd-level 리다이렉트로 억제한다 (Python redirect_stdout으로는 불충분)
+            #
+            # 어려운 형상에서 "too many attempts in domain 1" 예외가 발생하므로
+            # 파라미터를 점진적으로 완화하며 최대 3회 재시도한다.
+            # closeedgefac=0 → 근접 엣지 검출 비활성화 (주요 원인 제거)
+            # 사용자가 closeedgefac을 명시한 경우 1회만 시도, 아니면 3단계 재시도
+            if user_closeedgefac is not None:
+                retry_configs = [
+                    (grading, curvaturesafety, float(user_closeedgefac), 1.0, True),
+                ]
+            else:
+                retry_configs = [
+                    # (grading, curvaturesafety, closeedgefac, maxh_factor, uselocalh)
+                    (grading, curvaturesafety, 2.0, 1.0, True),   # attempt 1: original
+                    (0.5,     1.0,             0,   1.0, False),   # attempt 2: no close-edge
+                    (0.7,     1.0,             0,   2.0, False),   # attempt 3: coarse
+                ]
+
+            mesh = None
+            last_exc: Exception | None = None
+            for attempt, (g, cs, cef, maxh_factor, localh) in enumerate(retry_configs, 1):
+                try:
+                    mp_kwargs: dict = dict(
+                        maxh=maxh * maxh_factor,
+                        grading=g,
+                        curvaturesafety=cs,
+                        segmentsperedge=segmentsperedge,
+                        uselocalh=localh,
+                    )
+                    if cef > 0:
+                        mp_kwargs["closeedgefac"] = cef
+
+                    logger.info("tier05_netgen_attempt", attempt=attempt, **mp_kwargs)
+
+                    with _suppress_c_output():
+                        mesh = geo.GenerateMesh(**mp_kwargs)
+
+                    logger.info("tier05_netgen_attempt_success", attempt=attempt)
+                    break
+                except TypeError as te:
+                    # 이 버전의 Netgen이 특정 kwarg를 지원하지 않는 경우
+                    # uselocalh / closeedgefac 을 제거하고 재시도
+                    logger.warning(
+                        "tier05_netgen_kwarg_unsupported",
+                        attempt=attempt,
+                        error=str(te),
+                    )
+                    try:
+                        mp_kwargs.pop("uselocalh", None)
+                        mp_kwargs.pop("closeedgefac", None)
+                        with _suppress_c_output():
+                            mesh = geo.GenerateMesh(**mp_kwargs)
+                        logger.info("tier05_netgen_attempt_success_reduced_kwargs", attempt=attempt)
+                        break
+                    except Exception as exc2:
+                        last_exc = exc2
+                        logger.warning(
+                            "tier05_netgen_attempt_failed",
+                            attempt=attempt,
+                            error=str(exc2),
+                        )
+                except Exception as exc:
+                    last_exc = exc
+                    logger.warning(
+                        "tier05_netgen_attempt_failed",
+                        attempt=attempt,
+                        error=str(exc),
+                    )
+
+            if mesh is None:
+                raise last_exc or RuntimeError("Netgen: all meshing attempts failed")
 
             # Gmsh2 포맷으로 export
             msh_path = case_dir / "netgen_mesh.msh"
@@ -213,3 +283,25 @@ class Tier05NetgenGenerator:
                 fallback="원본 CAD 파일 사용",
             )
             return cad_path
+
+
+@contextlib.contextmanager
+def _suppress_c_output():
+    """Netgen C++ 라이브러리의 fd-level stdout/stderr 출력을 억제한다.
+
+    Python의 redirect_stdout은 C 확장의 직접 write(1, ...) 호출을 막지 못하므로
+    os.dup2로 fd 1/2를 /dev/null로 교체한다.
+    """
+    devnull_fd = os.open(os.devnull, os.O_WRONLY)
+    saved_stdout = os.dup(1)
+    saved_stderr = os.dup(2)
+    try:
+        os.dup2(devnull_fd, 1)
+        os.dup2(devnull_fd, 2)
+        os.close(devnull_fd)
+        yield
+    finally:
+        os.dup2(saved_stdout, 1)
+        os.dup2(saved_stderr, 2)
+        os.close(saved_stdout)
+        os.close(saved_stderr)

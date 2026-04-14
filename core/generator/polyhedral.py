@@ -184,9 +184,9 @@ class PolyhedralGenerator:
                 )
                 return TierAttempt(
                     tier=self.TIER_NAME,
-                    success=False,
-                    reason="openfoam_unavailable",
-                    elapsed=elapsed,
+                    status="failed",
+                    time_seconds=elapsed,
+                    error_message="openfoam_unavailable",
                 )
 
             # 기존 polyMesh가 있는지 확인
@@ -199,9 +199,9 @@ class PolyhedralGenerator:
                 )
                 return TierAttempt(
                     tier=self.TIER_NAME,
-                    success=False,
-                    reason="no_existing_mesh",
-                    elapsed=elapsed,
+                    status="failed",
+                    time_seconds=elapsed,
+                    error_message="no_existing_mesh: polyMesh not found. Run a tet/hex tier first.",
                 )
 
             # Polyhedral 변환 수행
@@ -216,17 +216,16 @@ class PolyhedralGenerator:
                 log.info("tier_polyhedral_success", elapsed=elapsed)
                 return TierAttempt(
                     tier=self.TIER_NAME,
-                    success=True,
-                    reason="polyhedral_conversion_success",
-                    elapsed=elapsed,
+                    status="success",
+                    time_seconds=elapsed,
                 )
             else:
                 log.warning("tier_polyhedral_conversion_failed", elapsed=elapsed)
                 return TierAttempt(
                     tier=self.TIER_NAME,
-                    success=False,
-                    reason="polyhedral_conversion_failed",
-                    elapsed=elapsed,
+                    status="failed",
+                    time_seconds=elapsed,
+                    error_message="polyhedral_conversion_failed: polyDualMesh returned False",
                 )
 
         except Exception as exc:  # noqa: BLE001
@@ -234,7 +233,7 @@ class PolyhedralGenerator:
             log.error("tier_polyhedral_exception", error=str(exc), elapsed=elapsed)
             return TierAttempt(
                 tier=self.TIER_NAME,
-                success=False,
-                reason=f"exception: {str(exc)[:50]}",
-                elapsed=elapsed,
+                status="failed",
+                time_seconds=elapsed,
+                error_message=f"exception: {str(exc)[:200]}",
             )

@@ -1,20 +1,16 @@
-"""PyVista 3D 메시 뷰어 — Qt 통합 (비동기 렌더링).
+"""PyVista 3D 인터랙티브 메시 뷰어 — pyvistaqt QtInteractor 기반.
 
-개선 사항:
-- 메시 정보 표시 (정점, 면, 스케일, 파일명)
-- 다양한 카메라 뷰 (isometric, front, top, side)
-- 향상된 라이팅 (2개 라이트, 고명도)
-- 렌더링 옵션 (edge 토글, 투명도)
-- 상세한 진행 상태 메시지
+마우스 인터랙션:
+- 왼쪽 클릭 드래그: 회전
+- 오른쪽 클릭 드래그 / 스크롤: 줌
+- 가운데 클릭 드래그: 팬
 """
 from __future__ import annotations
 
 from pathlib import Path
-import tempfile
-import threading
-import gc
 from typing import Optional
 import logging
+import gc
 
 log = logging.getLogger(__name__)
 
@@ -23,476 +19,1007 @@ try:
     import numpy as np
     import os
 
-    # 오프스크린 렌더링 자동 초기화
-    pv.OFF_SCREEN = True
-
-    # WSL 또는 헤드리스 환경 감지
-    has_display = os.environ.get("DISPLAY") is not None
-    is_wsl = "wsl" in os.environ.get("PATH", "").lower() or os.path.exists("/proc/version") and "microsoft" in open("/proc/version").read().lower()
-
-    # Xvfb 시도 (X11이 없으면 OSMesa로 자동 전환)
-    if not is_wsl or has_display:
-        try:
-            try:
-                pv.start_xvfb(suppress_messages=True)
-            except TypeError:
-                pv.start_xvfb()
-        except Exception as e:
-            log.debug(f"Xvfb 초기화 실패 (OSMesa 사용): {e}")
-            # OSMesa로 자동 전환 (PyVista 0.43+)
-            try:
-                os.environ["PYOPENGL_PLATFORM"] = "osmesa"
-            except Exception:
-                pass
-    else:
-        # WSL 환경: OSMesa 강제 사용
-        log.info("WSL 환경 감지 - OSMesa 사용")
-        try:
-            os.environ["PYOPENGL_PLATFORM"] = "osmesa"
-        except Exception:
-            pass
-
+    pv.OFF_SCREEN = False  # 인터랙티브 모드에서는 오프스크린 끔
     PYVISTA_AVAILABLE = True
 except ImportError:
     PYVISTA_AVAILABLE = False
+    log.warning("pyvista 미설치 — 3D 뷰어 비활성화")
 except Exception as e:
-    log.warning(f"PyVista 초기화 부분 실패: {e}")
     PYVISTA_AVAILABLE = False
+    log.warning(f"pyvista 초기화 실패: {e}")
+
+
+# VTK 볼륨 셀 타입 ID (tet=10, hex=12, wedge=13, pyramid=14, hex20=25 등)
+_VOLUME_CELL_TYPES = {10, 12, 13, 14, 25, 26, 27, 28, 29, 42}
+
+
+def _mesh_element_label(mesh: object) -> tuple[str, str]:
+    """메시 종류에 따라 (face_label, cell_label) 반환.
+
+    surface mesh (STL 등): faces=삼각형/사각형, cells=0
+    volume mesh (polyMesh, VTU 등): faces=경계면, cells=tet/hex
+
+    Returns:
+        (face_str, cell_str) — 빈 문자열이면 표시 안 함
+    """
+    n_pts = getattr(mesh, "n_points", 0)
+    n_cells = getattr(mesh, "n_cells", 0)
+    try:
+        cell_types = set(getattr(mesh, "celltypes", []))
+        is_volume = bool(cell_types & _VOLUME_CELL_TYPES)
+    except Exception:
+        is_volume = False
+
+    if is_volume:
+        # 볼륨 메시: n_cells = 볼륨 셀 개수
+        return ("", f"▭ {n_cells:,} cells")
+    else:
+        # 표면 메시: n_cells = 삼각형(face) 개수
+        return (f"△ {n_cells:,} faces", "")
+
+try:
+    from pyvistaqt import QtInteractor
+    PYVISTAQT_AVAILABLE = True
+except ImportError:
+    PYVISTAQT_AVAILABLE = False
+    log.warning("pyvistaqt 미설치 — pip install pyvistaqt")
+except Exception as e:
+    PYVISTAQT_AVAILABLE = False
+    log.warning(f"pyvistaqt 초기화 실패: {e}")
 
 from PySide6.QtCore import Qt, QObject, Signal, QThread
-from PySide6.QtGui import QPixmap, QFont
-from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget
+from PySide6.QtGui import QPixmap, QFont, QColor
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
+
+# ---------------------------------------------------------------------------
+# Static fallback (PNG rendering via background thread)
+# ---------------------------------------------------------------------------
 
 class RenderWorker(QObject):
-    """PyVista 렌더링 워커 (스레드 안전).
+    """PyVista 오프스크린 렌더링 워커 (폴백용)."""
 
-    개선된 라이팅, 카메라 컨트롤, 메시 정보 출력.
-    """
-
-    render_finished = Signal(str, dict)  # (이미지 경로, 메시 정보)
-    render_error = Signal(str)           # 오류 메시지
+    render_finished = Signal(str, dict)
+    render_error = Signal(str)
 
     def render_mesh(
         self,
         mesh_path: str | Path,
-        window_size: tuple[int, int] = (400, 300),
+        window_size: tuple[int, int] = (800, 600),
         camera_view: str = "isometric",
-        show_edges: bool = False,
+        show_edges: bool = True,
+        show_points: bool = False,
         opacity: float = 0.95,
     ) -> None:
-        """메시를 렌더링하여 PNG로 저장.
+        """메시를 렌더링하여 PNG로 저장 (폴백)."""
+        import tempfile
 
-        Args:
-            mesh_path: 메시 파일 경로
-            window_size: 렌더링 윈도우 크기 (width, height)
-            camera_view: 카메라 뷰 ('isometric', 'front', 'top', 'side', 'auto')
-            show_edges: 엣지 표시 여부
-            opacity: 메시 투명도 (0.0~1.0)
-        """
         try:
             mesh_path = Path(mesh_path)
             if not mesh_path.exists():
                 self.render_error.emit(f"파일 없음: {mesh_path.name}")
                 return
 
-            # 메시 로드
             mesh = pv.read(str(mesh_path))
             if mesh is None:
                 self.render_error.emit(f"로드 실패: {mesh_path.name}")
                 return
 
-            # 메시 정보 수집
-            num_vertices = mesh.n_points if hasattr(mesh, 'n_points') else 0
-            num_cells = mesh.n_cells if hasattr(mesh, 'n_cells') else 0
-
-            # 대용량 메시 간단화 (decimation)
+            num_vertices = getattr(mesh, "n_points", 0)
+            num_cells = getattr(mesh, "n_cells", 0)
+            # cell type 분류: surface면 faces, volume이면 cells
+            try:
+                _ctypes = set(getattr(mesh, "celltypes", []))
+                _is_volume = bool(_ctypes & _VOLUME_CELL_TYPES)
+            except Exception:
+                _is_volume = False
             decimated = False
+
             if num_cells > 100_000:
                 try:
-                    # 면 수를 50% 감소
                     mesh = mesh.decimate(target_reduction=0.5)
                     decimated = True
-                    print(f"[메시 간단화] {num_cells} → {mesh.n_cells} cells")
-                except Exception as e:
-                    print(f"[간단화 실패] {e}")
+                except Exception:
+                    pass
 
-            # 스케일 정보
             bounds = mesh.bounds
-            scale = max(bounds[1] - bounds[0], bounds[3] - bounds[2], bounds[5] - bounds[4])
+            scale = max(
+                bounds[1] - bounds[0],
+                bounds[3] - bounds[2],
+                bounds[5] - bounds[4],
+            )
 
-            # 오프스크린 렌더링 (향상된 테마)
             plotter = pv.Plotter(
                 off_screen=True,
                 window_size=window_size,
-                theme=pv.themes.DarkTheme()
+                theme=pv.themes.DarkTheme(),
             )
-            plotter.background_color = "#0d1117"  # GitHub dark
-
-            # 향상된 라이팅: 2개의 light 추가
+            plotter.background_color = "#0d1117"
             plotter.add_light(pv.Light(position=(1, 1, 1), intensity=0.8, color="white"))
             plotter.add_light(pv.Light(position=(-1, -1, 0.5), intensity=0.4, color="lightblue"))
 
-            # 메시 추가 (향상된 색상)
             plotter.add_mesh(
                 mesh,
-                color="#00d9ff",      # 시안 (하이컨트라스트)
+                color="#00d9ff",
                 opacity=opacity,
                 show_edges=show_edges,
                 edge_color="#ffffff" if show_edges else None,
-                smooth_shading=True,  # 부드러운 음영
+                smooth_shading=True,
             )
 
-            # 카메라 뷰 설정
+            if show_points:
+                plotter.add_points(
+                    mesh.points,
+                    color="yellow",
+                    point_size=6,
+                    render_points_as_spheres=True,
+                )
+
             if camera_view == "front":
                 plotter.view_xy()
             elif camera_view == "top":
                 plotter.view_xy(negative=True)
             elif camera_view == "side":
                 plotter.view_xz()
-            elif camera_view == "auto":
-                plotter.reset_camera()
-                plotter.camera.zoom(1.0)
-            else:  # isometric (기본값)
+            else:
                 plotter.view_isometric()
 
-            # 축(axes) 추가
-            plotter.add_axes(
-                xlabel="X", ylabel="Y", zlabel="Z",
-                line_width=2,
-                color="white"
-            )
+            plotter.add_axes(xlabel="X", ylabel="Y", zlabel="Z", line_width=2, color="white")
 
-            # 이미지로 렌더링
-            try:
-                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
-                    log.info(f"[PyVista 렌더링 시작] {tmp.name}")
-                    screenshot = plotter.screenshot(tmp.name, transparent_background=False)
-                    log.info(f"[PyVista 렌더링 완료] size={screenshot.shape if screenshot is not None else None}")
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+                screenshot = plotter.screenshot(tmp.name, transparent_background=False)
+                try:
+                    plotter.close()
+                except Exception:
+                    pass
+                del mesh
+                del plotter
+                gc.collect()
 
-                    # 메모리 정리
-                    try:
-                        plotter.close()
-                    except Exception as e:
-                        log.warning(f"[Plotter 종료 오류] {e}")
+                if screenshot is not None:
+                    mesh_info = {
+                        "filename": mesh_path.name,
+                        "vertices": num_vertices,
+                        "cells": num_cells,
+                        "is_volume": _is_volume,
+                        "scale": round(scale, 4),
+                        "decimated": decimated,
+                    }
+                    self.render_finished.emit(tmp.name, mesh_info)
+                else:
+                    self.render_error.emit("렌더링 실패: screenshot is None")
 
-                    del mesh
-                    del plotter
-                    gc.collect()
-
-                    if screenshot is not None:
-                        # 메시 정보 반환
-                        mesh_info = {
-                            "filename": mesh_path.name,
-                            "vertices": num_vertices,
-                            "cells": num_cells,
-                            "scale": round(scale, 4),
-                            "decimated": decimated,
-                        }
-                        log.info(f"[렌더링 성공] {mesh_path.name} → {tmp.name}")
-                        self.render_finished.emit(tmp.name, mesh_info)
-                    else:
-                        log.error("[PyVista 렌더링] screenshot is None")
-                        self.render_error.emit("렌더링 실패: screenshot is None")
-            except Exception as render_exc:
-                log.error(f"[렌더링 단계 오류] {render_exc}")
-                self.render_error.emit(f"렌더링 오류: {str(render_exc)[:80]}")
-                import traceback
-                traceback.print_exc()
-
-        except Exception as e:  # noqa: BLE001
-            error_msg = f"[RenderWorker 최상위 오류] {str(e)[:100]}"
-            log.error(error_msg)
-            self.render_error.emit(error_msg)
-            print(error_msg)
+        except Exception as e:
+            self.render_error.emit(f"렌더링 오류: {str(e)[:80]}")
             import traceback
             traceback.print_exc()
 
 
-class MeshViewerWidget(QWidget):
-    """PyVista 기반 3D 메시 뷰어 (비동기 렌더링).
-
-    개선된 기능:
-    - 메시 정보 표시 (정점, 면, 스케일)
-    - 다양한 카메라 뷰
-    - 렌더링 옵션 (edge, opacity)
-    - 상세한 상태 메시지
-    """
+class StaticMeshViewer(QWidget):
+    """폴백용 정적 PNG 뷰어 (pyvistaqt 미설치 시)."""
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        """초기화."""
         super().__init__(parent)
-        self._label: Optional[QLabel] = None
-        self._info_label: Optional[QLabel] = None
-        self._current_mesh: object | None = None
-        self._render_thread: Optional[QThread] = None
-        self._render_worker: Optional[RenderWorker] = None
-        self._temp_files: list[Path] = []
-        self._mesh_info: dict = {}
-        self._camera_view: str = "isometric"
-        self._show_edges: bool = False
-        self._opacity: float = 0.95
-
-        try:
-            self._init_ui()
-        except Exception as e:
-            print(f"[경고] UI 초기화 실패: {e}")
-            # UI 초기화 실패해도 렌더링은 계속 가능
-
-    def _init_ui(self) -> None:
-        """UI 초기화."""
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(5, 5, 5, 5)
-        layout.setSpacing(8)
-
-        # 3D 뷰어 라벨
         self._label = QLabel()
         self._label.setAlignment(Qt.AlignCenter)
         self._label.setStyleSheet(
-            "QLabel { background-color: #0d1117; border-radius: 6px; padding: 5px; border: 1px solid #30363d; }"
+            "QLabel { background-color: #0d1117; border-radius: 6px; padding: 5px; }"
         )
-        self._label.setMinimumSize(300, 250)
-
-        # 초기 메시지
-        self._set_placeholder_image("📊 3D 메시 뷰어\n\n파일을 선택하면 기하학이 표시됩니다")
-
-        layout.addWidget(self._label, stretch=1)
-
-        # 메시 정보 라벨 (하단)
-        self._info_label = QLabel()
-        self._info_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+        self._label.setMinimumSize(400, 300)
+        self._info_label = QLabel("대기 중...")
         self._info_label.setStyleSheet(
-            "QLabel { "
-            "  background-color: #161b22; "
-            "  border: 1px solid #30363d; "
-            "  border-radius: 4px; "
-            "  padding: 8px; "
-            "  font-family: 'Courier New', monospace; "
-            "  font-size: 10px; "
-            "  color: #c9d1d9; "
-            "}"
+            "QLabel { background-color: #161b22; border: 1px solid #30363d; "
+            "border-radius: 4px; padding: 8px; font-size: 10px; color: #c9d1d9; }"
         )
-        self._info_label.setMaximumHeight(80)
-        self._info_label.setText("대기 중...")
+        self._render_thread: Optional[QThread] = None
+        self._render_worker: Optional[RenderWorker] = None
+        self._temp_files: list[Path] = []
 
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._label, stretch=1)
         layout.addWidget(self._info_label)
-        self.setLayout(layout)
+        self._set_placeholder("📊 3D 뷰어\n\n파일을 선택하세요")
 
-    def _set_placeholder_image(self, text: str) -> None:
-        """플레이스홀더 이미지 설정."""
-        if self._label is None:
-            return
-
+    def _set_placeholder(self, text: str) -> None:
         pixmap = QPixmap(400, 300)
         pixmap.fill(Qt.black)
-
-        from PySide6.QtGui import QPainter, QFont
+        from PySide6.QtGui import QPainter
         painter = QPainter(pixmap)
         painter.setPen(Qt.white)
-        font = QFont()
-        font.setPointSize(12)
-        painter.setFont(font)
+        f = QFont()
+        f.setPointSize(12)
+        painter.setFont(f)
         painter.drawText(pixmap.rect(), Qt.AlignCenter, text)
         painter.end()
+        self._label.setPixmap(pixmap)
 
-        self._label.setPixmap(pixmap.scaledToWidth(400, Qt.SmoothTransformation))
+    def load_mesh(self, path: str | Path, **kwargs: object) -> bool:
+        if not PYVISTA_AVAILABLE:
+            self._set_placeholder("❌ PyVista 미설치")
+            return False
+
+        if self._render_thread is not None and isinstance(self._render_thread, QThread):
+            if self._render_thread.isRunning():
+                self._render_thread.quit()
+                self._render_thread.wait(2000)
+
+        self._set_placeholder("⏳ 렌더링 중...")
+        self._info_label.setText("⏳ 메시 로딩 중...")
+
+        self._render_worker = RenderWorker()
+        self._render_thread = QThread()
+        self._render_worker.moveToThread(self._render_thread)
+        self._render_worker.render_finished.connect(self._on_done)
+        self._render_worker.render_error.connect(self._on_error)
+        self._render_worker.render_finished.connect(self._render_thread.quit)
+        self._render_worker.render_error.connect(self._render_thread.quit)
+
+        show_edges = bool(kwargs.get("show_edges", True))
+        show_points = bool(kwargs.get("show_points", False))
+        camera_view = str(kwargs.get("camera_view", "isometric"))
+        opacity = float(kwargs.get("opacity", 0.95))
+
+        self._render_thread.started.connect(
+            lambda: self._render_worker.render_mesh(
+                path,
+                show_edges=show_edges,
+                show_points=show_points,
+                camera_view=camera_view,
+                opacity=opacity,
+            )
+        )
+        self._render_thread.start()
+        return True
+
+    def _on_done(self, image_path: str, mesh_info: dict) -> None:
+        from PySide6.QtGui import QPixmap as QP
+        p = Path(image_path)
+        px = QP(str(p))
+        if not px.isNull():
+            self._label.setPixmap(px.scaled(
+                self._label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation
+            ))
+            self._temp_files.append(p)
+            v = mesh_info.get("vertices", 0)
+            c = mesh_info.get("cells", 0)
+            s = mesh_info.get("scale", 0)
+            fn = mesh_info.get("filename", "")
+            d = " [decimated]" if mesh_info.get("decimated") else ""
+            is_vol = mesh_info.get("is_volume", False)
+            elem_str = f"▭ {c:,} cells" if is_vol else f"△ {c:,} faces"
+            self._info_label.setText(
+                f"📄 {fn} | 📍 {v:,} pts | {elem_str} | 📏 scale={s}{d}"
+            )
+            if len(self._temp_files) > 3:
+                try:
+                    self._temp_files.pop(0).unlink()
+                except Exception:
+                    pass
+
+    def _on_error(self, msg: str) -> None:
+        self._set_placeholder(f"❌ 오류:\n{msg[:50]}")
+        self._info_label.setText(f"❌ {msg[:80]}")
+
+    def load_polymesh(self, case_dir: str | Path) -> bool:
+        case_dir = Path(case_dir)
+        # VTU/VTK 우선
+        for pattern in ("**/*.vtu", "**/*.vtk"):
+            files = list(case_dir.glob(pattern))
+            if files:
+                return self.load_mesh(max(files, key=lambda p: p.stat().st_mtime))
+        # MSH
+        msh_files = list(case_dir.glob("**/*.msh"))
+        if msh_files:
+            try:
+                import meshio, tempfile
+                mio = meshio.read(str(max(msh_files, key=lambda p: p.stat().st_mtime)))
+                with tempfile.NamedTemporaryFile(suffix=".vtu", delete=False) as tmp:
+                    tmp_path = tmp.name
+                meshio.write(tmp_path, mio)
+                result = self.load_mesh(tmp_path)
+                try:
+                    Path(tmp_path).unlink()
+                except Exception:
+                    pass
+                return result
+            except Exception as e:
+                log.warning(f"MSH 폴백 로드 실패: {e}")
+        # polyMesh
+        if (case_dir / "constant" / "polyMesh").exists():
+            self._set_placeholder("✅ OpenFOAM polyMesh 생성됨\n(정적 뷰어 미지원)")
+            return True
+        # STL (preprocessed 제외)
+        stl_files = [p for p in case_dir.glob("**/*.stl") if "preprocessed" not in p.name.lower()]
+        if stl_files:
+            return self.load_mesh(max(stl_files, key=lambda p: p.stat().st_mtime))
+        return False
+
+    def clear(self) -> None:
+        self._set_placeholder("📊 3D 뷰어\n\n파일을 선택하세요")
+        self._info_label.setText("대기 중...")
+
+
+# ---------------------------------------------------------------------------
+# Interactive viewer (pyvistaqt QtInteractor)
+# ---------------------------------------------------------------------------
+
+class InteractiveMeshViewer(QWidget):
+    """pyvistaqt 기반 인터랙티브 3D 뷰어.
+
+    마우스 조작:
+    - 왼쪽 드래그: 회전
+    - 오른쪽 드래그 / 스크롤 휠: 줌
+    - 가운데 드래그: 팬
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._plotter: Optional[QtInteractor] = None
+        self._current_mesh: object | None = None
+        self._mesh_actor: object | None = None
+        self._points_actor: object | None = None
+        self._show_edges: bool = True
+        self._show_points: bool = False
+        self._opacity: float = 0.95
+        self._mesh_info: dict = {}
+        self._slice_active: bool = False
+        self._clip_active: bool = False
+
+        self._init_ui()
+
+    def _init_ui(self) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        # 툴바
+        toolbar = self._build_toolbar()
+        layout.addWidget(toolbar)
+
+        # QtInteractor (VTK 렌더 윈도우)
+        try:
+            self._plotter = QtInteractor(self)
+            self._plotter.setMinimumSize(400, 300)
+            self._plotter.background_color = "#0d1117"
+            layout.addWidget(self._plotter, stretch=1)
+        except Exception as e:
+            log.error(f"QtInteractor 초기화 실패: {e}")
+            fallback = QLabel(f"❌ QtInteractor 초기화 실패:\n{e}")
+            fallback.setAlignment(Qt.AlignCenter)
+            fallback.setStyleSheet("background: #0d1117; color: white;")
+            layout.addWidget(fallback, stretch=1)
+
+        # 정보 패널 (크게)
+        self._info_label = QLabel("대기 중...")
+        self._info_label.setStyleSheet(
+            "QLabel { background-color: #161b22; border: 1px solid #30363d; "
+            "border-radius: 4px; padding: 10px 14px; font-size: 14px; "
+            "font-weight: 600; color: #e6edf3; "
+            "font-family: 'Courier New', monospace; }"
+        )
+        self._info_label.setMinimumHeight(48)
+        self._info_label.setWordWrap(True)
+        layout.addWidget(self._info_label)
+
+    def _build_toolbar(self) -> QWidget:
+        bar = QWidget()
+        bar.setStyleSheet(
+            "QWidget { background-color: #161b22; border-bottom: 1px solid #30363d; }"
+        )
+        h = QHBoxLayout(bar)
+        h.setContentsMargins(6, 4, 6, 4)
+        h.setSpacing(6)
+
+        def _btn(label: str, tip: str, fn) -> QPushButton:
+            b = QPushButton(label)
+            b.setToolTip(tip)
+            b.setFixedHeight(26)
+            b.setStyleSheet(
+                "QPushButton { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; "
+                "border-radius: 4px; padding: 0 8px; font-size: 11px; } "
+                "QPushButton:hover { background: #30363d; } "
+                "QPushButton:pressed { background: #388bfd; }"
+            )
+            b.clicked.connect(fn)
+            return b
+
+        # 카메라 뷰
+        h.addWidget(QLabel("뷰:"))
+        h.addWidget(_btn("ISO", "등각 뷰", self._view_iso))
+        h.addWidget(_btn("앞", "정면 뷰 (XY)", self._view_front))
+        h.addWidget(_btn("위", "상면 뷰 (XZ)", self._view_top))
+        h.addWidget(_btn("측", "측면 뷰 (YZ)", self._view_side))
+        h.addWidget(_btn("리셋", "카메라 리셋", self._reset_camera))
+
+        h.addWidget(_separator())
+
+        # 엣지 토글
+        self._edge_btn = QPushButton("엣지 ON")
+        self._edge_btn.setCheckable(True)
+        self._edge_btn.setChecked(self._show_edges)
+        self._edge_btn.setFixedHeight(26)
+        self._edge_btn.setToolTip("셀 엣지 표시 토글")
+        self._edge_btn.setStyleSheet(
+            "QPushButton { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; "
+            "border-radius: 4px; padding: 0 8px; font-size: 11px; } "
+            "QPushButton:checked { background: #1f6feb; border-color: #388bfd; } "
+            "QPushButton:hover { background: #30363d; }"
+        )
+        self._edge_btn.toggled.connect(self._toggle_edges)
+        h.addWidget(self._edge_btn)
+
+        # 버텍스 토글
+        self._pts_btn = QPushButton("버텍스")
+        self._pts_btn.setCheckable(True)
+        self._pts_btn.setChecked(self._show_points)
+        self._pts_btn.setFixedHeight(26)
+        self._pts_btn.setToolTip("정점(vertex) 표시 토글")
+        self._pts_btn.setStyleSheet(
+            "QPushButton { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; "
+            "border-radius: 4px; padding: 0 8px; font-size: 11px; } "
+            "QPushButton:checked { background: #1f6feb; border-color: #388bfd; } "
+            "QPushButton:hover { background: #30363d; }"
+        )
+        self._pts_btn.toggled.connect(self._toggle_points)
+        h.addWidget(self._pts_btn)
+
+        h.addWidget(_separator())
+
+        # 슬라이스 (단면 보기)
+        self._slice_btn = QPushButton("Slice")
+        self._slice_btn.setCheckable(True)
+        self._slice_btn.setFixedHeight(26)
+        self._slice_btn.setToolTip("단면(Slice) 위젯 토글 — 드래그로 단면 위치 조절")
+        self._slice_btn.setStyleSheet(
+            "QPushButton { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; "
+            "border-radius: 4px; padding: 0 8px; font-size: 11px; } "
+            "QPushButton:checked { background: #388bfd; border-color: #58a6ff; color: white; } "
+            "QPushButton:hover { background: #30363d; }"
+        )
+        self._slice_btn.toggled.connect(self._toggle_slice)
+        h.addWidget(self._slice_btn)
+
+        # 클립 (반쪽 잘라내기)
+        self._clip_btn = QPushButton("Clip")
+        self._clip_btn.setCheckable(True)
+        self._clip_btn.setFixedHeight(26)
+        self._clip_btn.setToolTip("클리핑 평면(Clip) 위젯 토글 — 메시를 잘라 내부 구조 확인")
+        self._clip_btn.setStyleSheet(
+            "QPushButton { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; "
+            "border-radius: 4px; padding: 0 8px; font-size: 11px; } "
+            "QPushButton:checked { background: #388bfd; border-color: #58a6ff; color: white; } "
+            "QPushButton:hover { background: #30363d; }"
+        )
+        self._clip_btn.toggled.connect(self._toggle_clip)
+        h.addWidget(self._clip_btn)
+
+        h.addStretch()
+
+        # 와이어프레임 토글
+        self._wire_btn = QPushButton("와이어프레임")
+        self._wire_btn.setCheckable(True)
+        self._wire_btn.setFixedHeight(26)
+        self._wire_btn.setToolTip("와이어프레임 모드 토글")
+        self._wire_btn.setStyleSheet(
+            "QPushButton { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; "
+            "border-radius: 4px; padding: 0 8px; font-size: 11px; } "
+            "QPushButton:checked { background: #1f6feb; border-color: #388bfd; } "
+            "QPushButton:hover { background: #30363d; }"
+        )
+        self._wire_btn.toggled.connect(self._toggle_wireframe)
+        h.addWidget(self._wire_btn)
+
+        return bar
+
+    # ------------------------------------------------------------------
+    # 공개 API
+    # ------------------------------------------------------------------
 
     def load_mesh(
         self,
-        mesh_path: str | Path,
+        path: str | Path,
         camera_view: str = "isometric",
-        show_edges: bool = False,
+        show_edges: bool = True,
+        show_points: bool = False,
         opacity: float = 0.95,
+        **kwargs: object,
     ) -> bool:
-        """메시 파일 로드 및 표시 (비동기).
+        """메시 파일 로드 및 표시.
 
         Args:
-            mesh_path: 메시 파일 경로.
-            camera_view: 카메라 뷰 ('isometric', 'front', 'top', 'side', 'auto').
-            show_edges: 엣지 표시 여부.
-            opacity: 메시 투명도 (0.0~1.0).
-
-        Returns:
-            성공 여부.
+            path: 메시 파일 경로 (STL, OBJ, VTU, VTK 등)
+            camera_view: 초기 카메라 뷰
+            show_edges: 엣지 표시 여부
+            show_points: 버텍스 표시 여부
+            opacity: 투명도
         """
-        if not PYVISTA_AVAILABLE:
-            self._set_placeholder_image("❌ PyVista 미설치")
-            if self._info_label:
-                self._info_label.setText("❌ PyVista 미설치 — pip install pyvista")
+        if not PYVISTA_AVAILABLE or self._plotter is None:
             return False
 
-        # 기존 스레드 종료 대기
-        if self._render_thread is not None:
-            try:
-                if isinstance(self._render_thread, QThread):
-                    if self._render_thread.isRunning():
-                        self._render_thread.quit()
-                        self._render_thread.wait(timeout=2000)
-            except Exception:
-                pass
-
-        # 새 렌더링 시작 전 기다림
-        self._set_placeholder_image("⏳ 파일 분석 중...\n(대용량 메시는 시간이 걸릴 수 있습니다)")
-        if self._info_label:
-            self._info_label.setText("⏳ 메시 로딩 중...")
-
-        try:
-            # 설정 저장
-            self._camera_view = camera_view
-            self._show_edges = show_edges
-            self._opacity = opacity
-
-            # 플레이스홀더 표시
-            self._set_placeholder_image("⏳ 파일 분석 중...\n(대용량 메시는 시간이 걸릴 수 있습니다)")
-            if self._info_label:
-                self._info_label.setText("⏳ 메시 로딩 중...")
-
-            # 렌더링 워커 생성
-            self._render_worker = RenderWorker()
-            self._render_worker.render_finished.connect(self._on_render_finished)
-            self._render_worker.render_error.connect(self._on_render_error)
-
-            # QThread 사용 (더 안전함)
-            self._render_thread = QThread()
-            self._render_worker.moveToThread(self._render_thread)
-
-            # 스레드 시작 시 렌더링 수행
-            self._render_thread.started.connect(
-                lambda: self._render_worker.render_mesh(
-                    mesh_path,
-                    camera_view=camera_view,
-                    show_edges=show_edges,
-                    opacity=opacity,
-                )
-            )
-
-            # 렌더링 완료 시 스레드 종료
-            self._render_worker.render_finished.connect(self._render_thread.quit)
-            self._render_worker.render_error.connect(self._render_thread.quit)
-
-            self._render_thread.start()
-            return True
-
-        except Exception as e:
-            self._set_placeholder_image(f"❌ 오류:\n{str(e)[:40]}")
-            if self._info_label:
-                self._info_label.setText(f"❌ 오류: {str(e)[:100]}")
-            print(f"[로드 오류] {e}")
-            import traceback
-            traceback.print_exc()
+        path = Path(path)
+        if not path.exists():
+            self._info_label.setText(f"❌ 파일 없음: {path.name}")
             return False
 
-    def _on_render_finished(self, image_path: str, mesh_info: dict) -> None:
-        """렌더링 완료 콜백."""
+        self._info_label.setText(f"⏳ {path.name} 로딩 중...")
+
         try:
-            image_path = Path(image_path)
-            pixmap = QPixmap(str(image_path))
-            if not pixmap.isNull():
-                self._label.setPixmap(pixmap)
-                self._temp_files.append(image_path)
-                self._mesh_info = mesh_info
-
-                # 메시 정보 표시
-                if self._info_label:
-                    filename = mesh_info.get("filename", "unknown")
-                    vertices = mesh_info.get("vertices", 0)
-                    cells = mesh_info.get("cells", 0)
-                    scale = mesh_info.get("scale", 0)
-                    decimated = mesh_info.get("decimated", False)
-
-                    info_text = (
-                        f"📄 {filename} | "
-                        f"📍 {vertices:,} vertices | "
-                        f"▭ {cells:,} cells | "
-                        f"📏 scale={scale}"
-                    )
-                    if decimated:
-                        info_text += " [decimated]"
-
-                    self._info_label.setText(info_text)
-
-                # 이전 임시 파일 정리
-                if len(self._temp_files) > 3:
-                    old_file = self._temp_files.pop(0)
-                    try:
-                        old_file.unlink()
-                    except Exception:
-                        pass
-            else:
-                self._set_placeholder_image("❌ 렌더링 실패")
-                if self._info_label:
-                    self._info_label.setText("❌ 이미지 로드 실패")
+            mesh = pv.read(str(path))
         except Exception as e:
-            self._set_placeholder_image(f"❌ 오류:\n{str(e)[:40]}")
-            if self._info_label:
-                self._info_label.setText(f"❌ 오류: {str(e)[:100]}")
-            print(f"[렌더링 완료 오류] {e}")
+            self._info_label.setText(f"❌ 로드 실패: {str(e)[:60]}")
+            log.error(f"mesh load error: {e}")
+            return False
 
-    def _on_render_error(self, error_msg: str) -> None:
-        """렌더링 오류 콜백."""
-        self._set_placeholder_image(f"❌ 오류:\n{error_msg[:50]}")
-        if self._info_label:
-            self._info_label.setText(f"❌ 렌더링 오류: {error_msg[:100]}")
-        print(f"[렌더링 오류] {error_msg}")
+        self._show_edges = show_edges
+        self._show_points = show_points
+        self._opacity = opacity
+        self._current_mesh = mesh
+
+        # 버튼 상태 동기화
+        self._edge_btn.setChecked(show_edges)
+        self._pts_btn.setChecked(show_points)
+
+        self._render_mesh(mesh, camera_view=camera_view)
+        self._update_info(path, mesh)
+        return True
 
     def load_polymesh(self, case_dir: str | Path) -> bool:
-        """OpenFOAM polyMesh 로드.
+        """OpenFOAM case 디렉터리에서 메시 로드."""
+        case_dir = Path(case_dir)
 
-        Args:
-            case_dir: OpenFOAM case 디렉터리.
+        # 1. OpenFOAM polyMesh 직접 읽기
+        # pv.OpenFOAMReader는 케이스 디렉터리 안의 빈 .foam 파일을 입력으로 받음
+        if (case_dir / "constant" / "polyMesh").exists():
+            try:
+                mesh = self._read_openfoam(case_dir)
+                if mesh is not None:
+                    self._current_mesh = mesh
+                    self._render_mesh(mesh, camera_view="isometric")
+                    pts = getattr(mesh, "n_points", 0)
+                    face_str, cell_str = _mesh_element_label(mesh)
+                    parts = ["✅ OpenFOAM polyMesh", f"📍 {pts:,} pts"]
+                    if face_str:
+                        parts.append(face_str)
+                    if cell_str:
+                        parts.append(cell_str)
+                    self._info_label.setText(" | ".join(parts))
+                    return True
+            except Exception as e:
+                log.warning(f"OpenFOAM 읽기 실패: {e}")
 
-        Returns:
-            성공 여부.
+            # 읽기 실패해도 polyMesh 존재 확인됐으므로 텍스트로 표시
+            if self._plotter:
+                try:
+                    self._plotter.clear()
+                    self._plotter.background_color = "#0d1117"
+                    self._plotter.add_text(
+                        "✅ polyMesh 생성됨\n(3D 렌더링 불가)", font_size=14, color="white"
+                    )
+                except Exception:
+                    pass
+            self._info_label.setText("✅ OpenFOAM polyMesh 생성됨 (3D 렌더링 불가)")
+            return True
+
+        # 2. VTK/VTU 파일
+        for pattern in ("**/*.vtu", "**/*.vtk"):
+            vtk_files = list(case_dir.glob(pattern))
+            if vtk_files:
+                latest = max(vtk_files, key=lambda p: p.stat().st_mtime)
+                return self.load_mesh(latest, show_edges=True)
+
+        # 3. MSH (Gmsh) — meshio 경유 변환
+        msh_files = list(case_dir.glob("**/*.msh"))
+        if msh_files:
+            latest = max(msh_files, key=lambda p: p.stat().st_mtime)
+            return self._load_msh(latest)
+
+        # 4. STL 폴백
+        stl_files = [
+            p for p in case_dir.glob("**/*.stl")
+            if "preprocessed" not in p.name.lower()
+        ]
+        if stl_files:
+            latest = max(stl_files, key=lambda p: p.stat().st_mtime)
+            return self.load_mesh(latest, show_edges=True)
+
+        return False
+
+    def _read_openfoam(self, case_dir: Path) -> object | None:
+        """OpenFOAM 케이스를 읽어 PyVista 메시 반환.
+
+        pv.OpenFOAMReader는 케이스 디렉터리 내 빈 .foam 파일을 필요로 한다.
+        실패 시 meshio 경유 변환을 시도한다.
         """
+        # .foam 파일 생성 (없으면)
+        foam_file = case_dir / f"{case_dir.name}.foam"
+        if not foam_file.exists():
+            try:
+                foam_file.touch()
+            except Exception:
+                # 쓰기 권한 없으면 tmp 디렉터리 사용
+                foam_file = case_dir / "case.foam"
+                foam_file.touch()
+
         try:
-            case_dir = Path(case_dir)
+            reader = pv.OpenFOAMReader(str(foam_file))
+            mesh = reader.read()
+            # MultiBlock → 단일 메시로 합치기
+            if hasattr(mesh, "combine"):
+                combined = mesh.combine()
+                if combined is not None and getattr(combined, "n_cells", 0) > 0:
+                    return combined
+            # 블록별 순회해서 셀이 있는 첫 번째 블록 반환
+            if hasattr(mesh, "n_blocks"):
+                for i in range(mesh.n_blocks):
+                    block = mesh.GetBlock(i)
+                    if block is not None and getattr(block, "n_cells", 0) > 0:
+                        return block
+            if getattr(mesh, "n_cells", 0) > 0:
+                return mesh
+        except Exception as e:
+            log.warning(f"pv.OpenFOAMReader 실패: {e}")
 
-            # 먼저 STL 파일 검색
-            stl_files = list(case_dir.glob("**/*.stl"))
-            if stl_files:
-                # 가장 최신 STL 파일 사용
-                latest_stl = max(stl_files, key=lambda p: p.stat().st_mtime)
-                return self.load_mesh(latest_stl)
+        # meshio 경유 폴백: boundary STL 또는 내부 mesh 추출
+        try:
+            import meshio
+            import tempfile
+            # polyMesh/points, faces 읽기 시도
+            mio = meshio.read(str(case_dir), file_format="openfoam")
+            with tempfile.NamedTemporaryFile(suffix=".vtu", delete=False) as tmp:
+                tmp_path = tmp.name
+            meshio.write(tmp_path, mio)
+            result = pv.read(tmp_path)
+            try:
+                Path(tmp_path).unlink()
+            except Exception:
+                pass
+            if getattr(result, "n_cells", 0) > 0:
+                return result
+        except Exception as e:
+            log.warning(f"meshio OpenFOAM 읽기 실패: {e}")
 
-            # polyMesh 정보 표시
-            polymesh_dir = case_dir / "constant" / "polyMesh"
-            if polymesh_dir.exists():
-                self._set_placeholder_image(
-                    "✅ OpenFOAM\nmesh 생성됨\n\n(3D 미리보기 미지원)"
-                )
-                return True
+        return None
 
-            return False
-
-        except Exception as e:  # noqa: BLE001
-            self._set_placeholder_image(f"❌ 오류:\n{str(e)[:30]}")
+    def _load_msh(self, msh_path: Path) -> bool:
+        """MSH (Gmsh) 파일을 meshio 경유로 읽어 표시."""
+        try:
+            import meshio
+            import tempfile
+            mio = meshio.read(str(msh_path))
+            # VTU로 변환 후 pyvista로 읽기
+            with tempfile.NamedTemporaryFile(suffix=".vtu", delete=False) as tmp:
+                tmp_path = tmp.name
+            meshio.write(tmp_path, mio)
+            result = self.load_mesh(tmp_path, show_edges=True)
+            try:
+                Path(tmp_path).unlink()
+            except Exception:
+                pass
+            return result
+        except Exception as e:
+            log.warning(f"MSH 로드 실패: {e}")
             return False
 
     def clear(self) -> None:
         """뷰어 초기화."""
         self._current_mesh = None
-        self._mesh_info = {}
-        self._set_placeholder_image("📊 3D 메시 뷰어\n\n파일을 선택하면 기하학이 표시됩니다")
-        if self._info_label:
-            self._info_label.setText("대기 중...")
-
-    def set_camera_view(self, view: str) -> None:
-        """카메라 뷰 변경.
-
-        Args:
-            view: 'isometric', 'front', 'top', 'side', 'auto'
-        """
-        if view in ("isometric", "front", "top", "side", "auto"):
-            self._camera_view = view
+        self._mesh_actor = None
+        self._points_actor = None
+        if self._plotter:
+            try:
+                self._plotter.clear()
+            except Exception:
+                pass
+        self._info_label.setText("대기 중...")
 
     def set_show_edges(self, show: bool) -> None:
-        """엣지 표시 여부 변경."""
         self._show_edges = show
+        self._edge_btn.setChecked(show)
+        self._rerender()
+
+    def set_show_points(self, show: bool) -> None:
+        self._show_points = show
+        self._pts_btn.setChecked(show)
+        self._rerender()
 
     def set_opacity(self, opacity: float) -> None:
-        """투명도 변경.
-
-        Args:
-            opacity: 0.0~1.0
-        """
         self._opacity = max(0.0, min(1.0, opacity))
+        self._rerender()
+
+    # ------------------------------------------------------------------
+    # 내부 렌더링
+    # ------------------------------------------------------------------
+
+    def _render_mesh(self, mesh: object, camera_view: str = "isometric") -> None:
+        """메시를 플로터에 그림."""
+        if self._plotter is None:
+            return
+
+        try:
+            self._plotter.clear()
+            self._plotter.background_color = "#0d1117"
+
+            # 라이팅
+            self._plotter.add_light(
+                pv.Light(position=(1, 1, 1), intensity=0.8, color="white")
+            )
+            self._plotter.add_light(
+                pv.Light(position=(-1, -1, 0.5), intensity=0.4, color="lightblue")
+            )
+
+            # 메시 추가
+            self._mesh_actor = self._plotter.add_mesh(
+                mesh,
+                color="#00d9ff",
+                opacity=self._opacity,
+                show_edges=self._show_edges,
+                edge_color="#ffffff" if self._show_edges else None,
+                smooth_shading=True,
+                name="main_mesh",
+            )
+
+            # 버텍스 표시
+            if self._show_points and hasattr(mesh, "points"):
+                self._points_actor = self._plotter.add_points(
+                    mesh.points,
+                    color="yellow",
+                    point_size=6,
+                    render_points_as_spheres=True,
+                    name="mesh_points",
+                )
+
+            # 축
+            self._plotter.add_axes(
+                xlabel="X", ylabel="Y", zlabel="Z",
+                line_width=2, color="white",
+            )
+
+            # 카메라 뷰
+            self._apply_camera_view(camera_view)
+
+        except Exception as e:
+            log.error(f"_render_mesh 오류: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _rerender(self) -> None:
+        """현재 메시를 현재 설정으로 다시 그림."""
+        if self._current_mesh is None or self._plotter is None:
+            return
+        self._render_mesh(self._current_mesh, camera_view="isometric")
+
+    def _apply_camera_view(self, view: str) -> None:
+        if self._plotter is None:
+            return
+        if view == "front":
+            self._plotter.view_xy()
+        elif view == "top":
+            self._plotter.view_xz()
+        elif view == "side":
+            self._plotter.view_yz()
+        else:
+            self._plotter.view_isometric()
+        self._plotter.reset_camera()
+
+    def _update_info(self, path: Path, mesh: object) -> None:
+        v = getattr(mesh, "n_points", 0)
+        bounds = getattr(mesh, "bounds", [0, 1, 0, 1, 0, 1])
+        scale = round(max(
+            bounds[1] - bounds[0],
+            bounds[3] - bounds[2],
+            bounds[5] - bounds[4],
+        ), 4)
+        face_str, cell_str = _mesh_element_label(mesh)
+        parts = [f"📄 {path.name}", f"📍 {v:,} pts"]
+        if face_str:
+            parts.append(face_str)
+        if cell_str:
+            parts.append(cell_str)
+        parts.append(f"📏 scale={scale}")
+        self._info_label.setText(" | ".join(parts))
+
+    # ------------------------------------------------------------------
+    # 뷰 버튼 핸들러
+    # ------------------------------------------------------------------
+
+    def _view_iso(self) -> None:
+        if self._plotter:
+            self._plotter.view_isometric()
+            self._plotter.reset_camera()
+
+    def _view_front(self) -> None:
+        if self._plotter:
+            self._plotter.view_xy()
+            self._plotter.reset_camera()
+
+    def _view_top(self) -> None:
+        if self._plotter:
+            self._plotter.view_xz()
+            self._plotter.reset_camera()
+
+    def _view_side(self) -> None:
+        if self._plotter:
+            self._plotter.view_yz()
+            self._plotter.reset_camera()
+
+    def _reset_camera(self) -> None:
+        if self._plotter:
+            self._plotter.reset_camera()
+
+    def _toggle_edges(self, checked: bool) -> None:
+        self._show_edges = checked
+        self._edge_btn.setText("엣지 ON" if checked else "엣지 OFF")
+        self._rerender()
+
+    def _toggle_points(self, checked: bool) -> None:
+        self._show_points = checked
+        self._rerender()
+
+    def _toggle_wireframe(self, checked: bool) -> None:
+        if self._plotter is None or self._current_mesh is None:
+            return
+        try:
+            self._plotter.clear()
+            self._plotter.background_color = "#0d1117"
+            style = "wireframe" if checked else "surface"
+            self._plotter.add_mesh(
+                self._current_mesh,
+                color="#00d9ff",
+                style=style,
+                opacity=self._opacity,
+                name="main_mesh",
+            )
+            self._plotter.add_axes(xlabel="X", ylabel="Y", zlabel="Z", color="white")
+            self._plotter.reset_camera()
+        except Exception as e:
+            log.error(f"_toggle_wireframe 오류: {e}")
+
+    def _toggle_slice(self, checked: bool) -> None:
+        """단면(Slice) 위젯 토글."""
+        if self._plotter is None or self._current_mesh is None:
+            return
+        self._slice_active = checked
+        # Clip과 동시에 켤 수 없음
+        if checked and self._clip_active:
+            self._clip_btn.setChecked(False)
+
+        try:
+            self._plotter.clear()
+            self._plotter.background_color = "#0d1117"
+            self._plotter.add_axes(xlabel="X", ylabel="Y", zlabel="Z", color="white")
+
+            if checked:
+                # 인터랙티브 슬라이스 위젯 (드래그로 단면 이동)
+                self._plotter.add_mesh_slice(
+                    self._current_mesh,
+                    normal="x",
+                    color="#00d9ff",
+                    show_edges=self._show_edges,
+                    edge_color="#ffffff" if self._show_edges else None,
+                )
+            else:
+                self._render_mesh(self._current_mesh)
+        except Exception as e:
+            log.error(f"_toggle_slice 오류: {e}")
+            self._render_mesh(self._current_mesh)
+
+    def _toggle_clip(self, checked: bool) -> None:
+        """클리핑 평면(Clip) 위젯 토글."""
+        if self._plotter is None or self._current_mesh is None:
+            return
+        self._clip_active = checked
+        # Slice와 동시에 켤 수 없음
+        if checked and self._slice_active:
+            self._slice_btn.setChecked(False)
+
+        try:
+            self._plotter.clear()
+            self._plotter.background_color = "#0d1117"
+            self._plotter.add_axes(xlabel="X", ylabel="Y", zlabel="Z", color="white")
+
+            if checked:
+                # 인터랙티브 클리핑 평면 (드래그로 잘라내기)
+                self._plotter.add_mesh_clip_plane(
+                    self._current_mesh,
+                    normal="x",
+                    color="#00d9ff",
+                    show_edges=self._show_edges,
+                    edge_color="#ffffff" if self._show_edges else None,
+                    opacity=self._opacity,
+                )
+            else:
+                self._render_mesh(self._current_mesh)
+        except Exception as e:
+            log.error(f"_toggle_clip 오류: {e}")
+            self._render_mesh(self._current_mesh)
+
+    def closeEvent(self, event: object) -> None:
+        if self._plotter:
+            try:
+                self._plotter.close()
+            except Exception:
+                pass
+        super().closeEvent(event)  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# 공개 위젯 (자동 선택)
+# ---------------------------------------------------------------------------
+
+def _separator() -> QWidget:
+    sep = QWidget()
+    sep.setFixedWidth(1)
+    sep.setStyleSheet("background: #30363d;")
+    return sep
+
+
+class MeshViewerWidget(QWidget):
+    """3D 메시 뷰어 위젯.
+
+    pyvistaqt 설치 시: 인터랙티브 QtInteractor (마우스 회전/줌/팬)
+    미설치 시: 정적 PNG 렌더링 폴백
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        if PYVISTAQT_AVAILABLE and PYVISTA_AVAILABLE:
+            self._viewer: InteractiveMeshViewer | StaticMeshViewer = InteractiveMeshViewer(self)
+            log.info("인터랙티브 3D 뷰어 초기화 완료 (pyvistaqt)")
+        else:
+            self._viewer = StaticMeshViewer(self)
+            log.warning("정적 PNG 폴백 뷰어 사용 중 (pyvistaqt 미설치)")
+
+        layout.addWidget(self._viewer)
+
+    # ------------------------------------------------------------------
+    # 공개 API (main_window에서 호출)
+    # ------------------------------------------------------------------
+
+    def load_mesh(
+        self,
+        mesh_path: str | Path,
+        camera_view: str = "isometric",
+        show_edges: bool = True,
+        show_points: bool = False,
+        opacity: float = 0.95,
+    ) -> bool:
+        """메시 파일 로드."""
+        return self._viewer.load_mesh(
+            mesh_path,
+            camera_view=camera_view,
+            show_edges=show_edges,
+            show_points=show_points,
+            opacity=opacity,
+        )
+
+    def load_polymesh(self, case_dir: str | Path) -> bool:
+        """OpenFOAM case 디렉터리에서 메시 로드."""
+        return self._viewer.load_polymesh(case_dir)
+
+    def clear(self) -> None:
+        """뷰어 초기화."""
+        self._viewer.clear()
+
+    def set_show_edges(self, show: bool) -> None:
+        self._viewer.set_show_edges(show)
+
+    def set_opacity(self, opacity: float) -> None:
+        self._viewer.set_opacity(opacity)
+
+    # 하위 호환 (이전 코드에서 호출될 수 있음)
+    def set_camera_view(self, view: str) -> None:
+        if hasattr(self._viewer, "_apply_camera_view"):
+            self._viewer._apply_camera_view(view)

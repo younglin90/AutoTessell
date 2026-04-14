@@ -160,8 +160,6 @@ class Tier2TetWildGenerator:
             import concurrent.futures as _cf
 
             surf: _trimesh.Trimesh = _trimesh.load(str(preprocessed_path), force="mesh")  # type: ignore[assignment]
-            vertices = surf.vertices
-            faces = surf.faces
 
             # TetWild 진입 전 열린 표면 닫기 시도
             if not surf.is_watertight:
@@ -178,6 +176,38 @@ class Tier2TetWildGenerator:
                         logger.warning("tetwild_pre_close_pymeshfix_failed", error=str(e))
                 if not surf.is_watertight:
                     logger.warning("tetwild_surface_still_open_proceeding")
+                vertices = surf.vertices
+                faces = surf.faces
+
+            # External flow: 도메인 박스 + 물체 복합 지오메트리 구성
+            # TetWild는 닫힌 표면의 내부를 메싱한다.
+            # External flow에서는 도메인 박스(뒤집힌 법선) + 물체 표면을 결합해
+            # TetWild가 도메인 - 물체 영역을 메싱하도록 한다.
+            flow_type = getattr(strategy, "flow_type", "internal")
+            if flow_type == "external" and strategy.domain is not None:
+                domain = strategy.domain
+                box_size = [
+                    float(domain.max[0] - domain.min[0]),
+                    float(domain.max[1] - domain.min[1]),
+                    float(domain.max[2] - domain.min[2]),
+                ]
+                box_center = [
+                    float((domain.min[0] + domain.max[0]) / 2),
+                    float((domain.min[1] + domain.max[1]) / 2),
+                    float((domain.min[2] + domain.max[2]) / 2),
+                ]
+                domain_box = _trimesh.creation.box(extents=box_size)
+                domain_box.apply_translation(box_center)
+                domain_box.invert()  # 법선을 안쪽으로 → 도메인 경계 표시
+                compound = _trimesh.util.concatenate([surf, domain_box])
+                vertices = compound.vertices
+                faces = compound.faces
+                logger.info(
+                    "tetwild_external_flow_compound",
+                    body_faces=len(surf.faces),
+                    domain_faces=len(domain_box.faces),
+                )
+            else:
                 vertices = surf.vertices
                 faces = surf.faces
 

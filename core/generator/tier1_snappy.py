@@ -77,11 +77,72 @@ def generate_block_mesh_dict(strategy: MeshStrategy) -> dict[str, Any]:
     }
 
 
-def generate_snappy_dict(strategy: MeshStrategy) -> dict[str, Any]:
+def _find_interior_point(stl_path: "Path") -> list[float] | None:
+    """STL 표면 내부의 한 점을 자동으로 찾아 반환한다.
+
+    snappyHexMesh의 locationInMesh는 메싱할 영역 내부의 임의 점이어야 한다.
+    trimesh의 center_mass(부피 중심)를 사용하면 watertight 메시에서는
+    항상 내부에 위치하는 것이 보장된다.
+
+    Args:
+        stl_path: 전처리된 STL 파일 경로.
+
+    Returns:
+        내부 점 [x, y, z], 실패 시 None.
+    """
+    try:
+        import trimesh as _tm
+        surf = _tm.load(str(stl_path), force="mesh")
+
+        if getattr(surf, "is_watertight", False):
+            # watertight 메시: 부피 중심은 반드시 내부
+            pt = surf.center_mass.tolist()
+            logger.info("snappy_interior_point_center_mass", point=pt)
+            return pt
+
+        # 비가 닫힌 경우: bbox 중심을 시도 후 광선 검사
+        candidate = list(surf.centroid)
+        try:
+            inside = surf.ray.contains_points([candidate])
+            if inside[0]:
+                logger.info("snappy_interior_point_centroid", point=candidate)
+                return candidate
+        except Exception:
+            pass
+
+        # 최후 수단: 메시 bbox 내 랜덤 샘플링으로 내부 점 탐색
+        import numpy as _np
+        bbox_min = surf.bounds[0]
+        bbox_max = surf.bounds[1]
+        rng = _np.random.default_rng(42)
+        for _ in range(200):
+            pt_try = rng.uniform(bbox_min, bbox_max).tolist()
+            try:
+                inside = surf.ray.contains_points([pt_try])
+                if inside[0]:
+                    logger.info("snappy_interior_point_sampled", point=pt_try)
+                    return pt_try
+            except Exception:
+                break
+
+        logger.warning("snappy_interior_point_fallback_centroid")
+        return list(surf.centroid)
+
+    except Exception as exc:
+        logger.warning("snappy_interior_point_failed", error=str(exc))
+        return None
+
+
+def generate_snappy_dict(
+    strategy: MeshStrategy,
+    location_in_mesh: list[float] | None = None,
+) -> dict[str, Any]:
     """snappyHexMeshDict 내용을 Python dict로 생성한다.
 
     Args:
         strategy: 메쉬 전략 (surface_mesh, boundary_layers, quality_targets 포함).
+        location_in_mesh: castellatedMesh에서 남길 영역의 임의 내부 점.
+            None이면 strategy.domain.location_in_mesh 를 사용한다.
 
     Returns:
         snappyHexMeshDict 구조를 담은 dict.
@@ -113,7 +174,7 @@ def generate_snappy_dict(strategy: MeshStrategy) -> dict[str, Any]:
             "minRefinementCells": params.get("snappy_min_refinement_cells", 10),
             "nCellsBetweenLevels": params.get("snappy_n_cells_between_levels", 3),
             "resolveFeatureAngle": sm.feature_angle,
-            "locationInMesh": domain.location_in_mesh,
+            "locationInMesh": location_in_mesh if location_in_mesh is not None else domain.location_in_mesh,
             "features": [
                 {
                     "file": "surface.eMesh",
@@ -239,8 +300,8 @@ class Tier1SnappyGenerator:
                 shutil.copy(str(preprocessed_path), str(surface_stl))
                 logger.info("stl_copied", src=str(preprocessed_path), dst=str(surface_stl))
 
-            # Dict 파일 생성
-            self._write_dicts(strategy, case_dir)
+            # Dict 파일 생성 (STL 내부 포인트 자동 계산해서 locationInMesh로 사용)
+            self._write_dicts(strategy, case_dir, preprocessed_path=preprocessed_path)
 
             # Step 1: blockMesh
             t_step = time.monotonic()
@@ -322,7 +383,12 @@ class Tier1SnappyGenerator:
                 error_message=f"Tier 1 예상치 못한 오류: {exc}",
             )
 
-    def _write_dicts(self, strategy: MeshStrategy, case_dir: Path) -> None:
+    def _write_dicts(
+        self,
+        strategy: MeshStrategy,
+        case_dir: Path,
+        preprocessed_path: "Path | None" = None,
+    ) -> None:
         """모든 필요한 Dict 파일을 작성한다."""
         system_dir = case_dir / "system"
 
@@ -339,8 +405,23 @@ class Tier1SnappyGenerator:
         bmd_path.write_text(self._render_block_mesh_dict(bmd))
         logger.info("wrote_block_mesh_dict", path=str(bmd_path))
 
+        # STL 내부 포인트 자동 계산 → locationInMesh
+        # snappyHexMesh의 castellatedMesh 단계에서 이 점이 속한 영역의 셀을 남기고
+        # 반대편(geometry 외부 또는 내부)을 제거한다.
+        # trimesh의 center_mass는 watertight 메시 내부에 항상 위치한다.
+        loc_in_mesh: list[float] | None = None
+        if preprocessed_path is not None and preprocessed_path.exists():
+            loc_in_mesh = _find_interior_point(preprocessed_path)
+            if loc_in_mesh is not None:
+                logger.info("snappy_using_interior_point", location=loc_in_mesh)
+            else:
+                logger.warning(
+                    "snappy_interior_point_unavailable",
+                    fallback="strategy.domain.location_in_mesh",
+                )
+
         # snappyHexMeshDict
-        snappy = generate_snappy_dict(strategy)
+        snappy = generate_snappy_dict(strategy, location_in_mesh=loc_in_mesh)
         snappy_path = system_dir / "snappyHexMeshDict"
         self._writer.write_foam_dict(
             snappy_path, snappy,

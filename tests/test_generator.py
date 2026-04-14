@@ -455,6 +455,112 @@ class TestTierGracefulFail:
         assert attempt.tier == "tier_jigsaw"
         assert attempt.error_message is not None
 
+    def test_tier_wildmesh_import_skip(
+        self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
+    ) -> None:
+        """wildmeshing 미설치 환경에서 import 실패 → graceful fail."""
+        from core.generator.tier_wildmesh import TierWildMeshGenerator
+
+        generator = TierWildMeshGenerator()
+        with patch.dict("sys.modules", {"wildmeshing": None}):
+            # _HAS_WILDMESHING은 모듈 로드 시 평가되므로 패치로 강제 실패 유도
+            with patch("core.generator.tier_wildmesh._HAS_WILDMESHING", False):
+                attempt = generator.run(mesh_strategy, dummy_stl, tmp_path)
+
+        assert attempt.status == "failed"
+        assert attempt.tier == "tier_wildmesh"
+        assert attempt.error_message is not None
+
+    def test_tier_wildmesh_missing_file(
+        self, mesh_strategy: MeshStrategy, tmp_path: Path
+    ) -> None:
+        """입력 파일 없음 → TierAttempt(status='failed') 반환."""
+        from core.generator.tier_wildmesh import TierWildMeshGenerator
+
+        generator = TierWildMeshGenerator()
+        nonexistent = tmp_path / "no_such_file.stl"
+
+        with patch("core.generator.tier_wildmesh._HAS_WILDMESHING", True):
+            attempt = generator.run(mesh_strategy, nonexistent, tmp_path)
+
+        assert attempt.status == "failed"
+        assert attempt.tier == "tier_wildmesh"
+        assert attempt.error_message is not None
+
+    def test_tier_wildmesh_quality_params_draft(self) -> None:
+        """draft quality_level → stop_quality=20, max_its=40."""
+        from core.generator.tier_wildmesh import _get_quality_params
+
+        sq, mi, eps = _get_quality_params("draft", {})
+        assert sq == 20.0
+        assert mi == 40
+        assert eps is None
+
+    def test_tier_wildmesh_quality_params_standard(self) -> None:
+        """standard quality_level → stop_quality=10, max_its=80."""
+        from core.generator.tier_wildmesh import _get_quality_params
+
+        sq, mi, eps = _get_quality_params("standard", {})
+        assert sq == 10.0
+        assert mi == 80
+        assert eps is None
+
+    def test_tier_wildmesh_quality_params_fine(self) -> None:
+        """fine quality_level → stop_quality=5, max_its=200."""
+        from core.generator.tier_wildmesh import _get_quality_params
+
+        sq, mi, eps = _get_quality_params("fine", {})
+        assert sq == 5.0
+        assert mi == 200
+        assert eps is None
+
+    def test_tier_wildmesh_quality_params_override(self) -> None:
+        """tier_specific_params 값이 기본값을 오버라이드한다."""
+        from core.generator.tier_wildmesh import _get_quality_params
+
+        params = {"wildmesh_stop_quality": 7.5, "wildmesh_max_its": 120, "wildmesh_epsilon": 0.001}
+        sq, mi, eps = _get_quality_params("standard", params)
+        assert sq == 7.5
+        assert mi == 120
+        assert eps == 0.001
+
+    def test_tier_wildmesh_registered_in_pipeline(self) -> None:
+        """tier_wildmesh가 _TIER_REGISTRY에 등록되어 있어야 한다."""
+        from core.generator.pipeline import _TIER_REGISTRY, _TIER_ALIASES
+
+        assert "tier_wildmesh" in _TIER_REGISTRY
+        assert "wildmesh" in _TIER_ALIASES
+        assert _TIER_ALIASES["wildmesh"] == "tier_wildmesh"
+        assert _TIER_ALIASES["tier_wildmesh"] == "tier_wildmesh"
+
+    def test_tier_wildmesh_success_mock(
+        self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
+    ) -> None:
+        """wildmeshing API를 mock하여 성공 경로를 검증한다."""
+        import numpy as np
+        from core.generator.tier_wildmesh import TierWildMeshGenerator
+
+        tet_v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+        tet_f = np.array([[0, 1, 2, 3]], dtype=np.int32)
+
+        mock_tetra = MagicMock()
+        mock_tetra.get_tet_mesh.return_value = (tet_v, tet_f)
+
+        mock_wm = MagicMock()
+        mock_wm.Tetrahedralizer.return_value = mock_tetra
+
+        mock_writer = MagicMock()
+        mock_writer.write.return_value = {"num_cells": 1}
+
+        generator = TierWildMeshGenerator()
+        with patch("core.generator.tier_wildmesh._HAS_WILDMESHING", True), \
+             patch.dict("sys.modules", {"wildmeshing": mock_wm}), \
+             patch("core.generator.tier_wildmesh.PolyMeshWriter", return_value=mock_writer):
+            attempt = generator.run(mesh_strategy, dummy_stl, tmp_path)
+
+        assert attempt.tier == "tier_wildmesh"
+        assert attempt.time_seconds >= 0.0
+
 
 # ---------------------------------------------------------------------------
 # 파이프라인 테스트
@@ -2379,3 +2485,208 @@ class TestMMGPostProcessing:
         assert str(strategy.surface_mesh.min_cell_size) in cmd
         assert "-hmax" in cmd
         assert str(strategy.surface_mesh.target_cell_size) in cmd
+
+
+# ---------------------------------------------------------------------------
+# TierGmshHex 테스트
+# ---------------------------------------------------------------------------
+
+
+class TestTierGmshHex:
+    """tier_gmsh_hex 단위 테스트."""
+
+    def test_gmsh_hex_import_fail_graceful(
+        self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
+    ) -> None:
+        """gmsh 미설치 → TierAttempt(status='failed') 반환."""
+        from core.generator.tier_gmsh_hex import TierGmshHexGenerator
+
+        generator = TierGmshHexGenerator()
+        with patch.dict("sys.modules", {"gmsh": None}):
+            attempt = generator.run(mesh_strategy, dummy_stl, tmp_path)
+
+        assert attempt.status == "failed"
+        assert attempt.tier == "tier_gmsh_hex"
+        assert attempt.error_message is not None
+        assert "gmsh" in attempt.error_message.lower()
+        assert attempt.time_seconds >= 0.0
+
+    def test_gmsh_hex_meshio_missing_graceful(
+        self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
+    ) -> None:
+        """meshio 미설치 → TierAttempt(status='failed') 반환."""
+        from core.generator.tier_gmsh_hex import TierGmshHexGenerator
+        import sys
+
+        # gmsh는 있지만 meshio가 없는 경우 시뮬레이션
+        # gmsh가 실제로 없으면 이 테스트는 gmsh 실패로 먼저 걸림
+        gmsh_available = "gmsh" in sys.modules or __import__("importlib").util.find_spec("gmsh") is not None
+        if not gmsh_available:
+            pytest.skip("gmsh 미설치 — meshio 누락 테스트 스킵")
+
+        generator = TierGmshHexGenerator()
+        with patch.dict("sys.modules", {"meshio": None}):
+            attempt = generator.run(mesh_strategy, dummy_stl, tmp_path)
+
+        assert attempt.status == "failed"
+        assert attempt.tier == "tier_gmsh_hex"
+        assert attempt.error_message is not None
+        assert attempt.time_seconds >= 0.0
+
+    def test_gmsh_hex_missing_input_file(
+        self, mesh_strategy: MeshStrategy, tmp_path: Path
+    ) -> None:
+        """입력 파일 없음 → TierAttempt(status='failed') 반환."""
+        pytest.importorskip("gmsh", reason="gmsh 미설치 — 스킵")
+        pytest.importorskip("meshio", reason="meshio 미설치 — 스킵")
+
+        from core.generator.tier_gmsh_hex import TierGmshHexGenerator
+
+        generator = TierGmshHexGenerator()
+        nonexistent = tmp_path / "no_such_file.stl"
+        attempt = generator.run(mesh_strategy, nonexistent, tmp_path)
+
+        assert attempt.status == "failed"
+        assert attempt.tier == "tier_gmsh_hex"
+        assert attempt.error_message is not None
+
+    def test_gmsh_hex_tier_name(self) -> None:
+        """TIER_NAME 상수 값 확인."""
+        from core.generator.tier_gmsh_hex import TIER_NAME
+
+        assert TIER_NAME == "tier_gmsh_hex"
+
+    def test_gmsh_hex_registered_in_pipeline(self) -> None:
+        """tier_gmsh_hex가 _TIER_REGISTRY에 등록되어 있는지 확인."""
+        from core.generator.pipeline import _TIER_REGISTRY, _TIER_ALIASES
+
+        assert "tier_gmsh_hex" in _TIER_REGISTRY
+        assert "gmsh_hex" in _TIER_ALIASES
+        assert _TIER_ALIASES["gmsh_hex"] == "tier_gmsh_hex"
+        assert _TIER_ALIASES["tier_gmsh_hex"] == "tier_gmsh_hex"
+
+    def test_gmsh_hex_resolve_alias(self) -> None:
+        """_resolve_tier('gmsh_hex') → 'tier_gmsh_hex' 확인."""
+        from core.generator.pipeline import _resolve_tier
+
+        assert _resolve_tier("gmsh_hex") == "tier_gmsh_hex"
+        assert _resolve_tier("tier_gmsh_hex") == "tier_gmsh_hex"
+
+    def test_gmsh_hex_pipeline_integration(
+        self, tmp_path: Path, dummy_stl: Path
+    ) -> None:
+        """pipeline에서 tier_gmsh_hex를 selected_tier로 지정 시 실행 확인."""
+        from core.generator.pipeline import MeshGenerator, _run_tier
+        from core.schemas import (
+            BoundaryLayerConfig,
+            DomainConfig,
+            MeshStrategy,
+            QualityLevel,
+            QualityTargets,
+            SurfaceMeshConfig,
+        )
+
+        strategy = MeshStrategy(
+            strategy_version=2,
+            iteration=1,
+            quality_level=QualityLevel.STANDARD,
+            selected_tier="tier_gmsh_hex",
+            fallback_tiers=[],
+            flow_type="external",
+            domain=DomainConfig(
+                type="box",
+                min=[-1.0, -1.0, -1.0],
+                max=[1.0, 1.0, 1.0],
+                base_cell_size=0.1,
+                location_in_mesh=[0.0, 0.0, 0.0],
+            ),
+            surface_mesh=SurfaceMeshConfig(
+                input_file="preprocessed.stl",
+                target_cell_size=0.05,
+                min_cell_size=0.01,
+                feature_angle=150.0,
+            ),
+            boundary_layers=BoundaryLayerConfig(
+                enabled=False,
+                num_layers=0,
+                first_layer_thickness=0.001,
+                growth_ratio=1.2,
+                max_total_thickness=0.01,
+                min_thickness_ratio=0.1,
+            ),
+            quality_targets=QualityTargets(),
+            tier_specific_params={
+                "gmsh_hex_algorithm": 8,
+                "gmsh_hex_recombine_all": True,
+                "gmsh_hex_char_length_factor": 1.0,
+            },
+        )
+
+        gen = MeshGenerator()
+        called_tiers: list[str] = []
+
+        def mock_run_tier(tier, strat, path, case):
+            called_tiers.append(tier)
+            return TierAttempt(
+                tier=tier,
+                status="failed",
+                time_seconds=0.01,
+                error_message="mock",
+            )
+
+        with patch("core.generator.pipeline._run_tier", side_effect=mock_run_tier):
+            log = gen.run(strategy, dummy_stl, tmp_path)
+
+        assert "tier_gmsh_hex" in called_tiers
+        assert log.execution_summary.selected_tier == "tier_gmsh_hex"
+
+    def test_gmsh_hex_tier_attempt_schema(self) -> None:
+        """tier_gmsh_hex TierAttempt 스키마 검증."""
+        attempt = TierAttempt(
+            tier="tier_gmsh_hex",
+            status="failed",
+            time_seconds=0.5,
+            error_message="gmsh not available",
+        )
+
+        assert attempt.tier == "tier_gmsh_hex"
+        assert attempt.status == "failed"
+        assert attempt.time_seconds == pytest.approx(0.5)
+        assert attempt.error_message == "gmsh not available"
+
+    def test_gmsh_hex_no_hex_cells_returns_failed(
+        self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
+    ) -> None:
+        """hex 셀 없이 tet만 생성된 경우 → status='failed' 반환 (다음 tier 전환)."""
+        pytest.importorskip("gmsh", reason="gmsh 미설치 — 스킵")
+        pytest.importorskip("meshio", reason="meshio 미설치 — 스킵")
+
+        from core.generator.tier_gmsh_hex import TierGmshHexGenerator
+        import meshio as _meshio
+        import numpy as np
+
+        # hex 셀 없는 가짜 msh 데이터 (tet만 있음)
+        fake_points = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=float)
+        fake_tets = np.array([[0, 1, 2, 3]], dtype=np.int64)
+        fake_mesh = _meshio.Mesh(
+            points=fake_points,
+            cells=[_meshio.CellBlock("tetra", fake_tets)],
+        )
+
+        generator = TierGmshHexGenerator()
+
+        # gmsh 생성 및 meshio 읽기를 mock으로 대체
+        msh_file = tmp_path / "gmsh_hex_mesh.msh"
+        msh_file.write_text("dummy")
+
+        with patch("gmsh.initialize"), \
+             patch("gmsh.finalize"), \
+             patch.object(generator, "_generate_gmsh_mesh", return_value=True), \
+             patch("meshio.read", return_value=fake_mesh):
+            attempt = generator.run(mesh_strategy, dummy_stl, tmp_path)
+
+        # hex 셀이 없으므로 failed 반환
+        assert attempt.status == "failed"
+        assert attempt.tier == "tier_gmsh_hex"
+        assert attempt.error_message is not None
+        assert "hex" in attempt.error_message.lower()

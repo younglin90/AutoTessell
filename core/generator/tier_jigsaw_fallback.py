@@ -89,11 +89,46 @@ class TierJigsawFallbackGenerator:
             surf: _trimesh.Trimesh = _trimesh.load(
                 str(preprocessed_path), force="mesh"
             )  # type: ignore[assignment]
-            vertices = surf.vertices
-            faces = surf.faces
 
             # 파라미터 설정
             params = strategy.tier_specific_params
+
+            # External flow: 도메인 박스 + 물체 복합 지오메트리 구성
+            # JIGSAW는 닫힌 표면의 내부를 메싱한다.
+            # External flow에서는 "도메인 박스 내부 - 물체 내부" 영역이 유동 도메인이므로
+            # 도메인 박스를 뒤집은 법선(안쪽)으로 추가하여 JIGSAW에 전달한다.
+            flow_type = getattr(strategy, "flow_type", "internal")
+            if flow_type == "external" and strategy.domain is not None:
+                domain = strategy.domain
+                box_size = [
+                    float(domain.max[0] - domain.min[0]),
+                    float(domain.max[1] - domain.min[1]),
+                    float(domain.max[2] - domain.min[2]),
+                ]
+                box_center = [
+                    float((domain.min[0] + domain.max[0]) / 2),
+                    float((domain.min[1] + domain.max[1]) / 2),
+                    float((domain.min[2] + domain.max[2]) / 2),
+                ]
+                domain_box = _trimesh.creation.box(extents=box_size)
+                domain_box.apply_translation(box_center)
+                # 도메인 박스 법선을 안쪽으로 뒤집어 JIGSAW에게 "외부 경계"임을 알림
+                domain_box.invert()
+
+                # 복합 표면: 물체 표면 + 뒤집힌 도메인 박스
+                compound = _trimesh.util.concatenate([surf, domain_box])
+                vertices = compound.vertices
+                faces = compound.faces
+                logger.info(
+                    "jigsaw_external_flow_compound",
+                    body_faces=len(surf.faces),
+                    domain_faces=len(domain_box.faces),
+                    total_faces=len(faces),
+                )
+            else:
+                # Internal flow: 물체 내부를 유동 도메인으로 직접 메싱
+                vertices = surf.vertices
+                faces = surf.faces
             quality_level = getattr(strategy, "quality_level", "standard")
             if hasattr(quality_level, "value"):
                 quality_level = quality_level.value

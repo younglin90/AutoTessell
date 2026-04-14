@@ -17,7 +17,10 @@ from core.generator.tier_hex_classy_blocks import TierHexClassyBlocksGenerator
 from core.generator.tier_jigsaw import TierJigsawGenerator
 from core.generator.tier_jigsaw_fallback import TierJigsawFallbackGenerator
 from core.generator.tier_meshpy import TierMeshPyGenerator
+from core.generator.tier_wildmesh import TierWildMeshGenerator
 from core.generator.polyhedral import PolyhedralGenerator
+from core.generator.tier_gmsh_hex import TierGmshHexGenerator
+from core.generator.tier_cinolib_hex import TierCinolibHexGenerator
 from core.schemas import ExecutionSummary, GeneratorLog, MeshStrategy, TierAttempt
 from core.utils.logging import get_logger
 from core.utils.openfoam_utils import get_openfoam_label_size
@@ -38,6 +41,9 @@ _TIER_REGISTRY: dict[str, type] = {
     "tier_classy_blocks": TierClassyBlocksGenerator,
     "tier_jigsaw": TierJigsawGenerator,
     "tier_jigsaw_fallback": TierJigsawFallbackGenerator,
+    "tier_wildmesh": TierWildMeshGenerator,
+    "tier_gmsh_hex": TierGmshHexGenerator,
+    "tier_cinolib_hex": TierCinolibHexGenerator,
 }
 
 # CLI --tier 별칭 → 정규 Tier 이름
@@ -54,6 +60,9 @@ _TIER_ALIASES: dict[str, str] = {
     "classy_blocks": "tier_classy_blocks",
     "jigsaw": "tier_jigsaw",
     "jigsaw_fallback": "tier_jigsaw_fallback",
+    "wildmesh": "tier_wildmesh",
+    "gmsh_hex": "tier_gmsh_hex",
+    "cinolib_hex": "tier_cinolib_hex",
     # 정규 이름 자체도 허용
     "tier0_2d_meshpy": "tier0_2d_meshpy",
     "tier0_core": "tier0_core",
@@ -67,6 +76,9 @@ _TIER_ALIASES: dict[str, str] = {
     "tier_classy_blocks": "tier_classy_blocks",
     "tier_jigsaw": "tier_jigsaw",
     "tier_jigsaw_fallback": "tier_jigsaw_fallback",
+    "tier_wildmesh": "tier_wildmesh",
+    "tier_gmsh_hex": "tier_gmsh_hex",
+    "tier_cinolib_hex": "tier_cinolib_hex",
 }
 
 
