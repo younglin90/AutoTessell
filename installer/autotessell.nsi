@@ -97,7 +97,6 @@ Section "AutoTessell" SecMain
     File /r "${SRCROOT}\installer\staging\src\*"
 
     SetOutPath "$INSTDIR"
-    File "${SRCROOT}\installer\environment.yml"
 
     ; ── Step 2: Miniconda3 다운로드 및 설치 ─────────────────────────────────
     DetailPrint ""
@@ -126,30 +125,14 @@ Section "AutoTessell" SecMain
         ${EndIf}
     ${EndIf}
 
-    ; ── Step 3: conda 환경 생성 (Python + pip만) ────────────────────────────
+    ; ── Step 3: pip 패키지 설치 (Miniconda base 환경에 직접 설치) ──────────
+    ;    conda create/env 없이 base Python 사용 — conda solver 실패 회피
     DetailPrint ""
-    DetailPrint "=== Python 3.12 환경 초기화 ==="
+    DetailPrint "=== 메쉬 라이브러리 설치 (pip, 5-15분 소요) ==="
 
-    ${If} ${FileExists} "$INSTDIR\conda\envs\autotessell\python.exe"
-        DetailPrint "autotessell 환경 이미 존재 - 건너뜀"
-    ${Else}
-        DetailPrint "Python 3.12 환경 생성 중..."
-        nsExec::ExecToLog '"$INSTDIR\conda\Scripts\conda.exe" create -n autotessell python=3.12 pip -c conda-forge --yes --quiet'
-        Pop $0
-        ${If} $0 != "0"
-            MessageBox MB_ICONSTOP "Python 환경 생성 실패 (ExitCode: $0).$\n$\n인터넷 연결을 확인하고 다시 시도해 주세요."
-            Abort
-        ${EndIf}
-        DetailPrint "Python 3.12 환경 생성 완료"
-    ${EndIf}
-
-    ; ── Step 4: pip 패키지 설치 (분할 설치 — 실패해도 계속) ─────────────────
-    DetailPrint ""
-    DetailPrint "=== 메쉬 라이브러리 설치 (pip) ==="
-
-    ; 4-A: 핵심 GUI / 시각화
-    DetailPrint "GUI 라이브러리 설치 중 (PySide6, PyVista)..."
-    nsExec::ExecToLog '"$INSTDIR\conda\envs\autotessell\python.exe" -m pip install --no-warn-script-location --quiet PySide6 pyvista pyvistaqt vtk'
+    ; 3-A: 핵심 GUI / 시각화
+    DetailPrint "[1/5] GUI 라이브러리 설치 중 (PySide6, PyVista)..."
+    nsExec::ExecToLog '"$INSTDIR\conda\python.exe" -m pip install --no-warn-script-location PySide6 pyvista pyvistaqt vtk'
     Pop $0
     ${If} $0 != "0"
         DetailPrint "경고: GUI 라이브러리 일부 실패 (계속 진행)"
@@ -157,9 +140,9 @@ Section "AutoTessell" SecMain
         DetailPrint "GUI 라이브러리 설치 완료"
     ${EndIf}
 
-    ; 4-B: 핵심 메쉬 처리
-    DetailPrint "핵심 메쉬 라이브러리 설치 중 (trimesh, meshio, numpy, scipy)..."
-    nsExec::ExecToLog '"$INSTDIR\conda\envs\autotessell\python.exe" -m pip install --no-warn-script-location --quiet trimesh meshio numpy scipy shapely rtree pymeshfix gmsh'
+    ; 3-B: 핵심 메쉬 처리
+    DetailPrint "[2/5] 핵심 메쉬 라이브러리 설치 중 (trimesh, meshio, numpy, scipy)..."
+    nsExec::ExecToLog '"$INSTDIR\conda\python.exe" -m pip install --no-warn-script-location trimesh meshio numpy scipy shapely rtree pymeshfix gmsh'
     Pop $0
     ${If} $0 != "0"
         DetailPrint "경고: 핵심 메쉬 라이브러리 일부 실패 (계속 진행)"
@@ -167,9 +150,9 @@ Section "AutoTessell" SecMain
         DetailPrint "핵심 메쉬 라이브러리 설치 완료"
     ${EndIf}
 
-    ; 4-C: CLI / 유틸리티
-    DetailPrint "CLI 유틸리티 설치 중..."
-    nsExec::ExecToLog '"$INSTDIR\conda\envs\autotessell\python.exe" -m pip install --no-warn-script-location --quiet click rich pydantic structlog xxhash'
+    ; 3-C: CLI / 유틸리티
+    DetailPrint "[3/5] CLI 유틸리티 설치 중..."
+    nsExec::ExecToLog '"$INSTDIR\conda\python.exe" -m pip install --no-warn-script-location click rich pydantic structlog xxhash'
     Pop $0
     ${If} $0 != "0"
         DetailPrint "경고: CLI 유틸리티 일부 실패 (계속 진행)"
@@ -177,9 +160,9 @@ Section "AutoTessell" SecMain
         DetailPrint "CLI 유틸리티 설치 완료"
     ${EndIf}
 
-    ; 4-D: 볼륨 메쉬 엔진
-    DetailPrint "메쉬 엔진 설치 중 (TetWild, WildMesh, Netgen 등)..."
-    nsExec::ExecToLog '"$INSTDIR\conda\envs\autotessell\python.exe" -m pip install --no-warn-script-location --quiet pytetwild wildmeshing netgen-mesher pyacvd pymeshlab'
+    ; 3-D: 볼륨 메쉬 엔진
+    DetailPrint "[4/5] 메쉬 엔진 설치 중 (TetWild, WildMesh, Netgen 등)..."
+    nsExec::ExecToLog '"$INSTDIR\conda\python.exe" -m pip install --no-warn-script-location pytetwild wildmeshing netgen-mesher pyacvd pymeshlab'
     Pop $0
     ${If} $0 != "0"
         DetailPrint "경고: 일부 메쉬 엔진 설치 실패 (계속 진행)"
@@ -187,9 +170,9 @@ Section "AutoTessell" SecMain
         DetailPrint "볼륨 메쉬 엔진 설치 완료"
     ${EndIf}
 
-    ; 4-E: 추가 도구
-    DetailPrint "추가 도구 설치 중 (JIGSAW, Voronoi, CAD 등)..."
-    nsExec::ExecToLog '"$INSTDIR\conda\envs\autotessell\python.exe" -m pip install --no-warn-script-location --quiet jigsawpy pyvoro-mm cadquery laspy fast-simplification classy-blocks'
+    ; 3-E: 추가 도구
+    DetailPrint "[5/5] 추가 도구 설치 중 (JIGSAW, Voronoi, CAD 등)..."
+    nsExec::ExecToLog '"$INSTDIR\conda\python.exe" -m pip install --no-warn-script-location jigsawpy pyvoro-mm cadquery laspy fast-simplification classy-blocks'
     Pop $0
     ${If} $0 != "0"
         DetailPrint "경고: 추가 도구 일부 설치 실패 (계속 진행)"
@@ -197,16 +180,16 @@ Section "AutoTessell" SecMain
         DetailPrint "추가 도구 설치 완료"
     ${EndIf}
 
-    ; ── Step 5: AutoTessell 소스 설치 ───────────────────────────────────────
+    ; ── Step 4: AutoTessell 소스 설치 ───────────────────────────────────────
     DetailPrint ""
     DetailPrint "=== AutoTessell 코어 설치 ==="
-    ExecWait '"$INSTDIR\conda\envs\autotessell\python.exe" -m pip install \
-        -e "$INSTDIR\src" --no-warn-script-location --quiet' $0
+    nsExec::ExecToLog '"$INSTDIR\conda\python.exe" -m pip install -e "$INSTDIR\src" --no-warn-script-location'
+    Pop $0
     ${If} $0 != "0"
-        MessageBox MB_ICONSTOP "AutoTessell 설치 실패 (ExitCode: $0)."
-        Abort
+        DetailPrint "경고: AutoTessell 코어 설치 실패 (계속 진행)"
+    ${Else}
+        DetailPrint "AutoTessell 코어 설치 완료"
     ${EndIf}
-    DetailPrint "AutoTessell 코어 설치 완료"
 
     ; ── Step 6: 외부 바이너리 다운로드 ──────────────────────────────────────
     DetailPrint ""
@@ -251,7 +234,7 @@ Section "AutoTessell" SecMain
             Delete "$TEMP\jigsaw_windows.zip"
             ; jigsawpy _lib/에도 복사 — 임시 PS1 방식
             FileOpen $R9 "$TEMP\at_jigsawdll.ps1" w
-            FileWrite $R9 "$$p=& '$INSTDIR\conda\envs\autotessell\python.exe' -c 'import jigsawpy,os; print(os.path.dirname(jigsawpy.__file__))'$\n"
+            FileWrite $R9 "$$p=& '$INSTDIR\conda\python.exe' -c 'import jigsawpy,os; print(os.path.dirname(jigsawpy.__file__))'$\n"
             FileWrite $R9 "$$d=Join-Path $$p '_lib'$\n"
             FileWrite $R9 "New-Item -ItemType Directory -Path $$d -Force|Out-Null$\n"
             FileWrite $R9 "Copy-Item '$INSTDIR\bin\libjigsaw.dll' (Join-Path $$d 'libjigsaw.dll') -Force$\n"
@@ -269,14 +252,14 @@ Section "AutoTessell" SecMain
     FileWrite $9 "@echo off$\r$\n"
     FileWrite $9 "REM AutoTessell GUI Launcher$\r$\n"
     FileWrite $9 'cd /d "$INSTDIR\src"$\r$\n'
-    FileWrite $9 '"$INSTDIR\conda\envs\autotessell\python.exe" -m desktop.qt_main %*$\r$\n'
+    FileWrite $9 '"$INSTDIR\conda\python.exe" -m desktop.qt_main %*$\r$\n'
     FileClose $9
 
     FileOpen $9 "$INSTDIR\autotessell-cli.bat" w
     FileWrite $9 "@echo off$\r$\n"
     FileWrite $9 "REM AutoTessell CLI$\r$\n"
     FileWrite $9 'cd /d "$INSTDIR\src"$\r$\n'
-    FileWrite $9 '"$INSTDIR\conda\envs\autotessell\python.exe" -m cli.main %*$\r$\n'
+    FileWrite $9 '"$INSTDIR\conda\python.exe" -m cli.main %*$\r$\n'
     FileClose $9
 
     ; ── Step 8: 레지스트리 등록 ─────────────────────────────────────────────
@@ -331,7 +314,7 @@ Function .onInit
     ; 이미 설치됐는지 확인
     ReadRegStr $0 HKCU "Software\AutoTessell" "InstallDir"
     ${If} $0 != ""
-    ${AndIf} ${FileExists} "$0\conda\envs\autotessell\python.exe"
+    ${AndIf} ${FileExists} "$0\conda\python.exe"
         MessageBox MB_YESNO|MB_ICONQUESTION "AutoTessell이 이미 설치되어 있습니다.$\r$\n재설치하시겠습니까?" IDYES +2
         Abort
     ${EndIf}
@@ -343,19 +326,13 @@ Section "Uninstall"
     Delete "$DESKTOP\AutoTessell.lnk"
     RMDir /r "$SMPROGRAMS\AutoTessell"
 
-    ; conda 환경 제거
-    ${If} ${FileExists} "$INSTDIR\conda\Scripts\conda.exe"
-        DetailPrint "Python 환경 제거 중..."
-        ExecWait '"$INSTDIR\conda\Scripts\conda.exe" env remove -n autotessell --yes'
-    ${EndIf}
-
     ; 파일 및 디렉터리 삭제
+    DetailPrint "파일 제거 중..."
     RMDir /r "$INSTDIR\src"
     RMDir /r "$INSTDIR\bin"
     RMDir /r "$INSTDIR\conda"
     Delete "$INSTDIR\AutoTessell.bat"
     Delete "$INSTDIR\autotessell-cli.bat"
-    Delete "$INSTDIR\environment.yml"
     Delete "$INSTDIR\Uninstall.exe"
     RMDir "$INSTDIR"
 

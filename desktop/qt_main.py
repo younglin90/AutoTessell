@@ -21,33 +21,35 @@ def main() -> None:  # pragma: no cover
     """QApplication 을 생성하고 AutoTessellWindow 를 표시한다."""
     import sys
 
-    # PyVista 오프스크린 렌더링 초기화 (WSL 감지)
+    # PyVista 오프스크린 렌더링 초기화
     try:
-        import pyvista as pv
         import os
+        import sys as _sys
+        import pyvista as pv
 
         pv.OFF_SCREEN = True
 
-        # WSL 환경 감지
-        is_wsl = "wsl" in os.environ.get("PATH", "").lower() or (
-            os.path.exists("/proc/version") and "microsoft" in open("/proc/version").read().lower()
-        )
-
-        if not is_wsl:
-            # Linux/Mac: Xvfb 시도
-            try:
-                try:
-                    pv.start_xvfb(suppress_messages=True)
-                except TypeError:
-                    pv.start_xvfb()
-            except Exception:
-                pass
+        if _sys.platform == "win32":
+            # Windows: Xvfb 불필요, 네이티브 OpenGL 사용
+            pass
         else:
-            # WSL: OSMesa 강제
-            try:
-                os.environ["PYOPENGL_PLATFORM"] = "osmesa"
-            except Exception:
-                pass
+            # WSL 환경 감지
+            is_wsl = "wsl" in os.environ.get("PATH", "").lower() or (
+                os.path.exists("/proc/version")
+                and "microsoft" in open("/proc/version").read().lower()
+            )
+            if is_wsl:
+                # WSL: OSMesa 강제
+                os.environ.setdefault("PYOPENGL_PLATFORM", "osmesa")
+            else:
+                # 순수 Linux/Mac: Xvfb 시도 (deprecated 경고 억제)
+                import warnings
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", DeprecationWarning)
+                    try:
+                        pv.start_xvfb()
+                    except Exception:
+                        pass
 
     except Exception:
         pass  # PyVista 미설치 또는 초기화 실패
