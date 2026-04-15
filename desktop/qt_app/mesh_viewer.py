@@ -29,6 +29,112 @@ except Exception as e:
     log.warning(f"pyvista 초기화 실패: {e}")
 
 
+# ---------------------------------------------------------------------------
+# 멀티포맷 로더 — pv.read()가 지원하지 않는 포맷 전처리
+# ---------------------------------------------------------------------------
+_CAD_EXTS   = {".step", ".stp", ".iges", ".igs", ".brep"}
+_PC_EXTS    = {".las", ".laz"}
+_TM_EXTS    = {".off", ".3mf"}          # trimesh 경유
+_MESHIO_EXTS = {".msh"}                  # meshio → VTU
+
+
+def _pv_read_any(path: Path) -> "pv.DataSet":
+    """포맷을 자동 감지해 PyVista 메시를 반환.
+
+    지원 포맷:
+    - pv.read() 직접: STL, OBJ, PLY, VTK, VTU, VTP 등
+    - CAD (STEP/IGES/BREP): cadquery → STL temp
+    - 포인트클라우드 (LAS/LAZ): laspy → pv.PolyData
+    - OFF / 3MF: trimesh → STL temp
+    - MSH (Gmsh): meshio → VTU temp
+    """
+    ext = path.suffix.lower()
+
+    if ext in _CAD_EXTS:
+        return _read_cad(path)
+    if ext in _PC_EXTS:
+        return _read_las(path)
+    if ext in _TM_EXTS:
+        return _read_trimesh(path)
+    if ext in _MESHIO_EXTS:
+        return _read_meshio(path)
+    # 기본: pv.read() 시도 (OBJ, PLY, VTK, VTU, STL 등)
+    return pv.read(str(path))
+
+
+def _read_cad(path: Path) -> "pv.DataSet":
+    """STEP / IGES / BREP → tessellate → PyVista."""
+    import tempfile
+
+    # 1) cadquery
+    try:
+        import cadquery as cq
+        shape = cq.importers.importStep(str(path))
+        with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
+            cq.exporters.export(shape, tmp.name)
+            return pv.read(tmp.name)
+    except Exception as e_cq:
+        log.debug(f"cadquery 로드 실패: {e_cq}")
+
+    # 2) gmsh fallback
+    try:
+        import gmsh
+        import meshio
+        gmsh.initialize()
+        gmsh.option.setNumber("General.Verbosity", 0)
+        gmsh.model.occ.importShapes(str(path))
+        gmsh.model.occ.synchronize()
+        gmsh.model.mesh.generate(2)
+        with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tmp:
+            tmp_msh = tmp.name
+        gmsh.write(tmp_msh)
+        gmsh.finalize()
+        return _read_meshio(Path(tmp_msh))
+    except Exception as e_gmsh:
+        log.debug(f"gmsh 로드 실패: {e_gmsh}")
+
+    raise ValueError(f"CAD 파일 로드 실패 (cadquery/gmsh 모두 실패): {path.name}")
+
+
+def _read_las(path: Path) -> "pv.DataSet":
+    """LAS / LAZ 포인트클라우드 → pv.PolyData."""
+    import laspy
+    las = laspy.read(str(path))
+    pts = np.column_stack([
+        np.asarray(las.x, dtype=float),
+        np.asarray(las.y, dtype=float),
+        np.asarray(las.z, dtype=float),
+    ])
+    cloud = pv.PolyData(pts)
+    return cloud
+
+
+def _read_trimesh(path: Path) -> "pv.DataSet":
+    """OFF / 3MF → trimesh → STL temp → pv.read()."""
+    import tempfile
+    import trimesh
+    mesh = trimesh.load(str(path), force="mesh")
+    with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
+        mesh.export(tmp.name)
+        return pv.read(tmp.name)
+
+
+def _read_meshio(path: Path) -> "pv.DataSet":
+    """MSH (Gmsh) / 기타 meshio 지원 포맷 → VTU temp → pv.read()."""
+    import meshio
+    import tempfile
+    mio = meshio.read(str(path))
+    with tempfile.NamedTemporaryFile(suffix=".vtu", delete=False) as tmp:
+        tmp_path = tmp.name
+    meshio.write(tmp_path, mio)
+    result = pv.read(tmp_path)
+    try:
+        Path(tmp_path).unlink()
+    except Exception:
+        pass
+    return result
+
+
 # VTK 볼륨 셀 타입 ID (tet=10, hex=12, wedge=13, pyramid=14, hex20=25 등)
 _VOLUME_CELL_TYPES = {10, 12, 13, 14, 25, 26, 27, 28, 29, 42}
 
@@ -107,7 +213,7 @@ class RenderWorker(QObject):
                 self.render_error.emit(f"파일 없음: {mesh_path.name}")
                 return
 
-            mesh = pv.read(str(mesh_path))
+            mesh = _pv_read_any(mesh_path)
             if mesh is None:
                 self.render_error.emit(f"로드 실패: {mesh_path.name}")
                 return
@@ -552,7 +658,7 @@ class InteractiveMeshViewer(QWidget):
         self._info_label.setText(f"⏳ {path.name} 로딩 중...")
 
         try:
-            mesh = pv.read(str(path))
+            mesh = _pv_read_any(path)
         except Exception as e:
             self._info_label.setText(f"❌ 로드 실패: {str(e)[:60]}")
             log.error(f"mesh load error: {e}")

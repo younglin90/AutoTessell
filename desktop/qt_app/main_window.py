@@ -19,6 +19,7 @@ class AutoTessellWindow:  # type: ignore[misc]
         ".stl", ".obj", ".ply", ".off", ".3mf",
         ".step", ".stp", ".iges", ".igs", ".brep",
         ".msh", ".vtu", ".vtk",
+        ".las", ".laz",
     )
     TIER_PARAM_SPECS: tuple[tuple[str, str, str, str], ...] = (
         # ── Core (geogram) ──────────────────────────────────────────
@@ -1423,12 +1424,16 @@ QToolTip {
             return
         from PySide6.QtWidgets import QFileDialog as _QFD
         filt = (
-            "Mesh/CAD Files (*.stl *.obj *.ply *.off *.3mf "
-            "*.step *.stp *.iges *.igs *.brep *.msh *.vtu *.vtk);;"
+            "Mesh/CAD/Point Cloud Files ("
+            "*.stl *.obj *.ply *.off *.3mf "
+            "*.step *.stp *.iges *.igs *.brep "
+            "*.msh *.vtu *.vtk "
+            "*.las *.laz);;"
             "STL Files (*.stl);;"
-            "STEP / IGES (*.step *.stp *.iges *.igs);;"
-            "OBJ / PLY / OFF (*.obj *.ply *.off *.3mf);;"
+            "STEP / IGES / BREP (*.step *.stp *.iges *.igs *.brep);;"
+            "OBJ / PLY / OFF / 3MF (*.obj *.ply *.off *.3mf);;"
             "Volume Mesh (*.msh *.vtu *.vtk);;"
+            "Point Cloud LAS/LAZ (*.las *.laz);;"
             "All Files (*.*)"
         )
         path, _ = _QFD.getOpenFileName(

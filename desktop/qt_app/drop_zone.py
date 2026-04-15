@@ -21,7 +21,7 @@ class DropZone(QLabel):
         self.setAcceptDrops(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._set_idle_style()
-        self.setText("Drop STL / STEP / OBJ file\nor click to browse")
+        self.setText("STL · OBJ · PLY · STEP · IGES\nOFF · 3MF · MSH · VTK · LAS/LAZ\nDrop file or click to browse")
 
     # ── 마우스 hover ──────────────────────────────────────────────────
     def enterEvent(self, event: QEnterEvent) -> None:  # type: ignore[override]
