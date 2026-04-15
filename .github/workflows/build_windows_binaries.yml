@@ -1,0 +1,300 @@
+name: Build Windows Binaries
+
+# cinolib_hex.pyd, robusthex.pyd (pybind11 extensions) 및
+# RobustPureHexMeshing.exe 를 windows-latest 에서 빌드해
+# GitHub Releases tag "windows-binaries-latest" 에 업로드한다.
+#
+# 수동 실행: Actions 탭 → "Run workflow"
+# 태그 트리거: git tag windows-binaries-YYYYMMDD && git push --tags
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag to upload to (default: windows-binaries-latest)'
+        required: false
+        default: 'windows-binaries-latest'
+  push:
+    tags:
+      - 'windows-binaries-*'
+
+env:
+  PYTHON_VERSION: '3.12'
+  VCPKG_DEFAULT_TRIPLET: x64-windows
+
+jobs:
+  # ── cinolib_hex.pyd ──────────────────────────────────────────────────────
+  build-cinolib-hex:
+    name: Build cinolib_hex.pyd
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python build dependencies
+        run: |
+          pip install "pybind11[global]" cmake ninja
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: C:\vcpkg\installed
+          key: vcpkg-eigen3-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt') }}
+          restore-keys: vcpkg-eigen3-${{ runner.os }}-
+
+      - name: Install Eigen3 via vcpkg
+        run: |
+          vcpkg install eigen3:x64-windows --no-binarycaching 2>&1 | Select-String -NotMatch "^$"
+
+      - name: Clone cinolib (header-only)
+        run: |
+          git clone --depth=1 https://github.com/mlivesu/cinolib.git C:\cinolib
+
+      - name: Get pybind11 cmake dir
+        id: pybind11_dir
+        run: |
+          $dir = python -c "import pybind11; print(pybind11.get_cmake_dir())"
+          echo "PYBIND11_CMAKE_DIR=$dir" >> $env:GITHUB_ENV
+
+      - name: Configure cinolib_hex (MSVC)
+        working-directory: auto_tessell_core
+        run: |
+          cmake -B build-win -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCINOLIB_DIR=C:/cinolib `
+            -DROBUSTHEX_DIR=NONEXISTENT `
+            -DBUILD_ROBUSTHEX=OFF `
+            -Dpybind11_DIR="${{ env.PYBIND11_CMAKE_DIR }}" `
+            -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake `
+            -DVCPKG_TARGET_TRIPLET=x64-windows
+
+      - name: Build cinolib_hex
+        working-directory: auto_tessell_core
+        run: |
+          cmake --build build-win --target cinolib_hex --config Release
+
+      - name: Find and collect cinolib_hex.pyd
+        run: |
+          $pyd = Get-ChildItem -Recurse auto_tessell_core\build-win -Filter "cinolib_hex*.pyd" |
+                 Select-Object -First 1
+          if ($pyd) {
+            Write-Host "Found: $($pyd.FullName)"
+            Copy-Item $pyd.FullName -Destination "cinolib_hex.pyd"
+          } else {
+            Write-Error "cinolib_hex.pyd not found!"
+            exit 1
+          }
+
+      - name: Upload cinolib_hex artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cinolib_hex_pyd
+          path: cinolib_hex.pyd
+
+  # ── robusthex.pyd ────────────────────────────────────────────────────────
+  build-robusthex:
+    name: Build robusthex.pyd
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python build dependencies
+        run: |
+          pip install "pybind11[global]" cmake ninja
+
+      - name: Cache vcpkg packages
+        uses: actions/cache@v4
+        with:
+          path: C:\vcpkg\installed
+          key: vcpkg-eigen3-tbb-${{ runner.os }}-${{ hashFiles('**/CMakeLists.txt') }}
+          restore-keys: vcpkg-eigen3-tbb-${{ runner.os }}-
+
+      - name: Install Eigen3 + TBB via vcpkg
+        run: |
+          vcpkg install eigen3:x64-windows tbb:x64-windows --no-binarycaching
+
+      - name: Clone cinolib (header-only)
+        run: |
+          git clone --depth=1 https://github.com/mlivesu/cinolib.git C:\cinolib
+
+      - name: Clone robust_hex_dominant_meshing
+        run: |
+          git clone --depth=1 https://github.com/mlivesu/robust_hex_dominant_meshing.git C:\robusthex
+        continue-on-error: true
+
+      - name: Check robusthex source
+        id: check_robusthex
+        run: |
+          if (Test-Path "C:\robusthex\src\meshio.cpp") {
+            echo "ROBUSTHEX_FOUND=true" >> $env:GITHUB_ENV
+          } else {
+            Write-Host "robust_hex_dominant_meshing source not found — skipping"
+            echo "ROBUSTHEX_FOUND=false" >> $env:GITHUB_ENV
+          }
+
+      - name: Get pybind11 cmake dir
+        run: |
+          $dir = python -c "import pybind11; print(pybind11.get_cmake_dir())"
+          echo "PYBIND11_CMAKE_DIR=$dir" >> $env:GITHUB_ENV
+
+      - name: Configure + build robusthex
+        if: env.ROBUSTHEX_FOUND == 'true'
+        working-directory: auto_tessell_core
+        run: |
+          cmake -B build-robusthex -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCINOLIB_DIR=C:/cinolib `
+            -DROBUSTHEX_DIR=C:/robusthex `
+            -DBUILD_ROBUSTHEX=ON `
+            -Dpybind11_DIR="${{ env.PYBIND11_CMAKE_DIR }}" `
+            -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake `
+            -DVCPKG_TARGET_TRIPLET=x64-windows
+          cmake --build build-robusthex --target robusthex --config Release
+
+      - name: Collect robusthex.pyd
+        if: env.ROBUSTHEX_FOUND == 'true'
+        run: |
+          $pyd = Get-ChildItem -Recurse auto_tessell_core\build-robusthex -Filter "robusthex*.pyd" |
+                 Select-Object -First 1
+          if ($pyd) {
+            Copy-Item $pyd.FullName -Destination "robusthex.pyd"
+          }
+
+      - name: Upload robusthex artifact
+        if: env.ROBUSTHEX_FOUND == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: robusthex_pyd
+          path: robusthex.pyd
+
+  # ── RobustPureHexMeshing.exe ─────────────────────────────────────────────
+  build-robustpurehex-exe:
+    name: Build RobustPureHexMeshing.exe
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Install SuiteSparse via vcpkg
+        run: |
+          vcpkg install suitesparse:x64-windows --no-binarycaching
+        continue-on-error: true
+
+      - name: Configure RobustPureHexMeshing
+        working-directory: Feature-Preserving-Octree-Hex-Meshing
+        run: |
+          cmake -B build-win -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake `
+            -DVCPKG_TARGET_TRIPLET=x64-windows
+        continue-on-error: true
+
+      - name: Build RobustPureHexMeshing
+        working-directory: Feature-Preserving-Octree-Hex-Meshing
+        run: |
+          cmake --build build-win --config Release
+        continue-on-error: true
+
+      - name: Collect RobustPureHexMeshing.exe
+        run: |
+          $exe = Get-ChildItem -Recurse "Feature-Preserving-Octree-Hex-Meshing\build-win" `
+                 -Filter "RobustPureHexMeshing.exe" | Select-Object -First 1
+          if ($exe) {
+            Copy-Item $exe.FullName -Destination "RobustPureHexMeshing.exe"
+            echo "ROBUSTPUREHEX_BUILT=true" >> $env:GITHUB_ENV
+          } else {
+            Write-Host "RobustPureHexMeshing.exe build skipped (missing SuiteSparse)"
+            echo "ROBUSTPUREHEX_BUILT=false" >> $env:GITHUB_ENV
+          }
+
+      - name: Upload RobustPureHexMeshing artifact
+        if: env.ROBUSTPUREHEX_BUILT == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: RobustPureHexMeshing_exe
+          path: RobustPureHexMeshing.exe
+
+  # ── GitHub Release 업로드 ─────────────────────────────────────────────────
+  upload-release:
+    name: Upload to GitHub Release
+    needs: [build-cinolib-hex, build-robusthex, build-robustpurehex-exe]
+    runs-on: ubuntu-latest
+    if: always()  # 일부 빌드 실패해도 성공한 것만 업로드
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+        continue-on-error: true
+
+      - name: List collected artifacts
+        run: find artifacts -type f | sort
+
+      - name: Determine release tag
+        id: tag
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "TAG=${{ github.event.inputs.release_tag || 'windows-binaries-latest' }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.TAG }}
+          name: "Windows Pre-built Binaries (${{ steps.tag.outputs.TAG }})"
+          body: |
+            ## Windows Pre-built Binaries for AutoTessell
+
+            이 릴리스는 AutoTessell 인스톨러가 자동으로 다운로드하는
+            Windows 용 사전 빌드 바이너리 패키지입니다.
+
+            ### 포함 파일
+
+            | 파일 | 설명 | 상태 |
+            |------|------|------|
+            | `cinolib_hex.pyd` | cinolib Hex-dominant mesher (pybind11) | 자동 빌드 |
+            | `robusthex.pyd` | Robust Hex-dominant mesher (pybind11) | 소스 가용 시 빌드 |
+            | `RobustPureHexMeshing.exe` | Feature-Preserving Octree Hex CLI | SuiteSparse 필요 |
+
+            ### 수동 설치
+
+            ```
+            %LOCALAPPDATA%\AutoTessell\bin\ 에 복사
+            ```
+          prerelease: false
+          files: artifacts/**/*
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

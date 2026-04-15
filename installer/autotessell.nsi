@@ -9,10 +9,11 @@ Unicode True
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
 !include "FileFunc.nsh"
+!include "Sections.nsh"
 
 ; ── 기본 설정 ────────────────────────────────────────────────────────────────
 !ifndef VERSION
-  !define VERSION "0.3.4"
+  !define VERSION "0.3.5"
 !endif
 !ifndef SRCROOT
   !define SRCROOT ".."
@@ -34,7 +35,7 @@ ShowInstDetails show
 !define MUI_ABORTWARNING
 !define MUI_ABORTWARNING_TEXT "설치를 중단하시겠습니까?"
 !define MUI_WELCOMEPAGE_TITLE "AutoTessell ${VERSION} 설치 마법사"
-!define MUI_WELCOMEPAGE_TEXT "CAD/메쉬 파일을 OpenFOAM polyMesh로 자동 변환하는 AutoTessell을 설치합니다.$\r$\n$\r$\n포함 내용:$\r$\n  • Python 3.12 + 전체 메쉬 라이브러리$\r$\n  • WildMesh, TetWild, Netgen, GMSH 등 14개 메쉬 엔진$\r$\n  • Qt GUI (드래그앤드롭, 실시간 3D 뷰어)$\r$\n  • mmg3d, HOHQMesh, JIGSAW 도구$\r$\n$\r$\n인터넷 연결이 필요합니다 (약 3-5 GB 다운로드)."
+!define MUI_WELCOMEPAGE_TEXT "CAD/메쉬 파일을 OpenFOAM polyMesh로 자동 변환하는 AutoTessell을 설치합니다.$\r$\n$\r$\n포함 내용:$\r$\n  • Python 3.12 + 전체 메쉬 라이브러리$\r$\n  • WildMesh, TetWild, Netgen, GMSH 등 17개 메쉬 엔진$\r$\n  • Qt GUI (드래그앤드롭, 실시간 3D 뷰어)$\r$\n  • mmg3d, HOHQMesh, JIGSAW 도구$\r$\n$\r$\n선택 컴포넌트:$\r$\n  • OpenFOAM for Windows (snappy/cfMesh, ~2GB)$\r$\n  • 고급 Hex 메셔 (cinolib/RobustHex, GitHub Releases)$\r$\n$\r$\n인터넷 연결이 필요합니다 (기본 약 3-5 GB 다운로드)."
 !define MUI_FINISHPAGE_RUN "$INSTDIR\AutoTessell.bat"
 !define MUI_FINISHPAGE_RUN_TEXT "AutoTessell 지금 실행"
 !define MUI_FINISHPAGE_SHOWREADME ""
@@ -43,6 +44,7 @@ ShowInstDetails show
 ; ── 설치 페이지 ───────────────────────────────────────────────────────────────
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_LICENSE "${SRCROOT}\LICENSE"
+!insertmacro MUI_PAGE_COMPONENTS
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
@@ -55,6 +57,18 @@ ShowInstDetails show
 ; ── 언어 ──────────────────────────────────────────────────────────────────────
 !insertmacro MUI_LANGUAGE "Korean"
 !insertmacro MUI_LANGUAGE "English"
+
+; ── 섹션 설명 (Components 페이지 툴팁) ────────────────────────────────────────
+LangString DESC_SecMain      ${LANG_KOREAN} "AutoTessell 코어 + Python 3.12 + 17개 메쉬 엔진 (필수 — 체크 해제 불가)"
+LangString DESC_SecMain      ${LANG_ENGLISH} "AutoTessell core + Python 3.12 + 17 mesh engines (required)"
+LangString DESC_SecDesktop   ${LANG_KOREAN} "바탕화면에 AutoTessell 바로가기를 생성합니다."
+LangString DESC_SecDesktop   ${LANG_ENGLISH} "Create an AutoTessell shortcut on the Desktop."
+LangString DESC_SecStartMenu ${LANG_KOREAN} "시작 메뉴에 AutoTessell 항목을 추가합니다."
+LangString DESC_SecStartMenu ${LANG_ENGLISH} "Add AutoTessell to the Windows Start Menu."
+LangString DESC_SecOpenFOAM  ${LANG_KOREAN} "ESI OpenFOAM for Windows 설치 (snappyHexMesh / cfMesh 사용 시 필요). 약 2 GB 추가 다운로드. winget 또는 직접 다운로드 방식 지원."
+LangString DESC_SecOpenFOAM  ${LANG_ENGLISH} "Install ESI OpenFOAM for Windows (required for snappyHexMesh / cfMesh tiers). ~2 GB extra download. Uses winget or direct download."
+LangString DESC_SecHexBins   ${LANG_KOREAN} "cinolib Hex / RobustHex 사전 빌드 .pyd 바이너리를 GitHub Releases에서 다운로드합니다. 인터넷 연결 필요."
+LangString DESC_SecHexBins   ${LANG_ENGLISH} "Download pre-built cinolib Hex / RobustHex .pyd binaries from GitHub Releases. Requires internet."
 
 ; ── 유틸리티 매크로 ───────────────────────────────────────────────────────────
 ; curl.exe (Windows 10 내장) 로 파일 다운로드 — 따옴표 이스케이핑 문제 없음
@@ -308,6 +322,127 @@ Section "시작 메뉴" SecStartMenu
     CreateShortCut "$SMPROGRAMS\AutoTessell\제거.lnk" \
         "$INSTDIR\Uninstall.exe"
 SectionEnd
+
+; ── [선택] OpenFOAM for Windows ───────────────────────────────────────────────
+; snappyHexMesh / cfMesh Tier 사용 시 필요. 약 2GB 추가 다운로드.
+Section /o "OpenFOAM for Windows (snappy/cfMesh, ~2GB)" SecOpenFOAM
+    DetailPrint ""
+    DetailPrint "=== OpenFOAM for Windows 설치 ==="
+    DetailPrint "참고: ESI OpenFOAM v2412 Windows 패키지 (약 2GB)"
+
+    ; 1차 시도: winget (Windows 10/11 기본 탑재)
+    nsExec::ExecToLog 'winget.exe --version'
+    Pop $0
+    ${If} $0 == "0"
+        DetailPrint "winget으로 ESI OpenFOAM 설치 시도 중..."
+        nsExec::ExecToLog 'winget.exe install --id ESI.OpenFOAM --accept-source-agreements --accept-package-agreements --silent --scope machine'
+        Pop $0
+        ${If} $0 == "0"
+            DetailPrint "OpenFOAM 설치 완료 (winget)"
+            Goto openfoam_done
+        ${Else}
+            DetailPrint "winget 설치 실패 (ExitCode=$0) — 직접 다운로드 시도..."
+        ${EndIf}
+    ${Else}
+        DetailPrint "winget 미발견 — 직접 다운로드 시도..."
+    ${EndIf}
+
+    ; 2차 시도: ESI 직접 다운로드
+    !insertmacro DownloadFile \
+        "https://dl.openfoam.com/windows/OpenFOAM-v2412-win-x86_64.exe" \
+        "$TEMP\OpenFOAM-v2412-win.exe" "OpenFOAM v2412"
+    ${If} ${FileExists} "$TEMP\OpenFOAM-v2412-win.exe"
+        DetailPrint "OpenFOAM 인스톨러 실행 중 (사용자 승인 필요)..."
+        ExecWait '"$TEMP\OpenFOAM-v2412-win.exe" /S' $0
+        Delete "$TEMP\OpenFOAM-v2412-win.exe"
+        ${If} $0 == "0"
+            DetailPrint "OpenFOAM 설치 완료"
+        ${Else}
+            DetailPrint "OpenFOAM 설치 실패 (ExitCode=$0)"
+            MessageBox MB_ICONINFORMATION \
+                "OpenFOAM 자동 설치에 실패했습니다.$\r$\n$\r$\n아래 주소에서 수동으로 설치하세요:$\r$\nhttps://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/windows$\r$\n$\r$\n설치 후 AutoTessell의 Fine quality 티어가 활성화됩니다." \
+                MB_OK
+        ${EndIf}
+    ${Else}
+        DetailPrint "OpenFOAM 다운로드 실패 — 수동 설치 필요"
+        MessageBox MB_ICONINFORMATION \
+            "OpenFOAM 다운로드에 실패했습니다.$\r$\n$\r$\n수동 설치 주소:$\r$\nhttps://develop.openfoam.com/Development/openfoam/-/wikis/precompiled/windows$\r$\n$\r$\n또는 winget을 통해:$\r$\n  winget install ESI.OpenFOAM" \
+            MB_OK
+    ${EndIf}
+
+    openfoam_done:
+SectionEnd
+
+; ── [선택] 고급 Hex 메셔 바이너리 (GitHub Releases) ──────────────────────────
+; cinolib_hex.pyd / robusthex.pyd 사전 빌드 바이너리.
+; 빌드 워크플로: .github/workflows/build_windows_binaries.yml
+!define GH_BINS_BASE "https://github.com/younglin90/AutoTessell/releases/download/windows-binaries-latest"
+
+Section /o "고급 Hex 메셔 바이너리 (cinolib/RobustHex)" SecHexBins
+    DetailPrint ""
+    DetailPrint "=== 고급 Hex 메셔 바이너리 다운로드 (GitHub Releases) ==="
+    CreateDirectory "$INSTDIR\bin"
+
+    ; cinolib_hex.pyd — cinolib Hex-dominant mesher (pybind11)
+    DetailPrint "[1/2] cinolib_hex.pyd 다운로드..."
+    !insertmacro DownloadFile \
+        "${GH_BINS_BASE}/cinolib_hex.pyd" \
+        "$TEMP\cinolib_hex.pyd" "cinolib_hex.pyd"
+    ${If} ${FileExists} "$TEMP\cinolib_hex.pyd"
+        ; Python site-packages 경로에 복사 — PS1 방식
+        FileOpen $R9 "$TEMP\at_copypyd.ps1" w
+        FileWrite $R9 "$$sp=& '$INSTDIR\conda\python.exe' -c 'import sysconfig; print(sysconfig.get_path(""purelib""))'$\n"
+        FileWrite $R9 "Copy-Item '$TEMP\cinolib_hex.pyd' (Join-Path $$sp 'cinolib_hex.pyd') -Force$\n"
+        FileWrite $R9 "Copy-Item '$TEMP\cinolib_hex.pyd' '$INSTDIR\bin\cinolib_hex.pyd' -Force$\n"
+        FileClose $R9
+        nsExec::ExecToLog 'powershell.exe -NonInteractive -ExecutionPolicy Bypass -File "$TEMP\at_copypyd.ps1"'
+        Pop $0
+        Delete "$TEMP\at_copypyd.ps1"
+        Delete "$TEMP\cinolib_hex.pyd"
+        ${If} $0 == "0"
+            DetailPrint "cinolib_hex.pyd 설치 완료"
+        ${Else}
+            DetailPrint "cinolib_hex.pyd 복사 실패 (ExitCode=$0)"
+        ${EndIf}
+    ${Else}
+        DetailPrint "cinolib_hex.pyd 다운로드 실패 (GitHub Releases에 없거나 네트워크 오류)"
+    ${EndIf}
+
+    ; robusthex.pyd — Robust Hex-dominant mesher (pybind11)
+    DetailPrint "[2/2] robusthex.pyd 다운로드..."
+    !insertmacro DownloadFile \
+        "${GH_BINS_BASE}/robusthex.pyd" \
+        "$TEMP\robusthex.pyd" "robusthex.pyd"
+    ${If} ${FileExists} "$TEMP\robusthex.pyd"
+        FileOpen $R9 "$TEMP\at_copypyd2.ps1" w
+        FileWrite $R9 "$$sp=& '$INSTDIR\conda\python.exe' -c 'import sysconfig; print(sysconfig.get_path(""purelib""))'$\n"
+        FileWrite $R9 "Copy-Item '$TEMP\robusthex.pyd' (Join-Path $$sp 'robusthex.pyd') -Force$\n"
+        FileWrite $R9 "Copy-Item '$TEMP\robusthex.pyd' '$INSTDIR\bin\robusthex.pyd' -Force$\n"
+        FileClose $R9
+        nsExec::ExecToLog 'powershell.exe -NonInteractive -ExecutionPolicy Bypass -File "$TEMP\at_copypyd2.ps1"'
+        Pop $0
+        Delete "$TEMP\at_copypyd2.ps1"
+        Delete "$TEMP\robusthex.pyd"
+        ${If} $0 == "0"
+            DetailPrint "robusthex.pyd 설치 완료"
+        ${Else}
+            DetailPrint "robusthex.pyd 복사 실패 (ExitCode=$0)"
+        ${EndIf}
+    ${Else}
+        DetailPrint "robusthex.pyd 다운로드 실패 (GitHub Releases에 없거나 네트워크 오류)"
+    ${EndIf}
+
+    DetailPrint "고급 Hex 메셔 바이너리 설치 완료"
+SectionEnd
+
+; ── 섹션 설명 함수 (Components 페이지 툴팁) ──────────────────────────────────
+!insertmacro MUI_FUNCTION_DESCRIPTION_BEGIN
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecMain}      $(DESC_SecMain)
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecDesktop}   $(DESC_SecDesktop)
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecStartMenu} $(DESC_SecStartMenu)
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecOpenFOAM}  $(DESC_SecOpenFOAM)
+    !insertmacro MUI_DESCRIPTION_TEXT ${SecHexBins}   $(DESC_SecHexBins)
+!insertmacro MUI_FUNCTION_DESCRIPTION_END
 
 ; ── 초기화 함수 ───────────────────────────────────────────────────────────────
 Function .onInit
