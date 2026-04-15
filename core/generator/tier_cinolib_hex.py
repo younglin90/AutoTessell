@@ -13,11 +13,13 @@ import shutil
 import subprocess
 import sys
 import time
+from collections import defaultdict
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
-from core.generator.polymesh_writer import PolyMeshWriter
+from core.generator.polymesh_writer import PolyMeshWriter, _FOAM_HEADER, _FOOTER
 from core.schemas import MeshStrategy, TierAttempt
 from core.utils.logging import get_logger
 
@@ -220,13 +222,8 @@ class TierCinolibHexGenerator:
             if n_verts == 0 or n_cells == 0:
                 raise RuntimeError("cinolib_hex가 빈 메시를 반환했습니다.")
 
-            # hex_cells: (C, 8) — 8절점 hex 셀
-            # PolyMeshWriter는 tet (4-node) 셀을 기대하므로
-            # hex를 Kuhn 분해로 6 tet로 변환
-            tets = _hex_to_tet(hex_cells)
-
-            writer = PolyMeshWriter()
-            mesh_stats = writer.write(hex_verts, tets, case_dir)
+            # hex_cells: (C, 8) — 8절점 hex 셀 → 직접 polyhedral polyMesh로 출력
+            mesh_stats = _voxel_hex_to_polymesh(hex_verts, hex_cells, case_dir)
 
             elapsed = time.monotonic() - t_start
             logger.info("tier_cinolib_hex_success", elapsed=elapsed, mesh_stats=mesh_stats)
@@ -248,31 +245,243 @@ class TierCinolibHexGenerator:
             )
 
 
-def _hex_to_tet(hex_cells: np.ndarray) -> np.ndarray:
-    """Kuhn 분해: 각 hex(8 vertices)를 6개의 tet으로 분해.
+def _quad_ccw(quad_pts: np.ndarray, outward_dir: np.ndarray) -> list[int]:
+    """4점 쿼드를 외부 법선이 outward_dir과 같은 방향이 되도록 CCW 정렬.
 
     Args:
-        hex_cells: (C, 8) int array — hex cell vertex indices.
+        quad_pts: (4, 3) — 4개 꼭짓점 좌표 (인덱스 0~3).
+        outward_dir: (3,) — 예상 외부 법선 방향.
 
     Returns:
-        (C*6, 4) int array — tet connectivity.
+        길이 4의 정수 리스트 — CCW 정렬된 로컬 인덱스.
     """
-    # 표준 Kuhn 분해 패턴 (절점 순서 가정: 0-7 아래->위 순서)
-    _KUHN_TETS = np.array(
-        [
-            [0, 1, 3, 7],
-            [0, 1, 5, 7],
-            [1, 2, 3, 7],
-            [1, 2, 6, 7],
-            [1, 4, 5, 7],
-            [1, 4, 6, 7],
-        ],
-        dtype=np.int64,
+    centroid = quad_pts.mean(axis=0)
+
+    # 평면에 두 개의 기저 벡터를 구성
+    v0 = quad_pts[0] - centroid
+    normal_ref = outward_dir / (np.linalg.norm(outward_dir) + 1e-30)
+
+    # 첫 번째 기저: v0 방향 (centroid → pt0)
+    e1 = v0 - np.dot(v0, normal_ref) * normal_ref
+    e1_len = np.linalg.norm(e1)
+    if e1_len < 1e-14:
+        # 모든 점이 겹침 — 임의로 반환
+        return list(range(4))
+    e1 = e1 / e1_len
+    e2 = np.cross(normal_ref, e1)
+
+    # 각 꼭짓점을 평면에 투영해 각도를 계산
+    angles = []
+    for i, pt in enumerate(quad_pts):
+        d = pt - centroid
+        angle = np.arctan2(np.dot(d, e2), np.dot(d, e1))
+        angles.append((angle, i))
+
+    # CCW 정렬 (각도 오름차순)
+    angles.sort()
+    order = [a[1] for a in angles]
+
+    # 법선 방향 확인 — 반대면 뒤집기
+    p0, p1, p2 = quad_pts[order[0]], quad_pts[order[1]], quad_pts[order[2]]
+    normal_computed = np.cross(p1 - p0, p2 - p0)
+    if np.dot(normal_computed, outward_dir) < 0:
+        order = order[::-1]
+
+    return order
+
+
+def _voxel_hex_to_polymesh(
+    hex_verts: np.ndarray,
+    hex_cells: np.ndarray,
+    case_dir: Path,
+) -> dict[str, Any]:
+    """축 정렬 hex(voxel) 메시를 OpenFOAM polyMesh로 직접 변환.
+
+    각 hex 셀의 8절점에서 6개의 쿼드 면을 추출하고,
+    공유면(내부)/단독면(경계)을 분류해 polyMesh 파일을 생성한다.
+
+    Args:
+        hex_verts: (N, 3) float array — 정점 좌표.
+        hex_cells: (C, 8) int array — hex 셀 연결성 (0-based).
+        case_dir: OpenFOAM 케이스 디렉터리.
+
+    Returns:
+        메시 통계 dict (num_cells, num_points, num_faces, num_internal_faces).
+    """
+    hex_verts = np.asarray(hex_verts, dtype=np.float64)
+    hex_cells = np.asarray(hex_cells, dtype=np.int64)
+
+    # --- 각 hex 셀의 6개 쿼드 면 로컬 패턴 ---
+    # OpenFOAM hex 절점 순서 가정 (cinolib 출력과 맞춤):
+    #   0-3: 하면(z-low), 4-7: 상면(z-high), 아래→위 동일 XY 순서
+    #
+    #   3---2       7---6
+    #   |   |  →   |   |
+    #   0---1       4---5
+    #
+    # 6개 면: -z, +z, -y, +y, -x, +x
+    _HEX_QUAD_LOCAL = [
+        (0, 3, 2, 1),  # -Z face  (하면: 외부 법선 -Z)
+        (4, 5, 6, 7),  # +Z face  (상면: 외부 법선 +Z)
+        (0, 1, 5, 4),  # -Y face
+        (3, 7, 6, 2),  # +Y face
+        (0, 4, 7, 3),  # -X face
+        (1, 2, 6, 5),  # +X face
+    ]
+
+    # face_map: frozenset(4 global vert indices) → [(cell_id, ordered_quad_global_idx)]
+    face_map: dict[frozenset, list[tuple[int, tuple[int, int, int, int]]]] = defaultdict(list)
+
+    for cell_id, cell in enumerate(hex_cells):
+        cell_centroid = hex_verts[cell].mean(axis=0)
+
+        for local_quad in _HEX_QUAD_LOCAL:
+            g = tuple(int(cell[i]) for i in local_quad)  # (4,) global indices
+            quad_pts = hex_verts[list(g)]
+
+            face_centroid = quad_pts.mean(axis=0)
+            outward_dir = face_centroid - cell_centroid
+
+            # CCW 정렬 (법선이 셀 바깥쪽)
+            order = _quad_ccw(quad_pts, outward_dir)
+            oriented = tuple(g[o] for o in order)
+
+            key = frozenset(g)
+            face_map[key].append((cell_id, oriented))
+
+    # 내부면 (2개 셀) vs 경계면 (1개 셀) 분류
+    internal: list[tuple[int, int, tuple]] = []   # (owner, neighbour, oriented_verts)
+    boundary: list[tuple[int, tuple]] = []          # (owner, oriented_verts)
+
+    for key, entries in face_map.items():
+        if len(entries) == 2:
+            c0, v0 = entries[0]
+            c1, v1 = entries[1]
+            own = min(c0, c1)
+            nbr = max(c0, c1)
+            # 면 방향은 owner(더 작은 ID 셀) 기준 외부 법선
+            verts = v0 if c0 == own else v1
+            internal.append((own, nbr, verts))
+        else:
+            cell_id, verts = entries[0]
+            boundary.append((cell_id, verts))
+
+    internal.sort(key=lambda x: (x[0], x[1]))
+    boundary.sort(key=lambda x: x[0])
+
+    n_internal = len(internal)
+    n_boundary = len(boundary)
+    n_faces = n_internal + n_boundary
+    n_cells = len(hex_cells)
+    n_points = len(hex_verts)
+
+    poly_dir = case_dir / "constant" / "polyMesh"
+    poly_dir.mkdir(parents=True, exist_ok=True)
+
+    # --- points ---
+    lines = [_FOAM_HEADER.format(
+        foam_class="vectorField",
+        location="constant/polyMesh",
+        object_name="points",
+    )]
+    lines.append(f"{n_points}")
+    lines.append("(")
+    for v in hex_verts:
+        lines.append(f"({v[0]:.10g} {v[1]:.10g} {v[2]:.10g})")
+    lines.append(")")
+    lines.append(_FOOTER)
+    (poly_dir / "points").write_text("\n".join(lines))
+
+    # --- faces ---
+    all_faces: list[tuple] = []
+    owner_list: list[int] = []
+    neighbour_list: list[int] = []
+
+    for own, nbr, verts in internal:
+        all_faces.append(verts)
+        owner_list.append(own)
+        neighbour_list.append(nbr)
+
+    for own, verts in boundary:
+        all_faces.append(verts)
+        owner_list.append(own)
+
+    lines = [_FOAM_HEADER.format(
+        foam_class="faceList",
+        location="constant/polyMesh",
+        object_name="faces",
+    )]
+    lines.append(f"{n_faces}")
+    lines.append("(")
+    for f in all_faces:
+        vert_str = " ".join(str(v) for v in f)
+        lines.append(f"{len(f)}({vert_str})")
+    lines.append(")")
+    lines.append(_FOOTER)
+    (poly_dir / "faces").write_text("\n".join(lines))
+
+    # --- owner ---
+    note = (
+        f"nPoints:{n_points}  nCells:{n_cells}  "
+        f"nFaces:{n_faces}  nInternalFaces:{n_internal}"
     )
+    owner_header = _FOAM_HEADER.format(
+        foam_class="labelList",
+        location="constant/polyMesh",
+        object_name="owner",
+    ).replace(
+        "    object      owner;",
+        f"    note        \"{note}\";\n    object      owner;",
+    )
+    lines = [owner_header]
+    lines.append(f"{len(owner_list)}")
+    lines.append("(")
+    for o in owner_list:
+        lines.append(str(o))
+    lines.append(")")
+    lines.append(_FOOTER)
+    (poly_dir / "owner").write_text("\n".join(lines))
 
-    C = len(hex_cells)
-    tets = np.empty((C * 6, 4), dtype=np.int64)
-    for i, pattern in enumerate(_KUHN_TETS):
-        tets[i::6] = hex_cells[:, pattern]
+    # --- neighbour ---
+    lines = [_FOAM_HEADER.format(
+        foam_class="labelList",
+        location="constant/polyMesh",
+        object_name="neighbour",
+    )]
+    lines.append(f"{n_internal}")
+    lines.append("(")
+    for nb in neighbour_list:
+        lines.append(str(nb))
+    lines.append(")")
+    lines.append(_FOOTER)
+    (poly_dir / "neighbour").write_text("\n".join(lines))
 
-    return tets
+    # --- boundary ---
+    lines = [_FOAM_HEADER.format(
+        foam_class="polyBoundaryMesh",
+        location="constant/polyMesh",
+        object_name="boundary",
+    )]
+    lines.append("1")
+    lines.append("(")
+    lines.append("    defaultWall")
+    lines.append("    {")
+    lines.append("        type wall;")
+    lines.append(f"        nFaces {n_boundary};")
+    lines.append(f"        startFace {n_internal};")
+    lines.append("    }")
+    lines.append(")")
+    lines.append(_FOOTER)
+    (poly_dir / "boundary").write_text("\n".join(lines))
+
+    # system/ 파일 생성
+    PolyMeshWriter._ensure_system_files(case_dir)
+
+    stats = {
+        "num_cells": n_cells,
+        "num_points": n_points,
+        "num_faces": n_faces,
+        "num_internal_faces": n_internal,
+    }
+    logger.info("voxel_hex_polymesh_written", **stats)
+    return stats

@@ -40,6 +40,50 @@ mesh_strategy.json 읽기 (quality_level 확인)
 
 ---
 
+## Tier 등록 현황 (v0.3.5, 2026-04-15)
+
+17개 Tier가 `core/generator/pipeline.py` `_TIER_REGISTRY`에 등록됨.
+**모든 17개 Tier 정상 동작.**
+
+| Tier 이름 | 파일 | 엔진 | 동작 상태 | 시간(sphere) | 비고 |
+|----------|------|------|---------|------------|------|
+| tier2_tetwild | tier2_tetwild.py | pytetwild | ✅ 정상 | ~0.7s | Draft 기본 엔진 |
+| tier05_netgen | tier05_netgen.py | netgen-mesher | ✅ 정상 | ~0.8s | Standard 기본 엔진 |
+| tier1_snappy | tier1_snappy.py | snappyHexMesh | ✅ 정상 | ~1.1s | Fine 기본 엔진 |
+| tier15_cfmesh | tier15_cfmesh.py | cfMesh | ✅ 정상 | ~5.4s | Standard Hex |
+| tier_cinolib_hex | tier_cinolib_hex.py | cinolib | ✅ 정상 | ~1.4s | Hex 볼륨 |
+| tier_voro_poly | tier_voro_poly.py | pyvoro-mm | ✅ 정상 | ~0.06s | Voronoi 폴리헤드럴 |
+| tier_mmg3d | tier_mmg3d.py | MMG3D + TetGen | ✅ 정상 | ~5s | TetGen 초기 + MMG 최적화, v0.3.2 신규 |
+| tier_robust_hex | tier_robust_hex.py | RobustPureHexMeshing | ✅ 정상 | ~240s n=3 | All-Hex, OVM 파서 직접 구현, v0.3.2 신규 |
+| tier_algohex | tier_algohex.py | AlgoHex | ✅ 정상 | ~58s | Frame-Field Hex, OVM ASCII 파서 수정, v0.3.4 신규 |
+| tier_meshpy | tier_meshpy.py | MeshPy TetGen | ✅ 수정됨 | ~0.3s | 옵션 스위치 문자열 `f"pq{angle}a{vol}"` 수정 |
+| tier_wildmesh | tier_wildmesh.py | wildmeshing | ✅ 수정됨 | ~0.2s | 3-tuple 언팩 오류 수정 (`result[0], result[1]`) |
+| tier_gmsh_hex | tier_gmsh_hex.py | gmsh transfinite | ✅ 수정됨 | ~0.5s | 명시적 볼륨 엔티티 생성, 실패 조건 완화 |
+| tier_hex_classy_blocks | tier_hex_classy_blocks.py | classy_blocks + blockMesh | ✅ 수정됨 | ~1.1s | numpy 2.x 호환 monkey-patch, controlDict 자동 생성 |
+| tier0_core | tier0_core.py | geogram CDT | ✅ 수정됨 | ~0.2s | C++ 확장 없을 때 AttributeError 없이 graceful 실패 처리 |
+| tier_jigsaw | tier_jigsaw.py | jigsawpy ctypes | ✅ 수정됨 | ~0.6s | `opts.jcfg_file` 필수화, STL→medit, binary 감지, v0.3.4 |
+| tier_jigsaw_fallback | tier_jigsaw_fallback.py | jigsawpy ctypes | ✅ 수정됨 | ~0.0s | `jigsaw_jig_t` API 전면 재작성, binary 감지, v0.3.4 |
+| tier_hohqmesh | tier_hohqmesh.py | HOHQMesh 바이너리 | ✅ 수정됨 | ~1.9s | ISM 가변길이 파서 직접 구현, v0.3.4 |
+| tier0_2d_meshpy | tier0_2d_meshpy.py | MeshPy Triangle | ⚠️ 미검증 | — | 2D 메쉬 전용 |
+| tier_polyhedral | polyhedral.py | OpenFOAM polyDualMesh | ⚠️ 미검증 | — | 기존 볼륨 메쉬 필요 (특수 케이스) |
+
+### 수정 이력 (v0.3.0 → v0.3.5)
+
+| 버전 | 파일 | 오류 | 수정 내용 |
+|------|------|------|---------|
+| v0.3.2 | tier_meshpy.py | `invalid option: max_volume` | TetGen 옵션을 스위치 문자열로 변경 |
+| v0.3.2 | tier_wildmesh.py | `too many values to unpack` | 3-tuple 반환 → `result[0], result[1]` |
+| v0.3.2 | tier_hex_classy_blocks.py | `numpy.bool8` 제거됨 | numpy 2.x 호환 monkey-patch + controlDict 자동 생성 |
+| v0.3.2 | tier_gmsh_hex.py | transfinite 실패 | 명시적 볼륨 엔티티 생성, 실패 조건 완화 |
+| v0.3.2 | tier0_core.py | C++ attr 없음 | `hasattr` 검사로 graceful ImportError |
+| v0.3.4 | tier_jigsaw.py | `Incorrect type: NAME` | `jcfg_file` 필수화, ctypes binary API |
+| v0.3.4 | tier_jigsaw_fallback.py | `jigsaw_msh()` 없음 | 전면 재작성: `jigsaw_jig_t` API |
+| v0.3.4 | tier_hohqmesh.py | ISM 파싱 실패 | ISM 가변길이 직접 파서 구현 |
+| v0.3.4 | tier_algohex.py | OVM ASCII 파싱 실패 | OVM ASCII 파서 직접 구현 |
+| v0.3.5 | geometry_analyzer.py | WildMesh x축 비대칭 | `_estimate_flow()` 단일 폐곡면 기본값 `external`→`internal` |
+
+---
+
 ## Volume Tier별 실행 상세
 
 ### Draft: TetWild (coarse, ~30초)

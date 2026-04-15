@@ -21,6 +21,11 @@ from core.generator.tier_wildmesh import TierWildMeshGenerator
 from core.generator.polyhedral import PolyhedralGenerator
 from core.generator.tier_gmsh_hex import TierGmshHexGenerator
 from core.generator.tier_cinolib_hex import TierCinolibHexGenerator
+from core.generator.tier_voro_poly import TierVoroPolyGenerator
+from core.generator.tier_hohqmesh import TierHOHQMeshGenerator
+from core.generator.tier_mmg3d import TierMMG3DGenerator
+from core.generator.tier_robust_hex import TierRobustHexGenerator
+from core.generator.tier_algohex import TierAlgoHexGenerator
 from core.schemas import ExecutionSummary, GeneratorLog, MeshStrategy, TierAttempt
 from core.utils.logging import get_logger
 from core.utils.openfoam_utils import get_openfoam_label_size
@@ -44,6 +49,11 @@ _TIER_REGISTRY: dict[str, type] = {
     "tier_wildmesh": TierWildMeshGenerator,
     "tier_gmsh_hex": TierGmshHexGenerator,
     "tier_cinolib_hex": TierCinolibHexGenerator,
+    "tier_voro_poly": TierVoroPolyGenerator,
+    "tier_hohqmesh": TierHOHQMeshGenerator,
+    "tier_mmg3d": TierMMG3DGenerator,
+    "tier_robust_hex": TierRobustHexGenerator,
+    "tier_algohex": TierAlgoHexGenerator,
 }
 
 # CLI --tier 별칭 → 정규 Tier 이름
@@ -79,6 +89,21 @@ _TIER_ALIASES: dict[str, str] = {
     "tier_wildmesh": "tier_wildmesh",
     "tier_gmsh_hex": "tier_gmsh_hex",
     "tier_cinolib_hex": "tier_cinolib_hex",
+    "voro_poly": "tier_voro_poly",
+    "voro": "tier_voro_poly",
+    "hohqmesh": "tier_hohqmesh",
+    "hohq": "tier_hohqmesh",
+    "tier_voro_poly": "tier_voro_poly",
+    "tier_hohqmesh": "tier_hohqmesh",
+    "mmg3d": "tier_mmg3d",
+    "mmg": "tier_mmg3d",
+    "tier_mmg3d": "tier_mmg3d",
+    "robust_hex": "tier_robust_hex",
+    "robust_hex_mesh": "tier_robust_hex",
+    "tier_robust_hex": "tier_robust_hex",
+    "algohex": "tier_algohex",
+    "algo_hex": "tier_algohex",
+    "tier_algohex": "tier_algohex",
 }
 
 
@@ -192,11 +217,10 @@ class MeshGenerator:
         if hasattr(quality_level, "value"):
             quality_level = quality_level.value
 
-        # selected_tier가 명시적으로 지정된 경우 (auto 아님) → 명시적 순서 사용
+        # selected_tier가 명시적으로 지정된 경우 (auto 아님) → 해당 Tier만 실행, fallback 없음
         auto_mode = strategy.selected_tier.lower() in ("auto", "")
         if not auto_mode:
-            raw_tiers = [strategy.selected_tier] + list(strategy.fallback_tiers)
-            return [_resolve_tier(t) for t in raw_tiers]
+            return [_resolve_tier(strategy.selected_tier)]
 
         # Auto 모드: quality_level 기반 기본 순서
         if quality_level == "draft":
@@ -310,12 +334,20 @@ class MeshGenerator:
                 )
                 break
             else:
-                logger.warning(
-                    "tier_failed_trying_fallback" if is_fallback else "tier_failed_trying_first_fallback",
-                    tier=tier_name,
-                    error=attempt.error_message,
-                    next_tier=unique_tiers[i + 1] if i + 1 < len(unique_tiers) else "none",
-                )
+                next_t = unique_tiers[i + 1] if i + 1 < len(unique_tiers) else "none"
+                if next_t == "none":
+                    logger.warning(
+                        "tier_failed_no_fallback",
+                        tier=tier_name,
+                        error=attempt.error_message,
+                    )
+                else:
+                    logger.warning(
+                        "tier_failed_trying_fallback",
+                        tier=tier_name,
+                        error=attempt.error_message,
+                        next_tier=next_t,
+                    )
 
         total_elapsed = time.monotonic() - t_pipeline_start
         poly_mesh_dir = case_dir / "constant" / "polyMesh"

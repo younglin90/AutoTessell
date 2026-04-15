@@ -71,6 +71,25 @@ def _write_block_mesh_dict_via_classy(
     logger.info("classy_blocks_bmd_written", path=str(bmd_path))
 
 
+def _ensure_openfoam_case(case_dir: Path) -> None:
+    """blockMesh 실행에 필요한 최소 OpenFOAM 케이스 구조를 생성한다."""
+    system_dir = case_dir / "system"
+    system_dir.mkdir(parents=True, exist_ok=True)
+
+    control_dict = system_dir / "controlDict"
+    if not control_dict.exists():
+        control_dict.write_text(
+            "FoamFile { version 2.0; format ascii; class dictionary; "
+            "location \"system\"; object controlDict; }\n"
+            "application blockMesh;\nstartFrom startTime;\nstartTime 0;\n"
+            "stopAt endTime;\nendTime 1;\ndeltaT 1;\nwriteControl timeStep;\n"
+            "writeInterval 1;\n"
+        )
+
+    (case_dir / "constant").mkdir(exist_ok=True)
+    (case_dir / "0").mkdir(exist_ok=True)
+
+
 class TierClassyBlocksGenerator:
     """classy_blocks 기반 구조 Hex 메쉬 생성기.
 
@@ -141,6 +160,9 @@ class TierClassyBlocksGenerator:
         try:
             # blockMeshDict 생성
             _write_block_mesh_dict_via_classy(strategy, case_dir)
+
+            # blockMesh 실행에 필요한 최소 OpenFOAM 케이스 파일 생성
+            _ensure_openfoam_case(case_dir)
 
             # OpenFOAM blockMesh 실행
             from core.utils.openfoam_utils import run_openfoam

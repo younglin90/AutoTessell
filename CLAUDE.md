@@ -128,10 +128,10 @@ auto-tessell/
 
 Python 3.12+, C++23, OpenFOAM 2406, Node.js 24 (Phase 2)
 핵심: trimesh, meshio, pyvista, pyacvd, pymeshfix, pymeshlab, click, rich, pydantic
-볼륨: pytetwild, netgen-mesher, OpenFOAM(snappyHexMesh/cfMesh)
+볼륨: pytetwild, netgen-mesher, OpenFOAM(snappyHexMesh/cfMesh), pyvoro-mm, rtree
 후처리: MMG3D, geogram(vorpalite)
 CAD: cadquery, gmsh
-데스크톱: FastAPI, Godot 4.3
+데스크톱: PySide6 + PyVistaQt (Qt GUI 완성, Godot 제거)
 
 ## 컨벤션
 
@@ -141,7 +141,7 @@ CAD: cadquery, gmsh
 - 로깅: structlog JSON
 - CLI 파라미터 상세: `agents/specs/generator.md` 참조
 
-## 현재 구현 상태 (1028+ tests, v0.3)
+## 현재 구현 상태 (1045+ tests, v0.3.5)
 
 ```bash
 auto-tessell run input.stl -o ./case --quality draft     # ~1초, TetWild
@@ -152,20 +152,63 @@ auto-tessell run input.step -o ./case --quality draft      # STEP CAD 지원
 
 - ✅ 전체 파이프라인: Analyzer → Preprocessor → Strategist → Generator → Evaluator
 - ✅ Generator↔Evaluator 재시도 루프 (최대 3회)
-- ✅ **9-Tier Volume Mesh 자동 선택 (v0.3 완성)**:
-  - Tier 0: 2D MeshPy (입구/출구 단면용)
-  - Tier Hex: classy_blocks 기반 Hex 메시
-  - Tier JIGSAW: 강건한 Tet fallback
-  - Tier TetWild (Draft)
-  - Tier Netgen (Standard)
-  - Tier cfMesh (Standard Hex)
-  - Tier snappyHexMesh (Fine)
-  - Tier MMG3D (Fine)
-  - Tier MeshAnything (AI fallback)
-- ✅ PolyMeshWriter: tet/hex mesh → OpenFOAM polyMesh 직접 변환 (OpenFOAM 없이도 동작)
+- ✅ **17-Tier Volume Mesh 전부 동작 (v0.3.4)**:
+  - ✅ tier2_tetwild (TetWild, Draft)
+  - ✅ tier05_netgen (Netgen, Standard)
+  - ✅ tier1_snappy (snappyHexMesh, Fine)
+  - ✅ tier15_cfmesh (cfMesh, Standard Hex)
+  - ✅ tier_cinolib_hex (cinolib Hex)
+  - ✅ tier_voro_poly (Voronoi Polyhedral, pyvoro-mm)
+  - ✅ tier_mmg3d (MMG3D TetGen+Optimize)
+  - ✅ tier_robust_hex (Feature-Preserving Octree All-Hex, OVM parser)
+  - ✅ tier_algohex (AlgoHex Frame Field Tet→Hex, OVM ASCII parser 수정)  ← v0.3.4
+  - ✅ tier_meshpy (TetGen)
+  - ✅ tier_wildmesh (WildMesh)
+  - ✅ tier_gmsh_hex (GMSH Hex)
+  - ✅ tier_hex_classy_blocks (blockMesh + snappy fallback)
+  - ✅ tier0_core (Geogram CDT)
+  - ✅ tier_hohqmesh (HOHQMesh, ISM 가변길이 파서 수정)  ← v0.3.4
+  - ✅ tier_jigsaw (jigsawpy ctypes API, libjigsaw.so)  ← v0.3.4
+  - ✅ tier_jigsaw_fallback (jigsawpy ctypes API)  ← v0.3.4
+- ✅ Qt GUI (PySide6 + PyVistaQt): 드래그앤드롭, 19개 엔진 선택, 실시간 메쉬 뷰어
+- ✅ PolyMeshWriter: tet/hex mesh → OpenFOAM polyMesh 직접 변환
 - ✅ OpenFOAM 자동 감지 (/usr/lib/openfoam/, /opt/, OPENFOAM_DIR)
 - ✅ STEP/IGES CAD 파일 지원 (cadquery + gmsh fallback)
 - ✅ Geometry Fidelity (Hausdorff 거리 기반 표면 충실도 검증)
 - ✅ 불량 STL 수리 (L1 pymeshfix → L2 pyACVD+pymeshlab → L3 AI fallback)
-- ✅ 회귀 테스트: 1028 테스트 (98.8% PASSED)
-- ✅ E2E 검증: 8/20 성공 (Draft quality, 120s timeout)
+- ✅ 회귀 테스트: 1045 passed, 12 skipped
+- ✅ E2E 검증: 88% 달성 (Phase D-E 기준)
+- ✅ **Windows 클릭 설치 인스톨러** (NSIS .exe, v0.3.5): `installer/dist/AutoTessell-0.3.5-Setup.exe`
+  - Miniconda3 자동 다운로드/설치, pip으로 전체 라이브러리 설치
+  - conda create -n autotessell python=3.12 pip → pip 5단계 분할 설치
+  - ESI OpenFOAM for Windows 지원 (MSYS2 bash 경유)
+  - mmg3d.exe / HOHQMesh.exe / libjigsaw.dll 자동 다운로드
+  - NSIS Modern UI 2: Welcome → License → Directory → Install → Finish 마법사
+- ✅ **WildMesh x축 비대칭 버그 수정**: `geometry_analyzer._estimate_flow()` — 단일 폐곡면(genus=0) 기본값 `external` → `internal` 변경
+  - 외부: 풍동 도메인 생성 (9×5×5 비대칭), 내부: bbox 기반 [-0.6,0.6]³ 대칭 도메인
+- ✅ **OpenFOAM Windows 지원**: `core/utils/openfoam_utils.py` — ESI OpenFOAM MSYS2 bash + WSL2 fallback
+- ✅ **Tier 바이너리 Windows 경로 지원**: mmg3d, HOHQMesh, AlgoHex, RobustHex — .exe 확장자 + Windows 설치 경로 자동 탐색
+
+### Tier 동작 현황 요약 (sphere STL 기준)
+
+| 엔진 | 상태 | 시간 |
+|------|------|------|
+| tetwild | ✅ | ~0.7s |
+| netgen | ✅ | ~0.8s |
+| snappy | ✅ | ~1.1s |
+| cfmesh | ✅ | ~5.4s |
+| voro_poly | ✅ | ~0.06s |
+| cinolib_hex | ✅ | ~1.4s |
+| meshpy | ✅ | ~0.3s (수정됨) |
+| wildmesh | ✅ | ~0.2s (수정됨) |
+| gmsh_hex | ✅ | ~0.5s (수정됨) |
+| hex_classy | ✅ | ~1.1s (수정됨) |
+| mmg3d | ✅ | ~5s |
+| robust_hex | ✅ | ~240s n=3 (all-hex) |
+| algohex | ✅ | ~58s tet_size=0.3 (frame-field hex, OVM parser) |
+| core | ✅ | ~0.2s |
+| jigsaw | ✅ | ~0.6s (ctypes API) |
+| jigsaw_fallback | ✅ | ~0.0s (ctypes API) |
+| hohqmesh | ✅ | ~1.9s (ISM 가변길이 파서) |
+
+> 상세: `agents/specs/open_source_roadmap.md` → "설치 현황" 섹션

@@ -50,8 +50,10 @@ class AutoTessellWindow:  # type: ignore[misc]
         ("snappy_snap_relax_iter", "Snappy RelaxIter", "int", "5"),
         ("snappy_feature_snap_iter", "Snappy FeatureSnapIter", "int", "10"),
         # ── TetWild ─────────────────────────────────────────────────
-        ("tetwild_edge_length", "TetWild Edge Length", "float", "auto"),
-        ("tw_max_iterations", "TetWild Max Iter", "int", "80"),
+        ("tetwild_epsilon", "TetWild Epsilon", "float", "auto"),
+        ("tetwild_edge_length", "TetWild Edge Length (abs)", "float", "auto"),
+        ("tetwild_edge_length_fac", "TetWild Edge Length Fac", "float", "auto"),
+        ("tw_max_iterations", "TetWild Max Iter", "int", "auto"),
         # ── MMG ─────────────────────────────────────────────────────
         ("mmg_hmin", "MMG hmin", "float", "auto"),
         ("mmg_hmax", "MMG hmax", "float", "auto"),
@@ -62,6 +64,56 @@ class AutoTessellWindow:  # type: ignore[misc]
         # ── Polyhedral ──────────────────────────────────────────────
         ("feature_angle", "Polyhedral FeatureAngle", "float", "5.0"),
         ("concave_multi_cells", "Polyhedral ConcaveCells", "bool", "true"),
+        # ── Voronoi Polyhedral ───────────────────────────────────────
+        ("voro_n_seeds", "Voro N Seeds", "int", "2000"),
+        # ── HOHQMesh ────────────────────────────────────────────────
+        ("hohq_dx", "HOHQMesh Grid Spacing", "float", "auto"),
+        ("hohq_n_cells", "HOHQMesh N Cells/Dir", "int", "0"),
+        ("hohq_poly_order", "HOHQMesh Poly Order", "int", "1"),
+        ("hohq_extrusion_dir", "HOHQMesh Extrusion Dir", "int", "3"),
+        # ── GMSH Hex ────────────────────────────────────────────────
+        ("gmsh_hex_char_length_factor", "GMSH Char Length Factor", "float", "1.0"),
+        ("gmsh_hex_algorithm", "GMSH Hex Algorithm", "int", "8"),
+        ("gmsh_hex_recombine_all", "GMSH Recombine All", "bool", "true"),
+        # ── AlgoHex ─────────────────────────────────────────────
+        ("algohex_pipeline", "AlgoHex Pipeline", "str", "hexme"),
+        ("algohex_tet_size", "AlgoHex Tet Size", "float", "0.05"),
+        # ── RobustHex ───────────────────────────────────────────
+        ("robust_hex_n_cells", "RobustHex N Cells", "int", "auto"),
+        ("robust_hex_hausdorff", "RobustHex Hausdorff Ratio", "float", "auto"),
+        ("robust_hex_slim_iter", "RobustHex SLIM Iter", "int", "auto"),
+        ("robust_hex_timeout", "RobustHex Timeout (s)", "int", "auto"),
+        # ── MMG3D ───────────────────────────────────────────────
+        ("mmg3d_hmax", "MMG3D hmax", "float", "auto"),
+        ("mmg3d_hmin", "MMG3D hmin", "float", "auto"),
+        ("mmg3d_hausd", "MMG3D hausd", "float", "0.01"),
+        ("mmg3d_ar", "MMG3D Feature Angle", "float", "60.0"),
+        ("mmg3d_optim", "MMG3D Optim", "bool", "false"),
+        # ── WildMesh ────────────────────────────────────────────
+        ("wildmesh_epsilon", "WildMesh Epsilon", "float", "auto"),
+        ("wildmesh_edge_length_r", "WildMesh Edge Length Ratio", "float", "auto"),
+        ("wildmesh_stop_quality", "WildMesh Stop Quality", "float", "auto"),
+        ("wildmesh_max_its", "WildMesh Max Iter", "int", "auto"),
+        # ── Classy Blocks / HexClassyBlocks ─────────────────────
+        ("classy_cell_size", "Classy Cell Size", "float", "auto"),
+        ("hex_classy_use_snappy", "HexClassy Use Snappy", "bool", "true"),
+        # ── Cinolib ─────────────────────────────────────────────
+        ("cinolib_hex_scale", "Cinolib Hex Scale", "float", "1.0"),
+        # ── Voro additional ─────────────────────────────────────
+        ("voro_relax_iters", "Voro Relax Iters", "int", "10"),
+        # ── Boundary Layer (공통) ────────────────────────────────
+        ("bl_num_layers", "BL Num Layers", "int", "3"),
+        ("bl_first_thickness", "BL First Layer Thickness", "float", "0.001"),
+        ("bl_growth_ratio", "BL Growth Ratio", "float", "1.2"),
+        ("bl_feature_angle", "BL Feature Angle", "float", "130.0"),
+        # ── Domain ──────────────────────────────────────────────
+        ("domain_min_x", "Domain Min X", "float", "-1.0"),
+        ("domain_min_y", "Domain Min Y", "float", "-1.0"),
+        ("domain_min_z", "Domain Min Z", "float", "-1.0"),
+        ("domain_max_x", "Domain Max X", "float", "1.0"),
+        ("domain_max_y", "Domain Max Y", "float", "1.0"),
+        ("domain_max_z", "Domain Max Z", "float", "1.0"),
+        ("domain_base_cell_size", "Domain Base Cell Size", "float", "0.1"),
     )
     PARAM_HELP: dict[str, str] = {
         "tier": (
@@ -72,8 +124,10 @@ class AutoTessellWindow:  # type: ignore[misc]
             "snappy: snappyHexMesh (hex dominant)\n"
             "cfmesh: cfMesh (hex dominant)\n"
             "tetwild: TetWild (강건한 tet)\n"
-            "jigsaw: JIGSAW (복잡 형상)\n"
-            "mmg: MMG3D (fine quality)\n"
+            "jigsaw: JIGSAW (비구조 tet)\n"
+            "mmg3d: MMG3D TetGen+Optimize (적응형 tet)\n"
+            "robust_hex: Feature-Preserving Octree All-Hex (~40s draft)\n"
+            "algohex: AlgoHex Frame Field Hex (~30s)\n"
             "polyhedral: OpenFOAM polyDualMesh"
         ),
         "element_size": "전역 표면 셀 크기 오버라이드입니다. 작을수록 촘촘하고 느립니다.",
@@ -110,7 +164,17 @@ class AutoTessellWindow:  # type: ignore[misc]
         "snappy_snap_iterations": "snappy nSolveIter. snap 해 반복 횟수입니다.",
         "snappy_castellated_level": "snappy castellated 레벨(min,max)입니다. 예: 2,3",
         # TetWild
-        "tetwild_epsilon": "TetWild epsilon. 작을수록 보수적/정밀합니다.",
+        "tetwild_epsilon": (
+            "TetWild envelope 크기 (bbox 대각선 비율). 작을수록 원본 형상에 충실.\n"
+            "※ 0.02 이상 → cube 모서리 1~3cm 이탈(형상이 달라 보임)\n"
+            "draft=0.002(0.2%), standard=0.001(0.1%), fine=0.0003(0.03%)\n"
+            "비워두면 품질 레벨 기본값 자동 적용."
+        ),
+        "tetwild_edge_length": "TetWild 절대 엣지 길이(m). 설정 시 edge_length_fac보다 우선.",
+        "tetwild_edge_length_fac": (
+            "TetWild 엣지 길이 비율 (bbox 대각선 대비). 작을수록 촘촘.\n"
+            "draft=0.10, standard=0.07, fine=0.02. 비워두면 자동."
+        ),
         "tetwild_stop_energy": "TetWild stop energy. 종료 조건 민감도입니다.",
         # cfMesh
         "cfmesh_max_cell_size": "cfMesh 최대 셀 크기입니다.",
@@ -119,6 +183,83 @@ class AutoTessellWindow:  # type: ignore[misc]
         # Polyhedral
         "feature_angle": "Polyhedral 특징선 보존 각도(도). 이 각도 미만의 엣지는 피처로 보존.",
         "concave_multi_cells": "Polyhedral 오목 경계 셀 분할 여부. true/false.",
+        # Voronoi Polyhedral
+        "voro_n_seeds": "Voronoi 셀 시드 포인트 수. 클수록 셀이 작고 많아짐 (기본 2000).",
+        # HOHQMesh
+        "hohq_dx": "HOHQMesh 배경 격자 간격. auto이면 target_cell_size 사용.",
+        "hohq_n_cells": "HOHQMesh 방향당 셀 수. 0이면 hohq_dx 기반 자동 계산.",
+        "hohq_poly_order": "HOHQMesh 고차 다항식 차수 (1=선형, 2=2차, …).",
+        "hohq_extrusion_dir": "HOHQMesh 압출 방향 (1=x, 2=y, 3=z).",
+        # GMSH Hex
+        "gmsh_hex_char_length_factor": "GMSH 특성 길이 배율. 클수록 성긴 메쉬 (기본 1.0).",
+        "gmsh_hex_algorithm": "GMSH 메싱 알고리즘 번호 (5=Delaunay, 6=Frontal, 8=Frontal-Delaunay).",
+        "gmsh_hex_recombine_all": "GMSH 모든 표면 tri→quad 재조합 여부. true이면 Hex 생성 가능성 높음.",
+        # Core
+        "core_quality": "Geogram CDT 품질 임계값 (0.0~1.0). 클수록 우수한 품질, 느림.",
+        "core_max_vertices": "Geogram CDT 최대 정점 수. 0이면 제한 없음.",
+        # Robust Pure Hex
+        "robust_hex_n_cells": (
+            "옥트리 세분화 레벨 (cells per edge). 클수록 촘촘하고 느림.\n"
+            "품질별 자동 기본값: draft=2 (~40s), standard=3 (~수분), fine=4 (~수십분)\n"
+            "권장 범위: 2~4. 비워두면 품질 레벨에 따라 자동 결정."
+        ),
+        "robust_hex_hausdorff": (
+            "Hausdorff 표면 근사 허용 비율. 클수록 허용치↑, 반복 루프 감소 → 속도↑.\n"
+            "품질별 자동 기본값: draft=0.05 (5%), standard=0.02 (2%), fine=0.005 (0.5%)\n"
+            "비워두면 품질 레벨에 따라 자동 결정."
+        ),
+        "robust_hex_slim_iter": (
+            "SLIM 위상 최적화 반복 횟수. 클수록 메쉬 품질 향상, 느림.\n"
+            "품질별 자동 기본값: draft=1, standard=2, fine=3\n"
+            "비워두면 품질 레벨에 따라 자동 결정."
+        ),
+        "robust_hex_timeout": (
+            "RobustPureHexMeshing 바이너리 실행 최대 시간 (초). 초과 시 failed 반환.\n"
+            "품질별 자동 기본값: draft=120s, standard=360s, fine=900s\n"
+            "비워두면 품질 레벨에 따라 자동 결정."
+        ),
+        # AlgoHex
+        "algohex_pipeline": "AlgoHex 파이프라인. hexme=표준(기본), split=분기 보정, collapse=Singularity Restricted.",
+        "algohex_tet_size": "초기 Tet mesh 최대 셀 크기 (0~1, 기본 0.05). 작을수록 세밀하나 느림.",
+        # MMG3D
+        "mmg3d_hausd": "MMG3D Hausdorff 근사 오차. 작을수록 표면 충실도 높음 (기본 hmax*0.1).",
+        "mmg3d_hmax": "MMG3D 최대 셀 크기. 비워두면 target_cell_size 사용.",
+        "mmg3d_hmin": "MMG3D 최소 셀 크기. 비워두면 min_cell_size 사용.",
+        "mmg3d_ar": "MMG3D 특징 각도 감지 (도). 기본 60.",
+        "mmg3d_optim": "MMG3D 추가 최적화 (-optim 플래그). true/false.",
+        # WildMesh
+        "wildmesh_epsilon": (
+            "WildMesh envelope 크기 (bbox 대각선 비율). 작을수록 원본 형상에 충실.\n"
+            "※ 0.02 이상 → cube 모서리 1~2cm 이탈(형상이 달라 보임)\n"
+            "draft=0.002(0.2%), standard=0.001(0.1%), fine=0.0003(0.03%)\n"
+            "비워두면 품질 레벨 기본값 자동 적용."
+        ),
+        "wildmesh_edge_length_r": (
+            "WildMesh 엣지 길이 비율 (bbox 대각선 대비). 작을수록 촘촘.\n"
+            "draft=0.06, standard=0.04, fine=0.02. 비워두면 자동."
+        ),
+        "wildmesh_stop_quality": "WildMesh 목표 품질 (Jacobian 기반). 작을수록 고품질/느림. draft=20, standard=10, fine=5.",
+        "wildmesh_max_its": "WildMesh 최대 최적화 반복 횟수. draft=40, standard=80, fine=200.",
+        # Classy Blocks / HexClassyBlocks
+        "classy_cell_size": "Classy Blocks 셀 크기. 비워두면 element_size 사용.",
+        "hex_classy_use_snappy": "HexClassy 폴백으로 snappyHexMesh 사용 여부. true/false.",
+        # Cinolib
+        "cinolib_hex_scale": "Cinolib Hex 메쉬 스케일 인자 (기본 1.0).",
+        # Voro additional
+        "voro_relax_iters": "Voronoi Lloyd 이완 반복 횟수 (기본 10).",
+        # Boundary Layer
+        "bl_num_layers": "경계층 레이어 수 (기본 3).",
+        "bl_first_thickness": "첫 경계층 두께 (기본 0.001).",
+        "bl_growth_ratio": "경계층 성장비 (기본 1.2).",
+        "bl_feature_angle": "경계층 피처 각도 (도, 기본 130.0).",
+        # Domain
+        "domain_min_x": "도메인 최소 X 좌표 (기본 -1.0).",
+        "domain_min_y": "도메인 최소 Y 좌표 (기본 -1.0).",
+        "domain_min_z": "도메인 최소 Z 좌표 (기본 -1.0).",
+        "domain_max_x": "도메인 최대 X 좌표 (기본 1.0).",
+        "domain_max_y": "도메인 최대 Y 좌표 (기본 1.0).",
+        "domain_max_z": "도메인 최대 Z 좌표 (기본 1.0).",
+        "domain_base_cell_size": "도메인 기본 셀 크기 (기본 0.1).",
         # 기타
         "extra_tier_params": "추가 tier_specific_params JSON. 위 UI에 없는 키를 직접 전달합니다.",
     }
@@ -139,6 +280,7 @@ class AutoTessellWindow:  # type: ignore[misc]
         "tetwild_epsilon": {"tetwild"},
         "tetwild_stop_energy": {"tetwild"},
         "tetwild_edge_length": {"tetwild"},
+        "tetwild_edge_length_fac": {"tetwild"},
         "tw_max_iterations": {"tetwild"},
         # cfMesh
         "cfmesh_max_cell_size": {"cfmesh"},
@@ -157,10 +299,10 @@ class AutoTessellWindow:  # type: ignore[misc]
         "ng_fineness": {"netgen"},
         "ng_second_order": {"netgen"},
         "cf_surface_feature_angle": {"cfmesh"},
-        # MeshPy
-        "meshpy_min_angle": {"core", "jigsaw"},
-        "meshpy_max_volume": {"core", "jigsaw"},
-        "meshpy_max_area_2d": {"core", "jigsaw"},
+        # MeshPy / 2D / Core
+        "meshpy_min_angle": {"core", "jigsaw", "meshpy", "2d"},
+        "meshpy_max_volume": {"core", "jigsaw", "meshpy", "2d"},
+        "meshpy_max_area_2d": {"core", "jigsaw", "meshpy", "2d"},
         # JIGSAW
         "jigsaw_hmax": {"jigsaw"},
         "jigsaw_hmin": {"jigsaw"},
@@ -168,6 +310,46 @@ class AutoTessellWindow:  # type: ignore[misc]
         # Polyhedral
         "feature_angle": {"polyhedral"},
         "concave_multi_cells": {"polyhedral"},
+        # Voronoi Polyhedral
+        "voro_n_seeds": {"voro_poly"},
+        # HOHQMesh
+        "hohq_dx": {"hohqmesh"},
+        "hohq_n_cells": {"hohqmesh"},
+        "hohq_poly_order": {"hohqmesh"},
+        "hohq_extrusion_dir": {"hohqmesh"},
+        # GMSH Hex
+        "gmsh_hex_char_length_factor": {"gmsh_hex"},
+        "gmsh_hex_algorithm": {"gmsh_hex"},
+        "gmsh_hex_recombine_all": {"gmsh_hex"},
+        # Core (Geogram CDT)
+        "core_quality": {"core"},
+        "core_max_vertices": {"core"},
+        # Robust Pure Hex
+        "robust_hex_n_cells": {"robust_hex"},
+        "robust_hex_hausdorff": {"robust_hex"},
+        "robust_hex_slim_iter": {"robust_hex"},
+        "robust_hex_timeout": {"robust_hex"},
+        # AlgoHex
+        "algohex_pipeline": {"algohex"},
+        "algohex_tet_size": {"algohex"},
+        # MMG3D
+        "mmg3d_hausd": {"mmg3d"},
+        "mmg3d_hmax": {"mmg3d"},
+        "mmg3d_hmin": {"mmg3d"},
+        "mmg3d_ar": {"mmg3d"},
+        "mmg3d_optim": {"mmg3d"},
+        # WildMesh
+        "wildmesh_epsilon": {"wildmesh"},
+        "wildmesh_edge_length_r": {"wildmesh"},
+        "wildmesh_stop_quality": {"wildmesh"},
+        "wildmesh_max_its": {"wildmesh"},
+        # Classy Blocks / HexClassyBlocks
+        "classy_cell_size": {"classy_blocks", "hex_classy"},
+        "hex_classy_use_snappy": {"hex_classy"},
+        # Cinolib
+        "cinolib_hex_scale": {"cinolib_hex"},
+        # Voro additional
+        "voro_relax_iters": {"voro_poly"},
     }
     # 파라미터별 적용 엔진 범위 (surface remesh engine)
     _REMESH_PARAM_SCOPE: dict[str, set[str]] = {
@@ -237,6 +419,15 @@ class AutoTessellWindow:  # type: ignore[misc]
         # Advanced 접이식 컨텐츠 위젯
         self._adv_content: object | None = None
         self._adv_toggle_btn: object | None = None
+        # 신규 UI 컴포넌트 (v0.4)
+        self._output_path_edit: object | None = None       # 보이는 output 경로 편집기
+        self._surface_element_size_edit: object | None = None  # surface mesh element size
+        self._surface_min_size_edit: object | None = None  # surface mesh min size
+        self._surface_feature_angle_edit: object | None = None  # feature angle
+        self._quality_desc_label: object | None = None     # 품질 레벨 설명
+        self._output_path_label: object | None = None      # run 버튼 위 경로 표시
+        self._stop_btn: object | None = None               # 메시 생성 중단 버튼
+        self._stopping: bool = False                       # Stop 후 finished 시그널 무시 플래그
 
     def set_input_path(self, path: str | Path) -> None:
         resolved = Path(path).expanduser().resolve()
@@ -254,6 +445,8 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._input_edit.setText(str(resolved))  # type: ignore[union-attr]
         if self._output_edit is not None and self._output_dir is not None:
             self._output_edit.setText(str(self._output_dir))  # type: ignore[union-attr]
+        if self._output_path_label is not None and self._output_dir is not None:
+            self._output_path_label.setText(f"Output: {self._output_dir}")  # type: ignore[union-attr]
         if self._drop_label is not None:
             size_kb = resolved.stat().st_size // 1024
             self._drop_label.setText(  # type: ignore[union-attr]
@@ -268,6 +461,8 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._output_dir = resolved
         if self._output_edit is not None:
             self._output_edit.setText(str(resolved))  # type: ignore[union-attr]
+        if self._output_path_label is not None:
+            self._output_path_label.setText(f"Output: {resolved}")  # type: ignore[union-attr]
 
     def get_output_dir(self) -> Path | None:
         return self._output_dir
@@ -316,45 +511,70 @@ class AutoTessellWindow:  # type: ignore[misc]
 QMainWindow, QWidget {
     background-color: #131313;
     color: #e5e2e1;
-    font-family: 'JetBrains Mono', 'Consolas', monospace;
-    font-size: 11px;
+    font-family: 'Segoe UI', 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 13px;
 }
 QComboBox {
     background: #201f1f; border: 1px solid #3f4852;
-    border-radius: 4px; padding: 4px 8px; color: #e5e2e1;
+    border-radius: 4px; padding: 5px 10px; color: #e5e2e1;
+    font-size: 13px; min-height: 28px;
 }
-QComboBox::drop-down { border: none; }
-QComboBox QAbstractItemView { background: #1c1b1b; selection-background-color: #00629d; }
+QComboBox:hover { border-color: #98cbff; background: #2a2a2a; }
+QComboBox::drop-down { border: none; width: 20px; }
+QComboBox::down-arrow { width: 10px; height: 10px; }
+QComboBox QAbstractItemView {
+    background: #1c1b1b; selection-background-color: #00629d;
+    font-size: 13px; padding: 2px;
+}
 QLineEdit {
     background: #201f1f; border: 1px solid #3f4852;
-    border-radius: 4px; padding: 4px 8px; color: #e5e2e1;
+    border-radius: 4px; padding: 5px 10px; color: #e5e2e1;
+    font-size: 13px; min-height: 28px;
 }
+QLineEdit:hover { border-color: #6b7280; }
+QLineEdit:focus { border-color: #98cbff; }
 QPushButton {
     background: #201f1f; border: 1px solid #3f4852;
-    border-radius: 4px; padding: 4px 10px; color: #e5e2e1;
+    border-radius: 4px; padding: 5px 12px; color: #e5e2e1;
+    font-size: 13px; min-height: 28px;
 }
-QPushButton:hover { background: #2a2a2a; border-color: #98cbff; }
-QPushButton:pressed { background: #00629d; }
-QLabel { color: #e5e2e1; }
+QPushButton:hover { background: #2a3545; border-color: #98cbff; color: #ffffff; }
+QPushButton:pressed { background: #00629d; border-color: #0078d4; }
+QPushButton:disabled { background: #1a1a1a; color: #4a5568; border-color: #2a2a2a; }
+QLabel { color: #e5e2e1; font-size: 13px; }
 QScrollBar:vertical { background: #1c1b1b; width: 6px; }
-QScrollBar::handle:vertical { background: #3f4852; border-radius: 3px; }
+QScrollBar::handle:vertical { background: #3f4852; border-radius: 3px; min-height: 20px; }
+QScrollBar::handle:vertical:hover { background: #6b7280; }
 QScrollBar:horizontal { background: #1c1b1b; height: 6px; }
-QScrollBar::handle:horizontal { background: #3f4852; border-radius: 3px; }
+QScrollBar::handle:horizontal { background: #3f4852; border-radius: 3px; min-width: 20px; }
+QScrollBar::handle:horizontal:hover { background: #6b7280; }
+QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
 QPlainTextEdit, QTextBrowser {
     background: #0d0d16; border: none; color: #bec7d4;
-    font-family: 'JetBrains Mono', monospace; font-size: 10px;
+    font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 12px;
 }
-QSpinBox { background: #201f1f; border: 1px solid #3f4852; border-radius: 4px; padding: 3px; color: #e5e2e1; }
-QCheckBox { color: #bec7d4; spacing: 6px; }
-QCheckBox::indicator { width: 14px; height: 14px; border: 1px solid #3f4852; border-radius: 2px; background: #201f1f; }
-QCheckBox::indicator:checked { background: #00629d; border-color: #98cbff; }
-QProgressBar { background: #1c1b1b; border: none; border-radius: 2px; height: 6px; }
-QProgressBar::chunk { background: #98cbff; border-radius: 2px; }
+QSpinBox, QDoubleSpinBox {
+    background: #201f1f; border: 1px solid #3f4852;
+    border-radius: 4px; padding: 4px 6px; color: #e5e2e1;
+    font-size: 13px; min-height: 26px;
+}
+QSpinBox:hover, QDoubleSpinBox:hover { border-color: #6b7280; }
+QSpinBox:focus, QDoubleSpinBox:focus { border-color: #98cbff; }
+QCheckBox { color: #d0d0d0; spacing: 8px; font-size: 13px; }
+QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid #3f4852; border-radius: 3px; background: #201f1f; }
+QCheckBox::indicator:hover { border-color: #98cbff; }
+QCheckBox::indicator:checked { background: #0078d4; border-color: #98cbff; }
+QProgressBar { background: #1c1b1b; border: none; border-radius: 3px; height: 8px; }
+QProgressBar::chunk { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0078d4, stop:1 #98cbff); border-radius: 3px; }
 QTabWidget::pane { border: none; border-top: 1px solid #3f4852; }
-QTabBar::tab { background: #1c1b1b; color: #bec7d4; padding: 6px 16px; border: none; border-bottom: 2px solid transparent; }
+QTabBar::tab { background: #1c1b1b; color: #bec7d4; padding: 8px 18px; border: none; border-bottom: 2px solid transparent; font-size: 13px; }
 QTabBar::tab:selected { color: #98cbff; border-bottom: 2px solid #98cbff; background: #131313; }
 QTabBar::tab:hover { color: #e5e2e1; background: #201f1f; }
 QScrollArea { border: none; }
+QToolTip {
+    background: #2a3545; color: #e5e2e1; border: 1px solid #3f4852;
+    padding: 4px 8px; border-radius: 4px; font-size: 12px;
+}
 """
         self._qmain.setStyleSheet(DARK_STYLE)
 
@@ -376,7 +596,7 @@ QScrollArea { border: none; }
         # [1] 사이드바 (300px 고정)
         # ════════════════════════════════════════════════════════════════
         sidebar_scroll = QScrollArea()
-        sidebar_scroll.setFixedWidth(300)
+        sidebar_scroll.setFixedWidth(360)
         sidebar_scroll.setWidgetResizable(True)
         sidebar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         sidebar_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -427,18 +647,43 @@ QScrollArea { border: none; }
         drop_zone.mousePressEvent = lambda _e: self._on_pick_input()  # type: ignore[method-assign]
         sidebar_layout.addWidget(drop_zone)
 
-        # hidden input/output edits for API compatibility
+        # hidden input edit for API compatibility
         self._input_edit = QLineEdit()
         self._input_edit.setVisible(False)
-        self._output_edit = QLineEdit()
-        self._output_edit.setVisible(False)
         sidebar_layout.addWidget(self._input_edit)
-        sidebar_layout.addWidget(self._output_edit)
+
+        # ── [B2] Output 경로 섹션 ────────────────────────────────────
+        output_section_lbl = QLabel("OUTPUT DIR")
+        output_section_lbl.setStyleSheet(
+            "color: #6b7280; font-size: 12px; letter-spacing: 1.5px; "
+            "background: transparent;"
+        )
+        sidebar_layout.addWidget(output_section_lbl)
+
+        output_path_row = QWidget()
+        output_path_row.setStyleSheet("background: transparent;")
+        output_path_row_layout = QHBoxLayout(output_path_row)
+        output_path_row_layout.setContentsMargins(0, 0, 0, 0)
+        output_path_row_layout.setSpacing(4)
+
+        self._output_edit = QLineEdit()
+        self._output_edit.setPlaceholderText("출력 폴더 경로...")
+        self._output_edit.setFixedHeight(28)
+        self._output_path_edit = self._output_edit  # alias
+        output_path_row_layout.addWidget(self._output_edit)
+
+        browse_btn = QPushButton("…")
+        browse_btn.setFixedWidth(32)
+        browse_btn.setFixedHeight(28)
+        browse_btn.setToolTip("출력 폴더 선택")
+        browse_btn.clicked.connect(self._on_pick_output)
+        output_path_row_layout.addWidget(browse_btn)
+        sidebar_layout.addWidget(output_path_row)
 
         # ── [C] Mesh Engine 드롭다운 ─────────────────────────────────
         engine_section_lbl = QLabel("Mesh Engine")
         engine_section_lbl.setStyleSheet(
-            "color: #bec7d4; font-size: 9px; letter-spacing: 1px; "
+            "color: #bec7d4; font-size: 12px; letter-spacing: 1px; "
             "text-transform: uppercase; background: transparent;"
         )
         sidebar_layout.addWidget(engine_section_lbl)
@@ -455,15 +700,25 @@ QScrollArea { border: none; }
             ("wildmesh", "  WildMesh"),
             ("tetwild", "  TetWild"),
             ("jigsaw", "  JIGSAW"),
-            ("mmg", "  MMG3D"),
+            ("mmg3d", "  MMG3D (TetGen+Optimize)"),
+            ("core", "  Core (Geogram CDT)"),
             (None, "── Hex-dominant ──"),
             ("snappy", "  SnappyHexMesh"),
             ("cfmesh", "  cfMesh"),
+            ("hex", "  Hex (Classy Blocks)"),
             ("cinolib_hex", "  Cinolib Hex"),
+            ("gmsh_hex", "  GMSH Hex"),
+            ("robust_hex", "  Robust Pure Hex (Octree)"),
+            ("algohex", "  AlgoHex (Frame Field Hex)"),
             (None, "── Polyhedral ──"),
             ("polyhedral", "  PolyDualMesh"),
+            ("voro_poly", "  Voronoi Polyhedral"),
+            (None, "── Structured ──"),
+            ("hohqmesh", "  HOHQMesh (Hex Box)"),
             (None, "── Specialty ──"),
+            ("classy_blocks", "  Classy Blocks"),
             ("meshpy", "  MeshPy (2D)"),
+            ("2d", "  MeshPy 2D (Tier0)"),
         ]
         for engine_key, display_text in _ENGINE_GROUPS:
             engine_combo.addItem(display_text)
@@ -491,7 +746,7 @@ QScrollArea { border: none; }
         # ── [D] Quality Level 토글 버튼 ──────────────────────────────
         quality_section_lbl = QLabel("Quality Level")
         quality_section_lbl.setStyleSheet(
-            "color: #bec7d4; font-size: 9px; letter-spacing: 1px; "
+            "color: #bec7d4; font-size: 12px; letter-spacing: 1px; "
             "text-transform: uppercase; background: transparent;"
         )
         sidebar_layout.addWidget(quality_section_lbl)
@@ -539,7 +794,63 @@ QScrollArea { border: none; }
             btn.clicked.connect(_make_quality_handler(lvl_key))
 
         sidebar_layout.addWidget(seg_frame)
+
+        # [D2] 품질 레벨 설명 라벨
+        quality_desc = QLabel("")
+        quality_desc.setStyleSheet(
+            "color: #6b7280; font-size: 12px; font-style: italic; background: transparent;"
+        )
+        quality_desc.setWordWrap(True)
+        self._quality_desc_label = quality_desc
+        sidebar_layout.addWidget(quality_desc)
+
         self._refresh_quality_seg_btns()
+
+        # ── [C2] Surface Mesh Config 섹션 ────────────────────────────
+        surf_section_lbl = QLabel("SURFACE MESH")
+        surf_section_lbl.setStyleSheet(
+            "color: #6b7280; font-size: 12px; letter-spacing: 1.5px; "
+            "background: transparent;"
+        )
+        sidebar_layout.addWidget(surf_section_lbl)
+
+        surf_grid_widget = QWidget()
+        surf_grid_widget.setStyleSheet("background: transparent;")
+        surf_grid = QGridLayout(surf_grid_widget)
+        surf_grid.setContentsMargins(0, 0, 0, 0)
+        surf_grid.setSpacing(4)
+
+        surf_el_lbl = QLabel("Element Size:")
+        surf_el_lbl.setStyleSheet("color: #bec7d4; font-size: 13px; background: transparent;")
+        surf_el_edit = QLineEdit()
+        surf_el_edit.setPlaceholderText("auto")
+        surf_el_edit.setFixedHeight(24)
+        surf_el_edit.setToolTip("표면 메쉬 셀 크기. 비워두면 자동 결정.")
+        self._surface_element_size_edit = surf_el_edit
+
+        surf_min_lbl = QLabel("Min Size:")
+        surf_min_lbl.setStyleSheet("color: #bec7d4; font-size: 13px; background: transparent;")
+        surf_min_edit = QLineEdit()
+        surf_min_edit.setPlaceholderText("auto")
+        surf_min_edit.setFixedHeight(24)
+        surf_min_edit.setToolTip("표면 메쉬 최소 셀 크기.")
+        self._surface_min_size_edit = surf_min_edit
+
+        surf_fa_lbl = QLabel("Feature Angle:")
+        surf_fa_lbl.setStyleSheet("color: #bec7d4; font-size: 13px; background: transparent;")
+        surf_fa_edit = QLineEdit()
+        surf_fa_edit.setPlaceholderText("150.0")
+        surf_fa_edit.setFixedHeight(24)
+        surf_fa_edit.setToolTip("표면 피처 각도 (도). 이 각도 이상의 엣지를 특징선으로 보존.")
+        self._surface_feature_angle_edit = surf_fa_edit
+
+        surf_grid.addWidget(surf_el_lbl, 0, 0)
+        surf_grid.addWidget(surf_el_edit, 0, 1)
+        surf_grid.addWidget(surf_min_lbl, 0, 2)
+        surf_grid.addWidget(surf_min_edit, 0, 3)
+        surf_grid.addWidget(surf_fa_lbl, 1, 0)
+        surf_grid.addWidget(surf_fa_edit, 1, 1, 1, 3)
+        sidebar_layout.addWidget(surf_grid_widget)
 
         # ── [E] Advanced Parameters 접이식 섹션 ─────────────────────
         adv_header = QFrame()
@@ -599,7 +910,7 @@ QScrollArea { border: none; }
             row_layout.setSpacing(4)
             lbl = QLabel(label_text)
             lbl.setFixedWidth(100)
-            lbl.setStyleSheet("color: #bec7d4; font-size: 10px; background: transparent; border: none;")
+            lbl.setStyleSheet("color: #bec7d4; font-size: 12px; background: transparent; border: none;")
             edit = QLineEdit()
             edit.setPlaceholderText(placeholder)
             edit.setFixedHeight(24)
@@ -620,7 +931,7 @@ QScrollArea { border: none; }
         iter_row_layout.setSpacing(4)
         iter_lbl = QLabel("Max Iter:")
         iter_lbl.setFixedWidth(100)
-        iter_lbl.setStyleSheet("color: #bec7d4; font-size: 10px; background: transparent; border: none;")
+        iter_lbl.setStyleSheet("color: #bec7d4; font-size: 12px; background: transparent; border: none;")
         self._iter_spin = QSpinBox()
         self._iter_spin.setRange(1, 10)  # type: ignore[union-attr]
         self._iter_spin.setValue(3)  # type: ignore[union-attr]
@@ -650,7 +961,7 @@ QScrollArea { border: none; }
         remesh_row_layout.setSpacing(4)
         remesh_lbl = QLabel("Remesh Engine:")
         remesh_lbl.setFixedWidth(100)
-        remesh_lbl.setStyleSheet("color: #bec7d4; font-size: 10px; background: transparent; border: none;")
+        remesh_lbl.setStyleSheet("color: #bec7d4; font-size: 12px; background: transparent; border: none;")
         self._remesh_engine_combo = QComboBox()
         for eng in ("auto", "mmg", "quadwild"):
             self._remesh_engine_combo.addItem(eng)  # type: ignore[union-attr]
@@ -682,7 +993,7 @@ QScrollArea { border: none; }
         tier_tabs.setStyleSheet(
             "QTabWidget::pane { border: 1px solid #30363d; background: #0d1117; }"
             "QTabBar::tab { background: #161b22; color: #8b949e; padding: 3px 7px; "
-            "font-size: 10px; border: 1px solid #30363d; border-bottom: none; }"
+            "font-size: 12px; border: 1px solid #30363d; border-bottom: none; }"
             "QTabBar::tab:selected { background: #21262d; color: #c9d1d9; }"
         )
         adv_content_layout.addWidget(tier_tabs)
@@ -702,12 +1013,27 @@ QScrollArea { border: none; }
                 "netgen_segmentsperedge", "netgen_closeedgefac",
                 "ng_max_h", "ng_min_h", "ng_fineness", "ng_second_order",
             ]),
-            ("TetWild", ["tetwild_edge_length", "tw_max_iterations"]),
+            ("TetWild", ["tetwild_epsilon", "tetwild_edge_length",
+                         "tetwild_edge_length_fac", "tw_max_iterations"]),
             ("MMG", ["mmg_hmin", "mmg_hmax", "mmg_hgrad", "mmg_hausd"]),
             ("JIGSAW", ["jigsaw_hmax", "jigsaw_hmin", "jigsaw_optm_iter"]),
             ("MeshPy", ["meshpy_min_angle", "meshpy_max_volume", "meshpy_max_area_2d"]),
             ("Core", ["core_quality", "core_max_vertices"]),
             ("Polyhedral", ["feature_angle", "concave_multi_cells"]),
+            ("Voro", ["voro_n_seeds", "voro_relax_iters"]),
+            ("HOHQMesh", ["hohq_dx", "hohq_n_cells", "hohq_poly_order", "hohq_extrusion_dir"]),
+            ("GMSH Hex", ["gmsh_hex_char_length_factor", "gmsh_hex_algorithm", "gmsh_hex_recombine_all"]),
+            ("AlgoHex", ["algohex_pipeline", "algohex_tet_size"]),
+            ("RobustHex", ["robust_hex_n_cells", "robust_hex_hausdorff",
+                           "robust_hex_slim_iter", "robust_hex_timeout"]),
+            ("MMG3D", ["mmg3d_hmax", "mmg3d_hmin", "mmg3d_hausd", "mmg3d_ar", "mmg3d_optim"]),
+            ("WildMesh", ["wildmesh_epsilon", "wildmesh_edge_length_r",
+                          "wildmesh_stop_quality", "wildmesh_max_its"]),
+            ("Classy", ["classy_cell_size", "hex_classy_use_snappy", "cinolib_hex_scale"]),
+            ("BndLayer", ["bl_num_layers", "bl_first_thickness", "bl_growth_ratio", "bl_feature_angle"]),
+            ("Domain", ["domain_min_x", "domain_min_y", "domain_min_z",
+                        "domain_max_x", "domain_max_y", "domain_max_z",
+                        "domain_base_cell_size"]),
         ]
 
         # key → (label, kind, placeholder) 빠른 조회
@@ -717,11 +1043,18 @@ QScrollArea { border: none; }
 
         _tab_style = (
             "QLineEdit { background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; "
-            "border-radius: 3px; padding: 2px 4px; font-size: 10px; }"
-            "QCheckBox { color: #c9d1d9; font-size: 10px; background: transparent; }"
+            "border-radius: 4px; padding: 4px 6px; font-size: 13px; min-height: 26px; }"
+            "QLineEdit:hover { border-color: #6b7280; }"
+            "QLineEdit:focus { border-color: #98cbff; }"
+            "QCheckBox { color: #c9d1d9; font-size: 13px; background: transparent; spacing: 6px; }"
+            "QCheckBox::indicator { width: 15px; height: 15px; border: 1px solid #3f4852; "
+            "border-radius: 3px; background: #201f1f; }"
+            "QCheckBox::indicator:hover { border-color: #98cbff; }"
+            "QCheckBox::indicator:checked { background: #0078d4; border-color: #98cbff; }"
             "QSpinBox, QDoubleSpinBox { background: #0d1117; color: #c9d1d9; "
-            "border: 1px solid #30363d; border-radius: 3px; font-size: 10px; }"
-            "QLabel { color: #8b949e; font-size: 10px; }"
+            "border: 1px solid #30363d; border-radius: 4px; font-size: 13px; min-height: 26px; }"
+            "QSpinBox:hover, QDoubleSpinBox:hover { border-color: #6b7280; }"
+            "QLabel { color: #8b949e; font-size: 13px; }"
         )
 
         for tab_name, keys in _tab_groups:
@@ -792,18 +1125,49 @@ QScrollArea { border: none; }
         # ── [F] 스페이서 ─────────────────────────────────────────────
         sidebar_layout.addStretch()
 
-        # ── [G] Run 버튼 (하단 고정, full-width) ─────────────────────
+        # ── [G] Run 버튼 위 output 경로 표시 ────────────────────────
+        output_hint_lbl = QLabel("")
+        output_hint_lbl.setStyleSheet(
+            "color: #4a5568; font-size: 13px; background: transparent;"
+        )
+        output_hint_lbl.setWordWrap(True)
+        self._output_path_label = output_hint_lbl
+        sidebar_layout.addWidget(output_hint_lbl)
+
+        # ── [G] Run / Stop 버튼 행 ───────────────────────────────────
+        run_stop_row = QWidget()
+        run_stop_row.setStyleSheet("background: transparent;")
+        run_stop_layout = QHBoxLayout(run_stop_row)
+        run_stop_layout.setContentsMargins(0, 0, 0, 0)
+        run_stop_layout.setSpacing(6)
+
         self._run_btn = QPushButton("▶  Run Meshing")
         self._run_btn.setFixedHeight(44)  # type: ignore[union-attr]
         self._run_btn.setStyleSheet(  # type: ignore[union-attr]
-            "QPushButton { background: #40e56c; border: none; color: #0a1a10; "
-            "border-radius: 6px; font-size: 13px; font-weight: bold; }"
-            "QPushButton:hover { background: #55f07f; }"
-            "QPushButton:pressed { background: #2bb54e; }"
-            "QPushButton:disabled { background: #2a2a2a; color: #4a5568; }"
+            "QPushButton { background: #1a7a3c; border: 1px solid #40e56c; color: #d8fce8; "
+            "border-radius: 6px; font-size: 14px; font-weight: bold; }"
+            "QPushButton:hover { background: #228a46; border-color: #55f07f; color: #ffffff; }"
+            "QPushButton:pressed { background: #1a5e2e; }"
+            "QPushButton:disabled { background: #1a1a1a; color: #4a5568; border-color: #2a2a2a; }"
         )
         self._run_btn.clicked.connect(self._on_run_clicked)
-        sidebar_layout.addWidget(self._run_btn)
+        run_stop_layout.addWidget(self._run_btn, stretch=1)
+
+        self._stop_btn = QPushButton("■  Stop")
+        self._stop_btn.setFixedHeight(44)  # type: ignore[union-attr]
+        self._stop_btn.setFixedWidth(80)  # type: ignore[union-attr]
+        self._stop_btn.setVisible(False)  # type: ignore[union-attr]
+        self._stop_btn.setToolTip("메시 생성 작업을 중단합니다")
+        self._stop_btn.setStyleSheet(  # type: ignore[union-attr]
+            "QPushButton { background: #5a1a1a; border: 1px solid #e55a40; color: #ffd0c8; "
+            "border-radius: 6px; font-size: 13px; font-weight: bold; }"
+            "QPushButton:hover { background: #6e2020; border-color: #ff7055; color: #ffffff; }"
+            "QPushButton:pressed { background: #3e0f0f; }"
+        )
+        self._stop_btn.clicked.connect(self._on_stop_clicked)
+        run_stop_layout.addWidget(self._stop_btn)
+
+        sidebar_layout.addWidget(run_stop_row)
 
         self._update_param_visibility()
 
@@ -876,7 +1240,7 @@ QScrollArea { border: none; }
             )
             title_lbl = QLabel(stat_title)
             title_lbl.setStyleSheet(
-                "color: #8b949e; font-size: 10px; background: transparent;"
+                "color: #8b949e; font-size: 13px; background: transparent;"
             )
             col_layout.addWidget(val_lbl)
             col_layout.addWidget(title_lbl)
@@ -919,12 +1283,12 @@ QScrollArea { border: none; }
 
         for dot_color in ("#ff5f56", "#ffbd2e", "#27c93f"):
             dot = QLabel("●")
-            dot.setStyleSheet(f"color: {dot_color}; font-size: 10px; background: transparent;")
+            dot.setStyleSheet(f"color: {dot_color}; font-size: 13px; background: transparent;")
             terminal_header_layout.addWidget(dot)
 
         terminal_title = QLabel("autotessell — bash")
         terminal_title.setStyleSheet(
-            "color: #bec7d4; font-size: 10px; background: transparent;"
+            "color: #bec7d4; font-size: 13px; background: transparent;"
         )
         terminal_header_layout.addWidget(terminal_title)
         terminal_header_layout.addStretch()
@@ -935,7 +1299,7 @@ QScrollArea { border: none; }
         self._log_edit.setReadOnly(True)  # type: ignore[union-attr]
         self._log_edit.setStyleSheet(  # type: ignore[union-attr]
             "QPlainTextEdit { background: #0d0d16; color: #bec7d4; "
-            "font-family: 'JetBrains Mono', monospace; font-size: 10px; border: none; }"
+            "font-family: 'JetBrains Mono', monospace; font-size: 12px; border: none; }"
         )
         log_tab_layout.addWidget(self._log_edit, stretch=1)
 
@@ -990,7 +1354,7 @@ QScrollArea { border: none; }
 
         percent_lbl = QLabel("0%")
         percent_lbl.setFixedWidth(36)
-        percent_lbl.setStyleSheet("color: #bec7d4; font-size: 10px; background: transparent;")
+        percent_lbl.setStyleSheet("color: #bec7d4; font-size: 13px; background: transparent;")
         self._status_label = percent_lbl
 
         status_bar_layout.addWidget(status_progress)
@@ -1014,20 +1378,20 @@ QScrollArea { border: none; }
         for i, (stage_name, stage_icon) in enumerate(_STAGE_DEFS):
             stage_lbl = QLabel(f"{stage_icon} {stage_name}")
             stage_lbl.setStyleSheet(
-                "color: #4a5568; font-size: 10px; background: transparent;"
+                "color: #4a5568; font-size: 13px; background: transparent;"
             )
             self._status_stage_labels.append(stage_lbl)
             status_bar_layout.addWidget(stage_lbl)
             if i < len(_STAGE_DEFS) - 1:
                 dash = QLabel("—")
-                dash.setStyleSheet("color: #3f4852; font-size: 10px; background: transparent;")
+                dash.setStyleSheet("color: #3f4852; font-size: 13px; background: transparent;")
                 status_bar_layout.addWidget(dash)
 
         status_bar_layout.addStretch()
 
         # 오른쪽: 상태 텍스트
         ready_lbl = QLabel("Ready")
-        ready_lbl.setStyleSheet("color: #bec7d4; font-size: 10px; background: transparent;")
+        ready_lbl.setStyleSheet("color: #bec7d4; font-size: 13px; background: transparent;")
         self._active_tier_label = ready_lbl
         status_bar_layout.addWidget(ready_lbl)
 
@@ -1057,8 +1421,20 @@ QScrollArea { border: none; }
     def _on_pick_input(self) -> None:  # pragma: no cover
         if not hasattr(self, "_qt_file_dialog"):
             return
-        filt = "Mesh/CAD Files (*.stl *.obj *.ply *.off *.3mf *.step *.stp *.iges *.igs *.brep *.msh *.vtu *.vtk)"
-        path, _ = self._qt_file_dialog.getOpenFileName(self._qmain, "입력 파일 선택", "", filt)
+        from PySide6.QtWidgets import QFileDialog as _QFD
+        filt = (
+            "Mesh/CAD Files (*.stl *.obj *.ply *.off *.3mf "
+            "*.step *.stp *.iges *.igs *.brep *.msh *.vtu *.vtk);;"
+            "STL Files (*.stl);;"
+            "STEP / IGES (*.step *.stp *.iges *.igs);;"
+            "OBJ / PLY / OFF (*.obj *.ply *.off *.3mf);;"
+            "Volume Mesh (*.msh *.vtu *.vtk);;"
+            "All Files (*.*)"
+        )
+        path, _ = _QFD.getOpenFileName(
+            self._qmain, "입력 파일 선택", "", filt,
+            options=_QFD.Option.DontUseNativeDialog,
+        )
         if path:
             try:
                 self.set_input_path(path)
@@ -1086,7 +1462,11 @@ QScrollArea { border: none; }
     def _on_pick_output(self) -> None:  # pragma: no cover
         if not hasattr(self, "_qt_file_dialog"):
             return
-        path = self._qt_file_dialog.getExistingDirectory(self._qmain, "출력 폴더 선택")
+        from PySide6.QtWidgets import QFileDialog as _QFD
+        path = _QFD.getExistingDirectory(
+            self._qmain, "출력 폴더 선택", "",
+            options=_QFD.Option.DontUseNativeDialog,
+        )
         if path:
             self.set_output_dir(path)
             self._append_log(f"출력 설정: {path}")
@@ -1110,16 +1490,23 @@ QScrollArea { border: none; }
     def _on_run_clicked(self) -> None:  # pragma: no cover
         from desktop.qt_app.pipeline_worker import PipelineWorker
 
+        self._stopping = False  # 이전 Stop 상태 초기화
+
         if self._input_path is None:
             self._append_log("[오류] 입력 파일을 먼저 선택하세요.")
             return
 
+        # Sync output dir from visible edit
         if self._output_edit is not None:
             text = self._output_edit.text().strip()  # type: ignore[union-attr]
             if text:
                 self.set_output_dir(text)
         if self._output_dir is None:
             self._output_dir = self._input_path.parent / f"{self._input_path.stem}_case"
+            if self._output_edit is not None:
+                self._output_edit.setText(str(self._output_dir))  # type: ignore[union-attr]
+            if self._output_path_label is not None:
+                self._output_path_label.setText(f"Output: {self._output_dir}")  # type: ignore[union-attr]
 
         tier = self._tier_combo_text()
         max_iterations = 3
@@ -1146,6 +1533,33 @@ QScrollArea { border: none; }
                 except Exception as exc:
                     self._append_log(f"[오류] Element Size 파싱 실패: {exc}")
                     return
+
+        # Surface mesh params from new visible fields
+        if self._surface_element_size_edit is not None:
+            raw = self._surface_element_size_edit.text().strip()  # type: ignore[union-attr]
+            if raw and element_size is None:
+                try:
+                    val = float(raw)
+                    if val > 0:
+                        element_size = val
+                except Exception:
+                    pass
+
+        if self._surface_min_size_edit is not None:
+            raw = self._surface_min_size_edit.text().strip()  # type: ignore[union-attr]
+            if raw:
+                try:
+                    tier_params["min_cell_size"] = float(raw)
+                except Exception:
+                    pass
+
+        if self._surface_feature_angle_edit is not None:
+            raw = self._surface_feature_angle_edit.text().strip()  # type: ignore[union-attr]
+            if raw:
+                try:
+                    tier_params["feature_angle_surface"] = float(raw)
+                except Exception:
+                    pass
 
         if self._max_cells_edit is not None:
             raw = self._max_cells_edit.text().strip()  # type: ignore[union-attr]
@@ -1292,9 +1706,11 @@ QScrollArea { border: none; }
             self._run_btn.setEnabled(False)  # type: ignore[union-attr]
             self._run_btn.setText("⟳  Processing...")  # type: ignore[union-attr]
             self._run_btn.setStyleSheet(  # type: ignore[union-attr]
-                "QPushButton { background: #2a2a2a; border: none; color: #4a5568; "
-                "border-radius: 6px; font-size: 13px; font-weight: bold; }"
+                "QPushButton { background: #1a1a1a; border: 1px solid #2a2a2a; color: #4a5568; "
+                "border-radius: 6px; font-size: 14px; font-weight: bold; }"
             )
+        if self._stop_btn is not None:
+            self._stop_btn.setVisible(True)  # type: ignore[union-attr]
         if self._open_output_btn is not None:
             self._open_output_btn.setEnabled(False)  # type: ignore[union-attr]
         if self._status_label is not None:
@@ -1339,16 +1755,9 @@ QScrollArea { border: none; }
             self._worker.finished.connect(self._on_pipeline_finished)  # type: ignore[union-attr]
             self._worker.start()  # type: ignore[union-attr]
         except Exception as exc:
-            if self._run_btn is not None:
-                self._run_btn.setEnabled(True)  # type: ignore[union-attr]
-                self._run_btn.setText("▶  Run Meshing")  # type: ignore[union-attr]
-                self._run_btn.setStyleSheet(  # type: ignore[union-attr]
-                    "QPushButton { background: #40e56c; border: none; color: #0a1a10; "
-                    "border-radius: 6px; font-size: 13px; font-weight: bold; }"
-                    "QPushButton:hover { background: #55f07f; }"
-                    "QPushButton:pressed { background: #2bb54e; }"
-                    "QPushButton:disabled { background: #2a2a2a; color: #4a5568; }"
-                )
+            self._reset_run_button()
+            if self._stop_btn is not None:
+                self._stop_btn.setVisible(False)  # type: ignore[union-attr]
             if self._active_tier_label is not None:
                 self._active_tier_label.setText("FAIL")  # type: ignore[union-attr]
             self._append_log(f"[오류] Worker 시작 실패: {exc.__class__.__name__}: {exc}")
@@ -1362,19 +1771,19 @@ QScrollArea { border: none; }
         for i, lbl in enumerate(self._status_stage_labels):
             if i < active_stage:
                 lbl.setStyleSheet(  # type: ignore[union-attr]
-                    "color: #40e56c; font-size: 10px; background: transparent;"
+                    "color: #40e56c; font-size: 13px; background: transparent;"
                 )
                 text = lbl.text().split(" ", 1)[-1]  # type: ignore[union-attr]
                 lbl.setText(f"✓ {text}")  # type: ignore[union-attr]
             elif i == active_stage:
                 lbl.setStyleSheet(  # type: ignore[union-attr]
-                    "color: #98cbff; font-size: 10px; background: transparent;"
+                    "color: #98cbff; font-size: 13px; background: transparent;"
                 )
                 text = lbl.text().split(" ", 1)[-1]  # type: ignore[union-attr]
                 lbl.setText(f"⟳ {text}")  # type: ignore[union-attr]
             else:
                 lbl.setStyleSheet(  # type: ignore[union-attr]
-                    "color: #4a5568; font-size: 10px; background: transparent;"
+                    "color: #4a5568; font-size: 13px; background: transparent;"
                 )
                 text = lbl.text().split(" ", 1)[-1]  # type: ignore[union-attr]
                 lbl.setText(f"○ {text}")  # type: ignore[union-attr]
@@ -1398,17 +1807,69 @@ QScrollArea { border: none; }
             stage = 3
         self._update_stage_indicator(stage)
 
-    def _on_pipeline_finished(self, result: object) -> None:  # pragma: no cover
+    def _reset_run_button(self) -> None:  # pragma: no cover
+        """Run 버튼을 초기 상태로 복원하고 Stop 버튼을 숨긴다."""
         if self._run_btn is not None:
             self._run_btn.setEnabled(True)  # type: ignore[union-attr]
             self._run_btn.setText("▶  Run Meshing")  # type: ignore[union-attr]
             self._run_btn.setStyleSheet(  # type: ignore[union-attr]
-                "QPushButton { background: #40e56c; border: none; color: #0a1a10; "
-                "border-radius: 6px; font-size: 13px; font-weight: bold; }"
-                "QPushButton:hover { background: #55f07f; }"
-                "QPushButton:pressed { background: #2bb54e; }"
-                "QPushButton:disabled { background: #2a2a2a; color: #4a5568; }"
+                "QPushButton { background: #1a7a3c; border: 1px solid #40e56c; color: #d8fce8; "
+                "border-radius: 6px; font-size: 14px; font-weight: bold; }"
+                "QPushButton:hover { background: #228a46; border-color: #55f07f; color: #ffffff; }"
+                "QPushButton:pressed { background: #1a5e2e; }"
+                "QPushButton:disabled { background: #1a1a1a; color: #4a5568; border-color: #2a2a2a; }"
             )
+        if self._stop_btn is not None:
+            self._stop_btn.setVisible(False)  # type: ignore[union-attr]
+
+    def _on_stop_clicked(self) -> None:  # pragma: no cover
+        """메시 생성 작업을 중단한다.
+
+        외부 메셔(subprocess)를 직접 kill → QThread 협력적 종료 요청.
+        terminate()는 Python 스레드에서 효과 없음(blocking C call 무시).
+        """
+        self._stopping = True  # finished 시그널 도착 시 무시
+        if self._stop_btn is not None:
+            self._stop_btn.setEnabled(False)  # type: ignore[union-attr]
+
+        # 1. 실행 중인 자식 프로세스(외부 메셔 바이너리) 강제 종료
+        try:
+            import os
+            import psutil
+            current = psutil.Process(os.getpid())
+            children = current.children(recursive=True)
+            for child in children:
+                try:
+                    child.kill()
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+            psutil.wait_procs(children, timeout=2)
+        except Exception:
+            pass
+
+        # 2. QThread 협력적 중단 요청 (subprocess kill 후 thread가 자연히 종료됨)
+        if self._worker is not None:
+            try:
+                self._worker.requestInterruption()  # type: ignore[union-attr]
+            except AttributeError:
+                pass
+
+        self._append_log("[중단] 사용자가 메시 생성을 중단했습니다.")
+        self._reset_run_button()
+        if self._active_tier_label is not None:
+            self._active_tier_label.setText("중단됨")  # type: ignore[union-attr]
+        if self._progress_bar is not None:
+            self._progress_bar.setValue(0)  # type: ignore[union-attr]
+        if self._status_label is not None:
+            self._status_label.setText("—")  # type: ignore[union-attr]
+
+    def _on_pipeline_finished(self, result: object) -> None:  # pragma: no cover
+        # Stop 버튼을 눌러 중단한 경우 finished 시그널 무시
+        if self._stopping:
+            self._stopping = False
+            return
+
+        self._reset_run_button()
         if self._progress_bar is not None:
             self._progress_bar.setRange(0, 100)  # type: ignore[union-attr]
             self._progress_bar.setValue(100)  # type: ignore[union-attr]
@@ -1468,6 +1929,10 @@ QScrollArea { border: none; }
 
         success = bool(getattr(result, "success", False))
 
+        # ev_summary 를 먼저 초기화 (하위 섹션에서 사용)
+        quality_report = getattr(result, "quality_report", None)
+        ev_summary = getattr(quality_report, "evaluation_summary", None) if quality_report else None
+
         # placeholder 숨기고 content 보이기
         if self._report_placeholder is not None:
             self._report_placeholder.setVisible(False)  # type: ignore[union-attr]
@@ -1510,7 +1975,7 @@ QScrollArea { border: none; }
         header_row_layout = QHBoxLayout(header_row)
         header_row_layout.setContentsMargins(0, 0, 0, 0)
         engine_lbl = QLabel(f"Generated with {tier_used} engine")
-        engine_lbl.setStyleSheet("color: #bec7d4; font-size: 12px; background: transparent;")
+        engine_lbl.setStyleSheet("color: #bec7d4; font-size: 13px; background: transparent;")
         checks_lbl = QLabel(checks_ok)
         checks_lbl.setStyleSheet(f"color: {checks_color}; font-size: 12px; font-weight: bold; background: transparent;")
         header_row_layout.addWidget(engine_lbl)
@@ -1526,8 +1991,6 @@ QScrollArea { border: none; }
         kpi_row_layout.setSpacing(12)
 
         # result.quality_report.evaluation_summary.checkmesh 경로
-        quality_report = getattr(result, "quality_report", None)
-        ev_summary = getattr(quality_report, "evaluation_summary", None) if quality_report else None
         checkmesh = getattr(ev_summary, "checkmesh", None) if ev_summary else None
         geo_fidelity = getattr(ev_summary, "geometry_fidelity", None) if ev_summary else None
 
@@ -1563,7 +2026,7 @@ QScrollArea { border: none; }
             title_lbl = QLabel(title)
             title_lbl.setAlignment(Qt.AlignCenter)
             title_lbl.setStyleSheet(
-                "color: #bec7d4; font-size: 10px; background: transparent; border: none;"
+                "color: #bec7d4; font-size: 12px; background: transparent; border: none;"
             )
             kpi_card_layout.addWidget(val_lbl)
             kpi_card_layout.addWidget(title_lbl)
@@ -1603,7 +2066,7 @@ QScrollArea { border: none; }
             m_title_lbl = QLabel(metric_title)
             m_title_lbl.setAlignment(Qt.AlignCenter)
             m_title_lbl.setStyleSheet(
-                "color: #bec7d4; font-size: 10px; font-weight: bold; background: transparent; border: none;"
+                "color: #bec7d4; font-size: 12px; font-weight: bold; background: transparent; border: none;"
             )
 
             if metric_val is not None:
@@ -1642,7 +2105,7 @@ QScrollArea { border: none; }
                 rl.setWordWrap(True)
                 report_inner_layout.addWidget(rl)
 
-        # 내보내기 버튼들
+        # 내보내기 — 단일 버튼 (클릭 시 포맷 선택 다이얼로그)
         from PySide6.QtWidgets import QPushButton
         export_row_widget = QWidget()
         export_row_widget.setStyleSheet("background: transparent;")
@@ -1650,23 +2113,31 @@ QScrollArea { border: none; }
         export_row.setContentsMargins(0, 8, 0, 0)
         export_row.setSpacing(8)
 
-        btn_dl_polymesh = QPushButton("polyMesh 저장")
-        btn_dl_polymesh.clicked.connect(self._on_export_polymesh)
-        btn_dl_su2 = QPushButton("SU2 내보내기")
-        btn_dl_su2.clicked.connect(lambda: self._on_export_fmt("su2"))
-        btn_dl_fluent = QPushButton("Fluent 내보내기")
-        btn_dl_fluent.clicked.connect(lambda: self._on_export_fmt("fluent"))
-        btn_dl_vtk = QPushButton("VTK 내보내기")
-        btn_dl_vtk.clicked.connect(self._on_export_vtk)
-
-        _btn_style = (
-            "QPushButton { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; "
-            "border-radius: 4px; padding: 6px 10px; font-size: 12px; } "
-            "QPushButton:hover { background: #30363d; }"
+        btn_export = QPushButton("Export Mesh…")
+        btn_export.setFixedHeight(36)
+        btn_export.setToolTip(
+            "저장 형식을 선택해 메시를 내보냅니다.\n"
+            "지원: OpenFOAM polyMesh, VTK, SU2, Fluent MSH, CGNS"
         )
-        for btn in [btn_dl_polymesh, btn_dl_su2, btn_dl_fluent, btn_dl_vtk]:
-            btn.setStyleSheet(_btn_style)
-            export_row.addWidget(btn)
+        btn_export.setStyleSheet(
+            "QPushButton { background: #1a2a3a; color: #98cbff; border: 1px solid #0078d4; "
+            "border-radius: 5px; padding: 6px 18px; font-size: 13px; font-weight: bold; } "
+            "QPushButton:hover { background: #1e3a5a; border-color: #98cbff; color: #ffffff; }"
+            "QPushButton:pressed { background: #0078d4; }"
+        )
+        btn_export.clicked.connect(self._on_export_unified)
+        export_row.addWidget(btn_export)
+
+        btn_open_folder = QPushButton("결과 폴더 열기")
+        btn_open_folder.setFixedHeight(36)
+        btn_open_folder.setStyleSheet(
+            "QPushButton { background: #1c1b1b; color: #bec7d4; border: 1px solid #3f4852; "
+            "border-radius: 5px; padding: 6px 14px; font-size: 13px; } "
+            "QPushButton:hover { background: #2a2a2a; border-color: #6b7280; color: #e5e2e1; }"
+        )
+        btn_open_folder.clicked.connect(self._on_open_output)
+        export_row.addWidget(btn_open_folder)
+
         export_row.addStretch()
         report_inner_layout.addWidget(export_row_widget)
 
@@ -1731,20 +2202,105 @@ QScrollArea { border: none; }
         except Exception as exc:  # noqa: BLE001
             self._append_log(f"[오류] 결과 폴더 열기 실패: {exc}")
 
+    def _on_export_unified(self) -> None:  # pragma: no cover
+        """단일 Export 다이얼로그 — 포맷을 선택해 메시를 저장한다."""
+        if self._output_dir is None:
+            self._append_log("[Export] 메시 생성 후 사용 가능합니다.")
+            return
+
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox, QPushButton, QFileDialog
+        from PySide6.QtCore import Qt
+
+        dlg = QDialog(self._qmain if hasattr(self, "_qmain") else None)
+        dlg.setWindowTitle("Export Mesh")
+        dlg.setMinimumWidth(380)
+        dlg.setStyleSheet(
+            "QDialog { background: #1c1b1b; } "
+            "QLabel { color: #e5e2e1; font-size: 13px; } "
+            "QComboBox { background: #201f1f; border: 1px solid #3f4852; border-radius: 4px; "
+            "            padding: 5px 10px; color: #e5e2e1; font-size: 13px; min-height: 28px; } "
+            "QComboBox:hover { border-color: #98cbff; } "
+            "QComboBox QAbstractItemView { background: #1c1b1b; selection-background-color: #00629d; font-size: 13px; } "
+            "QPushButton { background: #201f1f; border: 1px solid #3f4852; border-radius: 4px; "
+            "              padding: 6px 16px; color: #e5e2e1; font-size: 13px; } "
+            "QPushButton:hover { background: #2a3545; border-color: #98cbff; color: #ffffff; } "
+        )
+
+        layout = QVBoxLayout(dlg)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(12)
+
+        lbl = QLabel("저장 형식 선택:")
+        layout.addWidget(lbl)
+
+        fmt_combo = QComboBox()
+        _FMT_OPTIONS = [
+            ("OpenFOAM polyMesh", "polymesh"),
+            ("VTK Unstructured (.vtu)", "vtk"),
+            ("SU2 (.su2)", "su2"),
+            ("Fluent MSH (.msh)", "fluent"),
+            ("CGNS (.cgns)", "cgns"),
+        ]
+        for display, key in _FMT_OPTIONS:
+            fmt_combo.addItem(display, key)
+        fmt_combo.setMinimumHeight(32)
+        layout.addWidget(fmt_combo)
+
+        btn_row = QHBoxLayout()
+        btn_ok = QPushButton("저장…")
+        btn_ok.setStyleSheet(
+            "QPushButton { background: #1a7a3c; border: 1px solid #40e56c; color: #d8fce8; "
+            "border-radius: 4px; padding: 6px 20px; font-size: 13px; font-weight: bold; } "
+            "QPushButton:hover { background: #228a46; color: #ffffff; }"
+        )
+        btn_cancel = QPushButton("취소")
+        btn_row.addStretch()
+        btn_row.addWidget(btn_cancel)
+        btn_row.addWidget(btn_ok)
+        layout.addLayout(btn_row)
+
+        btn_cancel.clicked.connect(dlg.reject)
+        btn_ok.clicked.connect(dlg.accept)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        fmt_key = fmt_combo.currentData()
+
+        if fmt_key == "polymesh":
+            self._on_export_polymesh()
+        elif fmt_key == "vtk":
+            self._on_export_vtk()
+        else:
+            self._on_export_fmt(fmt_key)
+
     def _append_log(self, message: str) -> None:  # pragma: no cover
         if self._log_edit is not None:
             self._log_edit.appendPlainText(str(message))  # type: ignore[union-attr]
 
     def _tier_combo_text(self) -> str:  # pragma: no cover
-        """현재 선택된 엔진/tier 이름을 반환한다."""
+        """현재 선택된 엔진/tier 키를 반환한다.
+
+        UserRole 데이터(예: "netgen", "snappy")를 우선 사용하고,
+        없으면 표시 텍스트에서 추출한다.
+        """
         if self._engine_combo is None:
             return "auto"
+        from PySide6.QtCore import Qt as _Qt
+        idx = self._engine_combo.currentIndex()  # type: ignore[union-attr]
+        if idx < 0:
+            return "auto"
+        item = self._engine_combo.model().item(idx)
+        if item is None:
+            return "auto"
+        key = item.data(_Qt.UserRole)
+        if key and isinstance(key, str):
+            return key
+        # fallback: 표시 텍스트 → 소문자 strip
         text = self._engine_combo.currentText().strip()  # type: ignore[union-attr]
-        # separator나 group header가 선택되면 "auto" 반환
-        text = text.strip()
         if text.startswith("──") or not text:
             return "auto"
-        return text.strip() if text.strip() else "auto"
+        return text.lower().replace(" ", "_") if text else "auto"
 
     def _make_help_button(self, key: str) -> object:  # pragma: no cover
         btn = self._qt_tool_button()
@@ -1805,9 +2361,24 @@ QScrollArea { border: none; }
                 "tetwild": "TetWild",
                 "mmg": "MMG",
                 "jigsaw": "JIGSAW",
+                "jigsaw_fallback": "JIGSAW",
                 "meshpy": "MeshPy",
+                "2d": "MeshPy",
                 "core": "Core",
                 "polyhedral": "Polyhedral",
+                "voro_poly": "Voro",
+                "voro": "Voro",
+                "hohqmesh": "HOHQMesh",
+                "hohq": "HOHQMesh",
+                "gmsh_hex": "GMSH Hex",
+                "hex": "공통",
+                "classy_blocks": "Classy",
+                "hex_classy": "Classy",
+                "cinolib_hex": "Classy",
+                "wildmesh": "WildMesh",
+                "robust_hex": "RobustHex",
+                "algohex": "AlgoHex",
+                "mmg3d": "MMG3D",
             }
             target_tab = _engine_to_tab.get(tier.lower(), "공통")
             tabs = self._tier_tabs_widget  # type: ignore[union-attr]
@@ -1815,6 +2386,12 @@ QScrollArea { border: none; }
                 if tabs.tabText(i) == target_tab:
                     tabs.setCurrentIndex(i)
                     break
+
+    _QUALITY_DESC: dict[str, str] = {
+        "draft":    "~30s  | TetWild / Netgen  | fast tet",
+        "standard": "~2min | Netgen / cfMesh   | balanced",
+        "fine":     "~30min| snappyHexMesh + BL| hex-dominant",
+    }
 
     def _refresh_quality_seg_btns(self) -> None:
         """현재 _quality_level에 맞게 세그먼트 버튼 스타일을 갱신한다."""
@@ -1831,6 +2408,10 @@ QScrollArea { border: none; }
                     "border-radius: 3px; padding: 2px 8px; font-size: 11px; }"
                     "QPushButton:hover { background: #2a2a2a; color: #e5e2e1; }"
                 )
+        # 품질 설명 라벨 업데이트
+        if self._quality_desc_label is not None:
+            desc = self._QUALITY_DESC.get(active, "")
+            self._quality_desc_label.setText(desc)  # type: ignore[union-attr]
 
     def update_pipeline_step(self, step_idx: int) -> None:  # pragma: no cover
         """파이프라인 스텝 인디케이터를 갱신한다.
@@ -1841,17 +2422,17 @@ QScrollArea { border: none; }
         for i, lbl in enumerate(self._pipeline_step_labels):
             if i < step_idx:
                 lbl.setStyleSheet(  # type: ignore[union-attr]
-                    "color: #40e56c; font-size: 10px; letter-spacing: 1px; "
+                    "color: #40e56c; font-size: 12px; letter-spacing: 1px; "
                     "padding: 4px 10px; border-radius: 2px; background: #201f1f;"
                 )
             elif i == step_idx:
                 lbl.setStyleSheet(  # type: ignore[union-attr]
-                    "color: #ffffff; font-size: 10px; letter-spacing: 1px; "
+                    "color: #ffffff; font-size: 12px; letter-spacing: 1px; "
                     "padding: 4px 10px; border-radius: 2px; background: #00629d;"
                 )
             else:
                 lbl.setStyleSheet(  # type: ignore[union-attr]
-                    "color: #4a4a4a; font-size: 10px; letter-spacing: 1px; "
+                    "color: #4a4a4a; font-size: 12px; letter-spacing: 1px; "
                     "padding: 4px 10px; border-radius: 2px;"
                 )
 
@@ -1937,7 +2518,10 @@ QScrollArea { border: none; }
         if self._output_dir is None:
             return
         from PySide6.QtWidgets import QFileDialog
-        target = QFileDialog.getExistingDirectory(self._qmain if hasattr(self, "_qmain") else None, "polyMesh 저장 위치 선택")
+        target = QFileDialog.getExistingDirectory(
+            self._qmain if hasattr(self, "_qmain") else None, "polyMesh 저장 위치 선택", "",
+            options=QFileDialog.Option.DontUseNativeDialog,
+        )
         if not target:
             return
         import shutil
@@ -1955,7 +2539,8 @@ QScrollArea { border: none; }
             return
         from PySide6.QtWidgets import QFileDialog
         path, _ = QFileDialog.getSaveFileName(
-            None, "VTK 파일 저장", str(self._output_dir / "mesh.vtu"), "VTK (*.vtu *.vtk)"
+            None, "VTK 파일 저장", str(self._output_dir / "mesh.vtu"), "VTK (*.vtu *.vtk)",
+            options=QFileDialog.Option.DontUseNativeDialog,
         )
         if not path:
             return
@@ -1979,7 +2564,8 @@ QScrollArea { border: none; }
         file_filter = _ext_map.get(fmt, f"{fmt.upper()} (*.*)")
         default_name = f"mesh{_default_ext.get(fmt, '')}"
         path, _ = QFileDialog.getSaveFileName(
-            None, f"{fmt.upper()} 파일 저장", str(self._output_dir / default_name), file_filter
+            None, f"{fmt.upper()} 파일 저장", str(self._output_dir / default_name), file_filter,
+            options=QFileDialog.Option.DontUseNativeDialog,
         )
         if not path:
             return

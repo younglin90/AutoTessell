@@ -488,41 +488,46 @@ class TestTierGracefulFail:
         assert attempt.error_message is not None
 
     def test_tier_wildmesh_quality_params_draft(self) -> None:
-        """draft quality_level → stop_quality=20, max_its=40."""
+        """draft quality_level → stop_quality=20, max_its=40, epsilon=0.002 (형상 보존)."""
         from core.generator.tier_wildmesh import _get_quality_params
 
-        sq, mi, eps = _get_quality_params("draft", {})
-        assert sq == 20.0
-        assert mi == 40
-        assert eps is None
+        p = _get_quality_params("draft", {})
+        assert p["stop_quality"] == 20.0
+        assert p["max_its"] == 40
+        assert p["epsilon"] == 0.002   # 0.02→0.002: cube 꼭짓점 이탈 방지
+        assert p["edge_length_r"] == 0.06
 
     def test_tier_wildmesh_quality_params_standard(self) -> None:
-        """standard quality_level → stop_quality=10, max_its=80."""
+        """standard quality_level → stop_quality=10, max_its=80, epsilon=0.001."""
         from core.generator.tier_wildmesh import _get_quality_params
 
-        sq, mi, eps = _get_quality_params("standard", {})
-        assert sq == 10.0
-        assert mi == 80
-        assert eps is None
+        p = _get_quality_params("standard", {})
+        assert p["stop_quality"] == 10.0
+        assert p["max_its"] == 80
+        assert p["epsilon"] == 0.001
+        assert p["edge_length_r"] == 0.04
 
     def test_tier_wildmesh_quality_params_fine(self) -> None:
-        """fine quality_level → stop_quality=5, max_its=200."""
+        """fine quality_level → stop_quality=5, max_its=200, epsilon=0.0003."""
         from core.generator.tier_wildmesh import _get_quality_params
 
-        sq, mi, eps = _get_quality_params("fine", {})
-        assert sq == 5.0
-        assert mi == 200
-        assert eps is None
+        p = _get_quality_params("fine", {})
+        assert p["stop_quality"] == 5.0
+        assert p["max_its"] == 200
+        assert p["epsilon"] == 0.0003
+        assert p["edge_length_r"] == 0.02
 
     def test_tier_wildmesh_quality_params_override(self) -> None:
         """tier_specific_params 값이 기본값을 오버라이드한다."""
         from core.generator.tier_wildmesh import _get_quality_params
 
-        params = {"wildmesh_stop_quality": 7.5, "wildmesh_max_its": 120, "wildmesh_epsilon": 0.001}
-        sq, mi, eps = _get_quality_params("standard", params)
-        assert sq == 7.5
-        assert mi == 120
-        assert eps == 0.001
+        params = {"wildmesh_stop_quality": 7.5, "wildmesh_max_its": 120,
+                  "wildmesh_epsilon": 0.001, "wildmesh_edge_length_r": 0.04}
+        p = _get_quality_params("standard", params)
+        assert p["stop_quality"] == 7.5
+        assert p["max_its"] == 120
+        assert p["epsilon"] == 0.001
+        assert p["edge_length_r"] == 0.04
 
     def test_tier_wildmesh_registered_in_pipeline(self) -> None:
         """tier_wildmesh가 _TIER_REGISTRY에 등록되어 있어야 한다."""
@@ -601,11 +606,11 @@ class TestPipeline:
         assert log.execution_summary is not None
         assert log.execution_summary.total_time_seconds >= 0.0
 
-    def test_pipeline_fallback_order(
+    def test_pipeline_explicit_tier_no_fallback(
         self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
     ) -> None:
-        """selected_tier 실패 → fallback_tiers 순서대로 시도 확인."""
-        from core.generator.pipeline import MeshGenerator, _resolve_tier
+        """명시적 selected_tier 실패 시 fallback 없이 즉시 중단 확인."""
+        from core.generator.pipeline import MeshGenerator
 
         generator = MeshGenerator()
         called_tiers: list[str] = []
@@ -622,13 +627,32 @@ class TestPipeline:
         with patch("core.generator.pipeline._run_tier", side_effect=mock_run_tier):
             log = generator.run(mesh_strategy, dummy_stl, tmp_path)
 
-        # 호출 순서 확인
-        expected_sequence = [
-            _resolve_tier("tier1_snappy"),
-            _resolve_tier("tier15_cfmesh"),
-            _resolve_tier("tier2_tetwild"),
-        ]
-        assert called_tiers == expected_sequence
+        # selected_tier만 호출 — fallback_tiers는 시도하지 않음
+        assert called_tiers == ["tier1_snappy"]
+        assert log.execution_summary.tiers_attempted[0].status == "failed"
+
+    def test_auto_mode_fallback_order(
+        self, tmp_path: Path, dummy_stl: Path
+    ) -> None:
+        """auto 모드에서 fallback이 순서대로 시도되는지 확인."""
+        from core.generator.pipeline import MeshGenerator, _resolve_tier
+        from core.schemas import QualityLevel
+
+        generator = MeshGenerator()
+        called_tiers: list[str] = []
+        strategy = _make_strategy_with_quality(QualityLevel.DRAFT)
+
+        def mock_run_tier(tier, strategy, path, case):
+            called_tiers.append(tier)
+            return TierAttempt(tier=tier, status="failed", time_seconds=0.01,
+                               error_message=f"{tier} mock fail")
+
+        with patch("core.generator.pipeline._run_tier", side_effect=mock_run_tier):
+            generator.run(strategy, dummy_stl, tmp_path)
+
+        # draft auto: tetwild → jigsaw → netgen 순서
+        assert called_tiers[0] == "tier2_tetwild"
+        assert called_tiers[1] == "tier_jigsaw"
 
     def test_pipeline_stops_on_success(
         self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
@@ -662,38 +686,39 @@ class TestPipeline:
         assert called_tiers == ["tier1_snappy"]
         assert log.execution_summary.tiers_attempted[0].status == "success"
 
-    def test_pipeline_fallback_succeeds(
-        self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
+    def test_auto_mode_fallback_succeeds(
+        self, tmp_path: Path, dummy_stl: Path
     ) -> None:
-        """selected_tier 실패 → 첫 fallback 성공 → 나머지는 시도 안 함 확인."""
+        """auto 모드: 첫 tier 실패 → 다음 tier 성공 → 나머지는 시도 안 함."""
         from core.generator.pipeline import MeshGenerator
+        from core.schemas import QualityLevel
 
         generator = MeshGenerator()
         called_tiers: list[str] = []
+        strategy = _make_strategy_with_quality(QualityLevel.STANDARD)
 
         def mock_run_tier(tier, strategy, path, case):
             called_tiers.append(tier)
-            if tier == "tier15_cfmesh":
+            if tier == "tier_meshpy":
                 return TierAttempt(tier=tier, status="success", time_seconds=0.01)
             return TierAttempt(
                 tier=tier, status="failed", time_seconds=0.01, error_message="mock fail"
             )
 
         with patch("core.generator.pipeline._run_tier", side_effect=mock_run_tier):
-            log = generator.run(mesh_strategy, dummy_stl, tmp_path)
+            log = generator.run(strategy, dummy_stl, tmp_path)
 
-        assert "tier1_snappy" in called_tiers
-        assert "tier15_cfmesh" in called_tiers
-        assert "tier2_tetwild" not in called_tiers
-        # 성공한 attempt 확인
+        assert "tier05_netgen" in called_tiers
+        assert "tier_meshpy" in called_tiers
+        assert "tier15_cfmesh" not in called_tiers
         success_attempts = [a for a in log.execution_summary.tiers_attempted if a.status == "success"]
         assert len(success_attempts) == 1
-        assert success_attempts[0].tier == "tier15_cfmesh"
+        assert success_attempts[0].tier == "tier_meshpy"
 
     def test_pipeline_tiers_attempted_recorded(
         self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
     ) -> None:
-        """실행된 모든 Tier가 tiers_attempted에 기록되는지 확인."""
+        """명시적 tier 실패 시 1개 attempt만 기록됨 확인."""
         from core.generator.pipeline import MeshGenerator
 
         generator = MeshGenerator()
@@ -708,11 +733,10 @@ class TestPipeline:
             log = generator.run(mesh_strategy, dummy_stl, tmp_path)
 
         attempted = log.execution_summary.tiers_attempted
-        # selected_tier + 2 fallbacks = 3
-        assert len(attempted) == 3
+        # 명시적 tier 선택 시 fallback 없이 selected_tier만 시도됨
+        assert len(attempted) == 1
         assert attempted[0].tier == "tier1_snappy"
-        assert attempted[1].tier == "tier15_cfmesh"
-        assert attempted[2].tier == "tier2_tetwild"
+        assert attempted[0].status == "failed"
 
     def test_pipeline_work_dir_cleaned_between_tiers(
         self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
@@ -738,8 +762,8 @@ class TestPipeline:
                 )
                 pipeline.MeshGenerator().run(mesh_strategy, dummy_stl, tmp_path)
 
-        # 3개 Tier 시도 → 3번 clean 호출
-        assert call_count == 3
+        # 명시적 tier 선택 → selected_tier만 실행 → clean 1번 호출
+        assert call_count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -981,8 +1005,9 @@ class TestTierOrderByQualityLevel:
         strategy.fallback_tiers = ["tier15_cfmesh"]
         order = gen._get_tier_order(strategy)
 
+        # 명시적 tier 선택 시 fallback 없음 — selected_tier만 반환
         assert order[0] == "tier1_snappy", "명시적 selected_tier가 우선되어야 합니다"
-        assert order[1] == "tier15_cfmesh"
+        assert len(order) == 1, "명시적 모드에서는 fallback_tiers를 포함하지 않음"
 
     def test_explicit_tier_alias_overrides_quality_level(self) -> None:
         """별칭(snappy)으로 지정해도 명시적 모드로 인식."""
@@ -2657,7 +2682,7 @@ class TestTierGmshHex:
     def test_gmsh_hex_no_hex_cells_returns_failed(
         self, mesh_strategy: MeshStrategy, tmp_path: Path, dummy_stl: Path
     ) -> None:
-        """hex 셀 없이 tet만 생성된 경우 → status='failed' 반환 (다음 tier 전환)."""
+        """hex/tet 셀 모두 없는 경우 → status='failed' 반환 (다음 tier 전환)."""
         pytest.importorskip("gmsh", reason="gmsh 미설치 — 스킵")
         pytest.importorskip("meshio", reason="meshio 미설치 — 스킵")
 
@@ -2665,12 +2690,12 @@ class TestTierGmshHex:
         import meshio as _meshio
         import numpy as np
 
-        # hex 셀 없는 가짜 msh 데이터 (tet만 있음)
+        # hex/tet 셀 모두 없는 가짜 msh 데이터 (삼각형 면만 있음)
         fake_points = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=float)
-        fake_tets = np.array([[0, 1, 2, 3]], dtype=np.int64)
+        fake_tris = np.array([[0, 1, 2], [0, 1, 3]], dtype=np.int64)
         fake_mesh = _meshio.Mesh(
             points=fake_points,
-            cells=[_meshio.CellBlock("tetra", fake_tets)],
+            cells=[_meshio.CellBlock("triangle", fake_tris)],
         )
 
         generator = TierGmshHexGenerator()
@@ -2690,3 +2715,118 @@ class TestTierGmshHex:
         assert attempt.tier == "tier_gmsh_hex"
         assert attempt.error_message is not None
         assert "hex" in attempt.error_message.lower()
+
+
+# ---------------------------------------------------------------------------
+# Voronoi Polyhedral Tier 테스트
+# ---------------------------------------------------------------------------
+
+
+class TestTierVoroPoly:
+    """tier_voro_poly 기본 동작 검증."""
+
+    def test_tier_name_constant(self) -> None:
+        from core.generator.tier_voro_poly import TIER_NAME
+        assert TIER_NAME == "tier_voro_poly"
+
+    def test_registered_in_pipeline(self) -> None:
+        from core.generator.pipeline import _TIER_REGISTRY, _TIER_ALIASES
+        assert "tier_voro_poly" in _TIER_REGISTRY
+        assert "voro_poly" in _TIER_ALIASES
+        assert _TIER_ALIASES["voro_poly"] == "tier_voro_poly"
+        assert "voro" in _TIER_ALIASES
+        assert _TIER_ALIASES["voro"] == "tier_voro_poly"
+
+    def test_resolve_alias(self) -> None:
+        from core.generator.pipeline import _resolve_tier
+        assert _resolve_tier("voro_poly") == "tier_voro_poly"
+        assert _resolve_tier("voro") == "tier_voro_poly"
+        assert _resolve_tier("tier_voro_poly") == "tier_voro_poly"
+
+    def test_missing_file_returns_failed(
+        self, tmp_path: Path, mesh_strategy: "MeshStrategy"
+    ) -> None:
+        from core.generator.tier_voro_poly import TierVoroPolyGenerator
+        gen = TierVoroPolyGenerator()
+        attempt = gen.run(mesh_strategy, tmp_path / "nonexistent.stl", tmp_path)
+        assert attempt.status == "failed"
+        assert attempt.tier == "tier_voro_poly"
+
+    def test_success_with_sphere_stl(
+        self, tmp_path: Path, mesh_strategy: "MeshStrategy"
+    ) -> None:
+        """구 STL로 Voronoi 폴리헤드럴 메쉬 생성 성공 확인."""
+        try:
+            import pyvoro  # noqa: F401
+            import trimesh  # noqa: F401
+            import rtree  # noqa: F401
+        except ImportError:
+            pytest.skip("pyvoro/trimesh/rtree 미설치")
+
+        import trimesh
+        sphere = trimesh.creation.uv_sphere(radius=0.5, count=[12, 12])
+        stl_path = tmp_path / "sphere.stl"
+        sphere.export(str(stl_path))
+
+        from core.generator.tier_voro_poly import TierVoroPolyGenerator
+        # 소수 시드 → 빠른 테스트
+        mesh_strategy.tier_specific_params["voro_n_seeds"] = 20
+        gen = TierVoroPolyGenerator()
+        attempt = gen.run(mesh_strategy, stl_path, tmp_path)
+
+        assert attempt.status == "success", f"Failed: {attempt.error_message}"
+        poly_dir = tmp_path / "constant" / "polyMesh"
+        assert poly_dir.exists()
+        for fname in ("points", "faces", "owner", "neighbour", "boundary"):
+            assert (poly_dir / fname).exists(), f"{fname} 파일 없음"
+
+
+# ---------------------------------------------------------------------------
+# HOHQMesh Tier 테스트
+# ---------------------------------------------------------------------------
+
+
+class TestTierHOHQMesh:
+    """tier_hohqmesh 기본 동작 검증."""
+
+    def test_tier_name_constant(self) -> None:
+        from core.generator.tier_hohqmesh import TIER_NAME
+        assert TIER_NAME == "tier_hohqmesh"
+
+    def test_registered_in_pipeline(self) -> None:
+        from core.generator.pipeline import _TIER_REGISTRY, _TIER_ALIASES
+        assert "tier_hohqmesh" in _TIER_REGISTRY
+        assert "hohqmesh" in _TIER_ALIASES
+        assert _TIER_ALIASES["hohqmesh"] == "tier_hohqmesh"
+        assert "hohq" in _TIER_ALIASES
+        assert _TIER_ALIASES["hohq"] == "tier_hohqmesh"
+
+    def test_resolve_alias(self) -> None:
+        from core.generator.pipeline import _resolve_tier
+        assert _resolve_tier("hohqmesh") == "tier_hohqmesh"
+        assert _resolve_tier("hohq") == "tier_hohqmesh"
+
+    def test_no_binary_returns_failed(
+        self, tmp_path: Path, mesh_strategy: "MeshStrategy", dummy_stl: Path
+    ) -> None:
+        """HOHQMesh 바이너리 없으면 failed 반환."""
+        from unittest.mock import patch
+        from core.generator.tier_hohqmesh import TierHOHQMeshGenerator
+        with patch("core.generator.tier_hohqmesh._find_hohqmesh", return_value=None):
+            gen = TierHOHQMeshGenerator()
+            attempt = gen.run(mesh_strategy, dummy_stl, tmp_path)
+        assert attempt.status == "failed"
+        assert attempt.tier == "tier_hohqmesh"
+        assert "HOHQMesh" in (attempt.error_message or "")
+
+    def test_control_file_generation(
+        self, tmp_path: Path, mesh_strategy: "MeshStrategy"
+    ) -> None:
+        """control 파일이 올바르게 생성되는지 확인."""
+        from core.generator.tier_hohqmesh import _build_control_file
+        control_path = _build_control_file(mesh_strategy, tmp_path / "out.mesh", tmp_path)
+        assert control_path.exists()
+        content = control_path.read_text()
+        assert "BACKGROUND_GRID" in content
+        assert "SIMPLE_EXTRUSION" in content
+        assert "CONTROL_INPUT" in content

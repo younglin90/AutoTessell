@@ -562,10 +562,13 @@ class GeometryAnalyzer:
 
         if single_closed and surface.genus == 0:
             return FlowEstimation(
-                type="external",
-                confidence=0.85,
-                reasoning="단일 폐곡면, genus=0, 외부 유동 물체로 추정",
-                alternatives=["internal"],
+                type="internal",
+                confidence=0.75,
+                reasoning=(
+                    "단일 폐곡면, genus=0, 내부 유동 도메인으로 추정. "
+                    "외부 유동(물체 주변 바람터널)이 필요하면 --flow-type external을 지정하세요."
+                ),
+                alternatives=["external"],
             )
 
         if single_closed and surface.genus > 0:

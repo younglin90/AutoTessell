@@ -127,14 +127,12 @@ class Tier2DMeshPyGenerator:
             facets = [[i, (i + 1) % len(boundary_2d)] for i in range(len(boundary_2d))]
             mesh_info.set_facets(facets)
 
-            # Triangle 옵션: 품질 메싱
-            opts = mtri.Options(
-                "p",  # p=PLCmesh (경계 조건 메싱)
-                max_area=target_area,
+            # Triangle 품질 메싱 (meshpy >= 2021 API: keyword args)
+            result_mesh = mtri.build(
+                mesh_info,
+                max_volume=target_area,
                 min_angle=min_angle,
             )
-
-            result_mesh = mtri.build(mesh_info, opts)
 
             tri_v_2d = np.array(result_mesh.points, dtype=np.float64)
             tri_f = np.array(result_mesh.elements, dtype=np.int64)
@@ -246,8 +244,15 @@ class Tier2DMeshPyGenerator:
         boundary_edges = [edge for edge, cnt in edge_count.items() if cnt == 1]
 
         if not boundary_edges:
-            logger.warning("no_boundary_edges_found", fallback="전체 점 사용")
-            return projected_2d
+            # 경계가 없는 closed 메쉬 → 볼록 껍질로 대체
+            from scipy.spatial import ConvexHull
+            logger.warning("no_boundary_edges_found", fallback="convex hull 사용")
+            try:
+                hull = ConvexHull(projected_2d)
+                hull_verts = hull.vertices  # 정렬된 볼록 껍질 인덱스
+                return projected_2d[hull_verts]
+            except Exception:
+                return projected_2d
 
         # 경계 에지를 연결된 경로로 정렬
         edge_dict = {}

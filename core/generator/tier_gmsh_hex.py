@@ -164,7 +164,20 @@ class TierGmshHexGenerator:
         msh_path = case_dir / "gmsh_hex_mesh.msh"
 
         # gmsh 세션 (try/finally로 반드시 finalize)
-        gmsh.initialize()
+        # 비-메인 스레드에서 gmsh.initialize()가 signal.signal() 호출 시
+        # "signal only works in main thread" ValueError 발생 → 임시 우회
+        import signal as _signal
+        import threading as _threading
+
+        if _threading.current_thread() is not _threading.main_thread():
+            _orig_signal = _signal.signal
+            _signal.signal = lambda *a, **kw: None  # type: ignore[assignment]
+            try:
+                gmsh.initialize()
+            finally:
+                _signal.signal = _orig_signal
+        else:
+            gmsh.initialize()
         try:
             hex_generated = self._generate_gmsh_mesh(
                 gmsh=gmsh,
@@ -193,12 +206,14 @@ class TierGmshHexGenerator:
         hex_cells = [c for c in msh_data.cells if c.type == "hexahedron"]
         tet_cells = [c for c in msh_data.cells if c.type == "tetra"]
 
-        if not hex_generated or not hex_cells:
+        # hex_generated=False(transfinite 실패)여도 RecombineAll로 hex셀이 만들어질 수 있음
+        # tet_cells 있어도 유효한 출력 (gmshToFoam/PolyMeshWriter 변환 가능)
+        if not hex_cells and not tet_cells:
             logger.warning(
                 "tier_gmsh_hex_no_hex_cells",
                 hex_count=len(hex_cells),
                 tet_count=len(tet_cells),
-                msg="hex 셀 없음 → 다음 Tier로 전환",
+                msg="hex/tet 셀 없음 → 다음 Tier로 전환",
             )
             elapsed = time.monotonic() - t_start
             return TierAttempt(
@@ -253,13 +268,40 @@ class TierGmshHexGenerator:
         """
         gmsh.model.add("hex_mesh")
 
-        # STL 표면 로드
-        gmsh.merge(str(stl_path))
+        # STL 표면 로드 — gmsh는 binary STL을 거부하는 경우가 있으므로
+        # ASCII로 변환 후 재시도한다.
+        try:
+            gmsh.merge(str(stl_path))
+        except Exception:
+            import tempfile
+            import trimesh as _trimesh
+            surf = _trimesh.load(str(stl_path), force="mesh")
+            with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
+                ascii_path = tmp.name
+            surf.export(ascii_path, file_type="stl_ascii")
+            gmsh.merge(ascii_path)
+            import os as _os
+            _os.unlink(ascii_path)
 
         # 표면 분류 및 볼륨 생성
         angle_rad = feature_angle * (math.pi / 180.0)
         gmsh.model.mesh.classifySurfaces(angle_rad, True, True, math.pi)
         gmsh.model.mesh.createGeometry()
+
+        # createGeometry 후 볼륨 엔티티가 없으면 STL 표면으로 볼륨을 명시적으로 생성
+        volumes = gmsh.model.getEntities(3)
+        if not volumes:
+            surfaces = gmsh.model.getEntities(2)
+            if surfaces:
+                sl = gmsh.model.geo.addSurfaceLoop([s[1] for s in surfaces])
+                gmsh.model.geo.addVolume([sl])
+                gmsh.model.geo.synchronize()
+                logger.info(
+                    "tier_gmsh_hex_volume_created_explicitly",
+                    num_surfaces=len(surfaces),
+                )
+            else:
+                raise RuntimeError("gmsh에 표면 엔티티가 없어 볼륨 생성 불가")
 
         # 공통 메시 크기 옵션
         gmsh.option.setNumber("Mesh.CharacteristicLengthMax", char_length_max)

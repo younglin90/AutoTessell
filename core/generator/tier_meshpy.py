@@ -108,11 +108,9 @@ class TierMeshPyGenerator:
             mesh_info.set_facets(faces.tolist())
 
             # TetGen 옵션: 구속 Delaunay, 품질 개선
-            opts = mtet.Options(
-                "pq",  # p=PLCmesh, q=quality
-                max_volume=max_vol,
-                min_angle=min_angle,
-            )
+            # 'p' = PLCmesh, 'q{angle}' = quality, 'a{vol}' = max volume constraint
+            switch_str = f"pq{min_angle:.1f}a{max_vol:.10e}"
+            opts = mtet.Options(switch_str)
 
             result_mesh = mtet.build(mesh_info, opts)
 

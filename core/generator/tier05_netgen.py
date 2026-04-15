@@ -110,7 +110,14 @@ class Tier05NetgenGenerator:
                 if cad_path != preprocessed_path:
                     logger.info("cad_preprocessed", method="cadquery_clean", src=str(preprocessed_path))
             else:
-                geo = STLGeometry(str(preprocessed_path))
+                # STL 입력 — external flow 시 도메인 박스 + 물체 복합 지오메트리 구성
+                flow_type = getattr(strategy, "flow_type", "internal")
+                stl_for_netgen = preprocessed_path
+                if flow_type == "external" and strategy.domain is not None:
+                    stl_for_netgen = self._build_external_compound_stl(
+                        preprocessed_path, strategy, case_dir
+                    )
+                geo = STLGeometry(str(stl_for_netgen))
 
             # Netgen C++ 라이브러리가 stdout/stderr로 직접 출력하므로
             # fd-level 리다이렉트로 억제한다 (Python redirect_stdout으로는 불충분)
@@ -283,6 +290,68 @@ class Tier05NetgenGenerator:
                 fallback="원본 CAD 파일 사용",
             )
             return cad_path
+
+
+    @staticmethod
+    def _build_external_compound_stl(
+        preprocessed_path: Path,
+        strategy: MeshStrategy,
+        case_dir: Path,
+    ) -> Path:
+        """External flow용 복합 STL 생성.
+
+        도메인 박스(법선 반전) + 물체 표면을 결합해
+        Netgen이 도메인 - 물체 영역을 메싱하도록 한다.
+
+        Args:
+            preprocessed_path: 전처리된 물체 STL.
+            strategy: 메시 전략 (domain 포함).
+            case_dir: 케이스 디렉터리 (임시 파일 저장 위치).
+
+        Returns:
+            복합 STL 경로. 실패 시 원본 경로 반환.
+        """
+        try:
+            import trimesh as _trimesh
+
+            surf: _trimesh.Trimesh = _trimesh.load(
+                str(preprocessed_path), force="mesh"
+            )  # type: ignore[assignment]
+
+            domain = strategy.domain
+            box_size = [
+                float(domain.max[0] - domain.min[0]),
+                float(domain.max[1] - domain.min[1]),
+                float(domain.max[2] - domain.min[2]),
+            ]
+            box_center = [
+                float((domain.min[0] + domain.max[0]) / 2),
+                float((domain.min[1] + domain.max[1]) / 2),
+                float((domain.min[2] + domain.max[2]) / 2),
+            ]
+            domain_box = _trimesh.creation.box(extents=box_size)
+            domain_box.apply_translation(box_center)
+            domain_box.invert()  # 법선을 안쪽으로 → 도메인 경계
+
+            compound = _trimesh.util.concatenate([surf, domain_box])
+            compound_path = case_dir / "netgen_external_compound.stl"
+            compound.export(str(compound_path))
+
+            logger.info(
+                "netgen_external_compound_built",
+                body_faces=len(surf.faces),
+                domain_faces=len(domain_box.faces),
+                compound_path=str(compound_path),
+            )
+            return compound_path
+
+        except Exception as exc:
+            logger.warning(
+                "netgen_external_compound_failed",
+                error=str(exc),
+                fallback="원본 STL 사용",
+            )
+            return preprocessed_path
 
 
 @contextlib.contextmanager

@@ -16,6 +16,38 @@ from typing import Any
 import numpy as np
 import numpy.typing as npt
 
+# numpy 2.x 호환 패치 — classy_blocks가 내부적으로 제거된 numpy 타입 별칭을 사용
+# numpy 2.0에서 제거된 모든 타입 별칭을 일괄 복원
+_NP2_COMPAT: dict[str, object] = {
+    # Boolean
+    "bool8":         np.bool_,
+    # Integer
+    "int0":          np.intp,
+    "uint0":         np.uintp,
+    "int_":          np.int_,
+    # Float
+    "float_":        np.float64,
+    "longfloat":     np.longdouble,
+    # Complex
+    "complex_":      np.complex128,
+    "singlecomplex": np.complex64,
+    "longcomplex":   getattr(np, "clongdouble", np.complex128),
+    "cfloat":        np.complex128,
+    "cdouble":       np.complex128,
+    "clongdouble":   getattr(np, "clongdouble", np.complex128),
+    "clongfloat":    getattr(np, "clongdouble", np.complex128),
+    # Object / String / Void
+    "object0":       object,
+    "str0":          np.str_,
+    "bytes0":        np.bytes_,
+    "void0":         np.void,
+    "unicode_":      np.str_,
+    "string_":       np.bytes_,
+}
+for _alias, _repl in _NP2_COMPAT.items():
+    if not hasattr(np, _alias):
+        setattr(np, _alias, _repl)  # type: ignore[attr-defined]
+
 from core.schemas import MeshStrategy, TierAttempt
 from core.utils.errors import format_missing_dependency_message
 from core.utils.logging import get_logger
@@ -358,6 +390,19 @@ mergePatchPairs
         Args:
             case_dir: OpenFOAM 케이스 디렉터리.
         """
+        # OpenFOAM은 controlDict 없이 blockMesh를 실행하면 에러
+        system_dir = case_dir / "system"
+        system_dir.mkdir(parents=True, exist_ok=True)
+        control_dict = system_dir / "controlDict"
+        if not control_dict.exists():
+            control_dict.write_text(
+                'FoamFile { version 2.0; format ascii; class dictionary; '
+                'location "system"; object controlDict; }\n'
+                'application blockMesh;\nstartFrom startTime;\nstartTime 0;\n'
+                'stopAt endTime;\nendTime 1;\ndeltaT 1;\n'
+                'writeControl timeStep;\nwriteInterval 1;\n'
+            )
+
         try:
             logger.info("blockmesh_running", case_dir=str(case_dir))
             run_openfoam("blockMesh", case_dir)

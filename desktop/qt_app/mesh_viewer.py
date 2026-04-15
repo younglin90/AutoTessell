@@ -651,17 +651,31 @@ class InteractiveMeshViewer(QWidget):
         try:
             reader = pv.OpenFOAMReader(str(foam_file))
             mesh = reader.read()
-            # MultiBlock → 단일 메시로 합치기
-            if hasattr(mesh, "combine"):
-                combined = mesh.combine()
-                if combined is not None and getattr(combined, "n_cells", 0) > 0:
-                    return combined
-            # 블록별 순회해서 셀이 있는 첫 번째 블록 반환
-            if hasattr(mesh, "n_blocks"):
-                for i in range(mesh.n_blocks):
-                    block = mesh.GetBlock(i)
-                    if block is not None and getattr(block, "n_cells", 0) > 0:
-                        return block
+
+            # Block 0 = 내부 볼륨 셀(tet/hex), Block 1 = 경계 패치(PolyData)
+            # combine()은 tet(타입10) + triangle(타입5)을 혼합해
+            # 경계면을 이중 렌더링하고 z-fighting/음영 왜곡을 일으키므로 사용 안 함.
+            if hasattr(mesh, "n_blocks") and mesh.n_blocks > 0:
+                # Block 0: 볼륨 셀 → extract_surface()로 외곽 면 추출
+                block0 = mesh.GetBlock(0)
+                if block0 is not None and getattr(block0, "n_cells", 0) > 0:
+                    try:
+                        surface = block0.extract_surface()
+                        if surface is not None and getattr(surface, "n_cells", 0) > 0:
+                            return surface
+                    except Exception:
+                        return block0
+                # Block 1: 경계 패치 MultiBlock → 첫 번째 PolyData 서브블록 반환
+                if mesh.n_blocks > 1:
+                    block1 = mesh.GetBlock(1)
+                    if block1 is not None:
+                        if hasattr(block1, "n_blocks"):
+                            for j in range(block1.n_blocks):
+                                sub = block1.GetBlock(j)
+                                if sub is not None and getattr(sub, "n_cells", 0) > 0:
+                                    return sub
+                        elif getattr(block1, "n_cells", 0) > 0:
+                            return block1
             if getattr(mesh, "n_cells", 0) > 0:
                 return mesh
         except Exception as e:

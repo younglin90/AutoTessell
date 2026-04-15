@@ -23,17 +23,27 @@ class Tier0CoreGenerator:
     @staticmethod
     def _import_core_module():
         """Tier0 C++ 확장 모듈을 import한다."""
+        def _check_module(atc, name):
+            """모듈에 tetrahedralize_stl 메서드가 있는지 확인한다."""
+            if not hasattr(atc, "tetrahedralize_stl"):
+                raise ImportError(
+                    f"{name} 모듈에 tetrahedralize_stl이 없습니다 "
+                    f"(available: {[a for a in dir(atc) if not a.startswith('_')]}). "
+                    "C++ 확장을 다시 빌드하세요."
+                )
+            return atc, name
+
         try:
             import auto_tessell_core as atc  # type: ignore[import-not-found]
-            return atc, "auto_tessell_core"
+            return _check_module(atc, "auto_tessell_core")
         except ImportError as exc_auto:
             try:
                 import tessell_mesh as atc  # type: ignore[import-not-found]
-                return atc, "tessell_mesh"
+                return _check_module(atc, "tessell_mesh")
             except ImportError as exc_tessell:
                 try:
                     from backend.mesh import tessell_mesh as atc  # type: ignore[import-not-found]
-                    return atc, "backend.mesh.tessell_mesh"
+                    return _check_module(atc, "backend.mesh.tessell_mesh")
                 except ImportError as exc_backend:
                     raise ImportError(
                         "auto_tessell_core/tessell_mesh 모듈 import 실패. "

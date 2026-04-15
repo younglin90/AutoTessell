@@ -18,7 +18,14 @@ _TIER_ORDER = [
     "tier0_core",               # 단순 형상
     "tier_meshpy",              # Tet fallback
     "tier2_tetwild",            # 불량 표면
+    "tier_jigsaw",              # JIGSAW Tet
     "tier_jigsaw_fallback",     # 최후 fallback (매우 안정적)
+    "tier_wildmesh",            # WildMesh
+    "tier_gmsh_hex",            # GMSH Hex
+    "tier_cinolib_hex",         # Cinolib Hex
+    "tier_voro_poly",           # Voronoi Polyhedral
+    "tier_hohqmesh",            # HOHQMesh structured
+    "tier_classy_blocks",       # Classy Blocks
 ]
 
 # CLI hint → canonical tier name
@@ -32,7 +39,25 @@ _HINT_MAP: dict[str, str] = {
     "snappy": "tier1_snappy",
     "cfmesh": "tier15_cfmesh",
     "tetwild": "tier2_tetwild",
+    "jigsaw": "tier_jigsaw",
     "jigsaw_fallback": "tier_jigsaw_fallback",
+    "mmg": "tier_mmg3d",
+    "mmg3d": "tier_mmg3d",
+    "tier_mmg3d": "tier_mmg3d",
+    "robust_hex": "tier_robust_hex",
+    "tier_robust_hex": "tier_robust_hex",
+    "algohex": "tier_algohex",
+    "algo_hex": "tier_algohex",
+    "tier_algohex": "tier_algohex",
+    "meshpy": "tier_meshpy",
+    "classy_blocks": "tier_classy_blocks",
+    "wildmesh": "tier_wildmesh",
+    "gmsh_hex": "tier_gmsh_hex",
+    "cinolib_hex": "tier_cinolib_hex",
+    "voro_poly": "tier_voro_poly",
+    "voro": "tier_voro_poly",
+    "hohqmesh": "tier_hohqmesh",
+    "hohq": "tier_hohqmesh",
     # canonical names are also accepted directly
     "tier0_2d_meshpy": "tier0_2d_meshpy",
     "tier0_core": "tier0_core",
@@ -42,7 +67,15 @@ _HINT_MAP: dict[str, str] = {
     "tier2_tetwild": "tier2_tetwild",
     "tier_hex_classy_blocks": "tier_hex_classy_blocks",
     "tier_polyhedral": "tier_polyhedral",
+    "tier_jigsaw": "tier_jigsaw",
     "tier_jigsaw_fallback": "tier_jigsaw_fallback",
+    "tier_meshpy": "tier_meshpy",
+    "tier_classy_blocks": "tier_classy_blocks",
+    "tier_wildmesh": "tier_wildmesh",
+    "tier_gmsh_hex": "tier_gmsh_hex",
+    "tier_cinolib_hex": "tier_cinolib_hex",
+    "tier_voro_poly": "tier_voro_poly",
+    "tier_hohqmesh": "tier_hohqmesh",
 }
 
 

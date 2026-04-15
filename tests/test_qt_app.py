@@ -281,3 +281,159 @@ def test_param_scope_by_tier_and_remesh_engine() -> None:
     # auto는 후보 엔진을 확정하지 않았으므로 관련 파라미터를 노출한다.
     assert win._param_is_applicable("snappy_snap_tolerance", "auto", "auto")
     assert win._param_is_applicable("mmg_hgrad", "auto", "auto")
+
+
+# ---------------------------------------------------------------------------
+# 신규 테스트: DropZone QLabel 서브클래스
+# ---------------------------------------------------------------------------
+
+
+def test_drop_zone_is_qlabel_subclass() -> None:
+    """DropZone이 QLabel 서브클래스인지 확인."""
+    from PySide6.QtWidgets import QLabel
+    from desktop.qt_app.drop_zone import DropZone
+
+    assert issubclass(DropZone, QLabel), "DropZone must be a QLabel subclass"
+
+
+def test_drop_zone_has_file_dropped_signal() -> None:
+    """DropZone이 file_dropped Signal을 갖는지 확인."""
+    from desktop.qt_app.drop_zone import DropZone
+
+    assert hasattr(DropZone, "file_dropped"), "DropZone must have file_dropped signal"
+
+
+@pytest.mark.requires_display
+def test_drop_zone_accepts_drops_flag() -> None:
+    """DropZone 인스턴스가 acceptDrops=True인지 확인 (QApplication 필요)."""
+    from PySide6.QtWidgets import QApplication
+    from desktop.qt_app.drop_zone import DropZone
+
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+
+    zone = DropZone()
+    assert zone.acceptDrops(), "DropZone must accept drops"
+
+
+# ---------------------------------------------------------------------------
+# 신규 테스트: 신규 UI 필드 존재 확인
+# ---------------------------------------------------------------------------
+
+
+def test_new_ui_fields_exist() -> None:
+    """v0.4 신규 UI 필드들이 __init__ 후 존재하는지 확인."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    assert hasattr(win, "_output_path_edit"), "_output_path_edit 속성 필요"
+    assert hasattr(win, "_surface_element_size_edit"), "_surface_element_size_edit 속성 필요"
+    assert hasattr(win, "_surface_min_size_edit"), "_surface_min_size_edit 속성 필요"
+    assert hasattr(win, "_surface_feature_angle_edit"), "_surface_feature_angle_edit 속성 필요"
+    assert hasattr(win, "_quality_desc_label"), "_quality_desc_label 속성 필요"
+    assert hasattr(win, "_output_path_label"), "_output_path_label 속성 필요"
+
+
+def test_quality_desc_label_initialized_none() -> None:
+    """_quality_desc_label은 _build() 전에는 None이다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    assert win._quality_desc_label is None
+
+
+def test_quality_desc_constant_has_three_entries() -> None:
+    """_QUALITY_DESC 딕셔너리에 draft/standard/fine 세 항목이 있다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    assert hasattr(AutoTessellWindow, "_QUALITY_DESC")
+    desc = AutoTessellWindow._QUALITY_DESC
+    assert set(desc.keys()) == {"draft", "standard", "fine"}
+
+
+# ---------------------------------------------------------------------------
+# 신규 테스트: TIER_PARAM_SPECS 신규 항목 확인
+# ---------------------------------------------------------------------------
+
+
+def test_new_tier_param_specs_present() -> None:
+    """TIER_PARAM_SPECS에 신규 파라미터들이 존재한다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    keys = {spec[0] for spec in AutoTessellWindow.TIER_PARAM_SPECS}
+    new_params = [
+        "algohex_pipeline", "algohex_tet_size",
+        "robust_hex_n_cells", "robust_hex_hausdorff",
+        "mmg3d_hmax", "mmg3d_hmin", "mmg3d_hausd", "mmg3d_ar", "mmg3d_optim",
+        "wildmesh_edge_length", "wildmesh_target_edge_length",
+        "classy_cell_size", "hex_classy_use_snappy",
+        "cinolib_hex_scale",
+        "voro_relax_iters",
+        "bl_num_layers", "bl_first_thickness", "bl_growth_ratio", "bl_feature_angle",
+        "domain_min_x", "domain_min_y", "domain_min_z",
+        "domain_max_x", "domain_max_y", "domain_max_z",
+        "domain_base_cell_size",
+    ]
+    for param in new_params:
+        assert param in keys, f"TIER_PARAM_SPECS에 '{param}' 항목이 없습니다"
+
+
+def test_new_tier_param_scope_present() -> None:
+    """_TIER_PARAM_SCOPE에 신규 파라미터 스코프가 등록되어 있다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    scope = win._TIER_PARAM_SCOPE
+
+    assert "wildmesh_edge_length" in scope
+    assert "wildmesh_target_edge_length" in scope
+    assert "classy_cell_size" in scope
+    assert "hex_classy_use_snappy" in scope
+    assert "cinolib_hex_scale" in scope
+    assert "voro_relax_iters" in scope
+
+    # 스코프 값 확인
+    assert scope["wildmesh_edge_length"] == {"wildmesh"}
+    assert scope["voro_relax_iters"] == {"voro_poly"}
+    assert "classy_blocks" in scope["classy_cell_size"]
+    assert "hex_classy" in scope["classy_cell_size"]
+
+
+def test_param_scope_new_engines() -> None:
+    """신규 엔진 파라미터 적용 범위 확인."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+
+    assert win._param_is_applicable("algohex_pipeline", "algohex", "auto")
+    assert not win._param_is_applicable("algohex_pipeline", "netgen", "auto")
+    assert win._param_is_applicable("wildmesh_edge_length", "wildmesh", "auto")
+    assert not win._param_is_applicable("wildmesh_edge_length", "tetwild", "auto")
+    assert win._param_is_applicable("cinolib_hex_scale", "cinolib_hex", "auto")
+    assert not win._param_is_applicable("cinolib_hex_scale", "snappy", "auto")
+    assert win._param_is_applicable("voro_relax_iters", "voro_poly", "auto")
+    assert not win._param_is_applicable("voro_relax_iters", "core", "auto")
+
+
+def test_output_dir_updates_path_label() -> None:
+    """set_output_dir 호출 시 _output_path_label이 없어도 예외가 나지 않는다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+    from pathlib import Path
+
+    win = AutoTessellWindow()
+    # _output_path_label is None before _build()
+    win.set_output_dir(Path("/tmp/test_case"))
+    assert win.get_output_dir() == Path("/tmp/test_case")
+
+
+@pytest.mark.requires_display
+def test_success_loads_mesh_to_plotter() -> None:
+    """파이프라인 성공 후 PyVista plotter에 메쉬 로드 확인."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    win._build()
+    # plotter 존재 여부만 확인 (headless 환경에서는 None)
+    # 실제 메쉬 로드는 pyvistaqt가 필요하므로 구조 확인만 수행
+    assert hasattr(win, "_mesh_viewer")

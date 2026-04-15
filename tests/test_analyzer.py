@@ -245,21 +245,23 @@ class TestWatertightSphere:
 
 
 # ---------------------------------------------------------------------------
-# test_flow_estimation_external — 단일 폐곡면 + genus=0 → external 추정
+# test_flow_estimation_internal — 단일 폐곡면 + genus=0 → internal 추정 (기본값)
 # ---------------------------------------------------------------------------
 
 class TestFlowEstimationExternal:
     def test_flow_estimation_external(self, sphere_stl_path: Path) -> None:
-        """단일 폐곡면 + genus=0 → flow type='external' 추정."""
+        """단일 폐곡면 + genus=0 → flow type='internal' 추정.
+        외부 유동이 필요하면 --flow-type external을 명시해야 한다.
+        """
         analyzer = GeometryAnalyzer()
         report = analyzer.analyze(sphere_stl_path)
-        assert report.flow_estimation.type == "external"
+        assert report.flow_estimation.type == "internal"
 
     def test_flow_estimation_high_confidence(self, sphere_stl_path: Path) -> None:
-        """외부 유동 추정의 confidence >= 0.8 이어야 한다."""
+        """내부 유동 추정의 confidence >= 0.7 이어야 한다."""
         analyzer = GeometryAnalyzer()
         report = analyzer.analyze(sphere_stl_path)
-        assert report.flow_estimation.confidence >= 0.8
+        assert report.flow_estimation.confidence >= 0.7
 
     def test_flow_estimation_has_reasoning(self, sphere_stl_path: Path) -> None:
         """flow_estimation.reasoning 이 비어 있지 않아야 한다."""
@@ -268,10 +270,10 @@ class TestFlowEstimationExternal:
         assert len(report.flow_estimation.reasoning) > 0
 
     def test_flow_estimation_alternatives(self, sphere_stl_path: Path) -> None:
-        """external 추정 시 alternatives에 'internal' 포함되어야 한다."""
+        """internal 추정 시 alternatives에 'external' 포함되어야 한다."""
         analyzer = GeometryAnalyzer()
         report = analyzer.analyze(sphere_stl_path)
-        assert "internal" in report.flow_estimation.alternatives
+        assert "external" in report.flow_estimation.alternatives
 
 
 # ---------------------------------------------------------------------------

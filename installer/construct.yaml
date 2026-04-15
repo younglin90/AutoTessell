@@ -1,0 +1,56 @@
+# conda constructor 설정 파일
+# 빌드: conda install constructor && constructor installer/
+# 결과: AutoTessell-0.3.4-Windows-x86_64.exe
+
+name: AutoTessell
+version: "0.3.4"
+company: AutoTessell
+
+# 번들할 Python 인터프리터 버전
+python_version: "3.12"
+
+# 채널
+channels:
+  - conda-forge
+  - defaults
+
+# 번들할 conda 패키지 목록 (핵심만, 나머지는 post_install에서 pip으로 설치)
+specs:
+  - python=3.12
+  - pyside6>=6.6
+  - pyvista>=0.43
+  - pyvistaqt>=0.11
+  - vtk>=9.3
+  - trimesh>=4.0
+  - meshio>=5.3
+  - numpy>=1.26
+  - scipy>=1.12
+  - click>=8.1
+  - rich>=13.0
+  - pydantic>=2.5
+  - structlog>=24.0
+  - pymeshfix
+  - gmsh>=4.12
+  - netgen>=6.2
+  - rtree
+  - shapely
+  - pip
+
+# 인스톨러 외형
+installer_type: exe                  # Windows NSIS 기반 .exe
+default_prefix: "%USERPROFILE%\\AutoTessell"
+default_prefix_domain_user: "%LOCALAPPDATA%\\AutoTessell"
+keep_pkgs: false                     # 설치 후 .conda 캐시 삭제
+
+# 설치 후 실행할 스크립트
+post_install: scripts/post_install.bat
+
+# 라이선스
+license_file: ../LICENSE
+
+# 아이콘 (나중에 추가)
+# icon_image: assets/icon.ico
+
+# 환경변수 설정
+initialize_by_default: true
+register_python: false               # 시스템 Python과 충돌 방지

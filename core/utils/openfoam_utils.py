@@ -1,10 +1,25 @@
-"""OpenFOAM 유틸리티 실행 래퍼."""
+"""OpenFOAM 유틸리티 실행 래퍼.
+
+Windows 지원
+------------
+Windows에서 OpenFOAM을 실행하는 두 가지 방법을 지원한다.
+
+1. ESI OpenFOAM for Windows (권장)
+   openfoam.com에서 제공하는 MSYS2 기반 Windows 네이티브 인스톨러.
+   설치 후 ``C:\\Program Files\\OpenFOAM\\v<버전>\\`` 에 위치하며
+   내부 MSYS2 bash를 통해 snappyHexMesh/cfMesh 등을 직접 실행한다.
+
+2. WSL2 + Linux OpenFOAM (fallback)
+   ESI Windows 버전이 없을 때 WSL2를 통해 Linux OpenFOAM을 실행한다.
+   ``wsl -d <distro> bash -lc "source ... && snappyHexMesh"`` 방식.
+"""
 
 from __future__ import annotations
 
 import os
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 from core.utils.logging import get_logger
@@ -57,11 +72,76 @@ def _to_wsl_linux_path(value: str | Path) -> tuple[str, str | None]:
     return normalized, None
 
 
+def _to_msys_path(value: str | Path) -> str:
+    """Windows 절대 경로를 MSYS2 경로 형식으로 변환한다.
+
+    예) ``C:\\Program Files\\OpenFOAM`` → ``/c/Program Files/OpenFOAM``
+    """
+    p = str(value).replace("\\", "/")
+    # C:/foo → /c/foo
+    if len(p) >= 2 and p[1] == ":":
+        p = "/" + p[0].lower() + p[2:]
+    return p
+
+
 def _normalize_openfoam_arg(arg: str) -> tuple[str, str | None]:
     """OpenFOAM CLI 인자를 shell-safe path 기준으로 정규화한다."""
     if arg.startswith("-"):
         return arg, None
     return _to_wsl_linux_path(arg)
+
+
+# ---------------------------------------------------------------------------
+# ESI OpenFOAM for Windows 감지
+# ---------------------------------------------------------------------------
+
+def _find_esi_openfoam_windows() -> tuple[Path, Path] | None:
+    """ESI OpenFOAM for Windows (MSYS2 기반) 설치 경로를 찾는다.
+
+    Returns:
+        (bashrc_path, msys_bash_path) 또는 None.
+
+    ESI 설치 구조::
+
+        C:\\Program Files\\OpenFOAM\\
+        └── v2406\\          ← 버전 디렉터리
+            ├── etc\\bashrc  ← OpenFOAM 환경 설정
+            └── msys64\\
+                └── usr\\bin\\bash.exe  ← MSYS2 bash
+    """
+    if sys.platform != "win32":
+        return None
+
+    base_dirs = [
+        Path(os.environ.get("PROGRAMFILES", r"C:\Program Files")) / "OpenFOAM",
+        Path(r"C:\OpenFOAM"),
+        Path(r"C:\Program Files\ESI\OpenFOAM"),
+    ]
+    env_dir = os.environ.get("OPENFOAM_DIR")
+    if env_dir:
+        base_dirs.insert(0, Path(env_dir).parent)
+
+    for base in base_dirs:
+        if not base.exists():
+            continue
+        try:
+            candidates = sorted(base.iterdir(), reverse=True)
+        except PermissionError:
+            continue
+        for ver_dir in candidates:
+            if not ver_dir.is_dir():
+                continue
+            bashrc = ver_dir / "etc" / "bashrc"
+            bash_exe = ver_dir / "msys64" / "usr" / "bin" / "bash.exe"
+            if bashrc.exists() and bash_exe.exists():
+                logger.info(
+                    "esi_openfoam_windows_found",
+                    version_dir=str(ver_dir),
+                    bash=str(bash_exe),
+                )
+                return bashrc, bash_exe
+
+    return None
 
 
 def get_openfoam_label_size() -> int:
@@ -85,7 +165,10 @@ def get_openfoam_label_size() -> int:
 def _find_openfoam_bashrc() -> Path | None:
     """OpenFOAM bashrc 경로를 자동 탐색한다.
 
-    탐색 순서: OPENFOAM_DIR 환경변수 → 알려진 설치 경로들.
+    탐색 순서:
+      1. OPENFOAM_DIR 환경변수
+      2. Windows: ESI OpenFOAM for Windows (``C:\\Program Files\\OpenFOAM\\``)
+      3. Linux: 알려진 설치 경로 (``/usr/lib/openfoam/``, ``/opt/``)
     """
     # 1. 환경변수 우선
     env_dir = os.environ.get("OPENFOAM_DIR")
@@ -94,7 +177,14 @@ def _find_openfoam_bashrc() -> Path | None:
         if bashrc.exists():
             return bashrc
 
-    # 2. 알려진 설치 경로들 (최신 버전부터 탐색)
+    # 2. Windows: ESI OpenFOAM for Windows
+    if sys.platform == "win32":
+        esi = _find_esi_openfoam_windows()
+        if esi is not None:
+            return esi[0]
+        return None  # Windows에서 ESI 없으면 WSL fallback은 run_openfoam에서 처리
+
+    # 3. Linux: 알려진 설치 경로들 (최신 버전부터 탐색)
     search_dirs = [
         "/usr/lib/openfoam",       # Debian/Ubuntu apt 설치
         "/opt",                    # 수동 설치
@@ -103,7 +193,6 @@ def _find_openfoam_bashrc() -> Path | None:
         base_path = Path(base)
         if not base_path.exists():
             continue
-        # openfoam* 디렉터리를 역순 정렬 (최신 버전 우선)
         candidates = sorted(base_path.glob("openfoam*"), reverse=True)
         for candidate in candidates:
             bashrc = candidate / "etc" / "bashrc"
@@ -120,8 +209,10 @@ def run_openfoam(
 ) -> subprocess.CompletedProcess[str]:
     """OpenFOAM 유틸리티를 실행한다.
 
-    OpenFOAM 설치 경로를 자동 탐색하여 bashrc를 source한 뒤 실행한다.
-    탐색 순서: OPENFOAM_DIR 환경변수 → /usr/lib/openfoam/ → /opt/openfoam*.
+    Windows에서는 다음 순서로 실행 방법을 결정한다.
+
+    1. ESI OpenFOAM for Windows 감지 → MSYS2 bash로 직접 실행
+    2. ESI 없음 → WSL2를 통해 Linux OpenFOAM 실행
 
     Args:
         utility: 실행할 유틸리티 이름 (예: "blockMesh", "snappyHexMesh").
@@ -132,9 +223,14 @@ def run_openfoam(
         subprocess.CompletedProcess 객체.
 
     Raises:
-        FileNotFoundError: OpenFOAM bashrc를 찾을 수 없을 때.
+        FileNotFoundError: OpenFOAM을 찾을 수 없을 때.
         OpenFOAMError: 유틸리티 실행 실패 또는 returncode != 0.
     """
+    # ── Windows 분기 ────────────────────────────────────────────────────────
+    if sys.platform == "win32":
+        return _run_openfoam_windows(utility, case_dir, args)
+
+    # ── Linux/macOS 분기 ────────────────────────────────────────────────────
     bashrc_path = _find_openfoam_bashrc()
     if bashrc_path is None:
         raise FileNotFoundError(
@@ -142,28 +238,17 @@ def run_openfoam(
             "OPENFOAM_DIR 환경변수를 설정하거나 OpenFOAM을 설치하세요."
         )
 
-    bashrc_shell, bashrc_distro = _to_wsl_linux_path(bashrc_path)
-    case_dir_shell, case_distro = _to_wsl_linux_path(case_dir)
+    bashrc_shell, _ = _to_wsl_linux_path(bashrc_path)
+    case_dir_shell, _ = _to_wsl_linux_path(case_dir)
     source_cmd = f"source {shlex.quote(bashrc_shell)}"
-
-    # 각 인자를 개별적으로 quote 처리하여 공백/특수문자 대응
     safe_parts = [shlex.quote(utility), "-case", shlex.quote(case_dir_shell)]
-    arg_distros: list[str] = []
     if args:
         for arg in args:
-            normalized_arg, distro = _normalize_openfoam_arg(arg)
+            normalized_arg, _ = _normalize_openfoam_arg(arg)
             safe_parts.append(shlex.quote(normalized_arg))
-            if distro:
-                arg_distros.append(distro)
 
     full_cmd = f"{source_cmd} && {' '.join(safe_parts)}"
-    target_distro = (
-        case_distro
-        or bashrc_distro
-        or (arg_distros[0] if arg_distros else None)
-        or os.environ.get("WSL_DISTRO_NAME")
-        or "Ubuntu"
-    )
+    run_cmd = ["bash", "-c", full_cmd]
 
     logger.info(
         "running_openfoam_utility",
@@ -172,12 +257,101 @@ def run_openfoam(
         args=args,
         bashrc=bashrc_shell,
     )
+    return _execute(utility, run_cmd)
 
+
+def _run_openfoam_windows(
+    utility: str,
+    case_dir: Path,
+    args: list[str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Windows에서 OpenFOAM 유틸리티를 실행한다.
+
+    ESI OpenFOAM for Windows (MSYS2 bash) 우선, 없으면 WSL2 fallback.
+    """
+    esi = _find_esi_openfoam_windows()
+
+    if esi is not None:
+        # ESI OpenFOAM for Windows: MSYS2 bash를 통해 실행
+        bashrc_path, bash_exe = esi
+        msys_bashrc = _to_msys_path(bashrc_path)
+        msys_case = _to_msys_path(case_dir)
+        safe_parts = [shlex.quote(utility), "-case", shlex.quote(msys_case)]
+        if args:
+            for arg in args:
+                if arg.startswith("-"):
+                    safe_parts.append(shlex.quote(arg))
+                else:
+                    safe_parts.append(shlex.quote(_to_msys_path(arg)))
+        full_cmd = f"source {shlex.quote(msys_bashrc)} && {' '.join(safe_parts)}"
+        run_cmd = [str(bash_exe), "-lc", full_cmd]
+        logger.info(
+            "running_openfoam_utility",
+            utility=utility,
+            backend="esi_windows_msys2",
+            case_dir=msys_case,
+            bash=str(bash_exe),
+        )
+    else:
+        # WSL2 fallback
+        bashrc_path_wsl: Path | None = None
+        # WSL 내부의 bashrc를 탐색 (\\wsl.localhost\Ubuntu\... 경로)
+        for wsl_base in (
+            Path(r"\\wsl.localhost\Ubuntu\usr\lib\openfoam"),
+            Path(r"\\wsl$\Ubuntu\usr\lib\openfoam"),
+            Path(r"\\wsl.localhost\Ubuntu\opt"),
+        ):
+            if wsl_base.exists():
+                for candidate in sorted(wsl_base.glob("openfoam*"), reverse=True):
+                    rc = candidate / "etc" / "bashrc"
+                    if rc.exists():
+                        bashrc_path_wsl = rc
+                        break
+            if bashrc_path_wsl:
+                break
+
+        if bashrc_path_wsl is None:
+            raise FileNotFoundError(
+                f"{utility} 실행 불가: Windows에서 OpenFOAM을 찾을 수 없습니다.\n"
+                "해결 방법:\n"
+                "  1. ESI OpenFOAM for Windows 설치: https://openfoam.com/download/windows\n"
+                "  2. 또는 WSL2에 OpenFOAM 설치 후 재시도"
+            )
+
+        bashrc_shell, bashrc_distro = _to_wsl_linux_path(bashrc_path_wsl)
+        case_dir_shell, case_distro = _to_wsl_linux_path(case_dir)
+        target_distro = (
+            case_distro
+            or bashrc_distro
+            or os.environ.get("WSL_DISTRO_NAME")
+            or "Ubuntu"
+        )
+        safe_parts = [shlex.quote(utility), "-case", shlex.quote(case_dir_shell)]
+        if args:
+            for arg in args:
+                normalized_arg, _ = _normalize_openfoam_arg(arg)
+                safe_parts.append(shlex.quote(normalized_arg))
+        full_cmd = (
+            f"source {shlex.quote(bashrc_shell)} && {' '.join(safe_parts)}"
+        )
+        run_cmd = ["wsl", "-d", target_distro, "bash", "-lc", full_cmd]
+        logger.info(
+            "running_openfoam_utility",
+            utility=utility,
+            backend="wsl2",
+            distro=target_distro,
+            case_dir=case_dir_shell,
+        )
+
+    return _execute(utility, run_cmd)
+
+
+def _execute(
+    utility: str,
+    run_cmd: list[str],
+) -> subprocess.CompletedProcess[str]:
+    """subprocess를 실행하고 결과를 반환한다."""
     try:
-        if os.name == "nt":
-            run_cmd = ["wsl", "-d", target_distro, "bash", "-lc", full_cmd]
-        else:
-            run_cmd = ["bash", "-c", full_cmd]
         result = subprocess.run(
             run_cmd,
             capture_output=True,

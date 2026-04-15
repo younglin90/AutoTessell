@@ -109,6 +109,9 @@ class PipelineWorker:
                         )
 
                         def _on_progress(percent: int, message: str) -> None:
+                            # Stop 요청 시 중단 (subprocess kill 후 thread가 여기서 탈출)
+                            if self.isInterruptionRequested():
+                                raise InterruptedError("사용자가 메시 생성을 중단했습니다.")
                             self.progress_percent.emit(int(percent), str(message))
                             self.progress.emit(f"[진행 {int(percent)}%] {message}")
 
@@ -134,9 +137,16 @@ class PipelineWorker:
                             f"time={result.total_time_seconds:.2f}s"
                         )
                         self.finished.emit(result)
+                    except InterruptedError:
+                        # 사용자 중단 — finished 시그널 emit 안 함
+                        # (main_window._stopping=True가 무시하지만 emit 자체를 생략)
+                        return
                     except Exception as exc:  # noqa: BLE001
                         tb = traceback.format_exc()
                         brief_tb = "\n".join(tb.strip().splitlines()[-8:])
+                        # Stop 요청 시 subprocess kill로 발생한 예외는 조용히 종료
+                        if self.isInterruptionRequested():
+                            return
                         # 실패 시 success=False 결과 emit
                         try:
                             from core.pipeline.orchestrator import PipelineResult
