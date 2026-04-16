@@ -1,0 +1,62 @@
+name: Windows Smoke Test
+
+# Windows 환경에서 pip install + CLI 기본 동작 확인
+# push/PR마다 자동 실행
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+jobs:
+  windows-smoke:
+    name: Windows pip install + CLI smoke
+    runs-on: windows-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\pip\Cache
+          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
+          restore-keys: ${{ runner.os }}-pip-
+
+      - name: Install package (core + dev, skip heavy extras)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,volume]"
+
+      - name: Verify imports
+        run: |
+          python -c "import auto_tessell_core; print('auto_tessell_core OK')" 2>$null || echo "auto_tessell_core not built (expected on fresh install)"
+          python -c "from core.analyzer.file_reader import FileReader; print('FileReader OK')"
+          python -c "from core.preprocessor.surface_repair import SurfaceRepair; print('SurfaceRepair OK')"
+          python -c "from core.strategist.tier_selector import TierSelector; print('TierSelector OK')"
+          python -c "from core.generator.pipeline import GeneratorPipeline; print('GeneratorPipeline OK')"
+          python -c "from core.evaluator.quality_checker import QualityChecker; print('QualityChecker OK')"
+
+      - name: CLI help
+        run: auto-tessell --help
+
+      - name: CLI doctor
+        run: auto-tessell doctor
+        continue-on-error: true  # OpenFOAM 없어도 OK
+
+      - name: CLI analyze
+        run: auto-tessell analyze tests/benchmarks/sphere.stl
+
+      - name: CLI run --dry-run (draft)
+        run: |
+          auto-tessell run tests/benchmarks/sphere.stl -o C:\Temp\at_smoke --quality draft --dry-run
