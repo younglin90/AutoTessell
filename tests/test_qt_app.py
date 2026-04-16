@@ -366,7 +366,7 @@ def test_new_tier_param_specs_present() -> None:
         "algohex_pipeline", "algohex_tet_size",
         "robust_hex_n_cells", "robust_hex_hausdorff",
         "mmg3d_hmax", "mmg3d_hmin", "mmg3d_hausd", "mmg3d_ar", "mmg3d_optim",
-        "wildmesh_edge_length", "wildmesh_target_edge_length",
+        "wildmesh_edge_length_r",
         "classy_cell_size", "hex_classy_use_snappy",
         "cinolib_hex_scale",
         "voro_relax_iters",
@@ -386,15 +386,14 @@ def test_new_tier_param_scope_present() -> None:
     win = AutoTessellWindow()
     scope = win._TIER_PARAM_SCOPE
 
-    assert "wildmesh_edge_length" in scope
-    assert "wildmesh_target_edge_length" in scope
+    assert "wildmesh_edge_length_r" in scope
     assert "classy_cell_size" in scope
     assert "hex_classy_use_snappy" in scope
     assert "cinolib_hex_scale" in scope
     assert "voro_relax_iters" in scope
 
     # 스코프 값 확인
-    assert scope["wildmesh_edge_length"] == {"wildmesh"}
+    assert scope["wildmesh_edge_length_r"] == {"wildmesh"}
     assert scope["voro_relax_iters"] == {"voro_poly"}
     assert "classy_blocks" in scope["classy_cell_size"]
     assert "hex_classy" in scope["classy_cell_size"]
@@ -408,8 +407,8 @@ def test_param_scope_new_engines() -> None:
 
     assert win._param_is_applicable("algohex_pipeline", "algohex", "auto")
     assert not win._param_is_applicable("algohex_pipeline", "netgen", "auto")
-    assert win._param_is_applicable("wildmesh_edge_length", "wildmesh", "auto")
-    assert not win._param_is_applicable("wildmesh_edge_length", "tetwild", "auto")
+    assert win._param_is_applicable("wildmesh_edge_length_r", "wildmesh", "auto")
+    assert not win._param_is_applicable("wildmesh_edge_length_r", "tetwild", "auto")
     assert win._param_is_applicable("cinolib_hex_scale", "cinolib_hex", "auto")
     assert not win._param_is_applicable("cinolib_hex_scale", "snappy", "auto")
     assert win._param_is_applicable("voro_relax_iters", "voro_poly", "auto")
