@@ -63,35 +63,60 @@ def _pv_read_any(path: Path) -> "pv.DataSet":
 
 
 def _read_cad(path: Path) -> "pv.DataSet":
-    """STEP / IGES / BREP → tessellate → PyVista."""
+    """STEP / IGES / BREP → tessellate → PyVista.
+
+    STEP/BREP: cadquery 우선 → gmsh fallback
+    IGES: gmsh 우선 → cadquery fallback
+    """
     import tempfile
 
-    # 1) cadquery
-    try:
-        import cadquery as cq
-        shape = cq.importers.importStep(str(path))
-        with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
-            cq.exporters.export(shape, tmp.name)
-            return pv.read(tmp.name)
-    except Exception as e_cq:
-        log.debug(f"cadquery 로드 실패: {e_cq}")
+    suffix = path.suffix.lower()
 
-    # 2) gmsh fallback
-    try:
-        import gmsh
-        import meshio
-        gmsh.initialize()
-        gmsh.option.setNumber("General.Verbosity", 0)
-        gmsh.model.occ.importShapes(str(path))
-        gmsh.model.occ.synchronize()
-        gmsh.model.mesh.generate(2)
-        with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tmp:
-            tmp_msh = tmp.name
-        gmsh.write(tmp_msh)
-        gmsh.finalize()
-        return _read_meshio(Path(tmp_msh))
-    except Exception as e_gmsh:
-        log.debug(f"gmsh 로드 실패: {e_gmsh}")
+    def _try_cadquery() -> "pv.DataSet | None":
+        try:
+            import cadquery as cq
+            if suffix in (".step", ".stp"):
+                shape = cq.importers.importStep(str(path))
+            elif suffix in (".iges", ".igs"):
+                # cadquery는 실제로 IGES를 제대로 지원하지 않으므로 importStep 시도
+                shape = cq.importers.importStep(str(path))
+            elif suffix == ".brep":
+                from cadquery import Shape as _Shape
+                shape = _Shape.importBrep(str(path))
+            else:
+                return None
+            with tempfile.NamedTemporaryFile(suffix=".stl", delete=False) as tmp:
+                cq.exporters.export(shape, tmp.name)
+                return pv.read(tmp.name)
+        except Exception as e_cq:
+            log.debug(f"cadquery 로드 실패: {e_cq}")
+            return None
+
+    def _try_gmsh() -> "pv.DataSet | None":
+        try:
+            import gmsh
+            gmsh.initialize()
+            gmsh.option.setNumber("General.Verbosity", 0)
+            gmsh.model.occ.importShapes(str(path))
+            gmsh.model.occ.synchronize()
+            gmsh.model.mesh.generate(2)
+            with tempfile.NamedTemporaryFile(suffix=".msh", delete=False) as tmp:
+                tmp_msh = tmp.name
+            gmsh.write(tmp_msh)
+            gmsh.finalize()
+            return _read_meshio(Path(tmp_msh))
+        except Exception as e_gmsh:
+            log.debug(f"gmsh 로드 실패: {e_gmsh}")
+            return None
+
+    # IGES는 gmsh 우선, 나머지(STEP/BREP)는 cadquery 우선
+    if suffix in (".iges", ".igs"):
+        result = _try_gmsh() or _try_cadquery()
+    else:
+        result = _try_cadquery() or _try_gmsh()
+
+    if result is not None:
+        return result
 
     raise ValueError(f"CAD 파일 로드 실패 (cadquery/gmsh 모두 실패): {path.name}")
 
@@ -489,6 +514,53 @@ class InteractiveMeshViewer(QWidget):
     - 가운데 드래그: 팬
     """
 
+    # ------------------------------------------------------------------
+    # 내부 백그라운드 로더 스레드
+    # ------------------------------------------------------------------
+
+    if PYSIDE6_AVAILABLE:
+        class _MeshLoaderThread(QThread):
+            """메시 파일을 백그라운드 스레드에서 로드한다.
+
+            CAD 파일(STEP/IGES)은 cadquery/gmsh 테셀레이션에 수 초가 걸리므로
+            Qt 메인 스레드를 블로킹하지 않기 위해 QThread를 사용한다.
+            """
+            mesh_loaded = Signal(object, str, bool, bool, float)  # mesh, camera_view, show_edges, show_points, opacity
+            load_error = Signal(str)
+
+            def __init__(
+                self,
+                path: Path,
+                camera_view: str,
+                show_edges: bool,
+                show_points: bool,
+                opacity: float,
+                parent=None,
+            ) -> None:
+                super().__init__(parent)
+                self._path = path
+                self._camera_view = camera_view
+                self._show_edges = show_edges
+                self._show_points = show_points
+                self._opacity = opacity
+
+            def run(self) -> None:
+                try:
+                    mesh = _pv_read_any(self._path)
+                    self.mesh_loaded.emit(
+                        mesh,
+                        self._camera_view,
+                        self._show_edges,
+                        self._show_points,
+                        self._opacity,
+                    )
+                except Exception as e:
+                    self.load_error.emit(str(e))
+    else:
+        # PySide6 없을 때 dummy (import 오류 방지)
+        class _MeshLoaderThread:  # type: ignore[no-redef]
+            pass
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._plotter: Optional[QtInteractor] = None
@@ -501,6 +573,8 @@ class InteractiveMeshViewer(QWidget):
         self._mesh_info: dict = {}
         self._slice_active: bool = False
         self._clip_active: bool = False
+        self._loader_thread: Optional[QThread] = None
+        self._loader_path: Optional[Path] = None
 
         self._init_ui()
 
@@ -661,10 +735,13 @@ class InteractiveMeshViewer(QWidget):
         opacity: float = 0.95,
         **kwargs: object,
     ) -> bool:
-        """메시 파일 로드 및 표시.
+        """메시 파일 로드 및 표시 (백그라운드 스레드 사용).
+
+        CAD 파일(STEP/IGES)은 테셀레이션에 수 초가 걸리므로
+        QThread로 비동기 로드하여 UI 프리즈를 방지한다.
 
         Args:
-            path: 메시 파일 경로 (STL, OBJ, VTU, VTK 등)
+            path: 메시 파일 경로 (STL, OBJ, VTU, VTK, STEP, IGES 등)
             camera_view: 초기 카메라 뷰
             show_edges: 엣지 표시 여부
             show_points: 버텍스 표시 여부
@@ -678,15 +755,38 @@ class InteractiveMeshViewer(QWidget):
             self._info_label.setText(f"❌ 파일 없음: {path.name}")
             return False
 
+        # 이전 로더 스레드 정리
+        if self._loader_thread is not None and isinstance(self._loader_thread, QThread):
+            if self._loader_thread.isRunning():
+                self._loader_thread.quit()
+                self._loader_thread.wait(3000)
+            self._loader_thread = None
+
+        self._loader_path = path
         self._info_label.setText(f"⏳ {path.name} 로딩 중...")
 
-        try:
-            mesh = _pv_read_any(path)
-        except Exception as e:
-            self._info_label.setText(f"❌ 로드 실패: {str(e)[:60]}")
-            log.error(f"mesh load error: {e}")
-            return False
+        loader = self._MeshLoaderThread(
+            path=path,
+            camera_view=camera_view,
+            show_edges=show_edges,
+            show_points=show_points,
+            opacity=opacity,
+        )
+        self._loader_thread = loader
+        loader.mesh_loaded.connect(self._on_mesh_loaded)
+        loader.load_error.connect(self._on_load_error)
+        loader.start()
+        return True
 
+    def _on_mesh_loaded(
+        self,
+        mesh: object,
+        camera_view: str,
+        show_edges: bool,
+        show_points: bool,
+        opacity: float,
+    ) -> None:
+        """백그라운드 로더가 메시를 성공적으로 읽었을 때 호출 (메인 스레드)."""
         self._show_edges = show_edges
         self._show_points = show_points
         self._opacity = opacity
@@ -697,8 +797,13 @@ class InteractiveMeshViewer(QWidget):
         self._pts_btn.setChecked(show_points)
 
         self._render_mesh(mesh, camera_view=camera_view)
-        self._update_info(path, mesh)
-        return True
+        if self._loader_path is not None:
+            self._update_info(self._loader_path, mesh)
+
+    def _on_load_error(self, error_msg: str) -> None:
+        """백그라운드 로더에서 오류 발생 시 호출 (메인 스레드)."""
+        self._info_label.setText(f"❌ 로드 실패: {error_msg[:80]}")
+        log.error(f"mesh load error: {error_msg}")
 
     def load_polymesh(self, case_dir: str | Path) -> bool:
         """OpenFOAM case 디렉터리에서 메시 로드."""

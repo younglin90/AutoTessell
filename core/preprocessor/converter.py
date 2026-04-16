@@ -170,28 +170,87 @@ class FormatConverter:
             import numpy as np
 
             mesh = meshio.read(str(path))
+
+            # 삼각형 셀 우선 추출
             tri_cells = [c for c in mesh.cells if c.type == "triangle"]
-            if not tri_cells:
-                raise ValueError(
-                    f"삼각형 셀 없음. 포함 셀 타입: {[c.type for c in mesh.cells]}"
+            if tri_cells:
+                faces = np.vstack([c.data for c in tri_cells])
+                surface = trimesh.Trimesh(
+                    vertices=mesh.points[:, :3],
+                    faces=faces,
+                    process=False,
                 )
-            faces = np.vstack([c.data for c in tri_cells])
-            surface = trimesh.Trimesh(
-                vertices=mesh.points[:, :3],
-                faces=faces,
-                process=False,
+                surface.export(str(out_path))
+                log.info(
+                    "convert_meshio_done_triangles",
+                    output=str(out_path),
+                    num_faces=len(surface.faces),
+                )
+                return out_path
+
+            # quad 셀 → 삼각형 두 개로 분할
+            quad_cells = [c for c in mesh.cells if c.type == "quad"]
+            if quad_cells:
+                quads = np.vstack([c.data for c in quad_cells])
+                # quad [a,b,c,d] → tri [a,b,c] + [a,c,d]
+                tri1 = quads[:, [0, 1, 2]]
+                tri2 = quads[:, [0, 2, 3]]
+                faces = np.vstack([tri1, tri2])
+                surface = trimesh.Trimesh(
+                    vertices=mesh.points[:, :3],
+                    faces=faces,
+                    process=False,
+                )
+                surface.export(str(out_path))
+                log.info(
+                    "convert_meshio_done_quads",
+                    output=str(out_path),
+                    num_faces=len(surface.faces),
+                )
+                return out_path
+
+            # 볼륨 메쉬 셀 → pyvista 경유 표면 추출
+            vol_types = {
+                "tetra", "tetra10", "hexahedron", "hexahedron20",
+                "wedge", "pyramid",
+            }
+            vol_cells = [c for c in mesh.cells if c.type in vol_types]
+            if vol_cells:
+                log.info(
+                    "convert_meshio_volume_surface_extract",
+                    vol_cell_types=[c.type for c in vol_cells],
+                )
+                try:
+                    import pyvista as pv
+                    pv_mesh = pv.from_meshio(mesh)
+                    surface_pv = pv_mesh.extract_surface()
+                    # pyvista PolyData faces 배열: [n, i0, i1, ..., n, i0, ...]
+                    raw_faces = np.asarray(surface_pv.faces).reshape(-1, 4)
+                    tri_faces = raw_faces[:, 1:]  # n 열 제거 (항상 3각형)
+                    surface_tm = trimesh.Trimesh(
+                        vertices=np.asarray(surface_pv.points),
+                        faces=tri_faces,
+                        process=False,
+                    )
+                    surface_tm.export(str(out_path))
+                    log.info(
+                        "convert_meshio_done_volume_surface",
+                        output=str(out_path),
+                        num_faces=len(surface_tm.faces),
+                    )
+                    return out_path
+                except Exception as exc_pv:
+                    log.warning("pyvista 표면 추출 실패, 계속 진행", error=str(exc_pv))
+
+            raise ValueError(
+                f"변환 가능한 셀 없음. 포함 셀 타입: {[c.type for c in mesh.cells]}"
             )
-            surface.export(str(out_path))
-            log.info(
-                "convert_meshio_done",
-                output=str(out_path),
-                num_faces=len(surface.faces),
-            )
-            return out_path
         except ImportError as exc:
             raise ImportError(
                 "meshio가 설치되지 않았습니다. `pip install meshio`를 실행하세요."
             ) from exc
+        except ValueError:
+            raise
         except Exception as exc:
             raise ValueError(
                 f"meshio 변환 실패 [{path.suffix}]: {path}\n원인: {exc}"
