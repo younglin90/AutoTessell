@@ -47,7 +47,7 @@ jobs:
       - name: Run tests
         if: ${{ inputs.run_pytest }}
         run: |
-          pytest tests/ -v --tb=short -x
+          pytest tests/ -v --tb=short -x -m "not requires_display"
 
       - name: Test CLI
         if: ${{ inputs.run_cli_smoke }}
