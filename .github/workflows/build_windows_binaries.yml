@@ -55,7 +55,7 @@ jobs:
 
       - name: Install Eigen3 via vcpkg
         run: |
-          vcpkg install eigen3:x64-windows --no-binarycaching 2>&1 | Select-String -NotMatch "^$"
+          vcpkg install eigen3:x64-windows --no-binarycaching
 
       - name: Clone cinolib (header-only)
         run: |
@@ -249,6 +249,8 @@ jobs:
     needs: [build-cinolib-hex, build-robusthex, build-robustpurehex-exe]
     runs-on: ubuntu-latest
     if: always()  # 일부 빌드 실패해도 성공한 것만 업로드
+    permissions:
+      contents: write  # Release 생성/업로드 권한
 
     steps:
       - name: Download all artifacts

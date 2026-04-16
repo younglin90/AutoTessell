@@ -17,6 +17,11 @@
 #include <pybind11/numpy.h>
 #include <pybind11/stl.h>
 
+// MSVC does not define uint — ensure it's available before cinolib headers
+#if defined(_MSC_VER) && !defined(uint)
+typedef unsigned int uint;
+#endif
+
 // cinolib is header-only with inline .cpp includes — do NOT define CINO_STATIC_LIB
 // (STATIC_LIB mode requires compiling cinolib separately, which we skip here)
 
