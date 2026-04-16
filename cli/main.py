@@ -13,6 +13,54 @@ from core.utils.openfoam_utils import get_openfoam_label_size
 
 console = Console()
 
+
+def _print_dep_summary() -> None:
+    """설치/미설치 라이브러리 요약을 출력한다.
+
+    설치된 것: 개수만 표시.
+    미설치(선택): 노랑으로 나열.
+    미설치(필수): 빨강으로 나열 + 경고.
+    상세 정보는 `auto-tessell doctor` 참조.
+    """
+    from core.runtime.dependency_status import collect_dependency_statuses
+
+    statuses = collect_dependency_statuses()
+    ok: list[str] = []
+    missing_optional: list[str] = []
+    missing_required: list[str] = []
+
+    for s in statuses:
+        if s.detected:
+            ok.append(s.name)
+        elif s.optional:
+            missing_optional.append(s.name)
+        else:
+            missing_required.append(s.name)
+
+    # 설치된 것: 개수만
+    ok_str = f"[green]✓ {len(ok)}개 설치됨[/green]"
+
+    # 미설치 선택
+    opt_str = (
+        "  [yellow]✗ " + "  ✗ ".join(missing_optional) + "[/yellow]"
+        if missing_optional else ""
+    )
+
+    # 미설치 필수
+    req_str = (
+        "  [bold red]✗ " + "  ✗ ".join(missing_required) + " (필수!)[/bold red]"
+        if missing_required else ""
+    )
+
+    console.print(f"[dim]deps:[/dim] {ok_str}{opt_str}{req_str}")
+
+    if missing_optional or missing_required:
+        console.print(
+            f"[dim]  미설치 {len(missing_optional) + len(missing_required)}개"
+            f" — `auto-tessell doctor` 로 상세 확인 및 설치 방법 안내[/dim]"
+        )
+
+
 def _setup_logging(verbose: bool, json_log: bool) -> None:
     from core.utils.logging import configure_logging
     configure_logging(verbose=verbose, json=json_log)
@@ -572,6 +620,7 @@ def run(
 
     console.print(f"[bold magenta]Auto-Tessell[/bold magenta] {input_file} → {output}")
     console.print(f"  quality={quality}  tier={effective_tier}  max_iter={max_iterations}")
+    _print_dep_summary()
     if any(e != "auto" for e in [repair_engine, remesh_engine, volume_engine, checker_engine, cad_engine, postprocess_engine]):
         engines = []
         if repair_engine != "auto":

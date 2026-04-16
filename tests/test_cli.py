@@ -93,6 +93,78 @@ class TestCLIHelp:
         assert "CASE_DIR" in result.output or "case_dir" in result.output.lower() or "vtu" in result.output.lower() or "VTK" in result.output
 
     @patch("core.runtime.dependency_status.collect_dependency_statuses")
+    def test_dep_summary_all_installed(self, mock_collect: MagicMock):
+        """모두 설치된 경우 설치 개수만 표시."""
+        from io import StringIO
+        from rich.console import Console as RichConsole
+        from cli.main import _print_dep_summary
+
+        mock_collect.return_value = [
+            DependencyStatus("OpenFOAM", "core", False, True, "mock", "", ""),
+            DependencyStatus("pymeshfix", "surface", True, True, "mock", "", ""),
+        ]
+        buf = StringIO()
+        import cli.main as cli_main
+        orig = cli_main.console
+        cli_main.console = RichConsole(file=buf, highlight=False, markup=False)
+        try:
+            _print_dep_summary()
+        finally:
+            cli_main.console = orig
+        out = buf.getvalue()
+        assert "2개 설치됨" in out
+        assert "미설치" not in out
+
+    @patch("core.runtime.dependency_status.collect_dependency_statuses")
+    def test_dep_summary_missing_optional(self, mock_collect: MagicMock):
+        """선택 패키지 누락 시 이름과 미설치 개수 표시."""
+        from io import StringIO
+        from rich.console import Console as RichConsole
+        from cli.main import _print_dep_summary
+
+        mock_collect.return_value = [
+            DependencyStatus("OpenFOAM", "core", False, True, "mock", "", ""),
+            DependencyStatus("netgen", "volume", True, False, "mock", "", ""),
+            DependencyStatus("mmg3d", "postprocess", True, False, "mock", "", ""),
+        ]
+        buf = StringIO()
+        import cli.main as cli_main
+        orig = cli_main.console
+        cli_main.console = RichConsole(file=buf, highlight=False, markup=False)
+        try:
+            _print_dep_summary()
+        finally:
+            cli_main.console = orig
+        out = buf.getvalue()
+        assert "1개 설치됨" in out
+        assert "netgen" in out
+        assert "mmg3d" in out
+        assert "미설치 2개" in out
+
+    @patch("core.runtime.dependency_status.collect_dependency_statuses")
+    def test_dep_summary_missing_required(self, mock_collect: MagicMock):
+        """필수 패키지 누락 시 (필수!) 표시."""
+        from io import StringIO
+        from rich.console import Console as RichConsole
+        from cli.main import _print_dep_summary
+
+        mock_collect.return_value = [
+            DependencyStatus("OpenFOAM", "core", False, False, "mock", "", ""),
+            DependencyStatus("pymeshfix", "surface", True, True, "mock", "", ""),
+        ]
+        buf = StringIO()
+        import cli.main as cli_main
+        orig = cli_main.console
+        cli_main.console = RichConsole(file=buf, highlight=False, markup=False)
+        try:
+            _print_dep_summary()
+        finally:
+            cli_main.console = orig
+        out = buf.getvalue()
+        assert "OpenFOAM" in out
+        assert "필수" in out
+
+    @patch("core.runtime.dependency_status.collect_dependency_statuses")
     def test_doctor_command(self, mock_collect: MagicMock, runner: CliRunner):
         mock_collect.return_value = [
             DependencyStatus(
