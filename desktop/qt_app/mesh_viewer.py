@@ -173,16 +173,39 @@ except Exception as e:
     PYVISTAQT_AVAILABLE = False
     log.warning(f"pyvistaqt 초기화 실패: {e}")
 
-from PySide6.QtCore import Qt, QObject, Signal, QThread
-from PySide6.QtGui import QPixmap, QFont, QColor
-from PySide6.QtWidgets import (
-    QCheckBox,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QVBoxLayout,
-    QWidget,
-)
+try:
+    from PySide6.QtCore import Qt, QObject, Signal, QThread
+    from PySide6.QtGui import QPixmap, QFont, QColor
+    from PySide6.QtWidgets import (
+        QCheckBox,
+        QHBoxLayout,
+        QLabel,
+        QPushButton,
+        QVBoxLayout,
+        QWidget,
+    )
+    PYSIDE6_AVAILABLE = True
+except Exception:
+    PYSIDE6_AVAILABLE = False
+    log.warning("PySide6 미설치 또는 초기화 실패 — Qt 뷰어 비활성화")
+    # Dummy base classes so class definitions don't fail at import time
+    class QObject:  # type: ignore[no-redef]
+        pass
+    class QWidget(QObject):  # type: ignore[no-redef]
+        pass
+    class QThread(QObject):  # type: ignore[no-redef]
+        pass
+    def Signal(*args, **kwargs):  # type: ignore[no-redef]
+        return None
+    Qt = None  # type: ignore[assignment]
+    QPixmap = None  # type: ignore[assignment]
+    QFont = None  # type: ignore[assignment]
+    QColor = None  # type: ignore[assignment]
+    QCheckBox = None  # type: ignore[assignment]
+    QHBoxLayout = None  # type: ignore[assignment]
+    QLabel = None  # type: ignore[assignment]
+    QPushButton = None  # type: ignore[assignment]
+    QVBoxLayout = None  # type: ignore[assignment]
 
 
 # ---------------------------------------------------------------------------
