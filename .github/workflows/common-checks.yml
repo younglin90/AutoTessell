@@ -32,6 +32,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
+      - name: Install ripgrep
+        run: sudo apt-get install -y ripgrep
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
