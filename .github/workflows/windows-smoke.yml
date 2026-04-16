@@ -41,11 +41,12 @@ jobs:
       - name: Verify imports
         run: |
           python -c "import auto_tessell_core; print('auto_tessell_core OK')" 2>$null || echo "auto_tessell_core not built (expected on fresh install)"
-          python -c "from core.analyzer.file_reader import FileReader; print('FileReader OK')"
-          python -c "from core.preprocessor.surface_repair import SurfaceRepair; print('SurfaceRepair OK')"
+          python -c "from core.analyzer.file_reader import load_mesh; print('load_mesh OK')"
+          python -c "from core.analyzer.geometry_analyzer import GeometryAnalyzer; print('GeometryAnalyzer OK')"
+          python -c "from core.preprocessor.repair import SurfaceRepairer; print('SurfaceRepairer OK')"
           python -c "from core.strategist.tier_selector import TierSelector; print('TierSelector OK')"
-          python -c "from core.generator.pipeline import GeneratorPipeline; print('GeneratorPipeline OK')"
-          python -c "from core.evaluator.quality_checker import QualityChecker; print('QualityChecker OK')"
+          python -c "from core.generator.pipeline import MeshGenerator; print('MeshGenerator OK')"
+          python -c "from core.evaluator.quality_checker import MeshQualityChecker; print('MeshQualityChecker OK')"
 
       - name: CLI help
         run: auto-tessell --help
