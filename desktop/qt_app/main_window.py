@@ -1399,6 +1399,28 @@ QToolTip {
         root_vbox.addWidget(status_bar)
 
         self._set_help_topic("tier")
+        self._log_dep_summary()
+
+    def _log_dep_summary(self) -> None:  # pragma: no cover
+        """시작 시 라이브러리 설치 현황을 로그 패널에 출력한다."""
+        try:
+            from core.runtime.dependency_status import collect_dependency_statuses
+            statuses = collect_dependency_statuses()
+            ok = [s.name for s in statuses if s.detected]
+            missing_opt = [s.name for s in statuses if not s.detected and s.optional]
+            missing_req = [s.name for s in statuses if not s.detected and not s.optional]
+
+            self._append_log(f"─── 라이브러리 점검 ───────────────────────")
+            self._append_log(f"✓ 설치됨 ({len(ok)}개): {', '.join(ok)}")
+            if missing_opt:
+                self._append_log(f"✗ 미설치 선택 ({len(missing_opt)}개): {', '.join(missing_opt)}")
+            if missing_req:
+                self._append_log(f"✗ 미설치 필수 ({len(missing_req)}개): {', '.join(missing_req)}  ← 일부 기능 비활성")
+            if not missing_opt and not missing_req:
+                self._append_log("  모든 라이브러리 설치 완료")
+            self._append_log(f"─────────────────────────────────────────")
+        except Exception:
+            pass  # dep 체크 실패해도 GUI 시작에 영향 없음
 
     def show(self) -> None:  # pragma: no cover
         if not hasattr(self, "_qmain"):
