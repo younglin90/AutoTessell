@@ -741,9 +741,13 @@ class ExportPane(QWidget):
             "controlDict, fvSchemes, fvSolution 스텁 자동 생성 — "
             "simpleFoam/pimpleFoam 즉시 실행 가능"
         )
+        self.chk_report_pdf = QCheckBox("리포트 PDF 생성 (1-page, 발주처 제출용)")
+        self.chk_report_pdf.setToolTip(
+            "메타데이터 + 스크린샷 + 품질 히스토그램 + 합격 판정이 담긴 PDF"
+        )
         self.chk_zip = QCheckBox("ZIP으로 압축")
         for chk in (self.chk_report, self.chk_histo, self.chk_paraview,
-                    self.chk_foam_template, self.chk_zip):
+                    self.chk_foam_template, self.chk_report_pdf, self.chk_zip):
             chk.setStyleSheet(
                 "QCheckBox { color: #b6bdc9; font-size: 11.5px; "
                 "background: transparent; padding: 2px 0; }"
@@ -795,6 +799,7 @@ class ExportPane(QWidget):
             "quality_hist": self.chk_histo.isChecked(),
             "paraview_state": self.chk_paraview.isChecked(),
             "foam_template": self.chk_foam_template.isChecked(),
+            "report_pdf": self.chk_report_pdf.isChecked(),
             "zip_output": self.chk_zip.isChecked(),
         }
 

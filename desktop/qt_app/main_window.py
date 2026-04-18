@@ -2110,6 +2110,10 @@ class AutoTessellWindow:  # type: ignore[misc]
             if opts.get("foam_template", False):
                 self._export_foam_template(export_target_dir)
 
+            # ── 후처리: 리포트 PDF ────────────────────────────
+            if opts.get("report_pdf", False):
+                self._export_report_pdf(export_target_dir)
+
             # ── 후처리: ZIP 압축 ──────────────────────────────
             if opts.get("zip_output", False):
                 zip_path = self._export_zip(export_target_dir)
@@ -2335,6 +2339,71 @@ class AutoTessellWindow:  # type: ignore[misc]
                     facecolor="#0d1117", edgecolor="none")
         plt.close(fig)
         self._log(f"[OK] 품질 히스토그램 PNG 저장: {out_path}")
+
+    def _export_report_pdf(self, target_dir: Path) -> None:  # pragma: no cover
+        """1-페이지 PDF 리포트 생성 — 메타 + 스크린샷 + 3 히스토그램 + 합격 판정."""
+        from desktop.qt_app.report_pdf import ReportData, write_pdf
+
+        result = self._pipeline_result
+        hist_data = self._histogram_data or {}
+
+        # 임시 스크린샷 촬영
+        screenshot_path: str | None = None
+        if self._mesh_viewer is not None:
+            try:
+                tmp_png = target_dir / "_report_screenshot.png"
+                # Qt grab 방식 (WYSIWYG) — _on_screenshot 로직을 inline
+                widget = self._mesh_viewer
+                pix = widget.grab()
+                if not pix.isNull():
+                    pix.save(str(tmp_png), "PNG")
+                    screenshot_path = str(tmp_png)
+            except Exception:
+                pass
+
+        # 품질 메트릭 — Quality 탭에서 이미 계산된 값 사용
+        quality_report = getattr(result, "quality_report", None) if result else None
+        checkmesh = getattr(quality_report, "check_mesh", None) if quality_report else None
+
+        data = ReportData(
+            input_file=str(self._input_path) if self._input_path else "",
+            output_dir=str(self._output_dir) if self._output_dir else "",
+            tier_used=(
+                getattr(getattr(result, "generator_log", None), "execution_summary", None)
+                and getattr(result.generator_log.execution_summary, "selected_tier", "")
+                or ""
+            ),
+            quality_level=self._quality_level.value,
+            total_time_seconds=float(getattr(result, "total_time_seconds", 0.0) or 0.0),
+            n_cells=int(getattr(checkmesh, "cells", 0) or 0),
+            n_points=int(getattr(checkmesh, "points", 0) or 0),
+            max_aspect_ratio=getattr(checkmesh, "max_aspect_ratio", None),
+            max_skewness=getattr(checkmesh, "max_skewness", None),
+            max_non_orthogonality=getattr(checkmesh, "max_non_orthogonality", None),
+            negative_volumes=getattr(checkmesh, "negative_volumes", None),
+            min_cell_volume=getattr(checkmesh, "min_cell_volume", None),
+            hist_aspect=hist_data.get("aspect_ratio", []) or [],
+            hist_skew=hist_data.get("skewness", []) or [],
+            hist_non_ortho=hist_data.get("non_orthogonality", []) or [],
+            screenshot_path=screenshot_path,
+        )
+
+        pdf_path = target_dir / "mesh_report.pdf"
+        try:
+            ok = write_pdf(data, pdf_path)
+            if ok:
+                self._log(f"[OK] PDF 리포트 생성: {pdf_path}")
+            else:
+                self._log("[WARN] PDF 생성 실패 (matplotlib 미설치?)")
+        except Exception as e:
+            self._log(f"[WARN] PDF 생성 중 오류: {e}")
+        finally:
+            # 임시 스크린샷 정리
+            if screenshot_path:
+                try:
+                    Path(screenshot_path).unlink(missing_ok=True)
+                except Exception:
+                    pass
 
     def _export_foam_template(self, target_dir: Path) -> None:  # pragma: no cover
         """OpenFOAM case 템플릿 (system/*, 0.orig/) 생성.

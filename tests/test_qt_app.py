@@ -1452,6 +1452,78 @@ def test_preset_get_returns_correct() -> None:
     assert get("존재하지 않는 프리셋") is None
 
 
+def test_report_pdf_generation(tmp_path) -> None:
+    """ReportData → PDF 파일 생성 + 최소 크기 검증."""
+    from desktop.qt_app.report_pdf import ReportData, write_pdf, _MPL_AVAILABLE
+
+    if not _MPL_AVAILABLE:
+        pytest.skip("matplotlib 미설치")
+
+    data = ReportData(
+        input_file="/path/to/sphere.stl",
+        output_dir="/tmp/case",
+        tier_used="tier2_tetwild",
+        quality_level="draft",
+        total_time_seconds=2.74,
+        n_cells=8572,
+        n_points=1824,
+        max_aspect_ratio=4.1,
+        max_skewness=0.46,
+        max_non_orthogonality=44.3,
+        negative_volumes=0,
+        hist_aspect=[1.0 + 0.1 * i for i in range(100)],
+        hist_skew=[0.01 * i for i in range(100)],
+        hist_non_ortho=[10.0 + 0.5 * i for i in range(100)],
+    )
+    out = tmp_path / "report.pdf"
+    ok = write_pdf(data, out)
+    assert ok is True
+    assert out.exists()
+    assert out.stat().st_size > 5000  # 최소 5KB (matplotlib PDF는 보통 20KB+)
+
+
+def test_report_pdf_verdict_logic() -> None:
+    """_compute_verdict: 임계값 기반 PASS/WARN/FAIL."""
+    from desktop.qt_app.report_pdf import ReportData, _compute_verdict
+
+    # 전부 통과
+    d1 = ReportData(
+        max_aspect_ratio=10.0, max_skewness=1.0,
+        max_non_orthogonality=30.0, negative_volumes=0,
+    )
+    assert _compute_verdict(d1) == "PASS"
+
+    # 경고 (임계값의 80% 초과)
+    d2 = ReportData(
+        max_aspect_ratio=10.0, max_skewness=1.0,
+        max_non_orthogonality=54.0,  # > 65 * 0.8 = 52
+        negative_volumes=0,
+    )
+    assert _compute_verdict(d2) == "WARN"
+
+    # 실패
+    d3 = ReportData(
+        max_aspect_ratio=10.0, max_skewness=1.0,
+        max_non_orthogonality=70.0,  # > 65
+        negative_volumes=0,
+    )
+    assert _compute_verdict(d3) == "FAIL"
+
+    # Negative volumes
+    d4 = ReportData(negative_volumes=5)
+    assert _compute_verdict(d4) == "FAIL"
+
+
+def test_export_pane_has_report_pdf_checkbox() -> None:
+    """ExportPane에 report_pdf 체크박스."""
+    from desktop.qt_app.widgets.right_column import ExportPane
+
+    pane = ExportPane()
+    assert hasattr(pane, "chk_report_pdf")
+    opts = pane.get_export_options()
+    assert "report_pdf" in opts
+
+
 def test_foam_template_writes_required_files(tmp_path) -> None:
     """write_case_template이 controlDict/fvSchemes/fvSolution + 0.orig 생성."""
     from desktop.qt_app.foam_templates import write_case_template
