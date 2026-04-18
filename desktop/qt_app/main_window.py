@@ -613,6 +613,20 @@ class AutoTessellWindow:  # type: ignore[misc]
         from desktop.qt_app.widgets.right_column import RightColumn
         self._right_column = RightColumn()
         self._log_edit = self._right_column.job_pane.log_box  # 호환용
+        # _output_path_edit 은 이제 Export 탭의 path_box 를 가리킨다
+        self._output_path_edit = self._right_column.export_pane.path_box
+        self._output_edit = self._output_path_edit
+        # 브라우즈 버튼 연결
+        try:
+            self._right_column.export_pane.browse_btn.clicked.connect(self._on_pick_output_dir)
+            self._right_column.export_pane.save_requested.connect(self._on_export_save)
+        except Exception:
+            pass
+        # 로그 필터/검색 연결
+        try:
+            self._wire_log_filters()
+        except Exception:
+            pass
         body_layout.addWidget(self._right_column)
 
         # ── Statusbar 26px ──────────────────────────────────
@@ -631,6 +645,12 @@ class AutoTessellWindow:  # type: ignore[misc]
                 self._QUALITY_DESC.get(self._quality_level.value, "")
             )
 
+        # 뷰포트 chrome 액션 배선 (Solid/Wire/Hybrid + Screenshot)
+        self._wire_viewport_chrome()
+
+        # 시스템 모니터 시작 (2초 주기)
+        self._start_sys_monitor()
+
         # 의존성 로그 요약 출력
         self._log_dep_summary()
 
@@ -644,7 +664,11 @@ class AutoTessellWindow:  # type: ignore[misc]
         act_save_as = QAction("다른 이름으로 저장…", self._qmain); act_save_as.setShortcut("Shift+Ctrl+S")
         act_export = QAction("내보내기…", self._qmain); act_export.setShortcut("Ctrl+E")
         act_quit = QAction("종료", self._qmain); act_quit.setShortcut("Ctrl+Q")
+        act_new.triggered.connect(self._on_new_project)
         act_open.triggered.connect(lambda: self._on_pick_input())
+        act_save.triggered.connect(self._on_save_project)
+        act_save_as.triggered.connect(self._on_save_project)
+        act_export.triggered.connect(lambda: self._switch_right_tab("Export"))
         act_quit.triggered.connect(self._qmain.close)
         for a in (act_new, act_open, None, act_save, act_save_as, act_export, None, act_quit):
             if a is None:
@@ -658,6 +682,15 @@ class AutoTessellWindow:  # type: ignore[misc]
         act_release = QAction("릴리즈 노트", self._qmain)
         act_report = QAction("문제 보고…", self._qmain)
         ver_action = QAction(f"AutoTessell {APP_VERSION}", self._qmain); ver_action.setEnabled(False)
+        act_docs.triggered.connect(
+            lambda: self._log("[INFO] 문서: https://github.com/younglin90/AutoTessell")
+        )
+        act_shortcuts.triggered.connect(
+            lambda: self._log(
+                "[INFO] 단축키: Ctrl+N (새), Ctrl+O (열기), Ctrl+S (저장), "
+                "Ctrl+E (내보내기), Ctrl+Q (종료)"
+            )
+        )
         for a in (act_docs, act_shortcuts, act_release, None, act_report, None, ver_action):
             if a is None:
                 help_menu.addSeparator()
@@ -736,10 +769,11 @@ class AutoTessellWindow:  # type: ignore[misc]
         v.addWidget(self._build_section_engine())
         v.addWidget(self._build_section_quality())
         v.addWidget(self._build_section_preprocess())
-        v.addWidget(self._build_section_output_path())
         v.addWidget(self._build_section_surface_mesh())
         v.addWidget(self._build_run_buttons())
         v.addStretch()
+        # 출력 디렉토리는 Export 탭에서 담당 — 사이드바에서 제거 (2026-04-18)
+        # _output_path_edit 은 Export 탭의 path_box 로 리디렉션된다.
         return scroll
 
     def _make_section_label(self, text: str) -> object:  # pragma: no cover
@@ -1076,6 +1110,7 @@ class AutoTessellWindow:  # type: ignore[misc]
         ])
         self._tier_pipeline.rerun_requested.connect(self._on_run_clicked)
         self._tier_pipeline.stop_requested.connect(self._on_stop_clicked)
+        self._tier_pipeline.resume_requested.connect(self._on_resume_clicked)
         v.addWidget(self._tier_pipeline)
 
         self._pipeline_legend = PipelineLegendStrip()
@@ -1171,19 +1206,62 @@ class AutoTessellWindow:  # type: ignore[misc]
 
     def _on_run_clicked(self) -> None:  # pragma: no cover
         if self._input_path is None:
-            self._log("[WARN] 입력 파일이 없습니다")
+            self._log("[WARN] 입력 파일이 없습니다 — 먼저 파일을 드롭하세요")
             return
         if self._output_dir is None:
             self._output_dir = self._input_path.parent / f"{self._input_path.stem}_case"
+
+        # 사이드바 surface mesh 파라미터 → 워커 전달
+        element_size = _parse_float(
+            self._surface_element_size_edit.text()
+            if self._surface_element_size_edit else ""
+        )
+        feature_angle = _parse_float(
+            self._surface_feature_angle_edit.text()
+            if self._surface_feature_angle_edit else ""
+        )
+        # tier_hint: engine_combo 의 itemData value
+        tier_hint = self._tier_combo_text()
+
+        # tier-specific params: feature_angle 이 있으면 BL 파라미터에 반영
+        tier_params: dict[str, object] = {}
+        if feature_angle is not None:
+            tier_params["bl_feature_angle"] = feature_angle
+
         self._log(
             f"[INFO] Running pipeline — {self._input_path.name} "
-            f"(quality={self._quality_level.value})"
+            f"quality={self._quality_level.value} engine={tier_hint} "
+            f"element_size={element_size or 'auto'}"
         )
+
+        # 상태 UI 업데이트
+        if self._design_statusbar is not None:
+            self._design_statusbar.set_phase("Starting pipeline…", busy=True)
+        if self._right_column is not None:
+            try:
+                import time
+                job_id = f"{int(time.time()) % 100000:x}"
+                self._right_column.job_pane.status_card.set_state(
+                    badge="Processing", badge_level="running", job_id=job_id,
+                    filename=self._input_path.name,
+                    subtitle=(
+                        f"{self._quality_level.value} · engine={tier_hint} · "
+                        f"시작 {time.strftime('%H:%M:%S')}"
+                    ),
+                )
+                self._pipeline_start_time = time.monotonic()
+            except Exception:
+                pass
+
         try:
             from desktop.qt_app.pipeline_worker import PipelineWorker
             self._stopping = False
             worker = PipelineWorker(
                 self._input_path, self._quality_level,
+                output_dir=self._output_dir,
+                tier_hint=tier_hint,
+                element_size=element_size,
+                tier_specific_params=tier_params or None,
                 no_repair=bool(self._no_repair_check.isChecked())
                     if self._no_repair_check else False,
                 surface_remesh=bool(self._surface_remesh_check.isChecked())
@@ -1192,14 +1270,36 @@ class AutoTessellWindow:  # type: ignore[misc]
                     if self._allow_ai_fallback_check else False,
                 remesh_engine=self._remesh_engine_text(),
             )
-            worker.progress.connect(lambda s: self._log(s))
-            worker.finished.connect(lambda result: self._on_pipeline_finished(result))
+            worker.progress.connect(self._on_progress_line)
+            if hasattr(worker, "progress_percent"):
+                try:
+                    worker.progress_percent.connect(self._on_progress_percent)
+                except Exception:
+                    pass
+            worker.finished.connect(self._on_pipeline_finished)
             worker.start()
             self._worker = worker
-            if self._design_statusbar is not None:
-                self._design_statusbar.set_phase("Running…", busy=True)
         except Exception as e:
             self._log(f"[ERR] 파이프라인 실행 실패: {e}")
+            if self._design_statusbar is not None:
+                self._design_statusbar.set_phase("Failed", busy=False)
+
+    def _on_resume_clicked(self) -> None:  # pragma: no cover
+        """일시정지된 파이프라인 재개 (현재는 단순히 재실행)."""
+        if self._worker is not None and getattr(self._worker, "isRunning", lambda: False)():
+            self._log("[INFO] 파이프라인이 이미 실행 중입니다")
+            return
+        self._log("[INFO] 파이프라인 재개 — 처음부터 재실행")
+        self._on_run_clicked()
+
+    def _switch_right_tab(self, name: str) -> None:  # pragma: no cover
+        if self._right_column is None:
+            return
+        tabs = self._right_column.tabs
+        for i in range(tabs.count()):
+            if tabs.tabText(i).lower() == name.lower():
+                tabs.setCurrentIndex(i)
+                return
 
     def _on_stop_clicked(self) -> None:  # pragma: no cover
         self._stopping = True
@@ -1216,9 +1316,333 @@ class AutoTessellWindow:  # type: ignore[misc]
     def _on_pipeline_finished(self, result: object) -> None:  # pragma: no cover
         if self._stopping:
             return
-        self._log(f"[INFO] 파이프라인 완료: {result}")
+        success = bool(getattr(result, "success", False))
+        if success:
+            self._log("[OK] 파이프라인 완료")
+            # Tier pipeline 모든 노드 done 처리
+            if self._tier_pipeline is not None:
+                for i in range(6):
+                    self._tier_pipeline.set_status(i, "done")
+            if self._design_statusbar is not None:
+                self._design_statusbar.set_phase("Done", busy=False)
+            if self._right_column is not None:
+                try:
+                    self._right_column.job_pane.status_card.set_state(
+                        badge="Completed", badge_level="ok",
+                    )
+                except Exception:
+                    pass
+            # Quality 탭 메트릭 갱신 시도
+            self._update_quality_from_result(result)
+            # Mesh viewer 에 결과 로드
+            out_dir = getattr(result, "output_dir", None) or self._output_dir
+            if out_dir is not None and self._mesh_viewer is not None:
+                try:
+                    poly = Path(out_dir) / "constant" / "polyMesh"
+                    if poly.exists():
+                        self._mesh_viewer.load_polymesh(out_dir)  # type: ignore[union-attr]
+                except Exception:
+                    pass
+        else:
+            err = getattr(result, "error", "unknown") if result else "interrupted"
+            self._log(f"[ERR] 파이프라인 실패: {err}")
+            if self._design_statusbar is not None:
+                self._design_statusbar.set_phase("Failed", busy=False)
+            if self._right_column is not None:
+                try:
+                    self._right_column.job_pane.status_card.set_state(
+                        badge="Failed", badge_level="err",
+                    )
+                except Exception:
+                    pass
+
+    def _on_progress_line(self, line: str) -> None:  # pragma: no cover
+        """워커의 progress 시그널 — 로그 + Tier pipeline 상태 추출."""
+        self._log(line)
+        # tier 진행 힌트: "[진행 NN%] Tier X ..." 또는 "tier_X" 키워드
+        import re
+        try:
+            m = re.search(r"[Tt]ier\s*(\d+)", line)
+            if m and self._tier_pipeline is not None:
+                idx = int(m.group(1))
+                if 0 <= idx < 6:
+                    # 이전 단계들은 done, 현재는 active
+                    for i in range(idx):
+                        self._tier_pipeline.set_status(i, "done")
+                    self._tier_pipeline.set_status(idx, "active")
+        except Exception:
+            pass
+
+    def _on_progress_percent(self, pct: int, message: str) -> None:  # pragma: no cover
+        """워커 progress_percent → 상태바 + ring progress."""
         if self._design_statusbar is not None:
-            self._design_statusbar.set_phase("Done", busy=False)
+            self._design_statusbar.set_phase(f"{message} ({pct}%)", busy=True)
+        if self._viewport_overlays is not None:
+            try:
+                self._viewport_overlays.progress.set_progress(
+                    pct / 100.0, label=message, eta=""
+                )
+            except Exception:
+                pass
+        # 경과 시간 KPI 갱신
+        try:
+            import time
+            if hasattr(self, "_pipeline_start_time"):
+                elapsed = time.monotonic() - self._pipeline_start_time
+                mins, secs = divmod(int(elapsed), 60)
+                self.update_kpi(elapsed=f"{mins:02d}:{secs:02d}")
+        except Exception:
+            pass
+
+    def _update_quality_from_result(self, result: object) -> None:  # pragma: no cover
+        """Pipeline 결과에서 checkMesh quality 메트릭 추출 → Quality 탭 반영."""
+        if self._right_column is None or result is None:
+            return
+        try:
+            q = self._right_column.quality_pane
+            qr = getattr(result, "quality_report", None) or {}
+            metrics = qr.get("metrics", {}) if isinstance(qr, dict) else {}
+
+            def _set(key, value, max_value, warn_threshold=None):
+                if value is None:
+                    return
+                ratio = min(1.0, value / max_value) if max_value > 0 else 0
+                warn = warn_threshold is not None and value > warn_threshold
+                q.set_metric(key, ratio, f"{value:.2f}", warn=warn)
+
+            _set("aspect", metrics.get("max_aspect_ratio"), 20.0, 10.0)
+            _set("skew", metrics.get("max_skewness"), 5.0, 3.5)
+            _set("nonortho", metrics.get("max_non_ortho"), 90.0, 65.0)
+            _set("min_area", metrics.get("min_face_area"), 1.0)
+            _set("min_vol", metrics.get("min_volume"), 1.0)
+            neg = metrics.get("negative_volumes", 0)
+            q.set_metric("neg_vols", 0.02 if neg == 0 else 1.0,
+                         str(neg), warn=(neg > 0))
+
+            # pass rows
+            pass_map = [
+                ("nonortho", metrics.get("max_non_ortho", 0) < 65,
+                    "< 65°" if metrics.get("max_non_ortho", 0) < 65 else "FAIL"),
+                ("skew", metrics.get("max_skewness", 0) < 4.0,
+                    "< 4.0" if metrics.get("max_skewness", 0) < 4.0 else "FAIL"),
+                ("aspect", metrics.get("max_aspect_ratio", 0) < 100,
+                    "< 100" if metrics.get("max_aspect_ratio", 0) < 100 else "FAIL"),
+                ("negvol", neg == 0, "PASS" if neg == 0 else f"FAIL ({neg})"),
+            ]
+            for key, ok, label in pass_map:
+                if key in q.pass_rows:
+                    q.pass_rows[key].set_verdict("ok" if ok else "err",
+                                                 "PASS" if ok else label)
+        except Exception as e:
+            self._log(f"[DBG] Quality 탭 갱신 실패: {e}")
+
+    # ─── Export 저장 ─────────────────────────────────────────────
+    def _on_export_save(self, fmt: str) -> None:  # pragma: no cover
+        if self._output_dir is None or not self._output_dir.exists():
+            self._log("[WARN] 저장할 결과가 없습니다")
+            return
+        try:
+            from core.utils.mesh_exporter import export_mesh
+            target = self._output_dir / f"exported.{fmt}"
+            export_mesh(self._output_dir, target, fmt)
+            self._log(f"[OK] 저장 완료: {target}")
+        except Exception as e:
+            self._log(f"[ERR] 저장 실패: {e}")
+
+    # ─── 뷰포트 액션 ───────────────────────────────────────────────
+    def _wire_viewport_chrome(self) -> None:  # pragma: no cover
+        if self._viewport_chrome is None or self._mesh_viewer is None:
+            return
+        try:
+            self._viewport_chrome.view_mode_changed.connect(self._on_view_mode_changed)
+            self._viewport_chrome.screenshot_requested.connect(self._on_screenshot)
+        except Exception:
+            pass
+
+    def _on_view_mode_changed(self, mode: str) -> None:  # pragma: no cover
+        mv = self._mesh_viewer
+        if mv is None:
+            return
+        try:
+            if mode == "solid":
+                mv.set_show_edges(False); mv.set_opacity(1.0)
+            elif mode == "wire":
+                mv.set_show_edges(True); mv.set_opacity(0.15)
+            else:  # hybrid
+                mv.set_show_edges(True); mv.set_opacity(1.0)
+        except Exception:
+            pass
+
+    def _on_screenshot(self) -> None:  # pragma: no cover
+        if self._mesh_viewer is None:
+            return
+        from PySide6.QtWidgets import QFileDialog
+        path, _ = QFileDialog.getSaveFileName(
+            self._qmain, "스크린샷 저장", "autotessell.png", "PNG (*.png)"
+        )
+        if not path:
+            return
+        try:
+            pix = self._mesh_viewer.grab()
+            if pix.save(path):
+                self._log(f"[OK] 스크린샷 저장: {path}")
+        except Exception as e:
+            self._log(f"[ERR] 스크린샷 실패: {e}")
+
+    # ─── 로그 필터/검색 ───────────────────────────────────────────
+    def _wire_log_filters(self) -> None:  # pragma: no cover
+        job = self._right_column.job_pane
+        self._active_log_levels: set[str] = {"ALL"}
+        chips = {
+            "ALL": job.chip_all, "INFO": job.chip_info,
+            "WARN": job.chip_warn, "ERR": job.chip_err, "DBG": job.chip_dbg,
+        }
+        for level, chip in chips.items():
+            chip.clicked.connect(lambda _, L=level: self._on_log_chip_toggled(L))
+        job.log_search.textChanged.connect(self._on_log_search_changed)
+
+    def _on_log_chip_toggled(self, level: str) -> None:  # pragma: no cover
+        job = self._right_column.job_pane
+        if level == "ALL":
+            self._active_log_levels = {"ALL"}
+            for lv, chip in (
+                ("ALL", job.chip_all), ("INFO", job.chip_info),
+                ("WARN", job.chip_warn), ("ERR", job.chip_err),
+                ("DBG", job.chip_dbg),
+            ):
+                chip.set_active(lv == "ALL")
+        else:
+            self._active_log_levels.discard("ALL")
+            job.chip_all.set_active(False)
+            if level in self._active_log_levels:
+                self._active_log_levels.discard(level)
+            else:
+                self._active_log_levels.add(level)
+            if not self._active_log_levels:
+                self._active_log_levels = {"ALL"}
+                job.chip_all.set_active(True)
+            for lv, chip in (
+                ("INFO", job.chip_info), ("WARN", job.chip_warn),
+                ("ERR", job.chip_err), ("DBG", job.chip_dbg),
+            ):
+                chip.set_active(lv in self._active_log_levels)
+        self._refilter_log()
+
+    def _on_log_search_changed(self, text: str) -> None:  # pragma: no cover
+        self._refilter_log()
+
+    def _refilter_log(self) -> None:  # pragma: no cover
+        if self._log_edit is None or not hasattr(self, "_all_log_lines"):
+            return
+        job = self._right_column.job_pane
+        search = (job.log_search.text() or "").strip().lower()
+        levels = self._active_log_levels
+        keep = []
+        for raw in self._all_log_lines:
+            if "ALL" not in levels:
+                if not any(f"[{lv}]" in raw or f" {lv} " in raw for lv in levels):
+                    continue
+            if search and search not in raw.lower():
+                continue
+            keep.append(raw)
+        self._log_edit.setPlainText("\n".join(keep))
+
+    def _log(self, msg: str) -> None:  # pragma: no cover
+        """필터링 가능한 로그 저장."""
+        if not hasattr(self, "_all_log_lines"):
+            self._all_log_lines: list[str] = []
+        msg_str = str(msg)
+        self._all_log_lines.append(msg_str)
+        # 너무 길면 잘라내기
+        if len(self._all_log_lines) > 5000:
+            self._all_log_lines = self._all_log_lines[-3000:]
+        self._refilter_log()
+
+    # ─── 파일 메뉴 ───────────────────────────────────────────────
+    def _on_new_project(self) -> None:  # pragma: no cover
+        self._input_path = None
+        self._output_dir = None
+        self._set_quality_level(QualityLevel.DRAFT) if False else None
+        if self._drop_label is not None:
+            self._drop_label.setText(
+                "STL · OBJ · PLY · STEP · IGES\n"
+                "OFF · 3MF · MSH · VTK · LAS/LAZ\n"
+                "Drop file or click to browse"
+            )
+        if self._tier_pipeline is not None:
+            for i in range(6):
+                self._tier_pipeline.set_status(i, "pending")
+        if self._titlebar_strip is not None:
+            self._titlebar_strip.set_title("AutoTessell", subtitle=None, path=None)
+        if self._right_column is not None:
+            self._right_column.job_pane.status_card.set_state(
+                badge="Ready", badge_level="info", job_id="—",
+                filename="No file loaded", subtitle="—",
+            )
+            self._right_column.job_pane.log_box.clear()
+        if hasattr(self, "_all_log_lines"):
+            self._all_log_lines.clear()
+        self._log("[INFO] 새 프로젝트 초기화")
+
+    def _on_save_project(self) -> None:  # pragma: no cover
+        if self._output_dir is None:
+            self._log("[WARN] 저장할 프로젝트가 없습니다")
+            return
+        snapshot = {
+            "input_path": str(self._input_path) if self._input_path else None,
+            "output_dir": str(self._output_dir),
+            "quality_level": self._quality_level.value,
+            "engine": self._tier_combo_text(),
+            "remesh_engine": self._remesh_engine_text(),
+        }
+        path = self._output_dir / "autotessell_project.json"
+        try:
+            path.write_text(json.dumps(snapshot, indent=2, ensure_ascii=False))
+            self._log(f"[OK] 프로젝트 저장: {path}")
+        except Exception as e:
+            self._log(f"[ERR] 저장 실패: {e}")
+
+    # ─── 시스템 모니터 타이머 ──────────────────────────────────────
+    def _start_sys_monitor(self) -> None:  # pragma: no cover
+        from PySide6.QtCore import QTimer
+        self._sys_timer = QTimer(self._qmain)
+        self._sys_timer.timeout.connect(self._update_sys_stats)
+        self._sys_timer.start(2000)
+        self._update_sys_stats()
+
+    def _update_sys_stats(self) -> None:  # pragma: no cover
+        if self._design_statusbar is None:
+            return
+        try:
+            import psutil
+            cpu = psutil.cpu_percent(interval=None)
+            self._design_statusbar.set_cpu(f"{cpu:.0f}%")
+            # I/O — disk read/write rate
+            if not hasattr(self, "_last_io"):
+                self._last_io = psutil.disk_io_counters()
+                self._last_io_t = __import__("time").monotonic()
+                self._design_statusbar.set_io("— MB/s")
+            else:
+                import time
+                now = time.monotonic()
+                dt = max(0.01, now - self._last_io_t)
+                io = psutil.disk_io_counters()
+                rb = (io.read_bytes - self._last_io.read_bytes) / dt
+                wb = (io.write_bytes - self._last_io.write_bytes) / dt
+                total = (rb + wb) / (1024 * 1024)
+                self._design_statusbar.set_io(f"{total:.1f} MB/s")
+                self._last_io = io; self._last_io_t = now
+        except Exception:
+            pass
+        # GPU (선택적 pynvml)
+        try:
+            import pynvml  # type: ignore[import-not-found]
+            pynvml.nvmlInit()
+            h = pynvml.nvmlDeviceGetHandleByIndex(0)
+            util = pynvml.nvmlDeviceGetUtilizationRates(h)
+            self._design_statusbar.set_gpu(f"{util.gpu}%")
+        except Exception:
+            self._design_statusbar.set_gpu("—")
 
     def _log(self, msg: str) -> None:  # pragma: no cover
         if self._log_edit is not None:
@@ -1257,3 +1681,16 @@ def _qcolor(hex_str: str):  # pragma: no cover
 def _qt_cursor_pointing():  # pragma: no cover
     from PySide6.QtCore import Qt
     return Qt.PointingHandCursor
+
+
+def _parse_float(text: str) -> float | None:
+    """빈 문자열/'auto'/비숫자는 None. 숫자는 float."""
+    if not text:
+        return None
+    t = text.strip()
+    if not t or t.lower() in ("auto", "-"):
+        return None
+    try:
+        return float(t)
+    except ValueError:
+        return None
