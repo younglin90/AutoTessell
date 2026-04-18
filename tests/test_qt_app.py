@@ -1452,6 +1452,96 @@ def test_preset_get_returns_correct() -> None:
     assert get("존재하지 않는 프리셋") is None
 
 
+def test_pipeline_worker_has_intermediate_ready_signal() -> None:
+    """PipelineWorker에 intermediate_ready Signal이 정의돼야 한다."""
+    from pathlib import Path
+
+    from desktop.qt_app.main_window import QualityLevel
+    from desktop.qt_app.pipeline_worker import PipelineWorker
+
+    worker = PipelineWorker(
+        input_path=Path("/nonexistent/x.stl"),
+        quality_level=QualityLevel.DRAFT,
+        output_dir=Path("/tmp/_x"),
+    )
+    assert hasattr(worker, "intermediate_ready"), "intermediate_ready Signal 없음"
+
+
+def test_try_emit_intermediate_preprocessed_stl(tmp_path) -> None:
+    """_try_emit_intermediate — 'Preprocess 완료' 메시지 + preprocessed.stl 존재시 emit."""
+    from pathlib import Path
+
+    from PySide6.QtTest import QSignalSpy
+    from desktop.qt_app.main_window import QualityLevel
+    from desktop.qt_app.pipeline_worker import PipelineWorker, _try_emit_intermediate
+
+    # 가짜 artifact 생성
+    work = tmp_path / "_work"
+    work.mkdir()
+    pre_stl = work / "preprocessed.stl"
+    pre_stl.write_text("solid stl\n" * 10)  # 더미 non-empty
+
+    worker = PipelineWorker(
+        input_path=Path("/nonexistent/x.stl"),
+        quality_level=QualityLevel.DRAFT,
+        output_dir=tmp_path,
+    )
+    spy = QSignalSpy(worker.intermediate_ready)  # type: ignore[attr-defined]
+    _try_emit_intermediate(worker, "Preprocess 완료", tmp_path)
+
+    assert spy.count() == 1
+    emitted_path = spy.at(0)[0]
+    emitted_label = spy.at(0)[1]
+    assert "preprocessed.stl" in emitted_path
+    assert "표면" in emitted_label or "Surface" in emitted_label
+
+
+def test_try_emit_intermediate_iteration_polymesh(tmp_path) -> None:
+    """'Generate 완료 1/3' + polyMesh 존재시 intermediate_ready emit."""
+    from pathlib import Path
+
+    from PySide6.QtTest import QSignalSpy
+    from desktop.qt_app.main_window import QualityLevel
+    from desktop.qt_app.pipeline_worker import PipelineWorker, _try_emit_intermediate
+
+    poly = tmp_path / "constant" / "polyMesh"
+    poly.mkdir(parents=True)
+    (poly / "points").write_text("dummy")
+
+    worker = PipelineWorker(
+        input_path=Path("/nonexistent/x.stl"),
+        quality_level=QualityLevel.DRAFT,
+        output_dir=tmp_path,
+    )
+    spy = QSignalSpy(worker.intermediate_ready)  # type: ignore[attr-defined]
+    _try_emit_intermediate(worker, "Generate 완료 1/3", tmp_path)
+
+    assert spy.count() == 1
+
+
+def test_try_emit_intermediate_final_iteration_skipped(tmp_path) -> None:
+    """마지막 iteration (1/1 또는 3/3)은 최종이므로 emit 안 함."""
+    from pathlib import Path
+
+    from PySide6.QtTest import QSignalSpy
+    from desktop.qt_app.main_window import QualityLevel
+    from desktop.qt_app.pipeline_worker import PipelineWorker, _try_emit_intermediate
+
+    poly = tmp_path / "constant" / "polyMesh"
+    poly.mkdir(parents=True)
+    (poly / "points").write_text("dummy")
+
+    worker = PipelineWorker(
+        input_path=Path("/nonexistent/x.stl"),
+        quality_level=QualityLevel.DRAFT,
+        output_dir=tmp_path,
+    )
+    spy = QSignalSpy(worker.intermediate_ready)  # type: ignore[attr-defined]
+    _try_emit_intermediate(worker, "Generate 완료 3/3", tmp_path)  # 마지막
+
+    assert spy.count() == 0, "최종 iteration은 emit되면 안 됨 (finished가 처리)"
+
+
 def test_error_recovery_classify_openfoam_missing() -> None:
     """OpenFOAM 미설치 에러 메시지를 분류한다."""
     from desktop.qt_app.error_recovery import classify_error

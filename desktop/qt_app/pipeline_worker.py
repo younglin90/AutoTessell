@@ -54,6 +54,10 @@ class PipelineWorker:
             progress_percent: Signal[int, str] = Signal(int, str)
             finished: Signal[object] = Signal(object)
             quality_update: Signal[dict] = Signal(dict)  # checkMesh 품질 메트릭
+            # 중간 아티팩트 준비 완료 — (file_path, stage_label)
+            # 예: ("/tmp/case/_work/preprocessed.stl", "Preprocessed Surface")
+            #     ("/tmp/case/constant/polyMesh", "Iteration 1 Volume Mesh")
+            intermediate_ready: Signal[str, str] = Signal(str, str)
 
             def __init__(
                 self,
@@ -118,6 +122,8 @@ class PipelineWorker:
                         self.progress.emit(f"[진행 {int(percent)}%] {message}")
                         # checkMesh 품질 힌트 — 메시지에서 메트릭 파싱 시도
                         _try_emit_quality(self, message)
+                        # 중간 아티팩트 프리뷰 — 긴 실행 중 대기시간 줄이기
+                        _try_emit_intermediate(self, message, output_dir)
 
                     result = orchestrator.run(
                         input_path=self._input_path,
@@ -224,6 +230,39 @@ def _try_emit_quality(worker: object, message: str) -> None:
             metrics["negative_volumes"] = int(m.group(1))
         if metrics:
             worker.quality_update.emit(metrics)  # type: ignore[union-attr]
+    except Exception:
+        pass
+
+
+def _try_emit_intermediate(worker: object, message: str, output_dir: Path) -> None:
+    """progress 메시지가 stage 완료를 알리면 해당 artifact 경로를 emit.
+
+    Fine 품질 30분+ 실행 중 사용자에게 중간 결과를 미리 보여주기 위함.
+    """
+    try:
+        # "Preprocess 완료" → 수리된 표면 STL
+        if "Preprocess 완료" in message:
+            pre_stl = output_dir / "_work" / "preprocessed.stl"
+            if pre_stl.exists() and pre_stl.stat().st_size > 0:
+                worker.intermediate_ready.emit(  # type: ignore[union-attr]
+                    str(pre_stl), "전처리된 표면"
+                )
+                return
+
+        # "Generate 완료 N/M" → 중간 volume polyMesh
+        import re
+        m = re.search(r"Generate 완료 (\d+)/(\d+)", message)
+        if m:
+            iteration = int(m.group(1))
+            total = int(m.group(2))
+            polymesh = output_dir / "constant" / "polyMesh"
+            if polymesh.exists() and (polymesh / "points").exists():
+                # 마지막 iteration이면 최종이므로 intermediate_ready 불필요
+                # (finished signal이 그 역할) → 중간 iteration만 emit
+                if iteration < total:
+                    worker.intermediate_ready.emit(  # type: ignore[union-attr]
+                        str(output_dir), f"반복 {iteration}/{total} Volume"
+                    )
     except Exception:
         pass
 

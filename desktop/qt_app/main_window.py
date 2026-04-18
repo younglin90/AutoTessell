@@ -1480,6 +1480,11 @@ class AutoTessellWindow:  # type: ignore[misc]
                     worker.quality_update.connect(self._on_quality_update)
                 except Exception:
                     pass
+            if hasattr(worker, "intermediate_ready"):
+                try:
+                    worker.intermediate_ready.connect(self._on_intermediate_ready)
+                except Exception:
+                    pass
             worker.finished.connect(self._on_pipeline_finished)
             worker.start()
             self._worker = worker
@@ -1893,6 +1898,41 @@ class AutoTessellWindow:  # type: ignore[misc]
                         pass
         except Exception as e:
             self._log(f"[DBG] 메시 통계 KPI 갱신 실패: {e}")
+
+    def _on_intermediate_ready(self, path: str, stage_label: str) -> None:  # pragma: no cover
+        """중간 artifact 준비 — 뷰포트 자동 로드 + 스테이지 배지 업데이트."""
+        if self._mesh_viewer is None:
+            return
+        from pathlib import Path
+
+        p = Path(path)
+        if not p.exists():
+            self._log(f"[DBG] 중간 artifact 사라짐: {path}")
+            return
+
+        try:
+            if p.is_dir():
+                # polyMesh 디렉토리
+                if (p / "constant" / "polyMesh").exists() or p.name == "polyMesh":
+                    case_dir = p if (p / "constant" / "polyMesh").exists() else p.parent.parent
+                    self._mesh_viewer.load_polymesh(str(case_dir))  # type: ignore[union-attr]
+                else:
+                    return
+            else:
+                # STL/단일 메시 파일
+                self._mesh_viewer.load_mesh(str(p))  # type: ignore[union-attr]
+
+            self._log(f"[INFO] 중간 프리뷰 로드: {stage_label} ← {p.name}")
+            # Tier/뷰포트 오버레이에 스테이지 표기
+            if self._viewport_overlays is not None:
+                try:
+                    self._viewport_overlays.kpi.set_value(
+                        "Tier", f"[Preview] {stage_label}", highlight=True,
+                    )
+                except Exception:
+                    pass
+        except Exception as e:
+            self._log(f"[DBG] 중간 프리뷰 로드 실패: {e}")
 
     def _on_quality_update(self, metrics: dict) -> None:  # pragma: no cover
         """quality_update Signal 수신 → Quality 탭 실시간 갱신."""
