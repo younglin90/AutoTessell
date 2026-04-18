@@ -54,12 +54,13 @@ class DropZone(QLabel):
     def _set_idle_style(self) -> None:
         self.setStyleSheet(
             "QLabel { "
-            "border: 2px dashed #3f4852; "
-            "border-radius: 8px; "
-            "background: #1c1b1b; "
-            "color: #6b7280; "
-            "padding: 16px; "
-            "font-size: 13px; "
+            "border: 1px dashed #3e4757; "
+            "border-radius: 6px; "
+            "background: #161a20; "
+            "color: #818a99; "
+            "padding: 18px 12px; "
+            "font-size: 12px; "
+            "line-height: 1.5; "
             "}"
         )
 
@@ -67,12 +68,13 @@ class DropZone(QLabel):
         """마우스 커서가 올라왔을 때 (클릭 가능 힌트)."""
         self.setStyleSheet(
             "QLabel { "
-            "border: 2px dashed #6b7280; "
-            "border-radius: 8px; "
-            "background: #222222; "
-            "color: #bec7d4; "
-            "padding: 16px; "
-            "font-size: 13px; "
+            "border: 1px dashed #4ea3ff; "
+            "border-radius: 6px; "
+            "background: #1c2129; "
+            "color: #b6bdc9; "
+            "padding: 18px 12px; "
+            "font-size: 12px; "
+            "line-height: 1.5; "
             "}"
         )
 
@@ -80,11 +82,14 @@ class DropZone(QLabel):
         """파일을 끌고 왔을 때 (드롭 가능 힌트)."""
         self.setStyleSheet(
             "QLabel { "
-            "border: 2px dashed #0078d4; "
-            "border-radius: 8px; "
-            "background: #0a1a2a; "
-            "color: #98cbff; "
-            "padding: 16px; "
-            "font-size: 13px; "
+            "border: 1px solid #4ea3ff; "
+            "border-radius: 6px; "
+            "background: qlineargradient(x1:0, y1:0, x2:0, y2:1, "
+            "  stop:0 rgba(78,163,255,0.12), stop:1 rgba(78,163,255,0.04)); "
+            "color: #6ab4ff; "
+            "padding: 18px 12px; "
+            "font-size: 12px; "
+            "font-weight: 500; "
+            "line-height: 1.5; "
             "}"
         )

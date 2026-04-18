@@ -508,74 +508,158 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._qmain.setWindowTitle("AutoTessell")
         self._qmain.resize(1400, 900)
 
+        # ── Design Spec: Engineering CAD dark palette (ParaView/Rhino-inspired) ──
+        # Palette: bg-0=#0b0d10 | bg-1=#101318 | bg-2=#161a20 | bg-3=#1c2129 | bg-4=#242a33
+        # Lines: line-1=#262c36 | line-2=#323a46 | line-3=#3e4757
+        # Text:  text-0=#e8ecf2 | text-1=#b6bdc9 | text-2=#818a99 | text-3=#5a6270
+        # Accent: #4ea3ff (primary) | #2c5f97 (dim) | ok=#4ade80 warn=#f5b454 err=#ff6b6b
         DARK_STYLE = """
 QMainWindow, QWidget {
-    background-color: #131313;
-    color: #e5e2e1;
-    font-family: 'Segoe UI', 'JetBrains Mono', 'Consolas', monospace;
+    background-color: #101318;
+    color: #e8ecf2;
+    font-family: 'Pretendard', 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
     font-size: 13px;
 }
 QComboBox {
-    background: #201f1f; border: 1px solid #3f4852;
-    border-radius: 4px; padding: 5px 10px; color: #e5e2e1;
-    font-size: 13px; min-height: 28px;
+    background: #161a20; border: 1px solid #323a46;
+    border-radius: 5px; padding: 6px 10px; color: #e8ecf2;
+    font-size: 12.5px; min-height: 28px;
 }
-QComboBox:hover { border-color: #98cbff; background: #2a2a2a; }
-QComboBox::drop-down { border: none; width: 20px; }
-QComboBox::down-arrow { width: 10px; height: 10px; }
+QComboBox:hover { border-color: #3e4757; }
+QComboBox:focus { border-color: #4ea3ff; }
+QComboBox::drop-down { border: none; width: 22px; }
+QComboBox::down-arrow { width: 8px; height: 8px; }
 QComboBox QAbstractItemView {
-    background: #1c1b1b; selection-background-color: #00629d;
-    font-size: 13px; padding: 2px;
+    background: #161a20; selection-background-color: #2c5f97;
+    border: 1px solid #323a46; color: #e8ecf2;
+    font-size: 12.5px; padding: 2px;
+    outline: none;
 }
 QLineEdit {
-    background: #201f1f; border: 1px solid #3f4852;
-    border-radius: 4px; padding: 5px 10px; color: #e5e2e1;
-    font-size: 13px; min-height: 28px;
+    background: #161a20; border: 1px solid #323a46;
+    border-radius: 5px; padding: 6px 10px; color: #e8ecf2;
+    font-size: 12.5px; min-height: 28px;
+    selection-background-color: #2c5f97;
 }
-QLineEdit:hover { border-color: #6b7280; }
-QLineEdit:focus { border-color: #98cbff; }
+QLineEdit:hover { border-color: #3e4757; }
+QLineEdit:focus { border-color: #4ea3ff; }
 QPushButton {
-    background: #201f1f; border: 1px solid #3f4852;
-    border-radius: 4px; padding: 5px 12px; color: #e5e2e1;
-    font-size: 13px; min-height: 28px;
+    background: #161a20; border: 1px solid #323a46;
+    border-radius: 5px; padding: 6px 14px; color: #b6bdc9;
+    font-size: 12px; font-weight: 500; min-height: 28px;
 }
-QPushButton:hover { background: #2a3545; border-color: #98cbff; color: #ffffff; }
-QPushButton:pressed { background: #00629d; border-color: #0078d4; }
-QPushButton:disabled { background: #1a1a1a; color: #4a5568; border-color: #2a2a2a; }
-QLabel { color: #e5e2e1; font-size: 13px; }
-QScrollBar:vertical { background: #1c1b1b; width: 6px; }
-QScrollBar::handle:vertical { background: #3f4852; border-radius: 3px; min-height: 20px; }
-QScrollBar::handle:vertical:hover { background: #6b7280; }
-QScrollBar:horizontal { background: #1c1b1b; height: 6px; }
-QScrollBar::handle:horizontal { background: #3f4852; border-radius: 3px; min-width: 20px; }
-QScrollBar::handle:horizontal:hover { background: #6b7280; }
+QPushButton:hover { background: #1c2129; border-color: #3e4757; color: #e8ecf2; }
+QPushButton:pressed { background: #242a33; }
+QPushButton:disabled { background: #0b0d10; color: #5a6270; border-color: #262c36; }
+QPushButton[accent="primary"] {
+    background: #4ea3ff; border: 1px solid #4ea3ff; color: #05111e;
+    font-weight: 600;
+}
+QPushButton[accent="primary"]:hover { background: #6ab4ff; border-color: #6ab4ff; }
+QPushButton[accent="primary"]:pressed { background: #2c5f97; }
+QPushButton[accent="danger"] {
+    background: rgba(255,60,60,0.08); border: 1px solid #5f2d2d; color: #ff8888;
+}
+QPushButton[accent="danger"]:hover { background: rgba(255,60,60,0.15); color: #ff6b6b; }
+QLabel { color: #e8ecf2; font-size: 13px; background: transparent; }
+QScrollBar:vertical { background: transparent; width: 8px; margin: 0; }
+QScrollBar::handle:vertical { background: #323a46; border-radius: 4px; min-height: 24px; border: 2px solid transparent; background-clip: padding; }
+QScrollBar::handle:vertical:hover { background: #3e4757; }
+QScrollBar:horizontal { background: transparent; height: 8px; margin: 0; }
+QScrollBar::handle:horizontal { background: #323a46; border-radius: 4px; min-width: 24px; border: 2px solid transparent; background-clip: padding; }
+QScrollBar::handle:horizontal:hover { background: #3e4757; }
 QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
-QPlainTextEdit, QTextBrowser {
-    background: #0d0d16; border: none; color: #bec7d4;
-    font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 12px;
+QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+QPlainTextEdit, QTextBrowser, QTextEdit {
+    background: #05070a; border: none; color: #b6bdc9;
+    font-family: 'JetBrains Mono', 'SF Mono', 'Consolas', monospace;
+    font-size: 11px; line-height: 1.65;
+    selection-background-color: #2c5f97;
 }
 QSpinBox, QDoubleSpinBox {
-    background: #201f1f; border: 1px solid #3f4852;
-    border-radius: 4px; padding: 4px 6px; color: #e5e2e1;
-    font-size: 13px; min-height: 26px;
+    background: #161a20; border: 1px solid #323a46;
+    border-radius: 5px; padding: 5px 8px; color: #e8ecf2;
+    font-family: 'JetBrains Mono', monospace; font-size: 12px; min-height: 26px;
 }
-QSpinBox:hover, QDoubleSpinBox:hover { border-color: #6b7280; }
-QSpinBox:focus, QDoubleSpinBox:focus { border-color: #98cbff; }
-QCheckBox { color: #d0d0d0; spacing: 8px; font-size: 13px; }
-QCheckBox::indicator { width: 16px; height: 16px; border: 1px solid #3f4852; border-radius: 3px; background: #201f1f; }
-QCheckBox::indicator:hover { border-color: #98cbff; }
-QCheckBox::indicator:checked { background: #0078d4; border-color: #98cbff; }
-QProgressBar { background: #1c1b1b; border: none; border-radius: 3px; height: 8px; }
-QProgressBar::chunk { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #0078d4, stop:1 #98cbff); border-radius: 3px; }
-QTabWidget::pane { border: none; border-top: 1px solid #3f4852; }
-QTabBar::tab { background: #1c1b1b; color: #bec7d4; padding: 8px 18px; border: none; border-bottom: 2px solid transparent; font-size: 13px; }
-QTabBar::tab:selected { color: #98cbff; border-bottom: 2px solid #98cbff; background: #131313; }
-QTabBar::tab:hover { color: #e5e2e1; background: #201f1f; }
-QScrollArea { border: none; }
+QSpinBox:hover, QDoubleSpinBox:hover { border-color: #3e4757; }
+QSpinBox:focus, QDoubleSpinBox:focus { border-color: #4ea3ff; }
+QSpinBox::up-button, QSpinBox::down-button,
+QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {
+    background: #1c2129; border: none; width: 16px;
+}
+QSpinBox::up-button:hover, QSpinBox::down-button:hover,
+QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover { background: #242a33; }
+QCheckBox { color: #b6bdc9; spacing: 8px; font-size: 12px; background: transparent; }
+QCheckBox::indicator { width: 14px; height: 14px; border: 1px solid #3e4757; border-radius: 3px; background: #161a20; }
+QCheckBox::indicator:hover { border-color: #4ea3ff; }
+QCheckBox::indicator:checked { background: #4ea3ff; border-color: #4ea3ff; }
+QRadioButton { color: #b6bdc9; spacing: 8px; font-size: 12px; background: transparent; }
+QRadioButton::indicator { width: 14px; height: 14px; border: 1px solid #3e4757; border-radius: 7px; background: #161a20; }
+QRadioButton::indicator:checked { background: #4ea3ff; border-color: #4ea3ff; }
+QProgressBar { background: #161a20; border: 1px solid #262c36; border-radius: 3px; height: 6px; text-align: center; color: transparent; }
+QProgressBar::chunk { background: #4ea3ff; border-radius: 2px; }
+QTabWidget::pane { border: none; border-top: 1px solid #262c36; background: #101318; }
+QTabBar { background: transparent; }
+QTabBar::tab {
+    background: transparent; color: #818a99;
+    padding: 10px 16px; border: none;
+    border-bottom: 2px solid transparent;
+    font-size: 12px; font-weight: 500;
+    min-width: 80px;
+}
+QTabBar::tab:selected { color: #e8ecf2; border-bottom-color: #4ea3ff; }
+QTabBar::tab:hover:!selected { color: #b6bdc9; }
+QScrollArea { border: none; background: transparent; }
 QToolTip {
-    background: #2a3545; color: #e5e2e1; border: 1px solid #3f4852;
-    padding: 4px 8px; border-radius: 4px; font-size: 12px;
+    background: #1c2129; color: #e8ecf2; border: 1px solid #323a46;
+    padding: 5px 9px; border-radius: 4px; font-size: 11.5px;
 }
+QSlider::groove:horizontal {
+    height: 3px; background: #1c2129; border: 1px solid #262c36; border-radius: 2px;
+}
+QSlider::handle:horizontal {
+    background: #4ea3ff; width: 12px; height: 12px;
+    margin: -5px 0; border-radius: 6px;
+    border: 2px solid #101318;
+}
+QSlider::handle:horizontal:hover { background: #6ab4ff; }
+QMenuBar { background: #101318; border-bottom: 1px solid #262c36; color: #b6bdc9; font-size: 12.5px; }
+QMenuBar::item { padding: 6px 10px; background: transparent; border-radius: 4px; }
+QMenuBar::item:selected { background: #1c2129; color: #e8ecf2; }
+QMenu { background: #101318; border: 1px solid #323a46; border-radius: 6px; padding: 4px; color: #b6bdc9; }
+QMenu::item { padding: 6px 16px; border-radius: 4px; font-size: 12px; }
+QMenu::item:selected { background: #4ea3ff; color: #05111e; }
+QMenu::separator { height: 1px; background: #262c36; margin: 4px 2px; }
+QStatusBar { background: #0e1219; border-top: 1px solid #262c36; color: #818a99; font-size: 11px; }
+QGroupBox {
+    color: #818a99; font-size: 10.5px; font-weight: 600;
+    letter-spacing: 1px; text-transform: uppercase;
+    border: 1px solid #262c36; border-radius: 6px;
+    margin-top: 10px; padding: 12px 10px 10px;
+    background: transparent;
+}
+QGroupBox::title {
+    subcontrol-origin: margin; subcontrol-position: top left;
+    padding: 0 6px; left: 8px; background: #101318;
+}
+QSplitter::handle { background: #262c36; }
+QSplitter::handle:horizontal { width: 1px; }
+QSplitter::handle:vertical { height: 1px; }
+QHeaderView::section {
+    background: #161a20; color: #818a99; padding: 6px 10px;
+    border: none; border-right: 1px solid #262c36; border-bottom: 1px solid #262c36;
+    font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;
+}
+QTableView, QTreeView, QListView {
+    background: #101318; color: #b6bdc9;
+    border: 1px solid #262c36; border-radius: 6px;
+    selection-background-color: #2c5f97; selection-color: #e8ecf2;
+    gridline-color: #262c36; outline: none;
+    alternate-background-color: #161a20;
+}
+QTableView::item, QTreeView::item, QListView::item { padding: 4px 8px; }
+QTableView::item:hover, QTreeView::item:hover, QListView::item:hover { background: #161a20; }
+QTableView::item:selected, QTreeView::item:selected, QListView::item:selected { background: #2c5f97; color: #e8ecf2; }
 """
         self._qmain.setStyleSheet(DARK_STYLE)
 
@@ -601,10 +685,10 @@ QToolTip {
         sidebar_scroll.setWidgetResizable(True)
         sidebar_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         sidebar_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        sidebar_scroll.setStyleSheet("QScrollArea { background: #1c1b1b; border: none; border-right: 1px solid #3f4852; }")
+        sidebar_scroll.setStyleSheet("QScrollArea { background: #161a20; border: none; border-right: 1px solid #323a46; }")
 
         sidebar_inner = QWidget()
-        sidebar_inner.setStyleSheet("background: #1c1b1b;")
+        sidebar_inner.setStyleSheet("background: #161a20;")
         sidebar_layout = QVBoxLayout(sidebar_inner)
         sidebar_layout.setContentsMargins(12, 12, 12, 12)
         sidebar_layout.setSpacing(12)
@@ -612,29 +696,46 @@ QToolTip {
 
         main_hbox.addWidget(sidebar_scroll)
 
-        # ── [A] 로고 영역 (48px) ─────────────────────────────────────
+        # ── [A] 로고 영역 (브랜드 뱃지 + 서브텍스트) ───────────────────
         logo_frame = QFrame()
-        logo_frame.setFixedHeight(48)
+        logo_frame.setFixedHeight(54)
         logo_frame.setStyleSheet(
-            "QFrame { background: #1c1b1b; border: none; border-bottom: 1px solid #2a2a2a; }"
+            "QFrame { background: transparent; border: none; border-bottom: 1px solid #262c36; }"
         )
         logo_layout = QHBoxLayout(logo_frame)
-        logo_layout.setContentsMargins(0, 0, 0, 0)
-        logo_layout.setSpacing(8)
+        logo_layout.setContentsMargins(2, 4, 2, 10)
+        logo_layout.setSpacing(10)
 
         icon_badge = QLabel("⬡")
-        icon_badge.setFixedSize(32, 32)
+        icon_badge.setFixedSize(30, 30)
         icon_badge.setAlignment(Qt.AlignCenter)
         icon_badge.setStyleSheet(
-            "background: #0078d4; border-radius: 8px; color: #ffffff; "
-            "font-size: 16px; font-weight: bold;"
+            "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, "
+            "  stop:0 #2d6bb5, stop:1 #4ea3ff); "
+            "border-radius: 7px; color: #ffffff; "
+            "font-size: 15px; font-weight: 700;"
         )
+
+        logo_text_box = QWidget()
+        logo_text_box.setStyleSheet("background: transparent;")
+        logo_text_layout = QVBoxLayout(logo_text_box)
+        logo_text_layout.setContentsMargins(0, 0, 0, 0)
+        logo_text_layout.setSpacing(1)
         logo_text = QLabel("AutoTessell")
         logo_text.setStyleSheet(
-            "color: #e5e2e1; font-size: 14px; font-weight: bold; background: transparent;"
+            "color: #e8ecf2; font-size: 14px; font-weight: 700; "
+            "letter-spacing: 0.2px; background: transparent;"
         )
+        logo_sub = QLabel("MESH  GENERATION")
+        logo_sub.setStyleSheet(
+            "color: #5a6270; font-size: 9px; font-weight: 600; "
+            "letter-spacing: 2.2px; background: transparent;"
+        )
+        logo_text_layout.addWidget(logo_text)
+        logo_text_layout.addWidget(logo_sub)
+
         logo_layout.addWidget(icon_badge)
-        logo_layout.addWidget(logo_text)
+        logo_layout.addWidget(logo_text_box)
         logo_layout.addStretch()
 
         sidebar_layout.addWidget(logo_frame)
@@ -656,7 +757,7 @@ QToolTip {
         # ── [B2] Output 경로 섹션 ────────────────────────────────────
         output_section_lbl = QLabel("OUTPUT DIR")
         output_section_lbl.setStyleSheet(
-            "color: #6b7280; font-size: 12px; letter-spacing: 1.5px; "
+            "color: #b6bdc9; font-size: 11px; font-weight: 700; letter-spacing: 1.8px; text-transform: uppercase; "
             "background: transparent;"
         )
         sidebar_layout.addWidget(output_section_lbl)
@@ -684,7 +785,7 @@ QToolTip {
         # ── [C] Mesh Engine 드롭다운 ─────────────────────────────────
         engine_section_lbl = QLabel("Mesh Engine")
         engine_section_lbl.setStyleSheet(
-            "color: #bec7d4; font-size: 12px; letter-spacing: 1px; "
+            "color: #b6bdc9; font-size: 11px; font-weight: 700; letter-spacing: 1.8px; "
             "text-transform: uppercase; background: transparent;"
         )
         sidebar_layout.addWidget(engine_section_lbl)
@@ -729,7 +830,7 @@ QToolTip {
                 from PySide6.QtCore import Qt as _Qt
                 engine_combo.model().item(idx).setEnabled(False)  # type: ignore[union-attr]
                 engine_combo.model().item(idx).setData(  # type: ignore[union-attr]
-                    "#4a5568", _Qt.ForegroundRole
+                    "#5a6270", _Qt.ForegroundRole
                 )
             else:
                 engine_combo.model().item(idx).setData(engine_key, _Qt.UserRole)  # type: ignore[union-attr]
@@ -747,7 +848,7 @@ QToolTip {
         # ── [D] Quality Level 토글 버튼 ──────────────────────────────
         quality_section_lbl = QLabel("Quality Level")
         quality_section_lbl.setStyleSheet(
-            "color: #bec7d4; font-size: 12px; letter-spacing: 1px; "
+            "color: #b6bdc9; font-size: 11px; font-weight: 700; letter-spacing: 1.8px; "
             "text-transform: uppercase; background: transparent;"
         )
         sidebar_layout.addWidget(quality_section_lbl)
@@ -755,7 +856,7 @@ QToolTip {
         self._quality_combo = None  # legacy 호환 유지
         seg_frame = QFrame()
         seg_frame.setStyleSheet(
-            "QFrame { background: #131313; border: 1px solid #3f4852; border-radius: 4px; }"
+            "QFrame { background: #0b0d10; border: 1px solid #323a46; border-radius: 4px; }"
         )
         seg_layout = QHBoxLayout(seg_frame)
         seg_layout.setContentsMargins(2, 2, 2, 2)
@@ -769,9 +870,9 @@ QToolTip {
             from PySide6.QtWidgets import QSizePolicy
             btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
             btn.setStyleSheet(
-                "QPushButton { background: transparent; border: none; color: #bec7d4; "
+                "QPushButton { background: transparent; border: none; color: #b6bdc9; "
                 "border-radius: 3px; padding: 2px 8px; font-size: 11px; }"
-                "QPushButton:hover { background: #2a2a2a; color: #e5e2e1; }"
+                "QPushButton:hover { background: #242a33; color: #e8ecf2; }"
             )
             self._quality_seg_btns[lvl_key] = btn
             seg_layout.addWidget(btn)
@@ -799,7 +900,7 @@ QToolTip {
         # [D2] 품질 레벨 설명 라벨
         quality_desc = QLabel("")
         quality_desc.setStyleSheet(
-            "color: #6b7280; font-size: 12px; font-style: italic; background: transparent;"
+            "color: #3e4757; font-size: 12px; font-style: italic; background: transparent;"
         )
         quality_desc.setWordWrap(True)
         self._quality_desc_label = quality_desc
@@ -810,7 +911,7 @@ QToolTip {
         # ── [C2] Surface Mesh Config 섹션 ────────────────────────────
         surf_section_lbl = QLabel("SURFACE MESH")
         surf_section_lbl.setStyleSheet(
-            "color: #6b7280; font-size: 12px; letter-spacing: 1.5px; "
+            "color: #b6bdc9; font-size: 11px; font-weight: 700; letter-spacing: 1.8px; text-transform: uppercase; "
             "background: transparent;"
         )
         sidebar_layout.addWidget(surf_section_lbl)
@@ -822,7 +923,7 @@ QToolTip {
         surf_grid.setSpacing(4)
 
         surf_el_lbl = QLabel("Element Size:")
-        surf_el_lbl.setStyleSheet("color: #bec7d4; font-size: 13px; background: transparent;")
+        surf_el_lbl.setStyleSheet("color: #b6bdc9; font-size: 13px; background: transparent;")
         surf_el_edit = QLineEdit()
         surf_el_edit.setPlaceholderText("auto")
         surf_el_edit.setFixedHeight(24)
@@ -830,7 +931,7 @@ QToolTip {
         self._surface_element_size_edit = surf_el_edit
 
         surf_min_lbl = QLabel("Min Size:")
-        surf_min_lbl.setStyleSheet("color: #bec7d4; font-size: 13px; background: transparent;")
+        surf_min_lbl.setStyleSheet("color: #b6bdc9; font-size: 13px; background: transparent;")
         surf_min_edit = QLineEdit()
         surf_min_edit.setPlaceholderText("auto")
         surf_min_edit.setFixedHeight(24)
@@ -838,7 +939,7 @@ QToolTip {
         self._surface_min_size_edit = surf_min_edit
 
         surf_fa_lbl = QLabel("Feature Angle:")
-        surf_fa_lbl.setStyleSheet("color: #bec7d4; font-size: 13px; background: transparent;")
+        surf_fa_lbl.setStyleSheet("color: #b6bdc9; font-size: 13px; background: transparent;")
         surf_fa_edit = QLineEdit()
         surf_fa_edit.setPlaceholderText("150.0")
         surf_fa_edit.setFixedHeight(24)
@@ -856,7 +957,7 @@ QToolTip {
         # ── [E] Advanced Parameters 접이식 섹션 ─────────────────────
         adv_header = QFrame()
         adv_header.setStyleSheet(
-            "QFrame { background: #201f1f; border: 1px solid #3f4852; "
+            "QFrame { background: #1c2129; border: 1px solid #323a46; "
             "border-radius: 4px; }"
         )
         adv_header.setFixedHeight(36)
@@ -866,14 +967,14 @@ QToolTip {
 
         adv_toggle_btn = QPushButton("▶  Advanced Parameters")
         adv_toggle_btn.setStyleSheet(
-            "QPushButton { background: transparent; border: none; color: #bec7d4; "
+            "QPushButton { background: transparent; border: none; color: #b6bdc9; "
             "font-size: 11px; text-align: left; }"
-            "QPushButton:hover { color: #e5e2e1; }"
+            "QPushButton:hover { color: #e8ecf2; }"
         )
         self._adv_toggle_btn = adv_toggle_btn
 
         adv_gear = QLabel("⚙")
-        adv_gear.setStyleSheet("color: #4a5568; background: transparent; font-size: 13px;")
+        adv_gear.setStyleSheet("color: #5a6270; background: transparent; font-size: 13px;")
 
         adv_header_layout.addWidget(adv_toggle_btn)
         adv_header_layout.addStretch()
@@ -884,7 +985,7 @@ QToolTip {
         adv_content = QWidget()
         adv_content.setVisible(False)
         adv_content.setStyleSheet(
-            "QWidget { background: #201f1f; border: 1px solid #3f4852; "
+            "QWidget { background: #1c2129; border: 1px solid #323a46; "
             "border-top: none; border-radius: 0 0 4px 4px; }"
         )
         adv_content_layout = QVBoxLayout(adv_content)
@@ -911,7 +1012,7 @@ QToolTip {
             row_layout.setSpacing(4)
             lbl = QLabel(label_text)
             lbl.setFixedWidth(100)
-            lbl.setStyleSheet("color: #bec7d4; font-size: 12px; background: transparent; border: none;")
+            lbl.setStyleSheet("color: #b6bdc9; font-size: 12px; background: transparent; border: none;")
             edit = QLineEdit()
             edit.setPlaceholderText(placeholder)
             edit.setFixedHeight(24)
@@ -932,7 +1033,7 @@ QToolTip {
         iter_row_layout.setSpacing(4)
         iter_lbl = QLabel("Max Iter:")
         iter_lbl.setFixedWidth(100)
-        iter_lbl.setStyleSheet("color: #bec7d4; font-size: 12px; background: transparent; border: none;")
+        iter_lbl.setStyleSheet("color: #b6bdc9; font-size: 12px; background: transparent; border: none;")
         self._iter_spin = QSpinBox()
         self._iter_spin.setRange(1, 10)  # type: ignore[union-attr]
         self._iter_spin.setValue(3)  # type: ignore[union-attr]
@@ -962,7 +1063,7 @@ QToolTip {
         remesh_row_layout.setSpacing(4)
         remesh_lbl = QLabel("Remesh Engine:")
         remesh_lbl.setFixedWidth(100)
-        remesh_lbl.setStyleSheet("color: #bec7d4; font-size: 12px; background: transparent; border: none;")
+        remesh_lbl.setStyleSheet("color: #b6bdc9; font-size: 12px; background: transparent; border: none;")
         self._remesh_engine_combo = QComboBox()
         for eng in ("auto", "mmg", "quadwild"):
             self._remesh_engine_combo.addItem(eng)  # type: ignore[union-attr]
@@ -1045,16 +1146,16 @@ QToolTip {
         _tab_style = (
             "QLineEdit { background: #0d1117; color: #c9d1d9; border: 1px solid #30363d; "
             "border-radius: 4px; padding: 4px 6px; font-size: 13px; min-height: 26px; }"
-            "QLineEdit:hover { border-color: #6b7280; }"
-            "QLineEdit:focus { border-color: #98cbff; }"
+            "QLineEdit:hover { border-color: #3e4757; }"
+            "QLineEdit:focus { border-color: #6ab4ff; }"
             "QCheckBox { color: #c9d1d9; font-size: 13px; background: transparent; spacing: 6px; }"
-            "QCheckBox::indicator { width: 15px; height: 15px; border: 1px solid #3f4852; "
-            "border-radius: 3px; background: #201f1f; }"
-            "QCheckBox::indicator:hover { border-color: #98cbff; }"
-            "QCheckBox::indicator:checked { background: #0078d4; border-color: #98cbff; }"
+            "QCheckBox::indicator { width: 15px; height: 15px; border: 1px solid #323a46; "
+            "border-radius: 3px; background: #1c2129; }"
+            "QCheckBox::indicator:hover { border-color: #6ab4ff; }"
+            "QCheckBox::indicator:checked { background: #4ea3ff; border-color: #6ab4ff; }"
             "QSpinBox, QDoubleSpinBox { background: #0d1117; color: #c9d1d9; "
             "border: 1px solid #30363d; border-radius: 4px; font-size: 13px; min-height: 26px; }"
-            "QSpinBox:hover, QDoubleSpinBox:hover { border-color: #6b7280; }"
+            "QSpinBox:hover, QDoubleSpinBox:hover { border-color: #3e4757; }"
             "QLabel { color: #8b949e; font-size: 13px; }"
         )
 
@@ -1129,7 +1230,7 @@ QToolTip {
         # ── [G] Run 버튼 위 output 경로 표시 ────────────────────────
         output_hint_lbl = QLabel("")
         output_hint_lbl.setStyleSheet(
-            "color: #4a5568; font-size: 13px; background: transparent;"
+            "color: #5a6270; font-size: 13px; background: transparent;"
         )
         output_hint_lbl.setWordWrap(True)
         self._output_path_label = output_hint_lbl
@@ -1149,7 +1250,7 @@ QToolTip {
             "border-radius: 6px; font-size: 14px; font-weight: bold; }"
             "QPushButton:hover { background: #228a46; border-color: #55f07f; color: #ffffff; }"
             "QPushButton:pressed { background: #1a5e2e; }"
-            "QPushButton:disabled { background: #1a1a1a; color: #4a5568; border-color: #2a2a2a; }"
+            "QPushButton:disabled { background: #1a1a1a; color: #5a6270; border-color: #242a33; }"
         )
         self._run_btn.clicked.connect(self._on_run_clicked)
         run_stop_layout.addWidget(self._run_btn, stretch=1)
@@ -1176,7 +1277,7 @@ QToolTip {
         # [2] 메인 콘텐츠 (오른쪽)
         # ════════════════════════════════════════════════════════════════
         content_widget = QWidget()
-        content_widget.setStyleSheet("background: #131313;")
+        content_widget.setStyleSheet("background: #0b0d10;")
         content_layout = QVBoxLayout(content_widget)
         content_layout.setContentsMargins(0, 0, 0, 0)
         content_layout.setSpacing(0)
@@ -1189,7 +1290,7 @@ QToolTip {
 
         # ── [탭 1] 3D Viewer ─────────────────────────────────────────
         viewer_tab = QWidget()
-        viewer_tab.setStyleSheet("background: #131313;")
+        viewer_tab.setStyleSheet("background: #0b0d10;")
         viewer_tab_layout = QVBoxLayout(viewer_tab)
         viewer_tab_layout.setContentsMargins(0, 0, 0, 0)
         viewer_tab_layout.setSpacing(0)
@@ -1200,12 +1301,12 @@ QToolTip {
             viewer_tab_layout.addWidget(self._mesh_viewer, stretch=1)
         except ImportError:
             fallback_frame = QFrame()
-            fallback_frame.setStyleSheet("background: #131313;")
+            fallback_frame.setStyleSheet("background: #0b0d10;")
             fallback_layout = QVBoxLayout(fallback_frame)
             fallback_lbl = QLabel("Drop a geometry file to preview")
             fallback_lbl.setAlignment(Qt.AlignCenter)
             fallback_lbl.setStyleSheet(
-                "color: #4a5568; font-size: 16px; background: transparent;"
+                "color: #5a6270; font-size: 16px; background: transparent;"
             )
             fallback_layout.addWidget(fallback_lbl)
             viewer_tab_layout.addWidget(fallback_frame, stretch=1)
@@ -1214,7 +1315,7 @@ QToolTip {
         # 메시 통계 바 (뷰어 아래 — 오버레이 방식 아님, 뷰어를 가리지 않음)
         stats_bar = QFrame()
         stats_bar.setStyleSheet(
-            "QFrame { background: #1c1b1b; border-top: 1px solid #3f4852; border-radius: 0; }"
+            "QFrame { background: #161a20; border-top: 1px solid #323a46; border-radius: 0; }"
         )
         stats_bar.setFixedHeight(40)
         stats_bar.setVisible(False)
@@ -1237,7 +1338,7 @@ QToolTip {
             col_layout.setSpacing(0)
             val_lbl = QLabel("—")
             val_lbl.setStyleSheet(
-                "color: #98cbff; font-size: 13px; font-weight: bold; background: transparent;"
+                "color: #6ab4ff; font-size: 13px; font-weight: bold; background: transparent;"
             )
             title_lbl = QLabel(stat_title)
             title_lbl.setStyleSheet(
@@ -1276,7 +1377,7 @@ QToolTip {
         terminal_header = QFrame()
         terminal_header.setFixedHeight(28)
         terminal_header.setStyleSheet(
-            "QFrame { background: #1c1b1b; border: none; border-bottom: 1px solid #3f4852; }"
+            "QFrame { background: #161a20; border: none; border-bottom: 1px solid #323a46; }"
         )
         terminal_header_layout = QHBoxLayout(terminal_header)
         terminal_header_layout.setContentsMargins(10, 0, 10, 0)
@@ -1289,7 +1390,7 @@ QToolTip {
 
         terminal_title = QLabel("autotessell — bash")
         terminal_title.setStyleSheet(
-            "color: #bec7d4; font-size: 13px; background: transparent;"
+            "color: #b6bdc9; font-size: 13px; background: transparent;"
         )
         terminal_header_layout.addWidget(terminal_title)
         terminal_header_layout.addStretch()
@@ -1299,7 +1400,7 @@ QToolTip {
         self._log_edit = QPlainTextEdit()
         self._log_edit.setReadOnly(True)  # type: ignore[union-attr]
         self._log_edit.setStyleSheet(  # type: ignore[union-attr]
-            "QPlainTextEdit { background: #0d0d16; color: #bec7d4; "
+            "QPlainTextEdit { background: #05070a; color: #b6bdc9; "
             "font-family: 'JetBrains Mono', monospace; font-size: 12px; border: none; }"
         )
         log_tab_layout.addWidget(self._log_edit, stretch=1)
@@ -1308,7 +1409,7 @@ QToolTip {
 
         # ── [탭 3] Report ─────────────────────────────────────────────
         report_tab = QWidget()
-        report_tab.setStyleSheet("background: #131313;")
+        report_tab.setStyleSheet("background: #0b0d10;")
         report_tab_layout = QVBoxLayout(report_tab)
         report_tab_layout.setContentsMargins(0, 0, 0, 0)
 
@@ -1316,7 +1417,7 @@ QToolTip {
         report_placeholder = QLabel("Run the mesh generation to see quality metrics")
         report_placeholder.setAlignment(Qt.AlignCenter)
         report_placeholder.setStyleSheet(
-            "color: #4a5568; font-size: 14px; background: transparent;"
+            "color: #5a6270; font-size: 14px; background: transparent;"
         )
         self._report_placeholder = report_placeholder
         report_tab_layout.addWidget(report_placeholder, stretch=1)
@@ -1325,7 +1426,7 @@ QToolTip {
         report_content = QScrollArea()
         report_content.setWidgetResizable(True)
         report_content.setVisible(False)
-        report_content.setStyleSheet("border: none; background: #131313;")
+        report_content.setStyleSheet("border: none; background: #0b0d10;")
         self._report_content = report_content
         self._report_widget = report_content
         report_tab_layout.addWidget(report_content, stretch=1)
@@ -1338,7 +1439,7 @@ QToolTip {
         status_bar = QFrame()
         status_bar.setFixedHeight(48)
         status_bar.setStyleSheet(
-            "QFrame { background: #1c1b1b; border: none; border-top: 1px solid #3f4852; }"
+            "QFrame { background: #161a20; border: none; border-top: 1px solid #323a46; }"
         )
         status_bar_layout = QHBoxLayout(status_bar)
         status_bar_layout.setContentsMargins(12, 0, 12, 0)
@@ -1355,7 +1456,7 @@ QToolTip {
 
         percent_lbl = QLabel("0%")
         percent_lbl.setFixedWidth(36)
-        percent_lbl.setStyleSheet("color: #bec7d4; font-size: 13px; background: transparent;")
+        percent_lbl.setStyleSheet("color: #b6bdc9; font-size: 13px; background: transparent;")
         self._status_label = percent_lbl
 
         status_bar_layout.addWidget(status_progress)
@@ -1364,7 +1465,7 @@ QToolTip {
         # 구분선
         sep1 = QFrame()
         sep1.setFrameShape(QFrame.VLine)
-        sep1.setStyleSheet("color: #3f4852;")
+        sep1.setStyleSheet("color: #323a46;")
         sep1.setFixedHeight(24)
         status_bar_layout.addWidget(sep1)
 
@@ -1379,20 +1480,20 @@ QToolTip {
         for i, (stage_name, stage_icon) in enumerate(_STAGE_DEFS):
             stage_lbl = QLabel(f"{stage_icon} {stage_name}")
             stage_lbl.setStyleSheet(
-                "color: #4a5568; font-size: 13px; background: transparent;"
+                "color: #5a6270; font-size: 13px; background: transparent;"
             )
             self._status_stage_labels.append(stage_lbl)
             status_bar_layout.addWidget(stage_lbl)
             if i < len(_STAGE_DEFS) - 1:
                 dash = QLabel("—")
-                dash.setStyleSheet("color: #3f4852; font-size: 13px; background: transparent;")
+                dash.setStyleSheet("color: #323a46; font-size: 13px; background: transparent;")
                 status_bar_layout.addWidget(dash)
 
         status_bar_layout.addStretch()
 
         # 오른쪽: 상태 텍스트
         ready_lbl = QLabel("Ready")
-        ready_lbl.setStyleSheet("color: #bec7d4; font-size: 13px; background: transparent;")
+        ready_lbl.setStyleSheet("color: #b6bdc9; font-size: 13px; background: transparent;")
         self._active_tier_label = ready_lbl
         status_bar_layout.addWidget(ready_lbl)
 
@@ -1733,7 +1834,7 @@ QToolTip {
             self._run_btn.setEnabled(False)  # type: ignore[union-attr]
             self._run_btn.setText("⟳  Processing...")  # type: ignore[union-attr]
             self._run_btn.setStyleSheet(  # type: ignore[union-attr]
-                "QPushButton { background: #1a1a1a; border: 1px solid #2a2a2a; color: #4a5568; "
+                "QPushButton { background: #1a1a1a; border: 1px solid #242a33; color: #5a6270; "
                 "border-radius: 6px; font-size: 14px; font-weight: bold; }"
             )
         if self._stop_btn is not None:
@@ -1804,13 +1905,13 @@ QToolTip {
                 lbl.setText(f"✓ {text}")  # type: ignore[union-attr]
             elif i == active_stage:
                 lbl.setStyleSheet(  # type: ignore[union-attr]
-                    "color: #98cbff; font-size: 13px; background: transparent;"
+                    "color: #6ab4ff; font-size: 13px; background: transparent;"
                 )
                 text = lbl.text().split(" ", 1)[-1]  # type: ignore[union-attr]
                 lbl.setText(f"⟳ {text}")  # type: ignore[union-attr]
             else:
                 lbl.setStyleSheet(  # type: ignore[union-attr]
-                    "color: #4a5568; font-size: 13px; background: transparent;"
+                    "color: #5a6270; font-size: 13px; background: transparent;"
                 )
                 text = lbl.text().split(" ", 1)[-1]  # type: ignore[union-attr]
                 lbl.setText(f"○ {text}")  # type: ignore[union-attr]
@@ -1844,7 +1945,7 @@ QToolTip {
                 "border-radius: 6px; font-size: 14px; font-weight: bold; }"
                 "QPushButton:hover { background: #228a46; border-color: #55f07f; color: #ffffff; }"
                 "QPushButton:pressed { background: #1a5e2e; }"
-                "QPushButton:disabled { background: #1a1a1a; color: #4a5568; border-color: #2a2a2a; }"
+                "QPushButton:disabled { background: #1a1a1a; color: #5a6270; border-color: #242a33; }"
             )
         if self._stop_btn is not None:
             self._stop_btn.setVisible(False)  # type: ignore[union-attr]
@@ -1968,7 +2069,7 @@ QToolTip {
 
         # 콘텐츠 위젯 빌드
         report_inner = QWidget()
-        report_inner.setStyleSheet("background: #131313;")
+        report_inner.setStyleSheet("background: #0b0d10;")
         report_inner_layout = QVBoxLayout(report_inner)
         report_inner_layout.setContentsMargins(20, 20, 20, 20)
         report_inner_layout.setSpacing(16)
@@ -1976,7 +2077,7 @@ QToolTip {
         # 헤더 카드
         header_card = QFrame()
         header_card.setStyleSheet(
-            "QFrame { background: #1c1b1b; border: 1px solid #3f4852; border-radius: 8px; }"
+            "QFrame { background: #161a20; border: 1px solid #323a46; border-radius: 8px; }"
         )
         header_layout = QVBoxLayout(header_card)
         header_layout.setContentsMargins(16, 12, 16, 12)
@@ -2002,7 +2103,7 @@ QToolTip {
         header_row_layout = QHBoxLayout(header_row)
         header_row_layout.setContentsMargins(0, 0, 0, 0)
         engine_lbl = QLabel(f"Generated with {tier_used} engine")
-        engine_lbl.setStyleSheet("color: #bec7d4; font-size: 13px; background: transparent;")
+        engine_lbl.setStyleSheet("color: #b6bdc9; font-size: 13px; background: transparent;")
         checks_lbl = QLabel(checks_ok)
         checks_lbl.setStyleSheet(f"color: {checks_color}; font-size: 12px; font-weight: bold; background: transparent;")
         header_row_layout.addWidget(engine_lbl)
@@ -2040,7 +2141,7 @@ QToolTip {
         for val, title in [(n_vertices, "Points"), (n_cells, "Cells"), (quality_score, "Verdict")]:
             kpi_card = QFrame()
             kpi_card.setStyleSheet(
-                "QFrame { background: #201f1f; border: 1px solid #3f4852; border-radius: 6px; padding: 8px; }"
+                "QFrame { background: #1c2129; border: 1px solid #323a46; border-radius: 6px; padding: 8px; }"
             )
             kpi_card_layout = QVBoxLayout(kpi_card)
             kpi_card_layout.setContentsMargins(12, 10, 12, 10)
@@ -2048,12 +2149,12 @@ QToolTip {
             val_lbl = QLabel(val)
             val_lbl.setAlignment(Qt.AlignCenter)
             val_lbl.setStyleSheet(
-                "color: #98cbff; font-size: 22px; font-weight: bold; background: transparent; border: none;"
+                "color: #6ab4ff; font-size: 22px; font-weight: bold; background: transparent; border: none;"
             )
             title_lbl = QLabel(title)
             title_lbl.setAlignment(Qt.AlignCenter)
             title_lbl.setStyleSheet(
-                "color: #bec7d4; font-size: 12px; background: transparent; border: none;"
+                "color: #b6bdc9; font-size: 12px; background: transparent; border: none;"
             )
             kpi_card_layout.addWidget(val_lbl)
             kpi_card_layout.addWidget(title_lbl)
@@ -2084,7 +2185,7 @@ QToolTip {
         ]:
             metric_card = QFrame()
             metric_card.setStyleSheet(
-                "QFrame { background: #1c1b1b; border: 1px solid #3f4852; border-radius: 8px; }"
+                "QFrame { background: #161a20; border: 1px solid #323a46; border-radius: 8px; }"
             )
             metric_card_layout = QVBoxLayout(metric_card)
             metric_card_layout.setContentsMargins(12, 10, 12, 10)
@@ -2093,7 +2194,7 @@ QToolTip {
             m_title_lbl = QLabel(metric_title)
             m_title_lbl.setAlignment(Qt.AlignCenter)
             m_title_lbl.setStyleSheet(
-                "color: #bec7d4; font-size: 12px; font-weight: bold; background: transparent; border: none;"
+                "color: #b6bdc9; font-size: 12px; font-weight: bold; background: transparent; border: none;"
             )
 
             if metric_val is not None:
@@ -2101,7 +2202,7 @@ QToolTip {
                 pf_color = "#40e56c" if pass_fail == "PASS" else "#e55a40"
                 m_val_text = f"{pass_fail}  {float(metric_val):.3f}{unit}"
             else:
-                pf_color = "#bec7d4"
+                pf_color = "#b6bdc9"
                 m_val_text = "—"
 
             m_val_lbl = QLabel(m_val_text)
@@ -2147,10 +2248,10 @@ QToolTip {
             "지원: OpenFOAM polyMesh, VTK, SU2, Fluent MSH, CGNS"
         )
         btn_export.setStyleSheet(
-            "QPushButton { background: #1a2a3a; color: #98cbff; border: 1px solid #0078d4; "
+            "QPushButton { background: #1a2a3a; color: #6ab4ff; border: 1px solid #4ea3ff; "
             "border-radius: 5px; padding: 6px 18px; font-size: 13px; font-weight: bold; } "
-            "QPushButton:hover { background: #1e3a5a; border-color: #98cbff; color: #ffffff; }"
-            "QPushButton:pressed { background: #0078d4; }"
+            "QPushButton:hover { background: #1e3a5a; border-color: #6ab4ff; color: #ffffff; }"
+            "QPushButton:pressed { background: #4ea3ff; }"
         )
         btn_export.clicked.connect(self._on_export_unified)
         export_row.addWidget(btn_export)
@@ -2158,9 +2259,9 @@ QToolTip {
         btn_open_folder = QPushButton("결과 폴더 열기")
         btn_open_folder.setFixedHeight(36)
         btn_open_folder.setStyleSheet(
-            "QPushButton { background: #1c1b1b; color: #bec7d4; border: 1px solid #3f4852; "
+            "QPushButton { background: #161a20; color: #b6bdc9; border: 1px solid #323a46; "
             "border-radius: 5px; padding: 6px 14px; font-size: 13px; } "
-            "QPushButton:hover { background: #2a2a2a; border-color: #6b7280; color: #e5e2e1; }"
+            "QPushButton:hover { background: #242a33; border-color: #3e4757; color: #e8ecf2; }"
         )
         btn_open_folder.clicked.connect(self._on_open_output)
         export_row.addWidget(btn_open_folder)
@@ -2242,15 +2343,15 @@ QToolTip {
         dlg.setWindowTitle("Export Mesh")
         dlg.setMinimumWidth(380)
         dlg.setStyleSheet(
-            "QDialog { background: #1c1b1b; } "
-            "QLabel { color: #e5e2e1; font-size: 13px; } "
-            "QComboBox { background: #201f1f; border: 1px solid #3f4852; border-radius: 4px; "
-            "            padding: 5px 10px; color: #e5e2e1; font-size: 13px; min-height: 28px; } "
-            "QComboBox:hover { border-color: #98cbff; } "
-            "QComboBox QAbstractItemView { background: #1c1b1b; selection-background-color: #00629d; font-size: 13px; } "
-            "QPushButton { background: #201f1f; border: 1px solid #3f4852; border-radius: 4px; "
-            "              padding: 6px 16px; color: #e5e2e1; font-size: 13px; } "
-            "QPushButton:hover { background: #2a3545; border-color: #98cbff; color: #ffffff; } "
+            "QDialog { background: #161a20; } "
+            "QLabel { color: #e8ecf2; font-size: 13px; } "
+            "QComboBox { background: #1c2129; border: 1px solid #323a46; border-radius: 4px; "
+            "            padding: 5px 10px; color: #e8ecf2; font-size: 13px; min-height: 28px; } "
+            "QComboBox:hover { border-color: #6ab4ff; } "
+            "QComboBox QAbstractItemView { background: #161a20; selection-background-color: #2c5f97; font-size: 13px; } "
+            "QPushButton { background: #1c2129; border: 1px solid #323a46; border-radius: 4px; "
+            "              padding: 6px 16px; color: #e8ecf2; font-size: 13px; } "
+            "QPushButton:hover { background: #1c2129; border-color: #6ab4ff; color: #ffffff; } "
         )
 
         layout = QVBoxLayout(dlg)
@@ -2426,14 +2527,14 @@ QToolTip {
         for key, btn in self._quality_seg_btns.items():
             if key == active:
                 btn.setStyleSheet(  # type: ignore[union-attr]
-                    "QPushButton { background: #0078d4; border: none; color: #ffffff; "
+                    "QPushButton { background: #4ea3ff; border: none; color: #ffffff; "
                     "border-radius: 3px; padding: 2px 8px; font-size: 11px; font-weight: bold; }"
                 )
             else:
                 btn.setStyleSheet(  # type: ignore[union-attr]
-                    "QPushButton { background: transparent; border: none; color: #bec7d4; "
+                    "QPushButton { background: transparent; border: none; color: #b6bdc9; "
                     "border-radius: 3px; padding: 2px 8px; font-size: 11px; }"
-                    "QPushButton:hover { background: #2a2a2a; color: #e5e2e1; }"
+                    "QPushButton:hover { background: #242a33; color: #e8ecf2; }"
                 )
         # 품질 설명 라벨 업데이트
         if self._quality_desc_label is not None:
@@ -2450,12 +2551,12 @@ QToolTip {
             if i < step_idx:
                 lbl.setStyleSheet(  # type: ignore[union-attr]
                     "color: #40e56c; font-size: 12px; letter-spacing: 1px; "
-                    "padding: 4px 10px; border-radius: 2px; background: #201f1f;"
+                    "padding: 4px 10px; border-radius: 2px; background: #1c2129;"
                 )
             elif i == step_idx:
                 lbl.setStyleSheet(  # type: ignore[union-attr]
                     "color: #ffffff; font-size: 12px; letter-spacing: 1px; "
-                    "padding: 4px 10px; border-radius: 2px; background: #00629d;"
+                    "padding: 4px 10px; border-radius: 2px; background: #2c5f97;"
                 )
             else:
                 lbl.setStyleSheet(  # type: ignore[union-attr]
@@ -2482,7 +2583,7 @@ QToolTip {
                 continue
             lbl.setText(f"{val:,}" if val is not None else "—")  # type: ignore[union-attr]
             lbl.setStyleSheet(  # type: ignore[union-attr]
-                "color: #98cbff; font-size: 13px; font-weight: bold; background: transparent;"
+                "color: #6ab4ff; font-size: 13px; font-weight: bold; background: transparent;"
             )
 
         # 품질 지표 (non_ortho, skewness, aspect_ratio)
@@ -2494,7 +2595,7 @@ QToolTip {
             if val is None:
                 lbl.setText("—")  # type: ignore[union-attr]
                 lbl.setStyleSheet(  # type: ignore[union-attr]
-                    "color: #98cbff; font-size: 13px; font-weight: bold; background: transparent;"
+                    "color: #6ab4ff; font-size: 13px; font-weight: bold; background: transparent;"
                 )
             else:
                 threshold = thresholds.get(key, float("inf"))
