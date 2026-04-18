@@ -424,6 +424,11 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._cfmesh_local_ref_edit: object | None = None
         self._extra_params_edit: object | None = None
 
+        # 최근 파일 / 프리셋 (v0.4)
+        self._recent_menu: object | None = None
+        self._preset_combo: object | None = None
+        self._preset_desc_label: object | None = None
+
     # ═════════════════════════════════════════════════════════════════════
     # Public API
     # ═════════════════════════════════════════════════════════════════════
@@ -442,6 +447,15 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._output_dir = resolved.parent / f"{resolved.stem}_case"
         # UI 업데이트 (안전하게 None 체크)
         self._sync_input_to_ui(resolved)
+        # 최근 파일 기록 갱신
+        try:
+            from desktop.qt_app import recent_files
+
+            recent_files.add(resolved)
+            if hasattr(self, "_recent_menu") and self._recent_menu is not None:
+                self._rebuild_recent_menu()
+        except Exception:
+            pass
 
     def get_input_path(self) -> Path | None:
         return self._input_path
@@ -662,6 +676,56 @@ class AutoTessellWindow:  # type: ignore[misc]
         # 의존성 로그 요약 출력
         self._log_dep_summary()
 
+    def _rebuild_recent_menu(self) -> None:  # pragma: no cover
+        """최근 파일 서브메뉴를 현재 저장된 경로로 재구성."""
+        from PySide6.QtGui import QAction
+        from desktop.qt_app import recent_files
+
+        if not hasattr(self, "_recent_menu") or self._recent_menu is None:
+            return
+        self._recent_menu.clear()
+        entries = recent_files.load()
+        if not entries:
+            act_empty = QAction("(비어 있음)", self._qmain)
+            act_empty.setEnabled(False)
+            self._recent_menu.addAction(act_empty)
+            return
+        for i, path in enumerate(entries):
+            from pathlib import Path
+            p = Path(path)
+            label = f"&{i + 1}  {p.name}  ({p.parent})"
+            act = QAction(label, self._qmain)
+            act.setStatusTip(path)
+            act.triggered.connect(lambda _checked=False, _p=path: self._open_recent_file(_p))
+            self._recent_menu.addAction(act)
+        self._recent_menu.addSeparator()
+        act_clear = QAction("기록 지우기", self._qmain)
+        act_clear.triggered.connect(self._clear_recent_files)
+        self._recent_menu.addAction(act_clear)
+
+    def _open_recent_file(self, path: str) -> None:  # pragma: no cover
+        from pathlib import Path
+        p = Path(path)
+        if not p.exists():
+            self._log(f"[WARN] 파일을 찾을 수 없음: {path}")
+            self._rebuild_recent_menu()  # 누락 제거
+            return
+        self._input_path = p
+        if self._drop_label is not None:
+            self._drop_label.setText(f"입력 파일:\n{p.name}")
+        if self._mesh_viewer is not None:
+            try:
+                self._mesh_viewer.load_mesh(str(p))  # type: ignore[union-attr]
+            except Exception:
+                pass
+        self._log(f"[INFO] 최근 파일 로드: {path}")
+
+    def _clear_recent_files(self) -> None:  # pragma: no cover
+        from desktop.qt_app import recent_files
+        recent_files.clear()
+        self._rebuild_recent_menu()
+        self._log("[INFO] 최근 파일 기록 삭제")
+
     def _build_menubar(self, QAction, APP_VERSION: str) -> None:  # pragma: no cover
         mb = self._qmain.menuBar()  # type: ignore[union-attr]
 
@@ -678,6 +742,11 @@ class AutoTessellWindow:  # type: ignore[misc]
         act_save_as.triggered.connect(self._on_save_project)
         act_export.triggered.connect(lambda: self._switch_right_tab("Export"))
         act_quit.triggered.connect(self._qmain.close)
+
+        # 최근 파일 서브메뉴 (동적으로 채움)
+        self._recent_menu = file_menu.addMenu("최근 파일")
+        self._rebuild_recent_menu()
+
         for a in (act_new, act_open, None, act_save, act_save_as, act_export, None, act_quit):
             if a is None:
                 file_menu.addSeparator()
@@ -774,6 +843,7 @@ class AutoTessellWindow:  # type: ignore[misc]
 
         # ── 섹션들 ────────────────────────────────────────
         v.addWidget(self._build_section_input_geometry())
+        v.addWidget(self._build_section_preset())
         v.addWidget(self._build_section_engine())
         v.addWidget(self._build_section_quality())
         v.addWidget(self._build_section_preprocess())
@@ -840,6 +910,90 @@ class AutoTessellWindow:  # type: ignore[misc]
         v.addWidget(dz)
         v.addWidget(self._input_edit)
         return f
+
+    def _build_section_preset(self) -> object:  # pragma: no cover
+        """프리셋 섹션 — 드롭다운에서 프리셋 선택 → 품질/엔진/파라미터 자동 세팅."""
+        from PySide6.QtWidgets import QComboBox, QLabel
+
+        from desktop.qt_app import presets as _presets
+
+        f, v = self._section_frame("프리셋")
+        self._preset_combo = QComboBox()
+        self._preset_combo.setStyleSheet(
+            "QComboBox { background: #161a20; color: #e8ecf2; "
+            "border: 1px solid #323a46; border-radius: 4px; padding: 4px 8px; "
+            "font-size: 12px; }"
+            "QComboBox:hover { border-color: #4ea3ff; }"
+        )
+        self._preset_combo.addItem("(프리셋 선택…)", None)
+        for p in _presets.all_presets():
+            self._preset_combo.addItem(p.name, p.name)
+        self._preset_combo.currentIndexChanged.connect(self._on_preset_selected)
+        v.addWidget(self._preset_combo)
+
+        # 설명 레이블
+        self._preset_desc_label = QLabel("")
+        self._preset_desc_label.setStyleSheet(
+            "color: #818a99; font-size: 10.5px; background: transparent; padding: 2px;"
+        )
+        self._preset_desc_label.setWordWrap(True)
+        v.addWidget(self._preset_desc_label)
+        return f
+
+    def _on_preset_selected(self, index: int) -> None:  # pragma: no cover
+        """프리셋 선택 → 품질/엔진/리메쉬 설정 자동 적용."""
+        if self._preset_combo is None:
+            return
+        name = self._preset_combo.currentData()
+        if not name:
+            self._preset_desc_label.setText("")
+            return
+        from desktop.qt_app import presets as _presets
+
+        preset = _presets.get(name)
+        if preset is None:
+            return
+
+        # 품질 레벨
+        try:
+            level = QualityLevel(preset.quality_level)
+            self._set_quality_level(level)
+        except Exception:
+            pass
+
+        # 엔진 (tier_hint)
+        if self._engine_combo is not None and preset.tier_hint:
+            try:
+                for i in range(self._engine_combo.count()):  # type: ignore[union-attr]
+                    if self._engine_combo.itemData(i) == preset.tier_hint:  # type: ignore[union-attr]
+                        self._engine_combo.setCurrentIndex(i)  # type: ignore[union-attr]
+                        break
+            except Exception:
+                pass
+
+        # 리메쉬 엔진
+        if self._remesh_engine_combo is not None and preset.remesh_engine:
+            try:
+                idx = self._remesh_engine_combo.findText(preset.remesh_engine, 0)  # type: ignore[union-attr]
+                if idx >= 0:
+                    self._remesh_engine_combo.setCurrentIndex(idx)  # type: ignore[union-attr]
+            except Exception:
+                pass
+
+        # 표면 리메쉬 체크박스
+        if self._surface_remesh_check is not None:
+            try:
+                self._surface_remesh_check.setChecked(preset.surface_remesh)  # type: ignore[union-attr]
+            except Exception:
+                pass
+        if self._allow_ai_fallback_check is not None:
+            try:
+                self._allow_ai_fallback_check.setChecked(preset.allow_ai_fallback)  # type: ignore[union-attr]
+            except Exception:
+                pass
+
+        self._preset_desc_label.setText(preset.description)
+        self._log(f"[INFO] 프리셋 적용: {preset.name}")
 
     def _build_section_engine(self) -> object:  # pragma: no cover
         from PySide6.QtCore import Qt

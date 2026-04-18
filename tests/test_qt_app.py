@@ -1371,6 +1371,110 @@ def test_viewport_kpi_overlay_set_value_and_warn() -> None:
     assert "#ff7b54" in kpi._rows["Non-ortho"].styleSheet()
 
 
+def test_recent_files_add_load_clear(tmp_path, monkeypatch) -> None:
+    """recent_files.add/load/clear가 JSON 영속화 + 중복 제거 + 최대 5개."""
+    from pathlib import Path
+    from desktop.qt_app import recent_files
+
+    # ~/.autotessell 경로를 tmp로 바꿔치기
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr(recent_files, "_RECENT_DIR", fake_home)
+    monkeypatch.setattr(recent_files, "_RECENT_FILE", fake_home / "recent.json")
+
+    # 실제로 존재하는 파일이어야 load가 필터링 안함
+    files = []
+    for i in range(7):
+        f = tmp_path / f"f{i}.stl"
+        f.write_text("x")
+        files.append(f)
+
+    for f in files:
+        recent_files.add(f)
+
+    entries = recent_files.load()
+    # 최대 5개 + 역순 (최근이 앞)
+    assert len(entries) == 5
+    assert Path(entries[0]).name == "f6.stl"  # 가장 최근
+    assert Path(entries[-1]).name == "f2.stl"  # 5번째로 최근
+
+    # 중복 추가 → 중복 제거
+    recent_files.add(files[3])
+    entries2 = recent_files.load()
+    assert len(entries2) == 5
+    assert Path(entries2[0]).name == "f3.stl"  # 재추가된 게 맨 앞
+
+    # clear
+    recent_files.clear()
+    assert recent_files.load() == []
+
+
+def test_recent_files_skip_nonexistent(tmp_path, monkeypatch) -> None:
+    """load 시 존재하지 않는 경로는 자동 제거."""
+    from desktop.qt_app import recent_files
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr(recent_files, "_RECENT_DIR", fake_home)
+    monkeypatch.setattr(recent_files, "_RECENT_FILE", fake_home / "recent.json")
+
+    f = tmp_path / "exists.stl"
+    f.write_text("x")
+    recent_files.add(f)
+    recent_files.add(tmp_path / "deleted.stl")  # 존재 안함 — 추가만
+
+    entries = recent_files.load()
+    # 존재하는 것만 나와야 함
+    assert len(entries) == 1
+    assert "exists" in entries[0]
+
+
+def test_presets_builtin_list() -> None:
+    """내장 프리셋 5종이 정의돼 있어야 한다."""
+    from desktop.qt_app.presets import BUILTIN_PRESETS, all_presets
+
+    assert len(BUILTIN_PRESETS) == 5
+    names = [p.name for p in BUILTIN_PRESETS]
+    assert "Draft Quick (Tet)" in names
+    assert any("External" in n for n in names)
+    assert any("Internal" in n for n in names)
+    assert any("Aerospace" in n for n in names)
+
+
+def test_preset_get_returns_correct() -> None:
+    """presets.get(name)이 이름으로 조회 작동."""
+    from desktop.qt_app.presets import get
+
+    p = get("Draft Quick (Tet)")
+    assert p is not None
+    assert p.quality_level == "draft"
+    assert p.tier_hint == "tier2_tetwild"
+    assert get("존재하지 않는 프리셋") is None
+
+
+def test_preset_save_user_preset_and_load(tmp_path, monkeypatch) -> None:
+    """save_user_preset + all_presets 재조회 시 새 프리셋 포함."""
+    from desktop.qt_app import presets
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr(presets, "_PRESETS_DIR", fake_home)
+    monkeypatch.setattr(presets, "_USER_PRESETS_FILE", fake_home / "presets.json")
+
+    custom = presets.Preset(
+        name="My Custom",
+        description="test",
+        quality_level="standard",
+        tier_hint="tier05_netgen",
+    )
+    presets.save_user_preset(custom)
+
+    all_p = presets.all_presets()
+    names = [p.name for p in all_p]
+    assert "My Custom" in names
+    assert len(all_p) == 6  # 5 builtin + 1 custom
+
+
 def test_viewport_kpi_overlay_reset_clears_all() -> None:
     """reset()이 모든 행을 '—'로 초기화."""
     from desktop.qt_app.widgets.viewport_overlays import KPIStatsOverlay
