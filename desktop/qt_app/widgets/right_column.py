@@ -440,17 +440,20 @@ class _PassRow(QFrame):
 
 
 class _HistogramCanvas(QWidget):
-    """matplotlib FigureCanvas 기반 품질 분포 히스토그램 (2개 서브플롯)."""
+    """matplotlib FigureCanvas 기반 품질 분포 히스토그램 (3개 서브플롯).
+
+    Aspect Ratio / Skewness / Non-orthogonality — CFD 핵심 메트릭.
+    """
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setMinimumHeight(180)
+        self.setMinimumHeight(200)
         self._canvas = None
         self._fig = None
         self._layout = None
 
         if _MPL_AVAILABLE and Figure is not None:
-            self._fig = Figure(figsize=(3, 1.8), dpi=90, tight_layout=True)
+            self._fig = Figure(figsize=(4.5, 2.0), dpi=90, tight_layout=True)
             self._fig.patch.set_facecolor("#101318")
             self._canvas = FigureCanvasQTAgg(self._fig)  # type: ignore[misc]
             from PySide6.QtWidgets import QVBoxLayout as _VBox
@@ -468,14 +471,15 @@ class _HistogramCanvas(QWidget):
         self,
         aspect_data: list[float] | None = None,
         skew_data: list[float] | None = None,
+        non_ortho_data: list[float] | None = None,
     ) -> None:
         if self._fig is None or self._canvas is None:
             return
         self._fig.clear()
-        axs = self._fig.subplots(1, 2)
+        axs = self._fig.subplots(1, 3)
         _style = {"edgecolor": "none", "alpha": 0.85}
 
-        def _draw(ax, data, title: str, color: str) -> None:
+        def _draw(ax, data, title: str, color: str, threshold: float | None = None) -> None:
             ax.set_facecolor("#161a20")
             ax.tick_params(colors="#818a99", labelsize=7)
             for spine in ax.spines.values():
@@ -483,15 +487,23 @@ class _HistogramCanvas(QWidget):
             ax.set_title(title, color="#b6bdc9", fontsize=8, pad=3)
             if data and len(data) > 1:
                 import numpy as _np
-                _d = _np.clip(data, 0, _np.percentile(data, 99))
+                arr = _np.asarray(data, dtype=float)
+                _d = _np.clip(arr, 0, _np.percentile(arr, 99))
                 ax.hist(_d, bins=30, color=color, **_style)
-                ax.set_xlabel("", color="#818a99")
+                # OpenFOAM 한계선 표시 (있는 경우)
+                if threshold is not None:
+                    ax.axvline(
+                        x=threshold, color="#ff6b6b", linestyle="--",
+                        linewidth=1.0, alpha=0.7,
+                    )
             else:
                 ax.text(0.5, 0.5, "데이터 없음", ha="center", va="center",
                         transform=ax.transAxes, color="#5a6270", fontsize=8)
 
-        _draw(axs[0], aspect_data, "Aspect Ratio", "#4ea3ff")
-        _draw(axs[1], skew_data, "Skewness", "#f5b454")
+        # OpenFOAM 전형적 임계값
+        _draw(axs[0], aspect_data, "Aspect Ratio", "#4ea3ff", threshold=100.0)
+        _draw(axs[1], skew_data, "Skewness", "#f5b454", threshold=4.0)
+        _draw(axs[2], non_ortho_data, "Non-ortho °", "#ff7b54", threshold=65.0)
         self._canvas.draw()
 
 

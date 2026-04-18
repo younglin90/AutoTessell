@@ -1594,12 +1594,14 @@ class AutoTessellWindow:  # type: ignore[misc]
                         q.cell_comp_rows[bar_name].set_value(
                             float(ratio_val), f"{int(n_val):,}"
                         )
-            # 히스토그램 배열 캐시 + Quality 탭 즉시 갱신
+            # 히스토그램 배열 캐시 + Quality 탭 즉시 갱신 (3개 메트릭)
             hist = {}
             if "hist_aspect_ratio" in stats:
                 hist["aspect_ratio"] = stats["hist_aspect_ratio"]
             if "hist_skewness" in stats:
                 hist["skewness"] = stats["hist_skewness"]
+            if "hist_non_orthogonality" in stats:
+                hist["non_orthogonality"] = stats["hist_non_orthogonality"]
             if hist:
                 self._histogram_data = hist
                 # Quality 탭 인터랙티브 히스토그램 즉시 갱신
@@ -1608,6 +1610,7 @@ class AutoTessellWindow:  # type: ignore[misc]
                         self._right_column.quality_pane.histogram.update_histograms(
                             aspect_data=hist.get("aspect_ratio"),
                             skew_data=hist.get("skewness"),
+                            non_ortho_data=hist.get("non_orthogonality"),
                         )
                     except Exception:
                         pass
@@ -1969,6 +1972,12 @@ class AutoTessellWindow:  # type: ignore[misc]
             if len(arr) > 0:
                 metrics_to_plot.append(("Skewness", arr, "#f5b454", (0.0, 1.0),
                                         "< 0.85 권장 (VTK 정의)"))
+        if "non_orthogonality" in hist_data:
+            arr = np.array(hist_data["non_orthogonality"], dtype=float)
+            arr = arr[np.isfinite(arr) & (arr >= 0)]
+            if len(arr) > 0:
+                metrics_to_plot.append(("Non-orthogonality °", arr, "#ff7b54", (0.0, 90.0),
+                                        "< 65° 권장 (OpenFOAM 기준)"))
 
         if not metrics_to_plot:
             self._log("[WARN] 히스토그램 배열이 비어 있음")

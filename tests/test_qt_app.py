@@ -1348,7 +1348,7 @@ def test_quality_pane_set_metric_updates_bar_value() -> None:
 
 
 def test_quality_pane_histogram_updates_with_arrays() -> None:
-    """QualityPane.histogram.update_histograms가 실제 데이터로 matplotlib 렌더."""
+    """QualityPane.histogram.update_histograms가 실제 데이터로 matplotlib 렌더 (3 메트릭)."""
     from desktop.qt_app.widgets.right_column import QualityPane, _MPL_AVAILABLE
 
     pane = QualityPane()
@@ -1358,9 +1358,17 @@ def test_quality_pane_histogram_updates_with_arrays() -> None:
     pane.histogram.update_histograms(
         aspect_data=[1.1, 1.2, 1.5, 2.0, 1.8],
         skew_data=[0.1, 0.2, 0.05, 0.3],
+        non_ortho_data=[30.0, 45.0, 55.0, 62.0, 40.0],
     )
     if _MPL_AVAILABLE:
         assert pane.histogram._canvas is not None, "matplotlib 사용 가능인데 canvas None"
+        # 3개 서브플롯 확인
+        axes = pane.histogram._fig.get_axes()
+        assert len(axes) == 3, f"3 subplot 기대, 실제 {len(axes)}"
+        titles = [ax.get_title() for ax in axes]
+        assert any("Aspect" in t for t in titles)
+        assert any("Skew" in t for t in titles)
+        assert any("Non-ortho" in t or "non-ortho" in t.lower() for t in titles)
 
 
 def test_job_pane_log_box_receives_appended_text() -> None:

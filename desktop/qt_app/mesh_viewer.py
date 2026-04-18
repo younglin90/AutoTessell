@@ -1428,6 +1428,22 @@ class MeshViewerWidget(QWidget):
                 except Exception:
                     pass
 
+                # Non-orthogonality (CFD 핵심 메트릭, OpenFOAM checkMesh 기준)
+                # PyVista의 max_angle을 proxy로 사용 (180 - 인접 면 각도)
+                try:
+                    nonortho = mesh.compute_cell_quality(quality_measure="max_angle")  # type: ignore[union-attr]
+                    arr = nonortho.cell_data.get("CellQuality")
+                    if arr is not None and len(arr) > 0:
+                        import numpy as _np
+                        arr = _np.asarray(arr, dtype=float)
+                        arr = arr[_np.isfinite(arr)]
+                        if len(arr) > 0:
+                            stats["max_non_orthogonality"] = float(arr.max())
+                            stats["mean_non_orthogonality"] = float(arr.mean())
+                            stats["hist_non_orthogonality"] = arr.tolist()
+                except Exception:
+                    pass
+
             if stats:
                 self.mesh_stats_computed.emit(stats)
                 log.debug(f"메시 품질 통계 emit: {list(stats.keys())}")
