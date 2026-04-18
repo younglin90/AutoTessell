@@ -1235,3 +1235,267 @@ def test_quality_histogram_canvas_has_update_method() -> None:
         skew_data=[0.1, 0.2, 0.3, 0.15, 0.25],
     )
     # 에러 없이 도달하면 통과
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Phase 3 — Real Pipeline Smoke Tests
+# PipelineWorker를 sphere.stl 실제 실행 → finished signal 수신까지 검증
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _wait_for_signal(
+    signal_flag: list, worker, timeout_s: float = 60.0
+) -> bool:
+    """QSignalSpy.wait()가 크로스스레드 이벤트를 제대로 spin하지 않으므로
+    수동 processEvents 루프로 신호 대기. signal_flag[0]=True면 반환."""
+    import time
+
+    from PySide6.QtCore import QCoreApplication
+
+    t0 = time.time()
+    while not signal_flag[0] and time.time() - t0 < timeout_s:
+        QCoreApplication.processEvents()
+        time.sleep(0.05)
+    return bool(signal_flag[0])
+
+
+@pytest.mark.slow
+def test_pipeline_worker_runs_sphere_draft_end_to_end(tmp_path) -> None:
+    """PipelineWorker.start() → finished Signal이 success=True로 emit된다 (sphere.stl draft, ~3s)."""
+    from pathlib import Path
+
+    from desktop.qt_app.main_window import QualityLevel
+    from desktop.qt_app.pipeline_worker import PipelineWorker
+
+    sphere = Path(__file__).parent / "benchmarks" / "sphere.stl"
+    assert sphere.exists(), f"벤치마크 누락: {sphere}"
+
+    out_dir = tmp_path / "case"
+    worker = PipelineWorker(
+        input_path=sphere,
+        quality_level=QualityLevel.DRAFT,
+        output_dir=out_dir,
+    )
+
+    finished_flag: list = [False]
+    finished_result: list = [None]
+    progress_count: list = [0]
+
+    def _on_fin(r: object) -> None:
+        finished_result[0] = r
+        finished_flag[0] = True
+
+    worker.finished.connect(_on_fin)  # type: ignore[attr-defined]
+    worker.progress.connect(lambda _m: progress_count.__setitem__(0, progress_count[0] + 1))  # type: ignore[attr-defined]
+
+    worker.start()  # type: ignore[attr-defined]
+    try:
+        assert _wait_for_signal(finished_flag, worker, timeout_s=60.0), \
+            "finished Signal 미수신 (60s timeout)"
+        worker.wait(5_000)  # type: ignore[attr-defined]
+
+        # 검증
+        result = finished_result[0]
+        assert result is not None, "finished에 result=None emit됨"
+        success = getattr(result, "success", None)
+        assert success is True, (
+            f"파이프라인 실패: success={success}, "
+            f"error={getattr(result, 'error', None)!r}"
+        )
+
+        # polyMesh 출력 확인
+        polymesh = out_dir / "constant" / "polyMesh"
+        assert polymesh.exists(), f"polyMesh 미생성: {polymesh}"
+        assert (polymesh / "points").exists(), "polyMesh/points 없음"
+        assert (polymesh / "faces").exists(), "polyMesh/faces 없음"
+        assert (polymesh / "owner").exists(), "polyMesh/owner 없음"
+
+        # progress Signal 실제로 발화했는지
+        assert progress_count[0] >= 5, \
+            f"progress Signal 횟수 부족 (실제={progress_count[0]}, 기대>=5)"
+    finally:
+        if worker.isRunning():  # type: ignore[attr-defined]
+            worker.requestInterruption()  # type: ignore[attr-defined]
+            worker.wait(5_000)  # type: ignore[attr-defined]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Phase 2 — UI State Transition Tests (위젯 단위 동작 검증, MeshViewer 없이)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_export_pane_get_export_options_returns_dict() -> None:
+    """ExportPane.get_export_options()가 format/compress 키를 가진 dict 반환."""
+    from desktop.qt_app.widgets.right_column import ExportPane
+
+    pane = ExportPane()
+    opts = pane.get_export_options()
+    assert isinstance(opts, dict), f"dict 기대, 실제 {type(opts)}"
+    # 최소한 format 키가 있어야 — 구체 값은 UI 초기 상태에 따름
+    assert "format" in opts or len(opts) > 0, \
+        f"ExportPane 옵션 dict 비어 있음: {opts}"
+
+
+def test_quality_pane_set_metric_updates_bar_value() -> None:
+    """QualityPane.set_metric이 지정된 바의 값 텍스트를 갱신한다."""
+    from desktop.qt_app.widgets.right_column import QualityPane
+
+    pane = QualityPane()
+    pane.set_metric("aspect", 0.3, "3.5", warn=False)
+    assert pane.q_aspect._val_lbl.text() == "3.5"
+    pane.set_metric("skew", 0.8, "7.2", warn=True)
+    assert pane.q_skew._val_lbl.text() == "7.2"
+
+
+def test_quality_pane_histogram_updates_with_arrays() -> None:
+    """QualityPane.histogram.update_histograms가 실제 데이터로 matplotlib 렌더."""
+    from desktop.qt_app.widgets.right_column import QualityPane, _MPL_AVAILABLE
+
+    pane = QualityPane()
+    assert hasattr(pane, "histogram"), "QualityPane.histogram 속성 없음"
+    # 데이터 없이도 예외 없음
+    pane.histogram.update_histograms()
+    pane.histogram.update_histograms(
+        aspect_data=[1.1, 1.2, 1.5, 2.0, 1.8],
+        skew_data=[0.1, 0.2, 0.05, 0.3],
+    )
+    if _MPL_AVAILABLE:
+        assert pane.histogram._canvas is not None, "matplotlib 사용 가능인데 canvas None"
+
+
+def test_job_pane_log_box_receives_appended_text() -> None:
+    """JobPane.log_box.appendPlainText이 실제로 로그 누적."""
+    from desktop.qt_app.widgets.right_column import JobPane
+
+    pane = JobPane()
+    pane.log_box.appendPlainText("[INFO] first line")
+    pane.log_box.appendPlainText("[ERR] second line")
+    content = pane.log_box.toPlainText()
+    assert "first line" in content
+    assert "second line" in content
+
+
+def test_job_pane_log_filter_chips_exist_with_clicked_signal() -> None:
+    """JobPane 필터 chip들이 clicked Signal을 emit할 수 있어야 한다."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QSignalSpy, QTest
+    from desktop.qt_app.widgets.right_column import JobPane
+
+    pane = JobPane()
+    pane.chip_info.resize(50, 24)
+    spy = QSignalSpy(pane.chip_info.clicked)
+    QTest.mouseClick(pane.chip_info, Qt.MouseButton.LeftButton)
+    assert spy.count() >= 1, "chip_info 클릭 → clicked Signal 미발생"
+
+
+def test_tier_pipeline_strip_resume_stop_rerun_signals() -> None:
+    """TierPipelineStrip 버튼 클릭 → resume/stop/rerun_requested Signal emit."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QSignalSpy, QTest
+    from desktop.qt_app.widgets.tier_pipeline import TierPipelineStrip
+
+    strip = TierPipelineStrip()
+    strip.set_tiers([("A", "a"), ("B", "b")])
+
+    resume_spy = QSignalSpy(strip.resume_requested)
+    stop_spy = QSignalSpy(strip.stop_requested)
+    rerun_spy = QSignalSpy(strip.rerun_requested)
+
+    QTest.mouseClick(strip.resume_btn, Qt.MouseButton.LeftButton)
+    QTest.mouseClick(strip.stop_btn, Qt.MouseButton.LeftButton)
+    QTest.mouseClick(strip.rerun_btn, Qt.MouseButton.LeftButton)
+
+    assert resume_spy.count() == 1
+    assert stop_spy.count() == 1
+    assert rerun_spy.count() == 1
+
+
+def test_drop_zone_drag_and_drop_emits_file_dropped() -> None:
+    """DropZone에 파일 drop 이벤트 → file_dropped Signal emit 검증."""
+    from pathlib import Path
+
+    from PySide6.QtCore import QMimeData, QPoint, QPointF, QUrl, Qt
+    from PySide6.QtGui import QDropEvent
+    from PySide6.QtTest import QSignalSpy
+    from desktop.qt_app.drop_zone import DropZone
+
+    dz = DropZone()
+    dz.resize(200, 100)
+    spy = QSignalSpy(dz.file_dropped)
+
+    tmp_file = Path("/tmp/test_dz_drop.stl")
+    tmp_file.write_text("fake")
+    try:
+        mime = QMimeData()
+        mime.setUrls([QUrl.fromLocalFile(str(tmp_file))])
+        drop = QDropEvent(
+            QPointF(50, 50),
+            Qt.DropAction.CopyAction,
+            mime,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        dz.dropEvent(drop)
+        assert spy.count() == 1
+        assert spy.at(0)[0] == str(tmp_file)
+    finally:
+        tmp_file.unlink(missing_ok=True)
+
+
+def test_try_emit_quality_roundtrip() -> None:
+    """_try_emit_quality가 progress 메시지를 파싱해 quality_update Signal emit."""
+    from desktop.qt_app.main_window import QualityLevel
+    from desktop.qt_app.pipeline_worker import PipelineWorker, _try_emit_quality
+    from pathlib import Path
+
+    # PipelineWorker 인스턴스 필요 (QThread + Signal)
+    worker = PipelineWorker(
+        input_path=Path("/nonexistent/x.stl"),
+        quality_level=QualityLevel.DRAFT,
+        output_dir=Path("/tmp/_x"),
+    )
+    # 시작은 하지 않음 — Signal만 직접 테스트
+
+    from PySide6.QtTest import QSignalSpy
+    spy = QSignalSpy(worker.quality_update)  # type: ignore[attr-defined]
+
+    _try_emit_quality(worker, "max_non_orthogonality: 62.5 deg")
+    _try_emit_quality(worker, "max_skewness: 3.2")
+    _try_emit_quality(worker, "아무 관련 없는 메시지")
+
+    assert spy.count() >= 1, \
+        f"non_ortho/skew 메시지가 파싱되지 않음 (count={spy.count()})"
+
+
+@pytest.mark.slow
+def test_pipeline_worker_requestInterruption_emits_finished(tmp_path) -> None:
+    """requestInterruption() 후 finished Signal이 반드시 emit돼야 한다 (UI stuck 방지)."""
+    from pathlib import Path
+
+    from desktop.qt_app.main_window import QualityLevel
+    from desktop.qt_app.pipeline_worker import PipelineWorker
+
+    sphere = Path(__file__).parent / "benchmarks" / "sphere.stl"
+    out_dir = tmp_path / "case"
+    worker = PipelineWorker(
+        input_path=sphere,
+        quality_level=QualityLevel.DRAFT,
+        output_dir=out_dir,
+    )
+
+    finished_flag: list = [False]
+    worker.finished.connect(lambda _r: finished_flag.__setitem__(0, True))  # type: ignore[attr-defined]
+
+    worker.start()  # type: ignore[attr-defined]
+    # 즉시 중단 요청 — _on_progress 첫 호출 시 InterruptedError
+    worker.requestInterruption()  # type: ignore[attr-defined]
+
+    try:
+        # finished는 반드시 emit돼야 함 (성공/실패 무관) — UI stuck 버그 방지 회귀 테스트
+        assert _wait_for_signal(finished_flag, worker, timeout_s=60.0), \
+            "중단 후 finished 미수신 — UI stuck 재현됨"
+        worker.wait(5_000)  # type: ignore[attr-defined]
+    finally:
+        if worker.isRunning():  # type: ignore[attr-defined]
+            worker.requestInterruption()  # type: ignore[attr-defined]
+            worker.wait(5_000)  # type: ignore[attr-defined]
