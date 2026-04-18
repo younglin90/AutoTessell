@@ -1452,6 +1452,154 @@ def test_preset_get_returns_correct() -> None:
     assert get("존재하지 않는 프리셋") is None
 
 
+def test_history_record_and_load(tmp_path, monkeypatch) -> None:
+    """history.record → load_all 왕복 + 최신순 정렬."""
+    from desktop.qt_app import history
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr(history, "_HISTORY_DIR", fake_home)
+    monkeypatch.setattr(history, "_HISTORY_FILE", fake_home / "history.jsonl")
+
+    e1 = history.HistoryEntry(
+        timestamp="2026-04-18T10:00:00",
+        input_file="/tmp/a.stl", output_dir="/tmp/a_case",
+        quality_level="draft", tier_used="tier2_tetwild",
+        success=True, elapsed_seconds=3.2, n_cells=5000,
+    )
+    e2 = history.HistoryEntry(
+        timestamp="2026-04-18T10:05:00",
+        input_file="/tmp/b.stl", output_dir="/tmp/b_case",
+        quality_level="standard", tier_used="tier05_netgen",
+        success=False, elapsed_seconds=1.8, error="FOAM FATAL",
+    )
+    history.record(e1)
+    history.record(e2)
+
+    entries = history.load_all()
+    assert len(entries) == 2
+    # 최신이 먼저 (e2)
+    assert entries[0].input_file == "/tmp/b.stl"
+    assert entries[0].success is False
+    assert entries[1].input_file == "/tmp/a.stl"
+
+
+def test_history_clear(tmp_path, monkeypatch) -> None:
+    """history.clear 후 load_all 빈 리스트."""
+    from desktop.qt_app import history
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr(history, "_HISTORY_DIR", fake_home)
+    monkeypatch.setattr(history, "_HISTORY_FILE", fake_home / "history.jsonl")
+
+    history.record(history.HistoryEntry(
+        timestamp="2026-04-18T10:00:00",
+        input_file="/a.stl", output_dir="/o", quality_level="draft",
+        tier_used="x", success=True, elapsed_seconds=1.0,
+    ))
+    assert len(history.load_all()) == 1
+    history.clear()
+    assert history.load_all() == []
+
+
+def test_history_make_entry_from_result() -> None:
+    """make_entry_from_result: 목 객체 → HistoryEntry 필드."""
+    from types import SimpleNamespace
+
+    from desktop.qt_app.history import make_entry_from_result
+
+    check_mesh = SimpleNamespace(
+        cells=8572,
+        max_aspect_ratio=4.1,
+        max_skewness=0.46,
+        max_non_orthogonality=44.3,
+    )
+    quality_report = SimpleNamespace(check_mesh=check_mesh)
+    execution_summary = SimpleNamespace(selected_tier="tier2_tetwild")
+    generator_log = SimpleNamespace(execution_summary=execution_summary)
+    result = SimpleNamespace(
+        success=True, total_time_seconds=2.74, error=None,
+        quality_report=quality_report, generator_log=generator_log,
+    )
+
+    e = make_entry_from_result(
+        input_file="/tmp/sphere.stl",
+        output_dir="/tmp/case",
+        quality_level="draft",
+        result=result,
+    )
+    assert e.success is True
+    assert e.n_cells == 8572
+    assert e.tier_used == "tier2_tetwild"
+    assert e.max_non_orthogonality == 44.3
+    assert e.elapsed_seconds == 2.74
+
+
+def test_history_dialog_filter_success_only(tmp_path, monkeypatch) -> None:
+    """HistoryDialog 필터 '성공만' → 실패 항목 제외."""
+    from desktop.qt_app import history
+    from desktop.qt_app.history_dialog import HistoryDialog
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr(history, "_HISTORY_DIR", fake_home)
+    monkeypatch.setattr(history, "_HISTORY_FILE", fake_home / "history.jsonl")
+
+    history.record(history.HistoryEntry(
+        timestamp="2026-04-18T10:00:00",
+        input_file="/a.stl", output_dir="/o", quality_level="draft",
+        tier_used="x", success=True, elapsed_seconds=1.0,
+    ))
+    history.record(history.HistoryEntry(
+        timestamp="2026-04-18T10:05:00",
+        input_file="/b.stl", output_dir="/o", quality_level="draft",
+        tier_used="y", success=False, elapsed_seconds=2.0, error="boom",
+    ))
+
+    dlg = HistoryDialog()
+    assert dlg.table.rowCount() == 2  # 기본 '전체'
+
+    # 성공만
+    idx = dlg.status_combo.findData("success")
+    dlg.status_combo.setCurrentIndex(idx)
+    dlg._refresh()
+    assert dlg.table.rowCount() == 1
+
+    # 실패만
+    idx = dlg.status_combo.findData("failure")
+    dlg.status_combo.setCurrentIndex(idx)
+    dlg._refresh()
+    assert dlg.table.rowCount() == 1
+
+
+def test_history_dialog_search_filter(tmp_path, monkeypatch) -> None:
+    """HistoryDialog 검색어 → 파일명 매칭만 남김."""
+    from desktop.qt_app import history
+    from desktop.qt_app.history_dialog import HistoryDialog
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr(history, "_HISTORY_DIR", fake_home)
+    monkeypatch.setattr(history, "_HISTORY_FILE", fake_home / "history.jsonl")
+
+    history.record(history.HistoryEntry(
+        timestamp="2026-04-18T10:00:00",
+        input_file="/proj/sphere.stl", output_dir="/o",
+        quality_level="draft", tier_used="x", success=True, elapsed_seconds=1.0,
+    ))
+    history.record(history.HistoryEntry(
+        timestamp="2026-04-18T10:05:00",
+        input_file="/proj/cube.stl", output_dir="/o",
+        quality_level="draft", tier_used="x", success=True, elapsed_seconds=2.0,
+    ))
+
+    dlg = HistoryDialog()
+    dlg.search_edit.setText("sphere")
+    dlg._refresh()
+    assert dlg.table.rowCount() == 1
+
+
 def test_batch_make_parameter_sweep(tmp_path) -> None:
     """make_parameter_sweep: 1 파일 × N 값 → N개 job 생성."""
     from pathlib import Path

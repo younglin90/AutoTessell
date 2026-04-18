@@ -681,10 +681,87 @@ class AutoTessellWindow:  # type: ignore[misc]
         from desktop.qt_app.batch_dialog import BatchDialog
 
         dlg = BatchDialog(self._qmain)
-        # 현재 창의 선택 파일이 있으면 자동으로 추가 힌트
         dlg.exec()
-        # 배치 완료 후 최근 파일 메뉴 갱신 (배치에서 사용한 파일 반영)
         self._rebuild_recent_menu()
+
+    def _on_open_history_dialog(self) -> None:  # pragma: no cover
+        """보기 → 실행 이력 메뉴 핸들러."""
+        from desktop.qt_app.history_dialog import HistoryDialog
+
+        dlg = HistoryDialog(self._qmain)
+        dlg.exec()
+
+    def _show_shortcuts_dialog(self) -> None:  # pragma: no cover
+        """키보드 단축키 전체 맵 표시."""
+        from PySide6.QtWidgets import QDialog, QLabel, QVBoxLayout
+
+        d = QDialog(self._qmain)
+        d.setWindowTitle("키보드 단축키")
+        d.setMinimumSize(440, 420)
+        d.setStyleSheet(
+            "QDialog { background: #0f1318; color: #e8ecf2; }"
+            "QLabel { color: #e8ecf2; background: transparent; }"
+        )
+        layout = QVBoxLayout(d)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(8)
+
+        title = QLabel("⌨  키보드 단축키")
+        title.setStyleSheet("font-size: 15px; font-weight: 600; padding-bottom: 8px;")
+        layout.addWidget(title)
+
+        shortcuts = [
+            ("파일", [
+                ("Ctrl+N", "새 프로젝트"),
+                ("Ctrl+O", "프로젝트 열기"),
+                ("Ctrl+S", "저장"),
+                ("Ctrl+Shift+S", "다른 이름으로 저장"),
+                ("Ctrl+E", "내보내기"),
+                ("Ctrl+B", "배치 처리"),
+                ("Ctrl+Q", "종료"),
+            ]),
+            ("보기", [
+                ("Ctrl+H", "실행 이력"),
+                ("F1", "문서 보기"),
+            ]),
+            ("팁", [
+                ("드래그앤드롭", "파일을 DropZone에 끌어다 놓기"),
+                ("DropZone 클릭", "파일 다이얼로그 열기"),
+                ("우클릭 (로그)", "로그 복사/저장/지우기"),
+                ("Tier 노드 클릭", "해당 Tier 파라미터 팝업"),
+            ]),
+        ]
+
+        for group, items in shortcuts:
+            sec = QLabel(group)
+            sec.setStyleSheet(
+                "color: #4ea3ff; font-size: 12px; font-weight: 600; "
+                "padding-top: 8px; padding-bottom: 2px;"
+            )
+            layout.addWidget(sec)
+            for key, desc in items:
+                row = QLabel(
+                    f"<span style='font-family: JetBrains Mono; "
+                    f"color: #b6bdc9;'>{key}</span> "
+                    f"<span style='color: #818a99;'>&nbsp;&nbsp;{desc}</span>"
+                )
+                row.setStyleSheet("font-size: 12px; padding: 2px 8px;")
+                layout.addWidget(row)
+
+        layout.addStretch()
+        from PySide6.QtCore import Qt as _Qt
+        from PySide6.QtWidgets import QPushButton
+
+        close_btn = QPushButton("닫기")
+        close_btn.setStyleSheet(
+            "QPushButton { background: #4ea3ff; color: #05111e; "
+            "border: none; border-radius: 4px; padding: 8px 20px; "
+            "font-size: 12px; font-weight: 600; }"
+            "QPushButton:hover { background: #6ab4ff; }"
+        )
+        close_btn.clicked.connect(d.accept)
+        layout.addWidget(close_btn, alignment=_Qt.AlignRight)
+        d.exec()
 
     def _rebuild_recent_menu(self) -> None:  # pragma: no cover
         """최근 파일 서브메뉴를 현재 저장된 경로로 재구성."""
@@ -766,6 +843,13 @@ class AutoTessellWindow:  # type: ignore[misc]
             else:
                 file_menu.addAction(a)
 
+        # ── 보기 메뉴 ────────────────────────────────────
+        view_menu = mb.addMenu("보기")
+        act_history = QAction("실행 이력…", self._qmain)
+        act_history.setShortcut("Ctrl+H")
+        act_history.triggered.connect(self._on_open_history_dialog)
+        view_menu.addAction(act_history)
+
         help_menu = mb.addMenu("도움말")
         act_docs = QAction("문서 보기", self._qmain); act_docs.setShortcut("F1")
         act_shortcuts = QAction("키보드 단축키", self._qmain)
@@ -775,12 +859,7 @@ class AutoTessellWindow:  # type: ignore[misc]
         act_docs.triggered.connect(
             lambda: self._log("[INFO] 문서: https://github.com/younglin90/AutoTessell")
         )
-        act_shortcuts.triggered.connect(
-            lambda: self._log(
-                "[INFO] 단축키: Ctrl+N (새), Ctrl+O (열기), Ctrl+S (저장), "
-                "Ctrl+E (내보내기), Ctrl+Q (종료)"
-            )
-        )
+        act_shortcuts.triggered.connect(self._show_shortcuts_dialog)
         for a in (act_docs, act_shortcuts, act_release, None, act_report, None, ver_action):
             if a is None:
                 help_menu.addSeparator()
@@ -951,7 +1030,105 @@ class AutoTessellWindow:  # type: ignore[misc]
         )
         self._preset_desc_label.setWordWrap(True)
         v.addWidget(self._preset_desc_label)
+
+        # 현재 설정을 프리셋으로 저장 버튼
+        from PySide6.QtWidgets import QPushButton
+
+        save_preset_btn = QPushButton("현재 설정 → 프리셋 저장")
+        save_preset_btn.setStyleSheet(
+            "QPushButton { background: #161a20; color: #b6bdc9; "
+            "border: 1px solid #323a46; border-radius: 4px; "
+            "padding: 4px 8px; font-size: 11px; }"
+            "QPushButton:hover { background: #1c2129; border-color: #4ea3ff; color: #e8ecf2; }"
+        )
+        save_preset_btn.clicked.connect(self._on_save_current_as_preset)
+        v.addWidget(save_preset_btn)
         return f
+
+    def _on_save_current_as_preset(self) -> None:  # pragma: no cover
+        """현재 사이드바 설정을 사용자 정의 프리셋으로 저장."""
+        from PySide6.QtWidgets import QInputDialog, QMessageBox
+
+        from desktop.qt_app import presets as _presets
+
+        name, ok = QInputDialog.getText(
+            self._qmain, "프리셋 이름",
+            "저장할 프리셋 이름 입력:",
+            text="My Preset",
+        )
+        if not ok or not name.strip():
+            return
+        name = name.strip()
+
+        # 이름 중복 확인 (내장과 같으면 거부)
+        builtin_names = {p.name for p in _presets.BUILTIN_PRESETS}
+        if name in builtin_names:
+            QMessageBox.warning(
+                self._qmain, "이름 충돌",
+                f"'{name}'은(는) 내장 프리셋입니다. 다른 이름을 선택하세요.",
+            )
+            return
+
+        description, ok = QInputDialog.getText(
+            self._qmain, "프리셋 설명",
+            "설명 (선택):",
+            text="사용자 정의 프리셋",
+        )
+        if not ok:
+            return
+
+        # 현재 상태 수집
+        tier_hint = self._tier_combo_text() if hasattr(self, "_tier_combo_text") else "auto"
+        remesh_engine = (
+            self._remesh_engine_text()
+            if hasattr(self, "_remesh_engine_text") else "auto"
+        )
+        surface_remesh = False
+        allow_ai_fallback = False
+        try:
+            if self._surface_remesh_check is not None:
+                surface_remesh = bool(self._surface_remesh_check.isChecked())  # type: ignore[union-attr]
+        except Exception:
+            pass
+        try:
+            if self._allow_ai_fallback_check is not None:
+                allow_ai_fallback = bool(
+                    self._allow_ai_fallback_check.isChecked()  # type: ignore[union-attr]
+                )
+        except Exception:
+            pass
+
+        new_preset = _presets.Preset(
+            name=name,
+            description=description or "사용자 정의 프리셋",
+            quality_level=self._quality_level.value,
+            tier_hint=tier_hint,
+            remesh_engine=remesh_engine,
+            surface_remesh=surface_remesh,
+            allow_ai_fallback=allow_ai_fallback,
+        )
+        _presets.save_user_preset(new_preset)
+        self._log(f"[OK] 프리셋 저장: {name}")
+
+        # 콤보박스 갱신
+        if self._preset_combo is not None:
+            try:
+                # 현재 선택 저장
+                cur = self._preset_combo.currentText()  # type: ignore[union-attr]
+                self._preset_combo.clear()  # type: ignore[union-attr]
+                self._preset_combo.addItem("(프리셋 선택…)", None)  # type: ignore[union-attr]
+                for p in _presets.all_presets():
+                    self._preset_combo.addItem(p.name, p.name)  # type: ignore[union-attr]
+                # 새로 저장한 것 선택
+                idx = self._preset_combo.findText(name)  # type: ignore[union-attr]
+                if idx >= 0:
+                    self._preset_combo.setCurrentIndex(idx)  # type: ignore[union-attr]
+                else:
+                    prev_idx = self._preset_combo.findText(cur)  # type: ignore[union-attr]
+                    if prev_idx >= 0:
+                        self._preset_combo.setCurrentIndex(prev_idx)  # type: ignore[union-attr]
+            except Exception:
+                pass
 
     def _on_preset_selected(self, index: int) -> None:  # pragma: no cover
         """프리셋 선택 → 품질/엔진/리메쉬 설정 자동 적용."""
@@ -1652,6 +1829,22 @@ class AutoTessellWindow:  # type: ignore[misc]
             return
         self._pipeline_result = result
         success = bool(getattr(result, "success", False))
+
+        # 실행 이력 기록 (성공·실패 무관)
+        try:
+            from desktop.qt_app import history as _hist
+
+            if self._input_path is not None and self._output_dir is not None:
+                entry = _hist.make_entry_from_result(
+                    input_file=self._input_path,
+                    output_dir=self._output_dir,
+                    quality_level=self._quality_level.value,
+                    result=result,
+                )
+                _hist.record(entry)
+        except Exception:
+            pass
+
         if success:
             self._log("[OK] 파이프라인 완료")
             # Export 탭 활성화 — 메시가 생성된 이후에만 사용 가능
