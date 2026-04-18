@@ -1452,6 +1452,85 @@ def test_preset_get_returns_correct() -> None:
     assert get("존재하지 않는 프리셋") is None
 
 
+def test_foam_template_writes_required_files(tmp_path) -> None:
+    """write_case_template이 controlDict/fvSchemes/fvSolution + 0.orig 생성."""
+    from desktop.qt_app.foam_templates import write_case_template
+
+    case = tmp_path / "mycase"
+    case.mkdir()
+    written = write_case_template(case)
+
+    assert (case / "system" / "controlDict").exists()
+    assert (case / "system" / "fvSchemes").exists()
+    assert (case / "system" / "fvSolution").exists()
+    assert (case / "0.orig").is_dir()
+    assert len(written) >= 3
+
+    # 내용 검증 — simpleFoam 기본
+    cd = (case / "system" / "controlDict").read_text()
+    assert "simpleFoam" in cd
+    assert "endTime" in cd
+
+    schemes = (case / "system" / "fvSchemes").read_text()
+    assert "div(phi,U)" in schemes
+
+    sol = (case / "system" / "fvSolution").read_text()
+    assert "SIMPLE" in sol
+    assert "GAMG" in sol  # pressure solver
+
+
+def test_foam_template_preserves_existing_files(tmp_path) -> None:
+    """write_case_template은 기존 파일 덮어쓰지 않는다 (사용자 편집 보호)."""
+    from pathlib import Path as _Path
+
+    from desktop.qt_app.foam_templates import write_case_template
+
+    case = tmp_path / "mycase"
+    (case / "system").mkdir(parents=True)
+    custom = case / "system" / "controlDict"
+    custom.write_text("// MY CUSTOM CONFIG\napplication pimpleFoam;\n")
+
+    written = write_case_template(case)
+    # controlDict가 written 목록에 없어야 함
+    names = [_Path(p).name for p in written]
+    assert "controlDict" not in names
+    # 원본 내용 유지
+    assert "MY CUSTOM CONFIG" in custom.read_text()
+
+
+def test_export_pane_has_foam_template_checkbox() -> None:
+    """ExportPane에 foam_template 체크박스 + get_export_options에 포함."""
+    from desktop.qt_app.widgets.right_column import ExportPane
+
+    pane = ExportPane()
+    assert hasattr(pane, "chk_foam_template")
+    opts = pane.get_export_options()
+    assert "foam_template" in opts
+
+
+def test_log_level_classification_variants() -> None:
+    """_classify_log_level이 한·영문 변형을 정확히 분류."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    c = AutoTessellWindow._classify_log_level
+    # ERR variants
+    assert c("[ERR] 뭔가 실패") == "ERR"
+    assert c("[ERROR] something") == "ERR"
+    assert c("  [오류] 시간 초과") == "ERR"
+    # WARN variants
+    assert c("[WARN] 메시 품질 낮음") == "WARN"
+    assert c("[WARNING] deprecated") == "WARN"
+    assert c("[경고] 파일 크기 큼") == "WARN"
+    # DBG variants
+    assert c("[DBG] debug message") == "DBG"
+    assert c("[DEBUG] verbose info") == "DBG"
+    # INFO / OK / 진행 / 태그 없음 — 전부 INFO
+    assert c("[INFO] 시작") == "INFO"
+    assert c("[OK] 파이프라인 완료") == "INFO"
+    assert c("[진행 42%] Generate 1/3") == "INFO"
+    assert c("태그 없는 일반 메시지") == "INFO"
+
+
 def test_pipeline_worker_has_intermediate_ready_signal() -> None:
     """PipelineWorker에 intermediate_ready Signal이 정의돼야 한다."""
     from pathlib import Path

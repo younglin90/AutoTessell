@@ -2106,6 +2106,10 @@ class AutoTessellWindow:  # type: ignore[misc]
             if opts.get("paraview_state", False):
                 self._export_paraview_state(export_target_dir)
 
+            # ── 후처리: OpenFOAM case 템플릿 (system/0.orig) ──
+            if opts.get("foam_template", False):
+                self._export_foam_template(export_target_dir)
+
             # ── 후처리: ZIP 압축 ──────────────────────────────
             if opts.get("zip_output", False):
                 zip_path = self._export_zip(export_target_dir)
@@ -2332,6 +2336,38 @@ class AutoTessellWindow:  # type: ignore[misc]
         plt.close(fig)
         self._log(f"[OK] 품질 히스토그램 PNG 저장: {out_path}")
 
+    def _export_foam_template(self, target_dir: Path) -> None:  # pragma: no cover
+        """OpenFOAM case 템플릿 (system/*, 0.orig/) 생성.
+
+        polyMesh 가 target_dir 또는 target_dir/constant/polyMesh 에 있어야 동작.
+        """
+        from desktop.qt_app.foam_templates import write_case_template
+
+        # polyMesh 상위 디렉토리 찾기 = case_dir
+        candidates = [target_dir, target_dir / "constant"]
+        case_dir = None
+        for c in candidates:
+            if (c.parent / "constant" / "polyMesh").exists():
+                case_dir = c.parent
+                break
+            if (c / "polyMesh").exists():
+                case_dir = c.parent if c.name == "constant" else c
+                break
+        if case_dir is None:
+            case_dir = target_dir  # polyMesh 없어도 템플릿은 생성
+
+        try:
+            written = write_case_template(case_dir)
+            if written:
+                self._log(
+                    f"[OK] OpenFOAM 템플릿 생성 ({len(written)}개): "
+                    + ", ".join(Path(p).name for p in written)
+                )
+            else:
+                self._log("[INFO] OpenFOAM 템플릿 — 기존 파일 유지 (덮어쓰기 없음)")
+        except Exception as e:
+            self._log(f"[WARN] OpenFOAM 템플릿 생성 실패: {e}")
+
     def _export_paraview_state(self, target_dir: Path) -> None:  # pragma: no cover
         """Paraview .pvsm 상태 파일 생성 (템플릿 기반)."""
         # 소스 파일 경로 탐색 + reader 타입 결정
@@ -2529,6 +2565,26 @@ class AutoTessellWindow:  # type: ignore[misc]
     def _on_log_search_changed(self, text: str) -> None:  # pragma: no cover
         self._refilter_log()
 
+    @staticmethod
+    def _classify_log_level(raw: str) -> str:
+        """로그 라인 → 레벨 (ALL 필터용 분류).
+
+        정규화 규칙:
+        - [ERR]/[ERROR]/[오류] → ERR
+        - [WARN]/[WARNING]/[경고] → WARN
+        - [DBG]/[DEBUG] → DBG
+        - [OK]/[INFO]/[진행]/기타 → INFO
+        """
+        u = raw.upper()
+        if "[ERR]" in u or "[ERROR]" in u or "[오류]" in raw:
+            return "ERR"
+        if "[WARN]" in u or "[WARNING]" in u or "[경고]" in raw:
+            return "WARN"
+        if "[DBG]" in u or "[DEBUG]" in u:
+            return "DBG"
+        # OK/INFO/진행 + level 태그 없는 일반 메시지는 모두 INFO로 분류
+        return "INFO"
+
     def _refilter_log(self) -> None:  # pragma: no cover
         if self._log_edit is None or not hasattr(self, "_all_log_lines"):
             return
@@ -2538,7 +2594,8 @@ class AutoTessellWindow:  # type: ignore[misc]
         keep = []
         for raw in self._all_log_lines:
             if "ALL" not in levels:
-                if not any(f"[{lv}]" in raw or f" {lv} " in raw for lv in levels):
+                line_level = self._classify_log_level(raw)
+                if line_level not in levels:
                     continue
             if search and search not in raw.lower():
                 continue

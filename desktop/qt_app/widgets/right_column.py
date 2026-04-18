@@ -736,8 +736,14 @@ class ExportPane(QWidget):
         self.chk_histo = QCheckBox("품질 요약 차트 PNG")
         self.chk_histo.setChecked(True)
         self.chk_paraview = QCheckBox("Paraview state 파일 첨부")
+        self.chk_foam_template = QCheckBox("OpenFOAM case 템플릿 생성 (system/*)")
+        self.chk_foam_template.setToolTip(
+            "controlDict, fvSchemes, fvSolution 스텁 자동 생성 — "
+            "simpleFoam/pimpleFoam 즉시 실행 가능"
+        )
         self.chk_zip = QCheckBox("ZIP으로 압축")
-        for chk in (self.chk_report, self.chk_histo, self.chk_paraview, self.chk_zip):
+        for chk in (self.chk_report, self.chk_histo, self.chk_paraview,
+                    self.chk_foam_template, self.chk_zip):
             chk.setStyleSheet(
                 "QCheckBox { color: #b6bdc9; font-size: 11.5px; "
                 "background: transparent; padding: 2px 0; }"
@@ -788,6 +794,7 @@ class ExportPane(QWidget):
             "report_json": self.chk_report.isChecked(),
             "quality_hist": self.chk_histo.isChecked(),
             "paraview_state": self.chk_paraview.isChecked(),
+            "foam_template": self.chk_foam_template.isChecked(),
             "zip_output": self.chk_zip.isChecked(),
         }
 
