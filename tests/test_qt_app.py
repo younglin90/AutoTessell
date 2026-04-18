@@ -1025,3 +1025,213 @@ def test_cancellation_resets_active_tier_nodes() -> None:
     src = inspect.getsource(AutoTessellWindow._on_pipeline_finished)
     assert "reset_active_to" in src, "중단 후 active tier 노드 정리 없음"
     assert "Cancelled" in src, "JobPane에 Cancelled 배지 표시 없음"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Phase 1 — Behavioral Signal Tests (QTest + QSignalSpy 기반)
+# 소스 문자열 검증이 아닌 실제 이벤트→시그널→동작 체인을 검증
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_dropzone_mouse_press_emits_clicked() -> None:
+    """DropZone에 실제 마우스 클릭 → clicked Signal emit 검증."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QSignalSpy, QTest
+    from desktop.qt_app.drop_zone import DropZone
+
+    dz = DropZone()
+    dz.resize(200, 100)
+    spy = QSignalSpy(dz.clicked)
+    QTest.mouseClick(dz, Qt.MouseButton.LeftButton)
+    assert spy.count() == 1, f"clicked signal 미발생 (count={spy.count()})"
+
+
+def test_tier_node_click_emits_node_clicked_with_zero_based_index() -> None:
+    """_TierNode 클릭 시 node_clicked Signal이 0-based index로 emit되어야 한다."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QSignalSpy, QTest
+    from desktop.qt_app.widgets.tier_pipeline import _TierNode
+
+    # 1-based index=3으로 생성 → emit 시 2 (0-based)
+    node = _TierNode(index=3, name="Tier 3", engine="Netgen")
+    node.resize(120, 80)
+    spy = QSignalSpy(node.node_clicked)
+    QTest.mouseClick(node, Qt.MouseButton.LeftButton)
+    assert spy.count() == 1
+    emitted = spy.at(0)[0]
+    assert emitted == 2, f"0-based index 기대 2, 실제 {emitted}"
+
+
+def test_tier_pipeline_strip_propagates_tier_clicked() -> None:
+    """TierPipelineStrip.set_tiers 후 자식 노드 클릭 → strip.tier_clicked emit 검증."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QSignalSpy, QTest
+    from desktop.qt_app.widgets.tier_pipeline import TierPipelineStrip
+
+    strip = TierPipelineStrip()
+    strip.set_tiers([("Tier A", "a"), ("Tier B", "b"), ("Tier C", "c")])
+    strip.resize(500, 140)
+    spy = QSignalSpy(strip.tier_clicked)
+
+    # 두 번째 노드 클릭 → tier_clicked(1) 기대
+    # strip._nodes 직접 접근은 테스트 한정 (공개 API는 get_node_info)
+    nodes = [strip._nodes[i] for i in range(strip.node_count())]
+    QTest.mouseClick(nodes[1], Qt.MouseButton.LeftButton)
+    assert spy.count() == 1
+    assert spy.at(0)[0] == 1
+
+
+def test_tier_pipeline_reset_active_to_skipped() -> None:
+    """reset_active_to('skipped')가 active 노드만 skipped로 전환해야 한다."""
+    from desktop.qt_app.widgets.tier_pipeline import TierPipelineStrip
+
+    strip = TierPipelineStrip()
+    strip.set_tiers([("A", "a"), ("B", "b"), ("C", "c")])
+    strip.set_status(0, "done")
+    strip.set_status(1, "active")
+    strip.set_status(2, "pending")
+
+    changed = strip.reset_active_to("skipped")
+    assert changed == 1
+    assert strip.get_status(0) == "done"
+    assert strip.get_status(1) == "skipped"
+    assert strip.get_status(2) == "pending"
+
+
+def test_tier_pipeline_get_node_info_returns_correct_dict() -> None:
+    """get_node_info가 name/engine/status dict를 반환하고, 범위 밖은 None."""
+    from desktop.qt_app.widgets.tier_pipeline import TierPipelineStrip
+
+    strip = TierPipelineStrip()
+    strip.set_tiers([("Alpha", "eng1"), ("Beta", "eng2")])
+    strip.set_status(0, "done")
+
+    info = strip.get_node_info(0)
+    assert info == {"name": "Alpha", "engine": "eng1", "status": "done"}
+    assert strip.get_node_info(99) is None
+
+
+@pytest.mark.requires_display
+def test_quality_metric_selected_updates_metric() -> None:
+    """_on_quality_metric_selected가 action.data() 값으로 _quality_metric 업데이트."""
+    from desktop.qt_app.mesh_viewer import (
+        InteractiveMeshViewer,
+        PYVISTAQT_AVAILABLE,
+    )
+
+    if not PYVISTAQT_AVAILABLE:
+        pytest.skip("pyvistaqt unavailable")
+
+    from PySide6.QtGui import QAction
+
+    viewer = InteractiveMeshViewer()
+    assert viewer._quality_metric == "aspect_ratio"  # 기본값
+
+    # skew action 시뮬레이션
+    action = QAction("Skewness")
+    action.setData("skew")
+    viewer._on_quality_metric_selected(action)
+    assert viewer._quality_metric == "skew"
+    assert "Skew" in viewer._quality_btn.text()
+
+    # max_angle action 시뮬레이션
+    action2 = QAction("Non-ortho")
+    action2.setData("max_angle")
+    viewer._on_quality_metric_selected(action2)
+    assert viewer._quality_metric == "max_angle"
+    assert "Non-ortho" in viewer._quality_btn.text()
+
+
+@pytest.mark.requires_display
+def test_mesh_viewer_widget_connects_mesh_ready_to_stats() -> None:
+    """MeshViewerWidget이 mesh_ready Signal을 _compute_and_emit_stats에 연결한다."""
+    from desktop.qt_app.mesh_viewer import (
+        MeshViewerWidget,
+        PYVISTAQT_AVAILABLE,
+    )
+
+    if not PYVISTAQT_AVAILABLE:
+        pytest.skip("pyvistaqt unavailable")
+
+    widget = MeshViewerWidget()
+    if not hasattr(widget._viewer, "mesh_ready"):
+        pytest.skip("viewer는 StaticMeshViewer (mesh_ready 없음)")
+
+    # _compute_and_emit_stats를 가로채서 호출 여부 확인
+    calls = []
+    original = widget._compute_and_emit_stats
+    widget._compute_and_emit_stats = lambda mesh: calls.append(mesh)  # type: ignore[assignment]
+
+    # 하지만 signal 연결은 이미 __init__ 시점에 original 메서드를 가리킴.
+    # 대신 connect receivers 개수로 wiring 검증
+    try:
+        receivers = widget._viewer.receivers(widget._viewer.mesh_ready)
+        assert receivers >= 1, f"mesh_ready에 연결된 receiver 없음 (count={receivers})"
+    finally:
+        widget._compute_and_emit_stats = original  # type: ignore[assignment]
+
+
+@pytest.mark.requires_display
+def test_mesh_ready_emit_triggers_stats_when_patched_before_construction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """클래스 레벨에서 _compute_and_emit_stats를 patch 후 구성 → mesh_ready emit이 호출해야 한다."""
+    from desktop.qt_app.mesh_viewer import (
+        MeshViewerWidget,
+        PYVISTAQT_AVAILABLE,
+    )
+
+    if not PYVISTAQT_AVAILABLE:
+        pytest.skip("pyvistaqt unavailable")
+
+    calls: list = []
+    monkeypatch.setattr(
+        MeshViewerWidget,
+        "_compute_and_emit_stats",
+        lambda self, mesh: calls.append(mesh),
+    )
+    widget = MeshViewerWidget()
+    if not hasattr(widget._viewer, "mesh_ready"):
+        pytest.skip("StaticMeshViewer fallback")
+
+    fake_mesh = object()
+    widget._viewer.mesh_ready.emit(fake_mesh)
+    assert calls == [fake_mesh], f"_compute_and_emit_stats 미호출 (calls={calls!r})"
+
+
+@pytest.mark.requires_display
+def test_drop_zone_clicked_wires_pick_input(monkeypatch: pytest.MonkeyPatch) -> None:
+    """DropZone.clicked → main window의 _on_pick_input 호출 검증."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtTest import QTest
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    called: list[bool] = []
+    # 클래스 레벨 패치 — 시그널 연결 시점에 이 메서드가 바인딩됨
+    monkeypatch.setattr(
+        AutoTessellWindow, "_on_pick_input", lambda self: called.append(True)
+    )
+
+    win = AutoTessellWindow()
+    win._build()
+    assert win._drop_label is not None
+
+    # 패치된 _on_pick_input이 바인딩됐는지 확인
+    win._drop_label.resize(200, 100)
+    QTest.mouseClick(win._drop_label, Qt.MouseButton.LeftButton)
+    assert called == [True], f"_on_pick_input 미호출 (called={called})"
+
+
+def test_quality_histogram_canvas_has_update_method() -> None:
+    """_HistogramCanvas.update_histograms가 데이터 없이 호출돼도 에러 없이 동작."""
+    from desktop.qt_app.widgets.right_column import _HistogramCanvas
+
+    canvas = _HistogramCanvas()
+    # None 인자 → matplotlib 미설치면 no-op, 설치면 "데이터 없음" 표시
+    canvas.update_histograms(aspect_data=None, skew_data=None)
+    # 실제 데이터
+    canvas.update_histograms(
+        aspect_data=[1.0, 1.2, 1.5, 2.0, 1.1, 1.3],
+        skew_data=[0.1, 0.2, 0.3, 0.15, 0.25],
+    )
+    # 에러 없이 도달하면 통과
