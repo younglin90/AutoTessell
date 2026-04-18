@@ -997,3 +997,31 @@ def test_quality_bar_stores_fill_ratio() -> None:
 
     src = inspect.getsource(_QualityBar.set_value)
     assert "_fill_ratio" in src, "_QualityBar.set_value에서 _fill_ratio 저장 없음"
+
+
+def test_tier_pipeline_strip_public_apis_exist() -> None:
+    """TierPipelineStrip 공개 API (get_status/node_count/reset_active_to/get_node_info)가 있어야 한다."""
+    from desktop.qt_app.widgets.tier_pipeline import TierPipelineStrip
+
+    for method in ("get_status", "node_count", "reset_active_to", "get_node_info"):
+        assert hasattr(TierPipelineStrip, method), f"TierPipelineStrip.{method} 없음"
+
+
+def test_tier_pipeline_strip_get_node_info_shape() -> None:
+    """get_node_info가 name/engine/status를 가진 dict 또는 None을 반환해야 한다."""
+    import inspect
+    from desktop.qt_app.widgets.tier_pipeline import TierPipelineStrip
+
+    src = inspect.getsource(TierPipelineStrip.get_node_info)
+    for field in ("name", "engine", "status"):
+        assert field in src, f"get_node_info 리턴 dict에 {field} 없음"
+
+
+def test_cancellation_resets_active_tier_nodes() -> None:
+    """_on_pipeline_finished 중단 경로가 reset_active_to('skipped')를 호출해야 한다."""
+    import inspect
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    src = inspect.getsource(AutoTessellWindow._on_pipeline_finished)
+    assert "reset_active_to" in src, "중단 후 active tier 노드 정리 없음"
+    assert "Cancelled" in src, "JobPane에 Cancelled 배지 표시 없음"

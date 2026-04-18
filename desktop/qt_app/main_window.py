@@ -1327,19 +1327,18 @@ class AutoTessellWindow:  # type: ignore[misc]
         """Tier 노드 클릭 → 해당 Tier 파라미터 팝업 표시."""
         from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QTextBrowser, QPushButton
 
-        # Tier 이름/엔진 정보 (TierPipelineStrip 설정값)
-        tier_nodes = []
+        # Tier 이름/엔진 정보 (TierPipelineStrip 공개 API 경유)
+        info = None
         if self._tier_pipeline is not None:
             try:
-                tier_nodes = list(self._tier_pipeline._nodes)
+                info = self._tier_pipeline.get_node_info(index)
             except Exception:
-                pass
+                info = None
 
-        if index < len(tier_nodes):
-            node = tier_nodes[index]
-            tier_name = getattr(node, "_name", f"Tier {index}")
-            tier_engine = getattr(node, "_engine", "—")
-            tier_status = getattr(node, "_status", "pending")
+        if info:
+            tier_name = info.get("name", f"Tier {index}")
+            tier_engine = info.get("engine", "—")
+            tier_status = info.get("status", "pending")
         else:
             tier_name = f"Tier {index}"
             tier_engine = "—"
@@ -1453,6 +1452,20 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._stopping = False
             if self._design_statusbar is not None:
                 self._design_statusbar.set_phase("Stopped", busy=False)
+            # 실행 중이던 tier 노드를 skipped로 전환 (남아 있는 active 상태 정리)
+            if self._tier_pipeline is not None:
+                try:
+                    self._tier_pipeline.reset_active_to("skipped")
+                except Exception:
+                    pass
+            # JobPane 상태 배지
+            if self._right_column is not None:
+                try:
+                    self._right_column.job_pane.status_card.set_state(
+                        badge="Cancelled", badge_level="warn",
+                    )
+                except Exception:
+                    pass
             return
         self._pipeline_result = result
         success = bool(getattr(result, "success", False))

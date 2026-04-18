@@ -171,12 +171,16 @@ auto-tessell run input.step -o ./case --quality draft      # STEP CAD 지원
   - ✅ tier_jigsaw (jigsawpy ctypes API, libjigsaw.so)  ← v0.3.4
   - ✅ tier_jigsaw_fallback (jigsawpy ctypes API)  ← v0.3.4
 - ✅ Qt GUI (PySide6 + PyVistaQt): 드래그앤드롭, 19개 엔진 선택, 실시간 메쉬 뷰어
+  - 뷰포트 품질 색상화 드롭다운 (Aspect / Skewness / Non-ortho)
+  - Quality 탭 인터랙티브 matplotlib 히스토그램 (메시 로드 즉시 자동 갱신)
+  - Export·프로젝트 저장·WYSIWYG 스크린샷, 로그 필터·검색, Tier 노드 파라미터 팝업
+  - Stop 시 서브프로세스 안전 정리 (requestInterruption) + UI 상태 복원
 - ✅ PolyMeshWriter: tet/hex mesh → OpenFOAM polyMesh 직접 변환
 - ✅ OpenFOAM 자동 감지 (/usr/lib/openfoam/, /opt/, OPENFOAM_DIR)
 - ✅ STEP/IGES CAD 파일 지원 (cadquery + gmsh fallback)
 - ✅ Geometry Fidelity (Hausdorff 거리 기반 표면 충실도 검증)
 - ✅ 불량 STL 수리 (L1 pymeshfix → L2 pyACVD+pymeshlab → L3 AI fallback)
-- ✅ 회귀 테스트: 1045 passed, 12 skipped
+- ✅ 회귀 테스트: 1108 passed, 15 skipped (qt_app 67 passed + 4 skipped 포함)
 - ✅ E2E 검증: 88% 달성 (Phase D-E 기준)
 - ✅ **Windows 클릭 설치 인스톨러** (NSIS .exe, v0.3.5): `installer/dist/AutoTessell-0.3.5-Setup.exe`
   - Miniconda3 자동 다운로드/설치, pip으로 전체 라이브러리 설치

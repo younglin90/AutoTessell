@@ -262,6 +262,32 @@ class TierPipelineStrip(QFrame):
             cur = (active_idx + 1) if active_idx is not None else done_count
             self.set_title_info(current=cur, total=len(self._nodes))
 
+    def get_status(self, index: int) -> TierStatus | None:
+        """index 위치 tier 노드의 현재 상태 반환."""
+        if 0 <= index < len(self._nodes):
+            return self._nodes[index]._status
+        return None
+
+    def node_count(self) -> int:
+        """현재 등록된 tier 노드 수."""
+        return len(self._nodes)
+
+    def reset_active_to(self, status: TierStatus) -> int:
+        """현재 active 상태 노드들을 지정 상태로 전환. 변경된 개수 반환."""
+        count = 0
+        for i, node in enumerate(self._nodes):
+            if node._status == "active":
+                self.set_status(i, status)
+                count += 1
+        return count
+
+    def get_node_info(self, index: int) -> dict | None:
+        """index 위치 tier 노드의 name/engine/status 정보 반환."""
+        if 0 <= index < len(self._nodes):
+            n = self._nodes[index]
+            return {"name": n._name, "engine": n._engine, "status": n._status}
+        return None
+
 
 class _NodesContainer(QWidget):
     """노드 + 연결선 그리기."""
