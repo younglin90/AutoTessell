@@ -1251,6 +1251,7 @@ class AutoTessellWindow:  # type: ignore[misc]
         # 파이프라인 재시작 시 이전 결과/Export 비활성화
         self._pipeline_result = None
         self._quality_last_updated = None
+        self._histogram_data = None
         if self._right_column is not None:
             try:
                 self._right_column.export_pane.setEnabled(False)
@@ -1261,10 +1262,20 @@ class AutoTessellWindow:  # type: ignore[misc]
                 q = self._right_column.quality_pane
                 for key in ("aspect", "skew", "nonortho", "min_area", "min_vol", "neg_vols"):
                     q.set_metric(key, 0.0, "—")
+                # 히스토그램 초기화
+                if hasattr(q, "histogram"):
+                    q.histogram.update_histograms()
                 import time
                 self._quality_last_updated = time.strftime("%H:%M:%S")
                 if hasattr(q, "set_stale_label"):
                     q.set_stale_label("갱신 중...")
+            except Exception:
+                pass
+
+        # 뷰포트 KPI 오버레이 초기화
+        if self._viewport_overlays is not None:
+            try:
+                self._viewport_overlays.kpi.reset()
             except Exception:
                 pass
 
@@ -1483,6 +1494,21 @@ class AutoTessellWindow:  # type: ignore[misc]
                     self._tier_pipeline.set_status(i, "done")
             if self._design_statusbar is not None:
                 self._design_statusbar.set_phase("Done", busy=False)
+            # 뷰포트 KPI 오버레이에 완료 시 실제 Tier 이름 + 총 시간 기록
+            if self._viewport_overlays is not None:
+                try:
+                    kpi = self._viewport_overlays.kpi
+                    gen_log = getattr(result, "generator_log", None)
+                    if gen_log is not None:
+                        summary = getattr(gen_log, "execution_summary", None)
+                        selected_tier = getattr(summary, "selected_tier", None)
+                        if selected_tier:
+                            kpi.set_value("Tier", str(selected_tier), highlight=True)
+                    total_time = getattr(result, "total_time_seconds", None)
+                    if total_time is not None:
+                        kpi.set_value("Time", f"{float(total_time):.1f}s")
+                except Exception:
+                    pass
             if self._right_column is not None:
                 try:
                     self._right_column.job_pane.status_card.set_state(
@@ -1515,21 +1541,30 @@ class AutoTessellWindow:  # type: ignore[misc]
                     pass
 
     def _on_progress_line(self, line: str) -> None:  # pragma: no cover
-        """워커의 progress 시그널 — 로그 + Tier pipeline 상태 추출."""
+        """워커의 progress 시그널 — 로그 + Tier pipeline 상태 + 뷰포트 KPI 추출."""
         self._log(line)
-        # tier 진행 힌트: "[진행 NN%] Tier X ..." 또는 "tier_X" 키워드
         import re
         try:
             m = re.search(r"[Tt]ier\s*(\d+)", line)
             if m and self._tier_pipeline is not None:
                 idx = int(m.group(1))
                 if 0 <= idx < 6:
-                    # 이전 단계들은 done, 현재는 active
                     for i in range(idx):
                         self._tier_pipeline.set_status(i, "done")
                     self._tier_pipeline.set_status(idx, "active")
         except Exception:
             pass
+
+        # 뷰포트 KPI 오버레이 — 현재 Tier 이름 갱신 (예: "Generate 1/3")
+        if self._viewport_overlays is not None:
+            try:
+                # "[진행 NN%] Generate 1/3", "[진행 42%] Analyze 완료" 등에서 stage 추출
+                m_stage = re.search(r"\[진행\s*\d+%\]\s*([^\r\n]{1,40})", line)
+                if m_stage:
+                    stage = m_stage.group(1).strip()
+                    self._viewport_overlays.kpi.set_value("Tier", stage, highlight=True)
+            except Exception:
+                pass
 
     def _on_progress_percent(self, pct: int, message: str) -> None:  # pragma: no cover
         """워커 progress_percent → 상태바 + ring progress."""
@@ -1542,30 +1577,65 @@ class AutoTessellWindow:  # type: ignore[misc]
                 )
             except Exception:
                 pass
-        # 경과 시간 KPI 갱신
+        # 경과 시간 KPI 갱신 (Job 탭 + 뷰포트 오버레이)
         try:
             import time
             if hasattr(self, "_pipeline_start_time"):
                 elapsed = time.monotonic() - self._pipeline_start_time
                 mins, secs = divmod(int(elapsed), 60)
-                self.update_kpi(elapsed=f"{mins:02d}:{secs:02d}")
+                time_str = f"{mins:02d}:{secs:02d}"
+                self.update_kpi(elapsed=time_str)
+                if self._viewport_overlays is not None:
+                    self._viewport_overlays.kpi.set_value("Time", time_str)
         except Exception:
             pass
 
     def _on_mesh_stats_computed(self, stats: dict) -> None:  # pragma: no cover
-        """MeshViewerWidget.mesh_stats_computed Signal 수신 → KPI + Quality 탭 갱신."""
+        """MeshViewerWidget.mesh_stats_computed Signal 수신 → KPI + Quality 탭 + 뷰포트 오버레이 갱신."""
         if not stats:
             return
         try:
             # KPI 셀 갱신
             n_cells = stats.get("n_cells", 0)
+            cells_str = "—"
             if n_cells > 0:
                 cells_str = f"{n_cells:,}" if n_cells < 1_000_000 else f"{n_cells / 1e6:.1f}M"
                 self.update_kpi(cells=cells_str)
 
             hex_ratio = stats.get("hex_ratio", None)
+            hex_str = "—"
             if hex_ratio is not None:
-                self.update_kpi(hex=f"{hex_ratio * 100:.1f}%")
+                hex_str = f"{hex_ratio * 100:.1f}%"
+                self.update_kpi(hex=hex_str)
+
+            # 뷰포트 KPI 오버레이 갱신 (셀/Hex/품질 메트릭)
+            if self._viewport_overlays is not None:
+                try:
+                    kpi = self._viewport_overlays.kpi
+                    if n_cells > 0:
+                        kpi.set_value("Cells", cells_str)
+                    if hex_ratio is not None:
+                        kpi.set_value("Hex %", hex_str)
+                    max_ar = stats.get("max_aspect_ratio")
+                    if max_ar is not None:
+                        kpi.set_value(
+                            "Aspect", f"{float(max_ar):.2f}",
+                            warn=float(max_ar) > 100.0,
+                        )
+                    max_sk = stats.get("max_skewness")
+                    if max_sk is not None:
+                        kpi.set_value(
+                            "Skew", f"{float(max_sk):.2f}",
+                            warn=float(max_sk) > 4.0,
+                        )
+                    max_no = stats.get("max_non_orthogonality")
+                    if max_no is not None:
+                        kpi.set_value(
+                            "Non-ortho", f"{float(max_no):.1f}°",
+                            warn=float(max_no) > 65.0,
+                        )
+                except Exception:
+                    pass
 
             # Quality 탭 — aspect/skewness
             if self._right_column is not None:

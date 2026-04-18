@@ -1347,6 +1347,42 @@ def test_quality_pane_set_metric_updates_bar_value() -> None:
     assert pane.q_skew._val_lbl.text() == "7.2"
 
 
+def test_viewport_kpi_overlay_has_all_rows() -> None:
+    """KPIStatsOverlay가 Cells/Tier/Time/Hex%/Aspect/Skew/Non-ortho 7개 행 제공."""
+    from desktop.qt_app.widgets.viewport_overlays import KPIStatsOverlay
+
+    kpi = KPIStatsOverlay()
+    expected = ["Cells", "Tier", "Time", "Hex %", "Aspect", "Skew", "Non-ortho"]
+    for key in expected:
+        assert key in kpi._rows, f"KPIStatsOverlay에 '{key}' 행 없음"
+
+
+def test_viewport_kpi_overlay_set_value_and_warn() -> None:
+    """set_value가 텍스트 갱신 + warn=True시 주황색 스타일 적용."""
+    from desktop.qt_app.widgets.viewport_overlays import KPIStatsOverlay
+
+    kpi = KPIStatsOverlay()
+    kpi.set_value("Cells", "8,572")
+    assert kpi._rows["Cells"].text() == "8,572"
+
+    kpi.set_value("Non-ortho", "72.5°", warn=True)
+    assert kpi._rows["Non-ortho"].text() == "72.5°"
+    # 경고 색상이 스타일시트에 반영됐는지
+    assert "#ff7b54" in kpi._rows["Non-ortho"].styleSheet()
+
+
+def test_viewport_kpi_overlay_reset_clears_all() -> None:
+    """reset()이 모든 행을 '—'로 초기화."""
+    from desktop.qt_app.widgets.viewport_overlays import KPIStatsOverlay
+
+    kpi = KPIStatsOverlay()
+    kpi.set_value("Cells", "1000")
+    kpi.set_value("Tier", "tier2_tetwild")
+    kpi.reset()
+    assert kpi._rows["Cells"].text() == "—"
+    assert kpi._rows["Tier"].text() == "—"
+
+
 def test_quality_pane_histogram_updates_with_arrays() -> None:
     """QualityPane.histogram.update_histograms가 실제 데이터로 matplotlib 렌더 (3 메트릭)."""
     from desktop.qt_app.widgets.right_column import QualityPane, _MPL_AVAILABLE

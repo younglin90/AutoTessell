@@ -174,9 +174,11 @@ class AxisGizmoOverlay(QWidget):
 # 4) KPI Stats 오버레이 (우측 상단)
 # ═════════════════════════════════════════════════════════════════════════════
 class KPIStatsOverlay(QFrame):
+    """뷰포트 우상단 반투명 통계 패널. CFD 핵심 지표 실시간 표시."""
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setFixedWidth(190)
+        self.setFixedWidth(210)
         self.setStyleSheet(
             "KPIStatsOverlay { "
             "background: rgba(15,19,25,0.85); "
@@ -196,11 +198,15 @@ class KPIStatsOverlay(QFrame):
         layout.addWidget(title)
 
         self._rows: dict[str, QLabel] = {}
+        # 순서 중요 — 자주 보는 것 위로
         for key, default in (
             ("Cells", "—"),
-            ("Points", "—"),
-            ("Faces", "—"),
-            ("Quality", "—"),
+            ("Tier", "—"),
+            ("Time", "—"),
+            ("Hex %", "—"),
+            ("Aspect", "—"),
+            ("Skew", "—"),
+            ("Non-ortho", "—"),
         ):
             row = QWidget()
             row.setStyleSheet("background: transparent;")
@@ -223,14 +229,25 @@ class KPIStatsOverlay(QFrame):
             layout.addWidget(row)
             self._rows[key] = v
 
-    def set_value(self, key: str, value: str, highlight: bool = False) -> None:
+    def set_value(self, key: str, value: str, highlight: bool = False, warn: bool = False) -> None:
+        """key의 값 갱신. highlight=True → 파란색, warn=True → 주황색(임계값 초과)."""
         if key in self._rows:
-            color = "#4ea3ff" if highlight else "#e8ecf2"
+            if warn:
+                color = "#ff7b54"
+            elif highlight:
+                color = "#4ea3ff"
+            else:
+                color = "#e8ecf2"
             self._rows[key].setStyleSheet(
                 f"color: {color}; font-size: 11px; font-weight: 500; "
                 f"font-family: 'JetBrains Mono', monospace; background: transparent;"
             )
             self._rows[key].setText(value)
+
+    def reset(self) -> None:
+        """모든 행을 '—'로 초기화 (새 파이프라인 시작 시)."""
+        for key in self._rows:
+            self.set_value(key, "—")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
