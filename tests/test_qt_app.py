@@ -1452,6 +1452,115 @@ def test_preset_get_returns_correct() -> None:
     assert get("존재하지 않는 프리셋") is None
 
 
+def test_batch_make_parameter_sweep(tmp_path) -> None:
+    """make_parameter_sweep: 1 파일 × N 값 → N개 job 생성."""
+    from pathlib import Path
+    from desktop.qt_app.batch import make_parameter_sweep, JobStatus
+
+    jobs = make_parameter_sweep(
+        base_input=Path("/tmp/sphere.stl"),
+        output_root=tmp_path,
+        quality_level="draft",
+        tier_hint="tier2_tetwild",
+        sweep_key="epsilon",
+        sweep_values=[0.001, 0.002, 0.005],
+        preset_name="Draft Quick",
+    )
+    assert len(jobs) == 3
+    assert all(j.status == JobStatus.PENDING for j in jobs)
+    # params는 sweep_key만 포함
+    assert jobs[0].params == {"epsilon": 0.001}
+    assert jobs[2].params == {"epsilon": 0.005}
+    # output_dir 고유
+    dirs = [j.output_dir for j in jobs]
+    assert len(set(dirs)) == 3
+    assert "0p001" in str(jobs[0].output_dir)
+
+
+def test_batch_make_file_batch(tmp_path) -> None:
+    """make_file_batch: N 파일 × 동일 설정 → N개 job."""
+    from pathlib import Path
+    from desktop.qt_app.batch import make_file_batch
+
+    files = [Path("/tmp/a.stl"), Path("/tmp/b.stl"), Path("/tmp/c.stl")]
+    jobs = make_file_batch(
+        input_paths=files,
+        output_root=tmp_path,
+        quality_level="standard",
+        tier_hint="tier05_netgen",
+        params={"element_size": 0.1},
+    )
+    assert len(jobs) == 3
+    assert jobs[0].input_path.stem == "a"
+    assert jobs[0].output_dir == tmp_path / "a_case"
+    assert jobs[2].output_dir == tmp_path / "c_case"
+    # 모두 동일 설정
+    assert all(j.quality_level == "standard" for j in jobs)
+    assert all(j.params == {"element_size": 0.1} for j in jobs)
+
+
+def test_batch_summary_aggregation() -> None:
+    """BatchSummary.from_jobs: 상태별 집계 + 성공률."""
+    from pathlib import Path
+    from desktop.qt_app.batch import BatchJob, BatchSummary, JobStatus
+
+    jobs = [
+        BatchJob(Path("/x"), Path("/y"), status=JobStatus.SUCCESS, elapsed_seconds=2.5),
+        BatchJob(Path("/x"), Path("/y"), status=JobStatus.SUCCESS, elapsed_seconds=3.0),
+        BatchJob(Path("/x"), Path("/y"), status=JobStatus.FAILED, elapsed_seconds=1.0),
+        BatchJob(Path("/x"), Path("/y"), status=JobStatus.CANCELLED, elapsed_seconds=0.5),
+    ]
+    s = BatchSummary.from_jobs(jobs)
+    assert s.total == 4
+    assert s.succeeded == 2
+    assert s.failed == 1
+    assert s.cancelled == 1
+    assert abs(s.total_elapsed_seconds - 7.0) < 1e-9
+    assert abs(s.pass_rate() - 0.5) < 1e-9
+
+
+def test_batch_summary_empty() -> None:
+    """빈 job 리스트는 pass_rate=0."""
+    from desktop.qt_app.batch import BatchSummary
+
+    s = BatchSummary.from_jobs([])
+    assert s.total == 0
+    assert s.pass_rate() == 0.0
+
+
+def test_batch_job_display_name() -> None:
+    """display_name: stem + 파라미터 일부."""
+    from pathlib import Path
+    from desktop.qt_app.batch import BatchJob
+
+    j1 = BatchJob(Path("/a/sphere.stl"), Path("/o"))
+    assert j1.display_name() == "sphere"
+
+    j2 = BatchJob(Path("/a/cube.stl"), Path("/o"), params={"epsilon": 0.001})
+    assert j2.display_name() == "cube (epsilon=0.001)"
+
+
+def test_batch_dialog_add_jobs(tmp_path) -> None:
+    """BatchDialog.add_jobs: 프로그래매틱 주입 + 테이블 행 수 일치."""
+    from pathlib import Path
+    from desktop.qt_app.batch import BatchJob
+    from desktop.qt_app.batch_dialog import BatchDialog
+
+    dlg = BatchDialog()
+    f = tmp_path / "x.stl"
+    f.write_text("solid")
+
+    jobs = [
+        BatchJob(f, tmp_path / "case1"),
+        BatchJob(f, tmp_path / "case2"),
+    ]
+    dlg.add_jobs(jobs)
+
+    assert dlg.table.rowCount() == 2
+    # 상태 컬럼 표시
+    assert "대기" in dlg.table.item(0, 3).text()
+
+
 def test_report_pdf_generation(tmp_path) -> None:
     """ReportData → PDF 파일 생성 + 최소 크기 검증."""
     from desktop.qt_app.report_pdf import ReportData, write_pdf, _MPL_AVAILABLE

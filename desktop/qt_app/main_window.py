@@ -676,6 +676,16 @@ class AutoTessellWindow:  # type: ignore[misc]
         # 의존성 로그 요약 출력
         self._log_dep_summary()
 
+    def _on_open_batch_dialog(self) -> None:  # pragma: no cover
+        """파일 → 배치 처리 메뉴 핸들러."""
+        from desktop.qt_app.batch_dialog import BatchDialog
+
+        dlg = BatchDialog(self._qmain)
+        # 현재 창의 선택 파일이 있으면 자동으로 추가 힌트
+        dlg.exec()
+        # 배치 완료 후 최근 파일 메뉴 갱신 (배치에서 사용한 파일 반영)
+        self._rebuild_recent_menu()
+
     def _rebuild_recent_menu(self) -> None:  # pragma: no cover
         """최근 파일 서브메뉴를 현재 저장된 경로로 재구성."""
         from PySide6.QtGui import QAction
@@ -735,19 +745,22 @@ class AutoTessellWindow:  # type: ignore[misc]
         act_save = QAction("저장", self._qmain); act_save.setShortcut("Ctrl+S")
         act_save_as = QAction("다른 이름으로 저장…", self._qmain); act_save_as.setShortcut("Shift+Ctrl+S")
         act_export = QAction("내보내기…", self._qmain); act_export.setShortcut("Ctrl+E")
+        act_batch = QAction("배치 처리…", self._qmain); act_batch.setShortcut("Ctrl+B")
         act_quit = QAction("종료", self._qmain); act_quit.setShortcut("Ctrl+Q")
         act_new.triggered.connect(self._on_new_project)
         act_open.triggered.connect(self._on_open_project)
         act_save.triggered.connect(self._on_save_project)
         act_save_as.triggered.connect(self._on_save_project)
         act_export.triggered.connect(lambda: self._switch_right_tab("Export"))
+        act_batch.triggered.connect(self._on_open_batch_dialog)
         act_quit.triggered.connect(self._qmain.close)
 
         # 최근 파일 서브메뉴 (동적으로 채움)
         self._recent_menu = file_menu.addMenu("최근 파일")
         self._rebuild_recent_menu()
 
-        for a in (act_new, act_open, None, act_save, act_save_as, act_export, None, act_quit):
+        for a in (act_new, act_open, None, act_save, act_save_as, act_export,
+                  None, act_batch, None, act_quit):
             if a is None:
                 file_menu.addSeparator()
             else:
