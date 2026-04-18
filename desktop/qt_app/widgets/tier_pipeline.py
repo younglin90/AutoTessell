@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Literal
 
 from PySide6.QtCore import QPropertyAnimation, QRectF, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QPainterPath
+from PySide6.QtGui import QColor, QFont, QPainter, QPen, QBrush, QPainterPath, QMouseEvent
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 TierStatus = Literal["pending", "active", "done", "fail", "skipped"]
@@ -20,6 +20,8 @@ TierStatus = Literal["pending", "active", "done", "fail", "skipped"]
 
 class _TierNode(QWidget):
     """단일 Tier 원형 노드 (36×36) + 라벨."""
+
+    node_clicked = Signal(int)  # 0-based tier index
 
     def __init__(self, index: int, name: str, engine: str, parent=None) -> None:
         super().__init__(parent)
@@ -30,9 +32,14 @@ class _TierNode(QWidget):
         self._pulse_phase = 0.0
         self.setFixedWidth(120)
         self.setMinimumHeight(80)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._on_tick)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
+        self.node_clicked.emit(self._index - 1)  # 0-based
+        super().mousePressEvent(event)
 
     def set_status(self, status: TierStatus) -> None:
         self._status = status
@@ -275,10 +282,14 @@ class _NodesContainer(QWidget):
                 w.deleteLater()
         self._nodes.clear()
 
+        # 부모의 tier_clicked Signal에 연결
+        strip_parent = self.parent()
         for i, (name, engine) in enumerate(tiers, start=1):
             node = _TierNode(i, name, engine, self)
             self._nodes.append(node)
             self._layout.addWidget(node, 1)
+            if strip_parent is not None and hasattr(strip_parent, "tier_clicked"):
+                node.node_clicked.connect(strip_parent.tier_clicked.emit)
 
     def nodes(self) -> list[_TierNode]:
         return self._nodes

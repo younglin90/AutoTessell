@@ -205,7 +205,9 @@ try:
         QCheckBox,
         QHBoxLayout,
         QLabel,
+        QMenu,
         QPushButton,
+        QToolButton,
         QVBoxLayout,
         QWidget,
     )
@@ -402,6 +404,13 @@ class StaticMeshViewer(QWidget):
 
         if self._render_thread is not None and isinstance(self._render_thread, QThread):
             if self._render_thread.isRunning():
+                # 이전 워커 시그널 먼저 해제 — stale 콜백 방지
+                if self._render_worker is not None:
+                    try:
+                        self._render_worker.render_finished.disconnect()
+                        self._render_worker.render_error.disconnect()
+                    except Exception:
+                        pass
                 self._render_thread.quit()
                 self._render_thread.wait(2000)
 
@@ -514,6 +523,9 @@ class InteractiveMeshViewer(QWidget):
     - 가운데 드래그: 팬
     """
 
+    if PYSIDE6_AVAILABLE:
+        mesh_ready = Signal(object)  # 메시 로드 완료 후 PyVista mesh 객체 전달
+
     # ------------------------------------------------------------------
     # 내부 백그라운드 로더 스레드
     # ------------------------------------------------------------------
@@ -561,12 +573,20 @@ class InteractiveMeshViewer(QWidget):
         class _MeshLoaderThread:  # type: ignore[no-redef]
             pass
 
+    # 품질 측정 메트릭: PyVista compute_cell_quality() quality_measure 값
+    _QUALITY_METRICS: dict[str, tuple[str, str]] = {
+        "aspect_ratio":      ("Aspect", "Aspect Ratio — 1에 가까울수록 좋음"),
+        "skew":              ("Skewness", "Skewness — 0에 가까울수록 좋음"),
+        "max_angle":         ("Non-ortho", "Max Angle (Non-orthogonality proxy) — 낮을수록 좋음"),
+    }
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._plotter: Optional[QtInteractor] = None
         self._current_mesh: object | None = None
         self._mesh_actor: object | None = None
         self._points_actor: object | None = None
+        self._quality_metric: str = "aspect_ratio"
         self._show_edges: bool = True
         self._show_points: bool = False
         self._opacity: float = 0.95
@@ -704,6 +724,38 @@ class InteractiveMeshViewer(QWidget):
         self._clip_btn.toggled.connect(self._toggle_clip)
         h.addWidget(self._clip_btn)
 
+        h.addWidget(_separator())
+
+        self._quality_btn = QToolButton()
+        self._quality_btn.setText("품질: Aspect ▾")
+        self._quality_btn.setCheckable(True)
+        self._quality_btn.setFixedHeight(26)
+        self._quality_btn.setToolTip("셀 품질 측정치 선택 후 클릭으로 색상화 — 빨강=나쁨, 초록=좋음")
+        self._quality_btn.setEnabled(False)
+        self._quality_btn.setStyleSheet(
+            "QToolButton { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; "
+            "border-radius: 4px; padding: 0 8px; font-size: 11px; } "
+            "QToolButton:checked { background: #ff7b54; border-color: #ff9f7b; color: white; } "
+            "QToolButton:hover { background: #30363d; } "
+            "QToolButton:disabled { color: #5a6270; } "
+            "QToolButton::menu-indicator { width: 0px; }"
+        )
+        # 드롭다운 메뉴 (메트릭 선택)
+        _qmenu = QMenu(self._quality_btn)
+        for _metric_key, (_label, _tip) in self._QUALITY_METRICS.items():
+            _act = _qmenu.addAction(_label)
+            _act.setToolTip(_tip)
+            _act.setData(_metric_key)
+        _qmenu.triggered.connect(self._on_quality_metric_selected)
+        self._quality_btn.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._quality_btn.customContextMenuRequested.connect(
+            lambda pos: _qmenu.exec(self._quality_btn.mapToGlobal(pos))
+        )
+        self._quality_btn.setPopupMode(QToolButton.MenuButtonPopup)  # type: ignore[attr-defined]
+        self._quality_btn.setMenu(_qmenu)
+        self._quality_btn.toggled.connect(self._toggle_quality_color)
+        h.addWidget(self._quality_btn)
+
         h.addStretch()
 
         # 와이어프레임 토글
@@ -791,6 +843,8 @@ class InteractiveMeshViewer(QWidget):
         self._show_points = show_points
         self._opacity = opacity
         self._current_mesh = mesh
+        if hasattr(self, "_quality_btn"):
+            self._quality_btn.setEnabled(True)
 
         # 버튼 상태 동기화
         self._edge_btn.setChecked(show_edges)
@@ -799,6 +853,8 @@ class InteractiveMeshViewer(QWidget):
         self._render_mesh(mesh, camera_view=camera_view)
         if self._loader_path is not None:
             self._update_info(self._loader_path, mesh)
+        if hasattr(self, "mesh_ready"):
+            self.mesh_ready.emit(mesh)
 
     def _on_load_error(self, error_msg: str) -> None:
         """백그라운드 로더에서 오류 발생 시 호출 (메인 스레드)."""
@@ -878,9 +934,11 @@ class InteractiveMeshViewer(QWidget):
             try:
                 foam_file.touch()
             except Exception:
-                # 쓰기 권한 없으면 tmp 디렉터리 사용
-                foam_file = case_dir / "case.foam"
-                foam_file.touch()
+                try:
+                    foam_file = case_dir / "case.foam"
+                    foam_file.touch()
+                except Exception:
+                    pass  # 쓰기 권한 없음 — OpenFOAMReader 시도만 진행
 
         try:
             reader = pv.OpenFOAMReader(str(foam_file))
@@ -961,6 +1019,9 @@ class InteractiveMeshViewer(QWidget):
         self._current_mesh = None
         self._mesh_actor = None
         self._points_actor = None
+        if hasattr(self, "_quality_btn"):
+            self._quality_btn.setEnabled(False)
+            self._quality_btn.setChecked(False)
         if self._plotter:
             try:
                 self._plotter.clear()
@@ -1189,6 +1250,64 @@ class InteractiveMeshViewer(QWidget):
             log.error(f"_toggle_clip 오류: {e}")
             self._render_mesh(self._current_mesh)
 
+    def _on_quality_metric_selected(self, action: object) -> None:
+        """드롭다운에서 품질 메트릭 선택 시 호출."""
+        metric_key = action.data()  # type: ignore[union-attr]
+        if metric_key in self._QUALITY_METRICS:
+            self._quality_metric = metric_key
+            label = self._QUALITY_METRICS[metric_key][0]
+            self._quality_btn.setText(f"품질: {label} ▾")
+            # 이미 활성화돼 있으면 즉시 재렌더
+            if self._quality_btn.isChecked():
+                self._toggle_quality_color(True)
+
+    def _toggle_quality_color(self, checked: bool) -> None:
+        """선택된 메트릭 기반 셀 품질 색상화 토글."""
+        if self._plotter is None or self._current_mesh is None:
+            return
+        try:
+            self._plotter.clear()
+            self._plotter.background_color = "#0d1117"
+            self._plotter.add_axes(xlabel="X", ylabel="Y", zlabel="Z", color="white")
+
+            if checked:
+                try:
+                    import numpy as _np
+                    metric = self._quality_metric
+                    metric_info = self._QUALITY_METRICS.get(metric, ("Quality", "Quality"))
+                    qual = self._current_mesh.compute_cell_quality(  # type: ignore[union-attr]
+                        quality_measure=metric
+                    )
+                    arr = qual.cell_data.get("CellQuality")
+                    if arr is not None and len(arr) > 0:
+                        clim_min = float(_np.percentile(arr, 5))
+                        clim_max = float(_np.percentile(arr, 95))
+                        if clim_min >= clim_max:
+                            clim_max = clim_min + 1.0
+                        self._plotter.add_mesh(
+                            qual,
+                            scalars="CellQuality",
+                            cmap="RdYlGn_r",
+                            clim=[clim_min, clim_max],
+                            show_edges=self._show_edges,
+                            edge_color="#333333" if self._show_edges else None,
+                            opacity=self._opacity,
+                            scalar_bar_args={
+                                "title": metric_info[0],
+                                "color": "white",
+                                "fmt": "%.2f",
+                            },
+                            name="quality_mesh",
+                        )
+                        self._plotter.reset_camera()
+                        return
+                except Exception as e:
+                    log.warning(f"품질 색상화 실패, 기본 렌더로 전환: {e}")
+            self._render_mesh(self._current_mesh)
+        except Exception as e:
+            log.error(f"_toggle_quality_color 오류: {e}")
+            self._render_mesh(self._current_mesh)
+
     def closeEvent(self, event: object) -> None:
         if self._plotter:
             try:
@@ -1216,6 +1335,9 @@ class MeshViewerWidget(QWidget):
     미설치 시: 정적 PNG 렌더링 폴백
     """
 
+    # 메시 로드 완료 후 품질 통계 Signal
+    mesh_stats_computed = Signal(dict)
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
@@ -1226,11 +1348,91 @@ class MeshViewerWidget(QWidget):
         if PYVISTAQT_AVAILABLE and PYVISTA_AVAILABLE:
             self._viewer: InteractiveMeshViewer | StaticMeshViewer = InteractiveMeshViewer(self)
             log.info("인터랙티브 3D 뷰어 초기화 완료 (pyvistaqt)")
+            # mesh_ready Signal로 통계 계산 연결 (monkey-patch 방지)
+            if hasattr(self._viewer, "mesh_ready"):
+                self._viewer.mesh_ready.connect(self._compute_and_emit_stats)
         else:
             self._viewer = StaticMeshViewer(self)
             log.warning("정적 PNG 폴백 뷰어 사용 중 (pyvistaqt 미설치)")
 
         layout.addWidget(self._viewer)
+
+    def _compute_and_emit_stats(self, mesh: object) -> None:
+        """PyVista compute_cell_quality()로 메시 품질 통계를 계산하고 Signal emit."""
+        if not PYVISTA_AVAILABLE or mesh is None:
+            return
+        try:
+            stats: dict = {}
+            n_cells = getattr(mesh, "n_cells", 0)
+            n_points = getattr(mesh, "n_points", 0)
+            stats["n_cells"] = n_cells
+            stats["n_points"] = n_points
+
+            # 볼륨 셀 타입 확인
+            try:
+                cell_types = set(getattr(mesh, "celltypes", []))
+                is_volume = bool(cell_types & _VOLUME_CELL_TYPES)
+                stats["is_volume"] = is_volume
+
+                # 셀 구성 (타입별 개수)
+                hex_types = {12, 25, 29}  # VTK_HEXAHEDRON, VTK_QUADRATIC_HEX, VTK_TRIQUADRATIC_HEX
+                tet_types = {10, 24}      # VTK_TETRA, VTK_QUADRATIC_TETRA
+                prism_types = {13, 26}    # VTK_WEDGE / VTK_QUADRATIC_WEDGE
+                poly_types = {42}         # VTK_POLYHEDRON
+
+                if n_cells > 0 and hasattr(mesh, "celltypes"):
+                    ct_arr = list(getattr(mesh, "celltypes", []))
+                    n_hex = sum(1 for t in ct_arr if t in hex_types)
+                    n_tet = sum(1 for t in ct_arr if t in tet_types)
+                    n_prism = sum(1 for t in ct_arr if t in prism_types)
+                    n_poly = sum(1 for t in ct_arr if t in poly_types)
+                    total = max(n_cells, 1)
+                    stats["hex_ratio"] = n_hex / total
+                    stats["tet_ratio"] = n_tet / total
+                    stats["prism_ratio"] = n_prism / total
+                    stats["poly_ratio"] = n_poly / total
+                    stats["n_hex"] = n_hex
+                    stats["n_tet"] = n_tet
+                    stats["n_prism"] = n_prism
+                    stats["n_poly"] = n_poly
+            except Exception:
+                pass
+
+            # 품질 메트릭 (볼륨 메시인 경우에만, 셀 수 제한)
+            if n_cells > 0 and n_cells <= 500_000:
+                try:
+                    qual = mesh.compute_cell_quality(quality_measure="aspect_ratio")  # type: ignore[union-attr]
+                    arr = qual.cell_data.get("CellQuality")
+                    if arr is not None and len(arr) > 0:
+                        import numpy as _np
+                        arr = _np.asarray(arr, dtype=float)
+                        arr = arr[_np.isfinite(arr)]
+                        if len(arr) > 0:
+                            stats["max_aspect_ratio"] = float(arr.max())
+                            stats["mean_aspect_ratio"] = float(arr.mean())
+                            stats["hist_aspect_ratio"] = arr.tolist()
+                except Exception:
+                    pass
+
+                try:
+                    skew = mesh.compute_cell_quality(quality_measure="skew")  # type: ignore[union-attr]
+                    arr = skew.cell_data.get("CellQuality")
+                    if arr is not None and len(arr) > 0:
+                        import numpy as _np
+                        arr = _np.asarray(arr, dtype=float)
+                        arr = arr[_np.isfinite(arr)]
+                        if len(arr) > 0:
+                            stats["max_skewness"] = float(arr.max())
+                            stats["mean_skewness"] = float(arr.mean())
+                            stats["hist_skewness"] = arr.tolist()
+                except Exception:
+                    pass
+
+            if stats:
+                self.mesh_stats_computed.emit(stats)
+                log.debug(f"메시 품질 통계 emit: {list(stats.keys())}")
+        except Exception as e:
+            log.debug(f"메시 품질 통계 계산 실패: {e}")
 
     # ------------------------------------------------------------------
     # 공개 API (main_window에서 호출)

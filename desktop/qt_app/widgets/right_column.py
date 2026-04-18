@@ -7,6 +7,17 @@
 """
 from __future__ import annotations
 
+try:
+    import matplotlib
+    matplotlib.use("QtAgg")
+    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg
+    from matplotlib.figure import Figure
+    _MPL_AVAILABLE = True
+except Exception:
+    _MPL_AVAILABLE = False
+    FigureCanvasQTAgg = None  # type: ignore[assignment, misc]
+    Figure = None  # type: ignore[assignment]
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import (
@@ -277,7 +288,54 @@ class JobPane(QWidget):
             "font-family: 'JetBrains Mono', monospace; font-size: 11px; "
             "border: none; line-height: 1.65; }"
         )
+        self.log_box.setToolTip("우클릭 → 로그 복사 / 파일로 저장 / 지우기")
+        self.log_box.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.log_box.customContextMenuRequested.connect(self._on_log_context_menu)
+
+        _log_hint = QLabel("💡 우클릭으로 복사·저장")
+        _log_hint.setStyleSheet(
+            "QLabel { color: #5a6270; font-size: 10px; padding: 1px 4px; }"
+        )
+        _log_hint.setAlignment(Qt.AlignRight)
+        root.addWidget(_log_hint)
         root.addWidget(self.log_box, stretch=1)
+
+    def _on_log_context_menu(self, pos) -> None:
+        """로그 박스 우클릭 컨텍스트 메뉴."""
+        from PySide6.QtWidgets import QMenu, QFileDialog, QApplication
+        menu = QMenu(self)
+        menu.setStyleSheet(
+            "QMenu { background: #1c2129; border: 1px solid #323a46; "
+            "border-radius: 6px; padding: 4px; color: #b6bdc9; }"
+            "QMenu::item { padding: 6px 18px 6px 12px; border-radius: 4px; font-size: 12px; }"
+            "QMenu::item:selected { background: #4ea3ff; color: #05111e; }"
+            "QMenu::separator { height: 1px; background: #262c36; margin: 4px 2px; }"
+        )
+        act_copy = menu.addAction("로그 복사")
+        menu.addSeparator()
+        act_save = menu.addAction("로그 저장...")
+        act_clear = menu.addAction("로그 지우기")
+
+        action = menu.exec(self.log_box.mapToGlobal(pos))
+        if action == act_copy:
+            text = self.log_box.toPlainText()
+            QApplication.clipboard().setText(text)
+        elif action == act_save:
+            path, _ = QFileDialog.getSaveFileName(
+                self, "로그 저장", "autotessell.log.txt",
+                "텍스트 파일 (*.txt);;모든 파일 (*)"
+            )
+            if path:
+                try:
+                    from pathlib import Path as _Path
+                    _Path(path).write_text(
+                        self.log_box.toPlainText(), encoding="utf-8"
+                    )
+                except Exception as e:
+                    from PySide6.QtWidgets import QMessageBox
+                    QMessageBox.warning(self, "저장 실패", str(e))
+        elif action == act_clear:
+            self.log_box.clear()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -322,8 +380,8 @@ class _QualityBar(QFrame):
         row.addWidget(self._val_lbl)
 
     def set_value(self, fill_ratio: float, text: str, warn: bool = False) -> None:
-        ratio = max(0.0, min(1.0, fill_ratio))
-        w = int(self._bar_bg.width() * ratio)
+        self._fill_ratio = max(0.0, min(1.0, fill_ratio))
+        w = int(self._bar_bg.width() * self._fill_ratio)
         if w <= 0:
             w = 1
         self._fill.setGeometry(0, 0, w, 4)
@@ -336,12 +394,11 @@ class _QualityBar(QFrame):
 
     def resizeEvent(self, event):  # type: ignore[override]
         super().resizeEvent(event)
-        # 바 fill 다시 계산
+        # fill 비율을 유지하면서 바 너비 재계산
         w = self._bar_bg.width()
-        cur = self._fill.width()
-        if cur > 0 and w > 0:
-            ratio = cur / max(1, self._bar_bg.width() or 1)
-            self._fill.setGeometry(0, 0, int(w * (cur / max(1, w))), 4)
+        if not hasattr(self, "_fill_ratio") or w <= 0:
+            return
+        self._fill.setGeometry(0, 0, max(1, int(w * self._fill_ratio)), 4)
 
 
 class _PassRow(QFrame):
@@ -380,6 +437,62 @@ class _PassRow(QFrame):
             f"color: {c}; font-size: 10.5px; font-weight: 600; "
             f"font-family: 'JetBrains Mono', monospace; background: transparent;"
         )
+
+
+class _HistogramCanvas(QWidget):
+    """matplotlib FigureCanvas 기반 품질 분포 히스토그램 (2개 서브플롯)."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setMinimumHeight(180)
+        self._canvas = None
+        self._fig = None
+        self._layout = None
+
+        if _MPL_AVAILABLE and Figure is not None:
+            self._fig = Figure(figsize=(3, 1.8), dpi=90, tight_layout=True)
+            self._fig.patch.set_facecolor("#101318")
+            self._canvas = FigureCanvasQTAgg(self._fig)  # type: ignore[misc]
+            from PySide6.QtWidgets import QVBoxLayout as _VBox
+            lay = _VBox(self)
+            lay.setContentsMargins(0, 0, 0, 0)
+            lay.addWidget(self._canvas)
+        else:
+            from PySide6.QtWidgets import QLabel as _QLabel, QVBoxLayout as _VBox
+            lay = _VBox(self)
+            lbl = _QLabel("matplotlib 미설치 — 히스토그램 비활성")
+            lbl.setStyleSheet("color: #5a6270; font-size: 11px;")
+            lay.addWidget(lbl)
+
+    def update_histograms(
+        self,
+        aspect_data: list[float] | None = None,
+        skew_data: list[float] | None = None,
+    ) -> None:
+        if self._fig is None or self._canvas is None:
+            return
+        self._fig.clear()
+        axs = self._fig.subplots(1, 2)
+        _style = {"edgecolor": "none", "alpha": 0.85}
+
+        def _draw(ax, data, title: str, color: str) -> None:
+            ax.set_facecolor("#161a20")
+            ax.tick_params(colors="#818a99", labelsize=7)
+            for spine in ax.spines.values():
+                spine.set_edgecolor("#323a46")
+            ax.set_title(title, color="#b6bdc9", fontsize=8, pad=3)
+            if data and len(data) > 1:
+                import numpy as _np
+                _d = _np.clip(data, 0, _np.percentile(data, 99))
+                ax.hist(_d, bins=30, color=color, **_style)
+                ax.set_xlabel("", color="#818a99")
+            else:
+                ax.text(0.5, 0.5, "데이터 없음", ha="center", va="center",
+                        transform=ax.transAxes, color="#5a6270", fontsize=8)
+
+        _draw(axs[0], aspect_data, "Aspect Ratio", "#4ea3ff")
+        _draw(axs[1], skew_data, "Skewness", "#f5b454")
+        self._canvas.draw()
 
 
 class QualityPane(QWidget):
@@ -421,6 +534,19 @@ class QualityPane(QWidget):
         ):
             sec1_v.addWidget(b)
         v.addWidget(sec1)
+
+        # ── 품질 분포 히스토그램 (인터랙티브 matplotlib) ──────────────
+        sec_hist = QFrame()
+        sec_hist.setStyleSheet(
+            "QFrame { border: none; border-bottom: 1px solid #262c36; }"
+        )
+        sec_hist_v = QVBoxLayout(sec_hist)
+        sec_hist_v.setContentsMargins(0, 0, 0, 14)
+        sec_hist_v.setSpacing(6)
+        sec_hist_v.addWidget(_section_title("품질 분포"))
+        self.histogram = _HistogramCanvas()
+        sec_hist_v.addWidget(self.histogram)
+        v.addWidget(sec_hist)
 
         # ── 셀 구성 ─────────────────────────────────
         sec2 = QFrame()
@@ -595,7 +721,7 @@ class ExportPane(QWidget):
 
         self.chk_report = QCheckBox("checkMesh 리포트 생성 (JSON)")
         self.chk_report.setChecked(True)
-        self.chk_histo = QCheckBox("품질 히스토그램 PNG")
+        self.chk_histo = QCheckBox("품질 요약 차트 PNG")
         self.chk_histo.setChecked(True)
         self.chk_paraview = QCheckBox("Paraview state 파일 첨부")
         self.chk_zip = QCheckBox("ZIP으로 압축")
@@ -641,6 +767,17 @@ class ExportPane(QWidget):
 
     def _on_fmt(self, value: str) -> None:
         self._fmt_value = value
+
+    def get_export_options(self) -> dict:
+        """현재 선택된 export 설정 반환."""
+        return {
+            "format": self._fmt_value,
+            "output_dir": self.path_box.text().strip(),
+            "report_json": self.chk_report.isChecked(),
+            "quality_hist": self.chk_histo.isChecked(),
+            "paraview_state": self.chk_paraview.isChecked(),
+            "zip_output": self.chk_zip.isChecked(),
+        }
 
 
 # ═══════════════════════════════════════════════════════════════════════════

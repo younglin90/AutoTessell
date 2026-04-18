@@ -2,12 +2,44 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
 
+# Qt 오프스크린 렌더링 강제 — 헤드리스/WSL 환경에서 창 생성 없이 테스트
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 BENCHMARKS_DIR = Path(__file__).parent / "benchmarks"
+
+
+def pytest_collection_modifyitems(items: list) -> None:
+    """오프스크린/headless 환경에서 requires_display 마크 테스트를 자동 skip."""
+    is_offscreen = os.environ.get("QT_QPA_PLATFORM", "") == "offscreen"
+    has_real_display = (
+        bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+        and not is_offscreen
+    )
+    if has_real_display:
+        return
+    skip_marker = pytest.mark.skip(reason="requires interactive display (running offscreen/headless)")
+    for item in items:
+        if item.get_closest_marker("requires_display"):
+            item.add_marker(skip_marker)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _qt_application():
+    """QApplication 인스턴스를 세션 전체에서 유지 — 위젯 GC 충돌 방지."""
+    try:
+        from PySide6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        if app is None:
+            app = QApplication([])
+        yield app
+    except Exception:
+        yield None
 
 
 @pytest.fixture(scope="session")

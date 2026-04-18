@@ -345,6 +345,9 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._worker: object | None = None
         self._preview_loader: object | None = None
         self._stopping: bool = False
+        self._pipeline_result: object | None = None  # None = 미완료, 완료 시 PipelineResult
+        self._quality_last_updated: str | None = None  # Quality 탭 마지막 갱신 시각
+        self._histogram_data: dict | None = None  # mesh_stats_computed에서 수신한 히스토그램 배열 캐시
 
         # ── 위젯 참조 (_build 전에는 None/empty) ───────────
         self._qmain: object | None = None
@@ -622,6 +625,11 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._right_column.export_pane.save_requested.connect(self._on_export_save)
         except Exception:
             pass
+        # Export 탭은 파이프라인 완료 전까지 비활성화
+        try:
+            self._right_column.export_pane.setEnabled(False)
+        except Exception:
+            pass
         # 로그 필터/검색 연결
         try:
             self._wire_log_filters()
@@ -665,7 +673,7 @@ class AutoTessellWindow:  # type: ignore[misc]
         act_export = QAction("내보내기…", self._qmain); act_export.setShortcut("Ctrl+E")
         act_quit = QAction("종료", self._qmain); act_quit.setShortcut("Ctrl+Q")
         act_new.triggered.connect(self._on_new_project)
-        act_open.triggered.connect(lambda: self._on_pick_input())
+        act_open.triggered.connect(self._on_open_project)
         act_save.triggered.connect(self._on_save_project)
         act_save_as.triggered.connect(self._on_save_project)
         act_export.triggered.connect(lambda: self._switch_right_tab("Export"))
@@ -823,7 +831,7 @@ class AutoTessellWindow:  # type: ignore[misc]
             "Drop file or click to browse"
         )
         dz.file_dropped.connect(self._on_file_dropped)
-        dz.mousePressEvent = lambda _e: self._on_pick_input()  # type: ignore[method-assign]
+        dz.clicked.connect(self._on_pick_input)
         self._drop_label = dz
         # 숨김용 input edit (호환)
         from PySide6.QtWidgets import QLineEdit
@@ -1071,6 +1079,11 @@ class AutoTessellWindow:  # type: ignore[misc]
         try:
             from desktop.qt_app.mesh_viewer import MeshViewerWidget
             self._mesh_viewer = MeshViewerWidget()
+            # 메시 품질 통계 Signal 연결
+            try:
+                self._mesh_viewer.mesh_stats_computed.connect(self._on_mesh_stats_computed)
+            except Exception:
+                pass
             stack_layout.addWidget(self._mesh_viewer)
         except Exception:
             fallback = QFrame()
@@ -1111,6 +1124,7 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._tier_pipeline.rerun_requested.connect(self._on_run_clicked)
         self._tier_pipeline.stop_requested.connect(self._on_stop_clicked)
         self._tier_pipeline.resume_requested.connect(self._on_resume_clicked)
+        self._tier_pipeline.tier_clicked.connect(self._on_tier_node_clicked)
         v.addWidget(self._tier_pipeline)
 
         self._pipeline_legend = PipelineLegendStrip()
@@ -1234,6 +1248,26 @@ class AutoTessellWindow:  # type: ignore[misc]
             f"element_size={element_size or 'auto'}"
         )
 
+        # 파이프라인 재시작 시 이전 결과/Export 비활성화
+        self._pipeline_result = None
+        self._quality_last_updated = None
+        if self._right_column is not None:
+            try:
+                self._right_column.export_pane.setEnabled(False)
+            except Exception:
+                pass
+            # Quality 탭 — "(갱신 중...)" 표시로 stale 방지
+            try:
+                q = self._right_column.quality_pane
+                for key in ("aspect", "skew", "nonortho", "min_area", "min_vol", "neg_vols"):
+                    q.set_metric(key, 0.0, "—")
+                import time
+                self._quality_last_updated = time.strftime("%H:%M:%S")
+                if hasattr(q, "set_stale_label"):
+                    q.set_stale_label("갱신 중...")
+            except Exception:
+                pass
+
         # 상태 UI 업데이트
         if self._design_statusbar is not None:
             self._design_statusbar.set_phase("Starting pipeline…", busy=True)
@@ -1276,6 +1310,11 @@ class AutoTessellWindow:  # type: ignore[misc]
                     worker.progress_percent.connect(self._on_progress_percent)
                 except Exception:
                     pass
+            if hasattr(worker, "quality_update"):
+                try:
+                    worker.quality_update.connect(self._on_quality_update)
+                except Exception:
+                    pass
             worker.finished.connect(self._on_pipeline_finished)
             worker.start()
             self._worker = worker
@@ -1283,6 +1322,99 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._log(f"[ERR] 파이프라인 실행 실패: {e}")
             if self._design_statusbar is not None:
                 self._design_statusbar.set_phase("Failed", busy=False)
+
+    def _on_tier_node_clicked(self, index: int) -> None:  # pragma: no cover
+        """Tier 노드 클릭 → 해당 Tier 파라미터 팝업 표시."""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QTextBrowser, QPushButton
+
+        # Tier 이름/엔진 정보 (TierPipelineStrip 설정값)
+        tier_nodes = []
+        if self._tier_pipeline is not None:
+            try:
+                tier_nodes = list(self._tier_pipeline._nodes)
+            except Exception:
+                pass
+
+        if index < len(tier_nodes):
+            node = tier_nodes[index]
+            tier_name = getattr(node, "_name", f"Tier {index}")
+            tier_engine = getattr(node, "_engine", "—")
+            tier_status = getattr(node, "_status", "pending")
+        else:
+            tier_name = f"Tier {index}"
+            tier_engine = "—"
+            tier_status = "pending"
+
+        # 현재 티어 파라미터 수집 (tier_specific_params + 관련 설정)
+        tier_hint = self._tier_combo_text()
+        param_lines = [
+            f"Tier: {index}  ({tier_name})",
+            f"엔진: {tier_engine}",
+            f"상태: {tier_status}",
+            "",
+            f"현재 선택 엔진: {tier_hint}",
+            f"품질 레벨: {self._quality_level.value}",
+        ]
+
+        if self._output_dir is not None:
+            param_lines.append(f"출력 디렉토리: {self._output_dir}")
+
+        # Element size
+        if self._surface_element_size_edit is not None:
+            txt = self._surface_element_size_edit.text()
+            param_lines.append(f"Element Size: {txt or 'auto'}")
+
+        # tier-scope 파라미터 — tier_hint에 해당하는 것 나열
+        relevant_params = [
+            (k, v) for k, v in self.TIER_PARAM_SPECS
+            if self._param_is_applicable(k, tier_hint, self._remesh_engine_text())
+        ]
+        if relevant_params:
+            param_lines.append("")
+            param_lines.append(f"── {tier_hint.upper()} 파라미터 (기본값) ──")
+            for param_key, param_label, param_type, default in relevant_params[:12]:
+                param_lines.append(f"  {param_label}: {default}")
+
+        # 팝업 다이얼로그
+        dlg = QDialog(self._qmain)
+        dlg.setWindowTitle(f"Tier {index} 파라미터 (읽기 전용)")
+        dlg.setMinimumSize(420, 340)
+        dlg.setStyleSheet(
+            f"QDialog {{ background: {PALETTE['bg_2']}; color: {PALETTE['text_0']}; }}"
+        )
+        v = QVBoxLayout(dlg)
+        v.setContentsMargins(16, 16, 16, 16)
+        v.setSpacing(10)
+
+        title_lbl = QLabel(f"Tier {index} — {tier_name}")
+        title_lbl.setStyleSheet(
+            f"color: {PALETTE['text_0']}; font-size: 14px; font-weight: 700;"
+        )
+        v.addWidget(title_lbl)
+        readonly_lbl = QLabel("읽기 전용 — 파라미터는 사이드바에서 변경하세요")
+        readonly_lbl.setStyleSheet(
+            f"color: {PALETTE['text_3']}; font-size: 11px; font-style: italic;"
+        )
+        v.addWidget(readonly_lbl)
+
+        content = QTextBrowser()
+        content.setStyleSheet(
+            f"QTextBrowser {{ background: {PALETTE['bg_0']}; color: {PALETTE['text_1']}; "
+            f"font-family: 'JetBrains Mono', monospace; font-size: 11px; border: none; "
+            f"padding: 8px; }}"
+        )
+        content.setPlainText("\n".join(param_lines))
+        v.addWidget(content, stretch=1)
+
+        close_btn = QPushButton("닫기")
+        close_btn.setStyleSheet(
+            f"QPushButton {{ background: {PALETTE['accent']}; color: #05111e; "
+            f"border: none; border-radius: 5px; padding: 8px 20px; font-weight: 600; }}"
+        )
+        close_btn.clicked.connect(dlg.accept)
+        v.addWidget(close_btn)
+
+        dlg.exec()
 
     def _on_resume_clicked(self) -> None:  # pragma: no cover
         """일시정지된 파이프라인 재개 (현재는 단순히 재실행)."""
@@ -1305,8 +1437,10 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._stopping = True
         if self._worker is not None:
             try:
+                # requestInterruption()으로 cooperative shutdown — pipeline_worker가
+                # InterruptedError를 raise하고 finished Signal을 emit한다.
+                # terminate()는 서브프로세스/파일핸들 미정리 위험이 있어 사용하지 않는다.
                 self._worker.requestInterruption()  # type: ignore[union-attr]
-                self._worker.terminate()  # type: ignore[union-attr]
             except Exception:
                 pass
         if self._design_statusbar is not None:
@@ -1315,10 +1449,21 @@ class AutoTessellWindow:  # type: ignore[misc]
 
     def _on_pipeline_finished(self, result: object) -> None:  # pragma: no cover
         if self._stopping:
+            # 중단 후 UI를 대기 상태로 복원
+            self._stopping = False
+            if self._design_statusbar is not None:
+                self._design_statusbar.set_phase("Stopped", busy=False)
             return
+        self._pipeline_result = result
         success = bool(getattr(result, "success", False))
         if success:
             self._log("[OK] 파이프라인 완료")
+            # Export 탭 활성화 — 메시가 생성된 이후에만 사용 가능
+            if self._right_column is not None:
+                try:
+                    self._right_column.export_pane.setEnabled(True)
+                except Exception:
+                    pass
             # Tier pipeline 모든 노드 done 처리
             if self._tier_pipeline is not None:
                 for i in range(6):
@@ -1394,6 +1539,127 @@ class AutoTessellWindow:  # type: ignore[misc]
         except Exception:
             pass
 
+    def _on_mesh_stats_computed(self, stats: dict) -> None:  # pragma: no cover
+        """MeshViewerWidget.mesh_stats_computed Signal 수신 → KPI + Quality 탭 갱신."""
+        if not stats:
+            return
+        try:
+            # KPI 셀 갱신
+            n_cells = stats.get("n_cells", 0)
+            if n_cells > 0:
+                cells_str = f"{n_cells:,}" if n_cells < 1_000_000 else f"{n_cells / 1e6:.1f}M"
+                self.update_kpi(cells=cells_str)
+
+            hex_ratio = stats.get("hex_ratio", None)
+            if hex_ratio is not None:
+                self.update_kpi(hex=f"{hex_ratio * 100:.1f}%")
+
+            # Quality 탭 — aspect/skewness
+            if self._right_column is not None:
+                q = self._right_column.quality_pane
+                max_ar = stats.get("max_aspect_ratio")
+                if max_ar is not None:
+                    ratio = min(1.0, float(max_ar) / 20.0)
+                    warn = float(max_ar) > 10.0
+                    q.set_metric("aspect", ratio, f"{float(max_ar):.2f}", warn=warn)
+                max_sk = stats.get("max_skewness")
+                if max_sk is not None:
+                    ratio = min(1.0, float(max_sk) / 5.0)
+                    warn = float(max_sk) > 3.5
+                    q.set_metric("skew", ratio, f"{float(max_sk):.2f}", warn=warn)
+
+                # 셀 구성 바
+                for cell_type, bar_name in [
+                    ("hex_ratio", "Hexahedra"), ("tet_ratio", "Tetrahedra"),
+                    ("prism_ratio", "Prisms"), ("poly_ratio", "Polyhedra"),
+                ]:
+                    ratio_val = stats.get(cell_type, 0.0)
+                    n_key = cell_type.replace("_ratio", "").replace("hex", "n_hex").replace(
+                        "tet", "n_tet").replace("prism", "n_prism").replace("poly", "n_poly")
+                    n_val = stats.get("n_" + cell_type.replace("_ratio", ""), 0)
+                    if bar_name in q.cell_comp_rows:
+                        q.cell_comp_rows[bar_name].set_value(
+                            float(ratio_val), f"{int(n_val):,}"
+                        )
+            # 히스토그램 배열 캐시 + Quality 탭 즉시 갱신
+            hist = {}
+            if "hist_aspect_ratio" in stats:
+                hist["aspect_ratio"] = stats["hist_aspect_ratio"]
+            if "hist_skewness" in stats:
+                hist["skewness"] = stats["hist_skewness"]
+            if hist:
+                self._histogram_data = hist
+                # Quality 탭 인터랙티브 히스토그램 즉시 갱신
+                if self._right_column is not None:
+                    try:
+                        self._right_column.quality_pane.histogram.update_histograms(
+                            aspect_data=hist.get("aspect_ratio"),
+                            skew_data=hist.get("skewness"),
+                        )
+                    except Exception:
+                        pass
+        except Exception as e:
+            self._log(f"[DBG] 메시 통계 KPI 갱신 실패: {e}")
+
+    def _on_quality_update(self, metrics: dict) -> None:  # pragma: no cover
+        """quality_update Signal 수신 → Quality 탭 실시간 갱신."""
+        if self._right_column is None or not metrics:
+            return
+        import time
+        self._quality_last_updated = time.strftime("%H:%M:%S")
+        try:
+            q = self._right_column.quality_pane
+            if hasattr(q, "set_stale_label"):
+                q.set_stale_label(f"갱신: {self._quality_last_updated}")
+        except Exception:
+            pass
+        try:
+            q = self._right_column.quality_pane
+
+            def _set(key: str, value, max_value: float, warn_threshold=None):
+                if value is None:
+                    return
+                try:
+                    v = float(value)
+                except (TypeError, ValueError):
+                    return
+                ratio = min(1.0, v / max_value) if max_value > 0 else 0.0
+                warn = warn_threshold is not None and v > warn_threshold
+                q.set_metric(key, ratio, f"{v:.2f}", warn=warn)
+
+            _set("aspect", metrics.get("max_aspect_ratio"), 20.0, 10.0)
+            _set("skew", metrics.get("max_skewness"), 5.0, 3.5)
+            _set("nonortho", metrics.get("max_non_ortho"), 90.0, 65.0)
+            _set("min_area", metrics.get("min_face_area"), 1.0)
+            _set("min_vol", metrics.get("min_volume"), 1.0)
+            neg = metrics.get("negative_volumes")
+            if neg is not None:
+                neg_i = int(neg)
+                q.set_metric("neg_vols", 0.02 if neg_i == 0 else 1.0,
+                             str(neg_i), warn=(neg_i > 0))
+
+            # pass rows 업데이트
+            pass_map = [
+                ("nonortho", metrics.get("max_non_ortho")),
+                ("skew", metrics.get("max_skewness")),
+                ("aspect", metrics.get("max_aspect_ratio")),
+            ]
+            thresholds = {"nonortho": 65.0, "skew": 4.0, "aspect": 100.0}
+            for key, val in pass_map:
+                if val is not None and key in q.pass_rows:
+                    ok = float(val) < thresholds.get(key, 1e9)
+                    q.pass_rows[key].set_verdict("ok" if ok else "err",
+                                                 "PASS" if ok else "FAIL")
+            if neg is not None:
+                neg_i = int(neg)
+                if "negvol" in q.pass_rows:
+                    q.pass_rows["negvol"].set_verdict(
+                        "ok" if neg_i == 0 else "err",
+                        "PASS" if neg_i == 0 else f"FAIL ({neg_i})"
+                    )
+        except Exception as e:
+            self._log(f"[DBG] quality_update 처리 실패: {e}")
+
     def _update_quality_from_result(self, result: object) -> None:  # pragma: no cover
         """Pipeline 결과에서 checkMesh quality 메트릭 추출 → Quality 탭 반영."""
         if self._right_column is None or result is None:
@@ -1438,16 +1704,351 @@ class AutoTessellWindow:  # type: ignore[misc]
 
     # ─── Export 저장 ─────────────────────────────────────────────
     def _on_export_save(self, fmt: str) -> None:  # pragma: no cover
-        if self._output_dir is None or not self._output_dir.exists():
-            self._log("[WARN] 저장할 결과가 없습니다")
+        """Export 탭 설정을 읽어 실제 메시 저장 + 후처리 옵션 실행."""
+        from PySide6.QtWidgets import QMessageBox
+
+        # Export 탭 옵션 읽기
+        opts: dict = {}
+        if self._right_column is not None:
+            try:
+                opts = self._right_column.export_pane.get_export_options()
+            except Exception:
+                opts = {}
+
+        # 출력 디렉토리 결정 (Export 탭 입력값 우선, fallback → self._output_dir)
+        export_dir_str = opts.get("output_dir", "").strip()
+        if export_dir_str:
+            export_target_dir = Path(export_dir_str).expanduser().resolve()
+        elif self._output_dir is not None:
+            export_target_dir = self._output_dir.resolve()
+        else:
+            QMessageBox.warning(
+                self._qmain, "저장 경로 없음",
+                "출력 디렉토리를 먼저 지정하세요."
+            )
             return
+
+        if self._output_dir is None or not self._output_dir.exists():
+            QMessageBox.warning(
+                self._qmain, "결과 없음",
+                "파이프라인을 먼저 실행하여 결과를 생성하세요."
+            )
+            return
+
+        # 저장 버튼 비활성화
+        if self._right_column is not None:
+            try:
+                self._right_column.export_pane.save_btn.setEnabled(False)
+            except Exception:
+                pass
+
         try:
-            from core.utils.mesh_exporter import export_mesh
-            target = self._output_dir / f"exported.{fmt}"
-            export_mesh(self._output_dir, target, fmt)
-            self._log(f"[OK] 저장 완료: {target}")
+            export_target_dir.mkdir(parents=True, exist_ok=True)
+            actual_fmt = opts.get("format", fmt)
+            self._log(f"[INFO] Export 시작: format={actual_fmt} → {export_target_dir}")
+
+            # ── 포맷/엔진 호환성 사전 검증 ─────────────────────────
+            if actual_fmt in ("openfoam", "OpenFOAM polyMesh"):
+                poly_dir = self._output_dir / "constant" / "polyMesh"
+                if not poly_dir.exists():
+                    QMessageBox.warning(
+                        self._qmain, "Export 불가",
+                        "선택한 포맷은 OpenFOAM polyMesh이지만\n"
+                        f"출력 디렉토리에 polyMesh가 없습니다:\n{poly_dir}\n\n"
+                        "snappyHexMesh/cfMesh 엔진으로 실행했는지 확인하세요."
+                    )
+                    return
+
+            self._export_mesh_format(actual_fmt, export_target_dir)
+
+            # ── 후처리: checkMesh 리포트 JSON ─────────────────
+            if opts.get("report_json", False):
+                self._export_report_json(export_target_dir)
+
+            # ── 후처리: 품질 히스토그램 PNG ───────────────────
+            if opts.get("quality_hist", False):
+                self._export_quality_histogram(export_target_dir)
+
+            # ── 후처리: Paraview state 파일 ───────────────────
+            if opts.get("paraview_state", False):
+                self._export_paraview_state(export_target_dir)
+
+            # ── 후처리: ZIP 압축 ──────────────────────────────
+            if opts.get("zip_output", False):
+                zip_path = self._export_zip(export_target_dir)
+                self._log(f"[OK] ZIP 생성: {zip_path}")
+
+            self._log(f"[OK] Export 완료: {export_target_dir}")
+            QMessageBox.information(
+                self._qmain, "Export 완료",
+                f"메시가 성공적으로 저장되었습니다.\n\n경로: {export_target_dir}"
+            )
         except Exception as e:
-            self._log(f"[ERR] 저장 실패: {e}")
+            self._log(f"[ERR] Export 실패: {e}")
+            QMessageBox.critical(
+                self._qmain, "Export 실패",
+                f"저장 중 오류가 발생했습니다:\n{e}"
+            )
+        finally:
+            if self._right_column is not None:
+                try:
+                    self._right_column.export_pane.save_btn.setEnabled(True)
+                except Exception:
+                    pass
+
+    def _export_mesh_format(self, fmt: str, target_dir: Path) -> None:  # pragma: no cover
+        """실제 메시 포맷 변환 + 복사."""
+        import shutil
+
+        src_polymesh = self._output_dir / "constant" / "polyMesh"
+
+        if fmt == "openfoam":
+            # polyMesh 폴더 복사
+            dst = target_dir / "constant" / "polyMesh"
+            if src_polymesh.exists():
+                if dst.exists():
+                    shutil.rmtree(dst)
+                shutil.copytree(src_polymesh, dst)
+                self._log(f"[OK] OpenFOAM polyMesh 복사: {dst}")
+            else:
+                # 결과 디렉토리 전체 복사 fallback
+                for item in self._output_dir.iterdir():
+                    dst_item = target_dir / item.name
+                    if item.is_dir():
+                        if dst_item.exists():
+                            shutil.rmtree(dst_item)
+                        shutil.copytree(item, dst_item)
+                    else:
+                        shutil.copy2(item, dst_item)
+                self._log(f"[OK] 결과 디렉토리 복사 완료")
+        else:
+            # meshio 기반 변환
+            self._export_via_meshio(fmt, target_dir)
+
+    def _export_via_meshio(self, fmt: str, target_dir: Path) -> None:  # pragma: no cover
+        """meshio를 통한 포맷 변환. 소스 파일 없으면 RuntimeError를 발생시킨다."""
+        # 소스 파일 찾기 (VTU > VTK > MSH — surface-only STL은 volume mesh 대체 불가)
+        src_file: Path | None = None
+        for pattern in ("**/*.vtu", "**/*.vtk", "**/*.msh"):
+            candidates = list(self._output_dir.glob(pattern))
+            if candidates:
+                src_file = max(candidates, key=lambda p: p.stat().st_mtime)
+                break
+
+        if src_file is None:
+            raise RuntimeError(
+                f"변환할 볼륨 메시 파일을 찾을 수 없습니다 (format={fmt}).\n"
+                "파이프라인이 VTU/VTK/MSH를 생성했는지 확인하세요."
+            )
+
+        ext_map = {
+            "vtu": ".vtu",
+            "cgns": ".cgns",
+            "nastran": ".nas",
+            "fluent": ".msh",
+            "gmsh": ".msh",
+        }
+        ext = ext_map.get(fmt, f".{fmt}")
+        dst_file = target_dir / f"mesh{ext}"
+
+        try:
+            import meshio
+        except ImportError:
+            raise RuntimeError("meshio 미설치 — pip install meshio") from None
+
+        mesh = meshio.read(str(src_file))
+        meshio.write(str(dst_file), mesh)
+        self._log(f"[OK] {fmt.upper()} 저장: {dst_file}")
+
+    def _export_report_json(self, target_dir: Path) -> None:  # pragma: no cover
+        """checkMesh 리포트를 JSON으로 복사/생성."""
+        import shutil
+        # 기존 JSON 리포트 찾기
+        # 최상위 JSON만 검색 (재귀 glob 방지)
+        for pattern in ("evaluation_report*.json", "quality_report*.json", "*.json"):
+            candidates = list(self._output_dir.glob(pattern))
+            if candidates:
+                src = max(candidates, key=lambda p: p.stat().st_mtime)
+                dst = target_dir / "quality_report.json"
+                shutil.copy2(src, dst)
+                self._log(f"[OK] 품질 리포트 복사: {dst}")
+                return
+        # 리포트 파일 없으면 기본 JSON 생성
+        report = {
+            "source": str(self._output_dir),
+            "quality_level": self._quality_level.value,
+            "note": "상세 리포트는 파이프라인 완료 후 생성됩니다.",
+        }
+        dst = target_dir / "quality_report.json"
+        dst.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+        self._log(f"[OK] 기본 품질 리포트 생성: {dst}")
+
+    def _export_quality_histogram(self, export_dir: Path) -> None:  # pragma: no cover
+        """실제 셀 품질 분포 히스토그램 PNG 생성 (PyVista 배열 기반)."""
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        out_path = export_dir / "quality_histogram.png"
+        hist_data = self._histogram_data or {}
+
+        if not hist_data:
+            self._log("[INFO] 히스토그램 데이터 없음 — 스칼라 게이지로 대체 출력")
+            if self._right_column is None:
+                return
+            q = self._right_column.quality_pane
+            metrics = {}
+            try:
+                for key, attr in [
+                    ("max_aspect_ratio", "aspect"), ("max_skewness", "skew"),
+                    ("max_non_ortho", "nonortho"),
+                ]:
+                    row = getattr(q, "_metric_rows", {}).get(attr)
+                    if row:
+                        label = getattr(row, "_value_label", None)
+                        if label:
+                            try:
+                                metrics[key] = float(label.text())
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+
+            fig, ax = plt.subplots(figsize=(8, 3), facecolor="#0d1117")
+            ax.set_facecolor("#0d1117")
+            items = [
+                ("Aspect Ratio (max)", metrics.get("max_aspect_ratio", 0), 20.0, "#4ea3ff"),
+                ("Skewness (max)", metrics.get("max_skewness", 0), 5.0, "#f5b454"),
+                ("Non-Ortho° (max)", metrics.get("max_non_ortho", 0), 90.0, "#9b87ff"),
+            ]
+            for i, (label, val, max_val, color) in enumerate(items):
+                ratio = min(1.0, float(val) / max_val) if max_val > 0 else 0
+                ax.barh(i, ratio, color=color, alpha=0.85, height=0.5)
+                ax.text(min(ratio + 0.02, 0.95), i, f"{val:.2f}", va="center",
+                        color="white", fontsize=9)
+            ax.set_yticks(range(len(items)))
+            ax.set_yticklabels([x[0] for x in items], color="#b6bdc9", fontsize=9)
+            ax.set_xlim(0, 1.05)
+            ax.set_xlabel("정규화 값 (0=최적, 1=최악)", color="#b6bdc9", fontsize=8)
+            ax.tick_params(colors="#b6bdc9")
+            for spine in ax.spines.values():
+                spine.set_edgecolor("#323a46")
+            ax.set_title("메시 품질 요약 (스칼라 게이지)", color="#e8ecf2", fontsize=11, pad=8)
+            fig.tight_layout()
+            fig.savefig(str(out_path), dpi=150, bbox_inches="tight",
+                        facecolor="#0d1117", edgecolor="none")
+            plt.close(fig)
+            self._log(f"[OK] 품질 게이지 PNG 저장: {out_path}")
+            return
+
+        import numpy as np
+
+        metrics_to_plot = []
+        if "aspect_ratio" in hist_data:
+            arr = np.array(hist_data["aspect_ratio"], dtype=float)
+            arr = arr[np.isfinite(arr) & (arr > 0)]
+            if len(arr) > 0:
+                metrics_to_plot.append(("Aspect Ratio", arr, "#4ea3ff", (1.0, 20.0),
+                                        "< 10 권장 (VTK 정의)"))
+        if "skewness" in hist_data:
+            arr = np.array(hist_data["skewness"], dtype=float)
+            arr = arr[np.isfinite(arr) & (arr >= 0)]
+            if len(arr) > 0:
+                metrics_to_plot.append(("Skewness", arr, "#f5b454", (0.0, 1.0),
+                                        "< 0.85 권장 (VTK 정의)"))
+
+        if not metrics_to_plot:
+            self._log("[WARN] 히스토그램 배열이 비어 있음")
+            return
+
+        n = len(metrics_to_plot)
+        fig, axes = plt.subplots(1, n, figsize=(5 * n, 4), facecolor="#0d1117")
+        if n == 1:
+            axes = [axes]
+
+        for ax, (title, arr, color, xlim, note) in zip(axes, metrics_to_plot):
+            ax.set_facecolor("#161a20")
+            p99 = float(np.percentile(arr, 99))
+            arr_clipped = arr[arr <= max(p99 * 1.1, xlim[1])]
+            ax.hist(arr_clipped, bins=40, color=color, alpha=0.85, edgecolor="#0d1117",
+                    linewidth=0.4)
+            ax.axvline(float(np.median(arr)), color="white", linewidth=1.2,
+                       linestyle="--", alpha=0.7, label=f"중앙값={np.median(arr):.2f}")
+            ax.axvline(float(arr.max()), color="#ff6b6b", linewidth=1.0,
+                       linestyle=":", alpha=0.8, label=f"최대={arr.max():.2f}")
+            ax.set_title(title, color="#e8ecf2", fontsize=11, pad=6)
+            ax.set_xlabel(f"{note}\nN={len(arr):,} 셀", color="#818a99", fontsize=8)
+            ax.set_ylabel("셀 수", color="#818a99", fontsize=8)
+            ax.tick_params(colors="#b6bdc9", labelsize=8)
+            for spine in ax.spines.values():
+                spine.set_edgecolor("#323a46")
+            ax.legend(fontsize=7, facecolor="#161a20", edgecolor="#323a46",
+                      labelcolor="#b6bdc9")
+
+        fig.suptitle("메시 품질 분포 (PyVista/VTK 기준 — OpenFOAM checkMesh 정의와 다를 수 있음)",
+                     color="#5a6270", fontsize=8, y=0.02)
+        fig.tight_layout(rect=[0, 0.06, 1, 1])
+        fig.savefig(str(out_path), dpi=150, bbox_inches="tight",
+                    facecolor="#0d1117", edgecolor="none")
+        plt.close(fig)
+        self._log(f"[OK] 품질 히스토그램 PNG 저장: {out_path}")
+
+    def _export_paraview_state(self, target_dir: Path) -> None:  # pragma: no cover
+        """Paraview .pvsm 상태 파일 생성 (템플릿 기반)."""
+        # 소스 파일 경로 탐색 + reader 타입 결정
+        src_file = ""
+        reader_type = "XMLUnstructuredGridReader"
+
+        polymesh_candidate = self._output_dir / "constant" / "polyMesh"
+        if polymesh_candidate.exists():
+            # OpenFOAM case 디렉토리를 가리켜야 함 (polyMesh 상위)
+            src_file = str(self._output_dir)
+            reader_type = "OpenFOAMReader"
+        else:
+            for pattern in ("**/*.vtu", "**/*.vtk"):
+                candidates = list(self._output_dir.glob(pattern))
+                if candidates:
+                    src_file = str(max(candidates, key=lambda p: p.stat().st_mtime))
+                    reader_type = "XMLUnstructuredGridReader"
+                    break
+
+        pvsm_content = f"""<ParaViewState version="5.11.0">
+  <ServerManagerState version="5.11.0">
+    <ProxyCollection name="sources">
+      <Item id="1" name="mesh" />
+    </ProxyCollection>
+    <Proxy group="sources" type="{reader_type}" id="1" servers="1">
+      <Property name="FileName" id="1.FileName" number_of_elements="1">
+        <Element index="0" value="{src_file}" />
+      </Property>
+    </Proxy>
+    <ProxyCollection name="representations">
+      <Item id="2" name="mesh_repr" />
+    </ProxyCollection>
+    <Proxy group="representations" type="GeometryRepresentation" id="2" servers="1">
+      <Property name="Representation" id="2.Representation" number_of_elements="1">
+        <Element index="0" value="Surface With Edges" />
+      </Property>
+    </Proxy>
+  </ServerManagerState>
+  <!-- AutoTessell generated ParaView state -->
+  <!-- Source: {self._output_dir} -->
+  <!-- Quality: {self._quality_level.value} -->
+</ParaViewState>
+"""
+        pvsm_path = target_dir / "autotessell_view.pvsm"
+        pvsm_path.write_text(pvsm_content, encoding="utf-8")
+        self._log(f"[OK] ParaView state 파일: {pvsm_path}")
+
+    def _export_zip(self, target_dir: Path) -> Path:  # pragma: no cover
+        """target_dir을 zip으로 압축."""
+        import zipfile
+        zip_path = target_dir.parent / f"{target_dir.name}.zip"
+        with zipfile.ZipFile(str(zip_path), "w", zipfile.ZIP_DEFLATED) as zf:
+            for file in target_dir.rglob("*"):
+                if file.is_file():
+                    zf.write(file, file.relative_to(target_dir.parent))
+        return zip_path
 
     # ─── 뷰포트 액션 ───────────────────────────────────────────────
     def _wire_viewport_chrome(self) -> None:  # pragma: no cover
@@ -1474,20 +2075,78 @@ class AutoTessellWindow:  # type: ignore[misc]
             pass
 
     def _on_screenshot(self) -> None:  # pragma: no cover
-        if self._mesh_viewer is None:
-            return
-        from PySide6.QtWidgets import QFileDialog
+        """뷰포트 스크린샷: Qt grab() (WYSIWYG) 우선, fallback → PyVista 오프스크린."""
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+        default_name = "autotessell_screenshot.png"
+        if self._input_path is not None:
+            default_name = f"{self._input_path.stem}_screenshot.png"
+
         path, _ = QFileDialog.getSaveFileName(
-            self._qmain, "스크린샷 저장", "autotessell.png", "PNG (*.png)"
+            self._qmain, "스크린샷 저장", default_name,
+            "PNG (*.png);;JPEG (*.jpg *.jpeg)"
         )
         if not path:
             return
-        try:
-            pix = self._mesh_viewer.grab()
-            if pix.save(path):
-                self._log(f"[OK] 스크린샷 저장: {path}")
-        except Exception as e:
-            self._log(f"[ERR] 스크린샷 실패: {e}")
+
+        saved = False
+
+        # ── 1차 시도: Qt Widget grab (WYSIWYG — 화면에 보이는 그대로) ──────
+        if self._mesh_viewer is not None:
+            try:
+                pix = self._mesh_viewer.grab()
+                if pix.save(path):
+                    self._log(f"[OK] 스크린샷 저장 (Qt grab): {path}")
+                    saved = True
+                else:
+                    self._log("[DBG] Qt grab 저장 실패, PyVista 오프스크린으로 전환")
+            except Exception as e:
+                self._log(f"[DBG] Qt grab 실패, PyVista 오프스크린으로 전환: {e}")
+
+        # ── 2차 시도: PyVista 오프스크린 렌더 (메시 뷰어 없을 때 fallback) ──
+        if not saved and (self._output_dir is not None or self._input_path is not None):
+            try:
+                import pyvista as pv
+
+                mesh_file: Path | None = None
+                search_root = self._output_dir if self._output_dir and self._output_dir.exists() else None
+                if search_root:
+                    for pattern in ("*.vtu", "*.vtk", "*.stl"):
+                        candidates = list(search_root.glob(pattern))
+                        if candidates:
+                            mesh_file = max(candidates, key=lambda p: p.stat().st_mtime)
+                            break
+                if mesh_file is None and self._input_path is not None:
+                    mesh_file = self._input_path
+
+                if mesh_file is not None and mesh_file.exists():
+                    mesh = pv.read(str(mesh_file))
+                    pl = pv.Plotter(off_screen=True, window_size=(1920, 1080))
+                    pl.background_color = "#0d1117"
+                    pl.add_mesh(
+                        mesh, color="#00d9ff", show_edges=True,
+                        edge_color="#ffffff", opacity=0.95, smooth_shading=True,
+                    )
+                    pl.add_axes(xlabel="X", ylabel="Y", zlabel="Z",
+                                line_width=2, color="white")
+                    pl.view_isometric()
+                    pl.screenshot(path, transparent_background=False)
+                    pl.close()
+                    self._log(f"[OK] 스크린샷 저장 (PyVista 오프스크린): {path}")
+                    saved = True
+            except Exception as e:
+                self._log(f"[ERR] PyVista 오프스크린 렌더 실패: {e}")
+
+        if saved:
+            QMessageBox.information(
+                self._qmain, "스크린샷 저장",
+                f"스크린샷이 저장되었습니다:\n{path}"
+            )
+        else:
+            QMessageBox.warning(
+                self._qmain, "스크린샷 실패",
+                "스크린샷을 저장하지 못했습니다.\n메시를 먼저 로드하세요."
+            )
 
     # ─── 로그 필터/검색 ───────────────────────────────────────────
     def _wire_log_filters(self) -> None:  # pragma: no cover
@@ -1585,22 +2244,174 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._log("[INFO] 새 프로젝트 초기화")
 
     def _on_save_project(self) -> None:  # pragma: no cover
-        if self._output_dir is None:
-            self._log("[WARN] 저장할 프로젝트가 없습니다")
+        """현재 프로젝트 상태를 JSON으로 저장 (파일 다이얼로그)."""
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+        # 저장 경로 결정
+        default_dir = str(self._output_dir) if self._output_dir else str(Path.home())
+        path, _ = QFileDialog.getSaveFileName(
+            self._qmain, "프로젝트 저장",
+            str(Path(default_dir) / "autotessell_project.json"),
+            "AutoTessell 프로젝트 (*.json);;모든 파일 (*)"
+        )
+        if not path:
             return
+
+        # 전처리 옵션 수집
+        no_repair = False
+        surface_remesh = True
+        allow_ai = False
+        remesh_engine = "auto"
+        element_size_text = ""
+        try:
+            if self._no_repair_check is not None:
+                no_repair = bool(self._no_repair_check.isChecked())
+            if self._surface_remesh_check is not None:
+                surface_remesh = bool(self._surface_remesh_check.isChecked())
+            if self._allow_ai_fallback_check is not None:
+                allow_ai = bool(self._allow_ai_fallback_check.isChecked())
+            remesh_engine = self._remesh_engine_text()
+            if self._surface_element_size_edit is not None:
+                element_size_text = self._surface_element_size_edit.text()
+        except Exception:
+            pass
+
         snapshot = {
+            "version": "0.3.6",
             "input_path": str(self._input_path) if self._input_path else None,
-            "output_dir": str(self._output_dir),
+            "output_dir": str(self._output_dir) if self._output_dir else None,
             "quality_level": self._quality_level.value,
             "engine": self._tier_combo_text(),
-            "remesh_engine": self._remesh_engine_text(),
+            "remesh_engine": remesh_engine,
+            "preprocessing": {
+                "no_repair": no_repair,
+                "surface_remesh": surface_remesh,
+                "allow_ai_fallback": allow_ai,
+                "remesh_engine": remesh_engine,
+                "element_size": element_size_text or None,
+            },
         }
-        path = self._output_dir / "autotessell_project.json"
+
         try:
-            path.write_text(json.dumps(snapshot, indent=2, ensure_ascii=False))
+            Path(path).write_text(
+                json.dumps(snapshot, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
             self._log(f"[OK] 프로젝트 저장: {path}")
+            QMessageBox.information(
+                self._qmain, "저장 완료",
+                f"프로젝트가 저장되었습니다:\n{path}"
+            )
         except Exception as e:
-            self._log(f"[ERR] 저장 실패: {e}")
+            self._log(f"[ERR] 프로젝트 저장 실패: {e}")
+            QMessageBox.critical(self._qmain, "저장 실패", str(e))
+
+    def _on_open_project(self) -> None:  # pragma: no cover
+        """JSON 프로젝트 파일 열기 → UI 상태 복원."""
+        from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+        path, _ = QFileDialog.getOpenFileName(
+            self._qmain, "프로젝트 열기", str(Path.home()),
+            "AutoTessell 프로젝트 (*.json);;모든 파일 (*)"
+        )
+        if not path:
+            return
+
+        try:
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+        except Exception as e:
+            QMessageBox.critical(self._qmain, "열기 실패", f"JSON 파싱 오류:\n{e}")
+            return
+
+        try:
+            # 입력 파일 경로 복원
+            input_path = data.get("input_path")
+            if input_path and Path(input_path).exists():
+                try:
+                    self.set_input_path(input_path)
+                    self._log(f"[INFO] 입력 파일 복원: {input_path}")
+                except Exception as e:
+                    self._log(f"[WARN] 입력 파일 복원 실패: {e}")
+            elif input_path:
+                self._log(f"[WARN] 이전 입력 파일 없음: {input_path}")
+                if self._drop_label is not None:
+                    try:
+                        self._drop_label.setText(
+                            f"(이전 파일 없음)\n{Path(input_path).name}"
+                        )
+                    except Exception:
+                        pass
+
+            # 출력 디렉토리 복원
+            output_dir = data.get("output_dir")
+            if output_dir:
+                output_dir_path = Path(output_dir)
+                self._output_dir = output_dir_path
+                if self._output_path_edit is not None:
+                    try:
+                        self._output_path_edit.setText(output_dir)
+                    except Exception:
+                        pass
+                if not output_dir_path.exists():
+                    QMessageBox.warning(
+                        self._qmain, "경로 없음",
+                        f"저장된 출력 경로가 현재 시스템에 없습니다:\n{output_dir}\n\n"
+                        "파이프라인 실행 시 새로 생성됩니다."
+                    )
+                    self._log(f"[WARN] 출력 경로 없음 (복원됨): {output_dir}")
+                else:
+                    self._log(f"[INFO] 출력 경로 복원: {output_dir}")
+
+            # 품질 레벨 복원
+            quality = data.get("quality_level", "draft")
+            try:
+                self.set_quality_level(quality)
+                self._log(f"[INFO] 품질 레벨 복원: {quality}")
+            except Exception as e:
+                self._log(f"[WARN] 품질 레벨 복원 실패: {e}")
+
+            # 엔진 복원
+            engine = data.get("engine", "auto")
+            if self._engine_combo is not None:
+                try:
+                    for i in range(self._engine_combo.count()):
+                        item_data = self._engine_combo.itemData(i)
+                        if item_data == engine:
+                            self._engine_combo.setCurrentIndex(i)
+                            break
+                    self._log(f"[INFO] 엔진 복원: {engine}")
+                except Exception as e:
+                    self._log(f"[WARN] 엔진 복원 실패: {e}")
+
+            # 전처리 옵션 복원
+            prep = data.get("preprocessing", {})
+            if prep:
+                try:
+                    if self._no_repair_check is not None:
+                        self._no_repair_check.setChecked(bool(prep.get("no_repair", False)))
+                    if self._surface_remesh_check is not None:
+                        self._surface_remesh_check.setChecked(
+                            bool(prep.get("surface_remesh", True))
+                        )
+                    if self._allow_ai_fallback_check is not None:
+                        self._allow_ai_fallback_check.setChecked(
+                            bool(prep.get("allow_ai_fallback", False))
+                        )
+                    rem_eng = prep.get("remesh_engine", "auto")
+                    if self._remesh_engine_combo is not None:
+                        idx = self._remesh_engine_combo.findText(rem_eng)
+                        if idx >= 0:
+                            self._remesh_engine_combo.setCurrentIndex(idx)
+                    elem_size = prep.get("element_size")
+                    if elem_size and self._surface_element_size_edit is not None:
+                        self._surface_element_size_edit.setText(str(elem_size))
+                    self._log("[INFO] 전처리 옵션 복원 완료")
+                except Exception as e:
+                    self._log(f"[WARN] 전처리 옵션 복원 실패: {e}")
+
+            self._log(f"[OK] 프로젝트 열기 완료: {path}")
+        except Exception as e:
+            QMessageBox.warning(self._qmain, "복원 오류", f"일부 설정 복원 실패:\n{e}")
+            self._log(f"[ERR] 프로젝트 복원 중 오류: {e}")
 
     # ─── 시스템 모니터 타이머 ──────────────────────────────────────
     def _start_sys_monitor(self) -> None:  # pragma: no cover
@@ -1643,13 +2454,6 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._design_statusbar.set_gpu(f"{util.gpu}%")
         except Exception:
             self._design_statusbar.set_gpu("—")
-
-    def _log(self, msg: str) -> None:  # pragma: no cover
-        if self._log_edit is not None:
-            try:
-                self._log_edit.appendPlainText(str(msg))  # type: ignore[union-attr]
-            except Exception:
-                pass
 
     def _log_dep_summary(self) -> None:  # pragma: no cover
         """시작 시 라이브러리 설치 현황 요약을 로그에 출력."""

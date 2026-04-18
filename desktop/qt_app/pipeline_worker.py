@@ -40,140 +40,148 @@ class PipelineWorker:
         """QThread 를 동적으로 상속한 인스턴스를 반환한다."""
         from PySide6.QtCore import QThread, Signal
 
-        # QThread 를 베이스로 하는 실제 클래스를 동적으로 생성
-        if not hasattr(cls, "_qt_class"):
-            # PipelineResult 임포트 시도 — 실패해도 object 를 fallback 으로 사용
-            try:
-                from core.pipeline.orchestrator import PipelineResult as _PR
-            except Exception:
-                _PR = object  # type: ignore[assignment,misc]
+        # _Worker 클래스를 호출마다 새로 생성해 Signal 정의를 항상 최신 상태로 유지.
+        # (재사용 시 stale QMetaObject 문제 방지. 생성 비용은 무시할 수준.)
 
-            class _Worker(QThread):
-                progress: Signal[str] = Signal(str)
-                progress_percent: Signal[int, str] = Signal(int, str)
-                finished: Signal[object] = Signal(object)
+        # PipelineResult 임포트 시도 — 실패해도 object 를 fallback 으로 사용
+        try:
+            from core.pipeline.orchestrator import PipelineResult as _PR
+        except Exception:
+            _PR = object  # type: ignore[assignment,misc]
 
-                def __init__(
-                    self,
-                    input_path: Path,
-                    quality_level: QualityLevel,
-                    output_dir: Path | None = None,
-                    tier_hint: str = "auto",
-                    max_iterations: int = 3,
-                    dry_run: bool = False,
-                    element_size: float | None = None,
-                    max_cells: int | None = None,
-                    tier_specific_params: dict[str, Any] | None = None,
-                    no_repair: bool = False,
-                    surface_remesh: bool = False,
-                    remesh_engine: str = "auto",
-                    allow_ai_fallback: bool = False,
-                ) -> None:
-                    super().__init__()
-                    self._input_path = input_path
-                    self._quality_level = quality_level
-                    self._output_dir = output_dir
-                    self._tier_hint = tier_hint
-                    self._max_iterations = max_iterations
-                    self._dry_run = dry_run
-                    self._element_size = element_size
-                    self._max_cells = max_cells
-                    self._tier_specific_params = tier_specific_params or {}
-                    self._no_repair = no_repair
-                    self._surface_remesh = surface_remesh
-                    self._remesh_engine = remesh_engine
-                    self._allow_ai_fallback = allow_ai_fallback
+        class _Worker(QThread):
+            progress: Signal[str] = Signal(str)
+            progress_percent: Signal[int, str] = Signal(int, str)
+            finished: Signal[object] = Signal(object)
+            quality_update: Signal[dict] = Signal(dict)  # checkMesh 품질 메트릭
 
-                def run(self) -> None:
-                    """파이프라인을 실행하고 결과를 finished 시그널로 emit."""
-                    try:
-                        from core.pipeline.orchestrator import PipelineOrchestrator
+            def __init__(
+                self,
+                input_path: Path,
+                quality_level: QualityLevel,
+                output_dir: Path | None = None,
+                tier_hint: str = "auto",
+                max_iterations: int = 3,
+                dry_run: bool = False,
+                element_size: float | None = None,
+                max_cells: int | None = None,
+                tier_specific_params: dict[str, Any] | None = None,
+                no_repair: bool = False,
+                surface_remesh: bool = False,
+                remesh_engine: str = "auto",
+                allow_ai_fallback: bool = False,
+            ) -> None:
+                super().__init__()
+                self._input_path = input_path
+                self._quality_level = quality_level
+                self._output_dir = output_dir
+                self._tier_hint = tier_hint
+                self._max_iterations = max_iterations
+                self._dry_run = dry_run
+                self._element_size = element_size
+                self._max_cells = max_cells
+                self._tier_specific_params = tier_specific_params or {}
+                self._no_repair = no_repair
+                self._surface_remesh = surface_remesh
+                self._remesh_engine = remesh_engine
+                self._allow_ai_fallback = allow_ai_fallback
 
-                        orchestrator = PipelineOrchestrator()
-                        output_dir = self._output_dir or (self._input_path.parent / "output")
-                        output_dir = output_dir.expanduser().resolve()
-                        output_dir.mkdir(parents=True, exist_ok=True)
+            def run(self) -> None:
+                """파이프라인을 실행하고 결과를 finished 시그널로 emit."""
+                try:
+                    from core.pipeline.orchestrator import PipelineOrchestrator
 
-                        self.progress.emit(
-                            f"파이프라인 시작: input={self._input_path.name} "
-                            f"quality={self._quality_level.value} "
-                            f"tier={self._tier_hint} "
-                            f"max_iter={self._max_iterations} "
-                            f"element_size={self._element_size} "
-                            f"max_cells={self._max_cells} "
-                            f"no_repair={self._no_repair} "
-                            f"surface_remesh={self._surface_remesh} "
-                            f"remesh_engine={self._remesh_engine} "
-                            f"allow_ai_fallback={self._allow_ai_fallback} "
-                            f"output={output_dir}"
-                        )
+                    orchestrator = PipelineOrchestrator()
+                    output_dir = self._output_dir or (self._input_path.parent / "output")
+                    output_dir = output_dir.expanduser().resolve()
+                    output_dir.mkdir(parents=True, exist_ok=True)
 
-                        def _on_progress(percent: int, message: str) -> None:
-                            # Stop 요청 시 중단 (subprocess kill 후 thread가 여기서 탈출)
-                            if self.isInterruptionRequested():
-                                raise InterruptedError("사용자가 메시 생성을 중단했습니다.")
-                            self.progress_percent.emit(int(percent), str(message))
-                            self.progress.emit(f"[진행 {int(percent)}%] {message}")
+                    self.progress.emit(
+                        f"파이프라인 시작: input={self._input_path.name} "
+                        f"quality={self._quality_level.value} "
+                        f"tier={self._tier_hint} "
+                        f"max_iter={self._max_iterations} "
+                        f"element_size={self._element_size} "
+                        f"max_cells={self._max_cells} "
+                        f"no_repair={self._no_repair} "
+                        f"surface_remesh={self._surface_remesh} "
+                        f"remesh_engine={self._remesh_engine} "
+                        f"allow_ai_fallback={self._allow_ai_fallback} "
+                        f"output={output_dir}"
+                    )
 
-                        result = orchestrator.run(
-                            input_path=self._input_path,
-                            output_dir=output_dir,
-                            quality_level=self._quality_level.value,
-                            tier_hint=self._tier_hint,
-                            max_iterations=self._max_iterations,
-                            dry_run=self._dry_run,
-                            element_size=self._element_size,
-                            max_cells=self._max_cells,
-                            tier_specific_params=self._tier_specific_params,
-                            no_repair=self._no_repair,
-                            surface_remesh=self._surface_remesh,
-                            remesh_engine=self._remesh_engine,
-                            allow_ai_fallback=self._allow_ai_fallback,
-                            progress_callback=_on_progress,
-                        )
-                        self.progress.emit(
-                            f"파이프라인 종료: success={result.success} "
-                            f"iterations={result.iterations} "
-                            f"time={result.total_time_seconds:.2f}s"
-                        )
-                        self.finished.emit(result)
-                    except InterruptedError:
-                        # 사용자 중단 — finished 시그널 emit 안 함
-                        # (main_window._stopping=True가 무시하지만 emit 자체를 생략)
-                        return
-                    except Exception as exc:  # noqa: BLE001
-                        tb = traceback.format_exc()
-                        brief_tb = "\n".join(tb.strip().splitlines()[-8:])
-                        # Stop 요청 시 subprocess kill로 발생한 예외는 조용히 종료
+                    def _on_progress(percent: int, message: str) -> None:
+                        # Stop 요청 시 중단 (subprocess kill 후 thread가 여기서 탈출)
                         if self.isInterruptionRequested():
-                            return
-                        # 실패 시 success=False 결과 emit
-                        try:
-                            from core.pipeline.orchestrator import PipelineResult
+                            raise InterruptedError("사용자가 메시 생성을 중단했습니다.")
+                        self.progress_percent.emit(int(percent), str(message))
+                        self.progress.emit(f"[진행 {int(percent)}%] {message}")
+                        # checkMesh 품질 힌트 — 메시지에서 메트릭 파싱 시도
+                        _try_emit_quality(self, message)
 
-                            self.progress.emit(
-                                f"[오류] {exc.__class__.__name__}: {exc}"
-                            )
-                            self.progress.emit(f"[디버그]\n{brief_tb}")
-                            self.finished.emit(
-                                PipelineResult(
-                                    success=False,
-                                    error=(
-                                        f"{exc.__class__.__name__}: {exc}\n"
-                                        f"{brief_tb}"
-                                    ),
-                                )
-                            )
-                        except Exception:
-                            self.progress.emit(
-                                f"[오류] {exc.__class__.__name__}: {exc}"
-                            )
-                            self.progress.emit(f"[디버그]\n{brief_tb}")
-                            self.finished.emit(None)
+                    result = orchestrator.run(
+                        input_path=self._input_path,
+                        output_dir=output_dir,
+                        quality_level=self._quality_level.value,
+                        tier_hint=self._tier_hint,
+                        max_iterations=self._max_iterations,
+                        dry_run=self._dry_run,
+                        element_size=self._element_size,
+                        max_cells=self._max_cells,
+                        tier_specific_params=self._tier_specific_params,
+                        no_repair=self._no_repair,
+                        surface_remesh=self._surface_remesh,
+                        remesh_engine=self._remesh_engine,
+                        allow_ai_fallback=self._allow_ai_fallback,
+                        progress_callback=_on_progress,
+                    )
+                    self.progress.emit(
+                        f"파이프라인 종료: success={result.success} "
+                        f"iterations={result.iterations} "
+                        f"time={result.total_time_seconds:.2f}s"
+                    )
+                    # 완료 후 quality_report에서 메트릭 emit
+                    _emit_quality_from_result(self, result)
+                    self.finished.emit(result)
+                except InterruptedError:
+                    # 사용자 중단 — UI를 대기 상태로 복원하기 위해 finished emit
+                    try:
+                        from core.pipeline.orchestrator import PipelineResult
 
-            cls._qt_class = _Worker
+                        self.progress.emit("[중단됨] 사용자 요청으로 파이프라인 중단")
+                        self.finished.emit(
+                            PipelineResult(success=False, error="User cancelled")
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
+                    return
+                except Exception as exc:  # noqa: BLE001
+                    tb = traceback.format_exc()
+                    brief_tb = "\n".join(tb.strip().splitlines()[-8:])
+                    # Stop 요청 시 subprocess kill로 발생한 예외는 조용히 종료
+                    if self.isInterruptionRequested():
+                        return
+                    # 실패 시 success=False 결과 emit
+                    try:
+                        from core.pipeline.orchestrator import PipelineResult
 
-        instance = cls._qt_class.__new__(cls._qt_class)
+                        self.progress.emit(f"[오류] {exc.__class__.__name__}: {exc}")
+                        self.progress.emit(f"[디버그]\n{brief_tb}")
+                        self.finished.emit(
+                            PipelineResult(
+                                success=False,
+                                error=(
+                                    f"{exc.__class__.__name__}: {exc}\n"
+                                    f"{brief_tb}"
+                                ),
+                            )
+                        )
+                    except Exception:
+                        self.progress.emit(f"[오류] {exc.__class__.__name__}: {exc}")
+                        self.progress.emit(f"[디버그]\n{brief_tb}")
+                        self.finished.emit(None)
+
+        instance = _Worker.__new__(_Worker)
         instance.__init__(
             input_path,
             quality_level,
@@ -190,3 +198,43 @@ class PipelineWorker:
             allow_ai_fallback=allow_ai_fallback,
         )
         return instance  # type: ignore[return-value]
+
+
+# ---------------------------------------------------------------------------
+# 품질 메트릭 emit 헬퍼 (모듈 레벨)
+# ---------------------------------------------------------------------------
+
+
+def _try_emit_quality(worker: object, message: str) -> None:
+    """progress 메시지에서 checkMesh 메트릭을 파싱해 quality_update emit."""
+    import re
+    try:
+        metrics: dict = {}
+        m = re.search(r"[Nn]on.?ortho[^\d]*(\d+\.?\d*)", message)
+        if m:
+            metrics["max_non_ortho"] = float(m.group(1))
+        m = re.search(r"[Ss]kewness[^\d]*(\d+\.?\d*)", message)
+        if m:
+            metrics["max_skewness"] = float(m.group(1))
+        m = re.search(r"[Aa]spect[^\d]*(\d+\.?\d*)", message)
+        if m:
+            metrics["max_aspect_ratio"] = float(m.group(1))
+        m = re.search(r"[Nn]egative\s+(?:vol|cell)[^\d]*(\d+)", message)
+        if m:
+            metrics["negative_volumes"] = int(m.group(1))
+        if metrics:
+            worker.quality_update.emit(metrics)  # type: ignore[union-attr]
+    except Exception:
+        pass
+
+
+def _emit_quality_from_result(worker: object, result: object) -> None:
+    """파이프라인 완료 결과에서 quality_report 메트릭을 emit."""
+    try:
+        qr = getattr(result, "quality_report", None) or {}
+        if isinstance(qr, dict):
+            metrics = qr.get("metrics", {})
+            if metrics:
+                worker.quality_update.emit(metrics)  # type: ignore[union-attr]
+    except Exception:
+        pass

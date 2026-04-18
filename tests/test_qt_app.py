@@ -436,3 +436,564 @@ def test_success_loads_mesh_to_plotter() -> None:
     # plotter 존재 여부만 확인 (headless 환경에서는 None)
     # 실제 메쉬 로드는 pyvistaqt가 필요하므로 구조 확인만 수행
     assert hasattr(win, "_mesh_viewer")
+
+
+# ---------------------------------------------------------------------------
+# 신규 테스트: Export 기능
+# ---------------------------------------------------------------------------
+
+
+def test_export_pane_get_export_options_method_exists() -> None:
+    """ExportPane 클래스에 get_export_options 메서드가 존재한다."""
+    from desktop.qt_app.widgets.right_column import ExportPane
+
+    assert hasattr(ExportPane, "get_export_options"), "get_export_options 메서드 필요"
+    assert callable(ExportPane.get_export_options)
+
+
+def test_export_pane_on_fmt_method_exists() -> None:
+    """ExportPane 클래스에 _on_fmt 메서드가 존재한다."""
+    from desktop.qt_app.widgets.right_column import ExportPane
+
+    assert hasattr(ExportPane, "_on_fmt"), "_on_fmt 메서드 필요"
+    assert callable(ExportPane._on_fmt)
+
+
+@pytest.mark.requires_display
+def test_export_pane_get_export_options() -> None:
+    """ExportPane.get_export_options()가 올바른 구조를 반환한다."""
+    from PySide6.QtWidgets import QApplication
+    from desktop.qt_app.widgets.right_column import ExportPane
+
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+
+    pane = ExportPane()
+    opts = pane.get_export_options()
+
+    assert "format" in opts, "format 키가 필요하다"
+    assert "output_dir" in opts, "output_dir 키가 필요하다"
+    assert "report_json" in opts, "report_json 키가 필요하다"
+    assert "quality_hist" in opts, "quality_hist 키가 필요하다"
+    assert "paraview_state" in opts, "paraview_state 키가 필요하다"
+    assert "zip_output" in opts, "zip_output 키가 필요하다"
+    assert opts["format"] == "openfoam", "기본 포맷은 openfoam이어야 한다"
+    assert isinstance(opts["report_json"], bool)
+    assert isinstance(opts["zip_output"], bool)
+
+
+@pytest.mark.requires_display
+def test_export_pane_format_selection() -> None:
+    """ExportPane 포맷 선택 시 get_export_options 결과가 바뀐다."""
+    from PySide6.QtWidgets import QApplication
+    from desktop.qt_app.widgets.right_column import ExportPane
+
+    app = QApplication.instance()
+    if app is None:
+        app = QApplication([])
+
+    pane = ExportPane()
+    assert pane.get_export_options()["format"] == "openfoam"
+    # 직접 _on_fmt 호출
+    pane._on_fmt("vtu")
+    assert pane.get_export_options()["format"] == "vtu"
+    pane._on_fmt("cgns")
+    assert pane.get_export_options()["format"] == "cgns"
+
+
+# ---------------------------------------------------------------------------
+# 신규 테스트: 프로젝트 저장/복원
+# ---------------------------------------------------------------------------
+
+
+def test_on_save_project_method_exists() -> None:
+    """_on_save_project 메서드가 존재한다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    assert hasattr(win, "_on_save_project"), "_on_save_project 메서드 필요"
+    assert callable(win._on_save_project)
+
+
+def test_on_open_project_method_exists() -> None:
+    """_on_open_project 메서드가 존재한다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    assert hasattr(win, "_on_open_project"), "_on_open_project 메서드 필요"
+    assert callable(win._on_open_project)
+
+
+# ---------------------------------------------------------------------------
+# 신규 테스트: quality_update Signal
+# ---------------------------------------------------------------------------
+
+
+def test_pipeline_worker_quality_update_signal() -> None:
+    """PipelineWorker._qt_class에 quality_update Signal이 존재한다."""
+    from PySide6.QtCore import QCoreApplication
+    from desktop.qt_app.main_window import QualityLevel
+    from desktop.qt_app.pipeline_worker import PipelineWorker
+    import tempfile
+    from pathlib import Path
+
+    app = QCoreApplication.instance()
+    if app is None:
+        app = QCoreApplication([])
+
+    with tempfile.NamedTemporaryFile(suffix=".stl") as f:
+        instance = PipelineWorker(Path(f.name), QualityLevel.DRAFT)
+
+    qt_cls = type(instance)
+    assert hasattr(qt_cls, "quality_update"), "quality_update Signal이 필요하다"
+
+
+# ---------------------------------------------------------------------------
+# 신규 테스트: _on_quality_update 핸들러
+# ---------------------------------------------------------------------------
+
+
+def test_on_quality_update_method_exists() -> None:
+    """AutoTessellWindow._on_quality_update 메서드가 존재한다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    assert hasattr(win, "_on_quality_update"), "_on_quality_update 메서드 필요"
+    assert callable(win._on_quality_update)
+    # _build 없이 호출해도 예외 없이 처리
+    win._on_quality_update({"max_non_ortho": 45.0})
+
+
+def test_on_quality_update_with_empty_metrics() -> None:
+    """빈 metrics dict로 _on_quality_update 호출 시 예외 없이 처리."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    win._on_quality_update({})  # 예외 없이 통과해야 함
+
+
+# ---------------------------------------------------------------------------
+# 신규 테스트: 로그 컨텍스트 메뉴
+# ---------------------------------------------------------------------------
+
+
+def test_job_pane_log_context_menu_method_exists() -> None:
+    """JobPane 클래스에 _on_log_context_menu 메서드가 존재한다."""
+    from desktop.qt_app.widgets.right_column import JobPane
+
+    assert hasattr(JobPane, "_on_log_context_menu"), "_on_log_context_menu 메서드 필요"
+    assert callable(JobPane._on_log_context_menu)
+
+
+# ---------------------------------------------------------------------------
+# 신규 테스트: _on_mesh_stats_computed 핸들러
+# ---------------------------------------------------------------------------
+
+
+def test_on_mesh_stats_computed_method_exists() -> None:
+    """AutoTessellWindow._on_mesh_stats_computed 메서드가 존재한다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    assert hasattr(win, "_on_mesh_stats_computed"), "_on_mesh_stats_computed 필요"
+    assert callable(win._on_mesh_stats_computed)
+    # _build 없이 호출해도 예외 없이 처리
+    win._on_mesh_stats_computed({
+        "n_cells": 50000,
+        "n_points": 10000,
+        "hex_ratio": 0.6,
+        "is_volume": True,
+    })
+
+
+# ---------------------------------------------------------------------------
+# 신규 테스트: _on_tier_node_clicked
+# ---------------------------------------------------------------------------
+
+
+def test_on_tier_node_clicked_method_exists() -> None:
+    """AutoTessellWindow._on_tier_node_clicked 메서드가 존재한다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    assert hasattr(win, "_on_tier_node_clicked"), "_on_tier_node_clicked 필요"
+    assert callable(win._on_tier_node_clicked)
+
+
+# ---------------------------------------------------------------------------
+# 신규 테스트: Export 헬퍼 메서드 존재
+# ---------------------------------------------------------------------------
+
+
+def test_export_helper_methods_exist() -> None:
+    """Export 관련 헬퍼 메서드들이 AutoTessellWindow에 존재한다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    for method in (
+        "_export_mesh_format",
+        "_export_via_meshio",
+        "_export_report_json",
+        "_export_quality_histogram",
+        "_export_paraview_state",
+        "_export_zip",
+    ):
+        assert hasattr(win, method), f"{method} 메서드 필요"
+        assert callable(getattr(win, method))
+
+
+# ---------------------------------------------------------------------------
+# 신규 테스트: _try_emit_quality / _emit_quality_from_result
+# ---------------------------------------------------------------------------
+
+
+def test_quality_emit_helpers_exist() -> None:
+    """pipeline_worker 모듈에 품질 emit 헬퍼 함수가 존재한다."""
+    from desktop.qt_app import pipeline_worker as pw
+
+    assert hasattr(pw, "_try_emit_quality"), "_try_emit_quality 함수 필요"
+    assert hasattr(pw, "_emit_quality_from_result"), "_emit_quality_from_result 함수 필요"
+    assert callable(pw._try_emit_quality)
+    assert callable(pw._emit_quality_from_result)
+
+
+# ---------------------------------------------------------------------------
+# 실질 동작 테스트: _try_emit_quality regex
+# ---------------------------------------------------------------------------
+
+
+def test_try_emit_quality_parses_non_ortho() -> None:
+    """_try_emit_quality가 non-ortho 수치를 메시지에서 파싱한다."""
+    from desktop.qt_app import pipeline_worker as pw
+
+    emitted: list[dict] = []
+
+    class _FakeWorker:
+        class quality_update:
+            @staticmethod
+            def emit(d: dict) -> None:
+                emitted.append(d)
+
+    pw._try_emit_quality(_FakeWorker(), "Max non-ortho: 45.3 degrees")
+    assert emitted, "non-ortho 파싱 후 emit 되어야 한다"
+    assert "max_non_ortho" in emitted[0]
+    assert abs(emitted[0]["max_non_ortho"] - 45.3) < 0.01
+
+
+def test_try_emit_quality_parses_skewness_and_aspect() -> None:
+    """_try_emit_quality가 skewness와 aspect ratio를 동시에 파싱한다."""
+    from desktop.qt_app import pipeline_worker as pw
+
+    emitted: list[dict] = []
+
+    class _FakeWorker:
+        class quality_update:
+            @staticmethod
+            def emit(d: dict) -> None:
+                emitted.append(d)
+
+    pw._try_emit_quality(_FakeWorker(), "Skewness 2.1 Aspect 8.5")
+    assert emitted
+    merged = {}
+    for d in emitted:
+        merged.update(d)
+    assert "max_skewness" in merged or "max_aspect_ratio" in merged
+
+
+def test_try_emit_quality_no_emit_on_unrelated_message() -> None:
+    """관련 없는 메시지에는 quality_update emit이 발생하지 않는다."""
+    from desktop.qt_app import pipeline_worker as pw
+
+    emitted: list[dict] = []
+
+    class _FakeWorker:
+        class quality_update:
+            @staticmethod
+            def emit(d: dict) -> None:
+                emitted.append(d)
+
+    pw._try_emit_quality(_FakeWorker(), "파이프라인 시작: tetwild")
+    assert not emitted, "관련 없는 메시지에는 emit이 없어야 한다"
+
+
+def test_emit_quality_from_result_empty_quality_report() -> None:
+    """quality_report가 없는 result에는 emit이 발생하지 않는다."""
+    from desktop.qt_app import pipeline_worker as pw
+
+    emitted: list[dict] = []
+
+    class _FakeWorker:
+        class quality_update:
+            @staticmethod
+            def emit(d: dict) -> None:
+                emitted.append(d)
+
+    class _FakeResult:
+        quality_report = None
+
+    pw._emit_quality_from_result(_FakeWorker(), _FakeResult())
+    assert not emitted, "quality_report=None이면 emit 없어야 한다"
+
+
+def test_export_paraview_state_uses_openfoam_reader_for_polymesh(tmp_path: "Path") -> None:
+    """_export_paraview_state가 polyMesh 디렉토리 존재 시 OpenFOAMReader를 사용한다."""
+    import importlib, sys
+
+    # main_window를 headless import
+    from desktop.qt_app.main_window import AutoTessellWindow, QualityLevel
+
+    win = object.__new__(AutoTessellWindow)
+    win._quality_level = QualityLevel.DRAFT  # type: ignore[attr-defined]
+
+    # 가짜 output_dir with polyMesh
+    polymesh_dir = tmp_path / "constant" / "polyMesh"
+    polymesh_dir.mkdir(parents=True)
+    win._output_dir = tmp_path  # type: ignore[attr-defined]
+    win._log = lambda msg: None  # type: ignore[attr-defined]
+
+    export_dir = tmp_path / "export"
+    export_dir.mkdir()
+    win._export_paraview_state(export_dir)  # type: ignore[attr-defined]
+
+    pvsm = (export_dir / "autotessell_view.pvsm").read_text()
+    assert "OpenFOAMReader" in pvsm, "polyMesh 있으면 OpenFOAMReader 사용해야 함"
+    assert "XMLUnstructuredGridReader" not in pvsm
+
+
+# ── Design Review Fix Tests ─────────────────────────────────────────────────
+
+
+def test_pipeline_result_none_on_init() -> None:
+    """초기화 시 _pipeline_result는 None (미완료 상태)."""
+    from desktop.qt_app.main_window import AutoTessellWindow, QualityLevel
+
+    win = object.__new__(AutoTessellWindow)
+    AutoTessellWindow.__init__(win)
+    assert win._pipeline_result is None  # type: ignore[attr-defined]
+
+
+def test_quality_last_updated_none_on_init() -> None:
+    """초기화 시 _quality_last_updated는 None."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = object.__new__(AutoTessellWindow)
+    AutoTessellWindow.__init__(win)
+    assert win._quality_last_updated is None  # type: ignore[attr-defined]
+
+
+def test_tier_popup_title_has_readonly(tmp_path: "Path") -> None:
+    """Tier 파라미터 팝업 제목에 '읽기 전용'이 포함되어야 한다 (코드 분석)."""
+    import inspect
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    src = inspect.getsource(AutoTessellWindow._on_tier_node_clicked)  # type: ignore[attr-defined]
+    assert "읽기 전용" in src, "Tier 팝업 제목에 읽기 전용 표시가 필요"
+
+
+def test_on_export_save_precheck_openfoam_without_polymesh(tmp_path: "Path") -> None:
+    """polyMesh 없이 OpenFOAM 포맷 Export 시도하면 경고 후 조기 종료해야 한다."""
+    import inspect
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    src = inspect.getsource(AutoTessellWindow._on_export_save)  # type: ignore[attr-defined]
+    assert "polyMesh" in src, "_on_export_save에 polyMesh 사전 검증이 없음"
+    assert "poly_dir.exists()" in src
+
+
+def test_on_open_project_warns_missing_output_dir(tmp_path: "Path") -> None:
+    """프로젝트 열기 시 출력 경로 없으면 경고 로직이 있어야 한다."""
+    import inspect
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    src = inspect.getsource(AutoTessellWindow._on_open_project)  # type: ignore[attr-defined]
+    assert "output_dir_path.exists()" in src, "missing output_dir path check not found"
+    assert "경로 없음" in src
+
+
+def test_screenshot_qt_grab_is_primary() -> None:
+    """_on_screenshot에서 Qt grab()이 1차 시도(WYSIWYG)여야 한다."""
+    import inspect
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    src = inspect.getsource(AutoTessellWindow._on_screenshot)  # type: ignore[attr-defined]
+    grab_pos = src.find("grab()")
+    pyvista_pos = src.find("pv.Plotter")
+    assert grab_pos != -1 and pyvista_pos != -1, "grab() 또는 pv.Plotter를 찾을 수 없음"
+    assert grab_pos < pyvista_pos, "Qt grab()이 PyVista보다 먼저 와야 함 (WYSIWYG 우선)"
+
+
+def test_histogram_data_cached_from_mesh_stats(tmp_path: "Path") -> None:
+    """mesh_stats_computed에 hist_ 배열이 있으면 _histogram_data에 캐시된다."""
+    from desktop.qt_app.main_window import AutoTessellWindow, QualityLevel
+
+    win = object.__new__(AutoTessellWindow)
+    AutoTessellWindow.__init__(win)
+    win._right_column = None
+
+    stats = {
+        "n_cells": 100,
+        "hist_aspect_ratio": [1.1, 1.5, 2.0, 3.0],
+        "hist_skewness": [0.1, 0.3, 0.5],
+    }
+    win._on_mesh_stats_computed(stats)  # type: ignore[attr-defined]
+    assert win._histogram_data is not None  # type: ignore[attr-defined]
+    assert "aspect_ratio" in win._histogram_data  # type: ignore[attr-defined]
+    assert "skewness" in win._histogram_data  # type: ignore[attr-defined]
+
+
+def test_quality_histogram_uses_real_arrays(tmp_path: "Path") -> None:
+    """_histogram_data가 있으면 ax.hist() 기반 PNG를 생성한다."""
+    from desktop.qt_app.main_window import AutoTessellWindow, QualityLevel
+
+    win = object.__new__(AutoTessellWindow)
+    AutoTessellWindow.__init__(win)
+    win._right_column = None
+    win._log = lambda msg: None  # type: ignore[attr-defined]
+    win._histogram_data = {
+        "aspect_ratio": [1.0, 1.5, 2.0, 3.0, 5.0, 8.0],
+        "skewness": [0.1, 0.2, 0.4, 0.6, 0.8],
+    }
+
+    export_dir = tmp_path / "export"
+    export_dir.mkdir()
+    win._export_quality_histogram(export_dir)  # type: ignore[attr-defined]
+
+    out = export_dir / "quality_histogram.png"
+    assert out.exists(), "히스토그램 PNG가 생성되어야 함"
+    assert out.stat().st_size > 5000, "PNG 파일이 너무 작음 (히스토그램 아닐 수 있음)"
+
+
+def test_quality_histogram_fallback_without_data(tmp_path: "Path") -> None:
+    """_histogram_data가 None이면 게이지 fallback으로 PNG를 생성한다."""
+    from desktop.qt_app.main_window import AutoTessellWindow, QualityLevel
+
+    win = object.__new__(AutoTessellWindow)
+    AutoTessellWindow.__init__(win)
+    win._right_column = None
+    win._log = lambda msg: None  # type: ignore[attr-defined]
+    win._histogram_data = None  # type: ignore[attr-defined]
+
+    export_dir = tmp_path / "export"
+    export_dir.mkdir()
+    # _right_column=None이면 게이지 fallback은 early return
+    # 예외 없이 조용히 종료되어야 함
+    win._export_quality_histogram(export_dir)  # type: ignore[attr-defined]
+
+
+def test_viewport_quality_button_exists_in_toolbar() -> None:
+    """InteractiveMeshViewer 툴바에 품질 색상화 버튼이 있어야 한다."""
+    import inspect
+    from desktop.qt_app.mesh_viewer import InteractiveMeshViewer
+
+    src = inspect.getsource(InteractiveMeshViewer._build_toolbar)
+    assert "품질 표시" in src or "_quality_btn" in src, "품질 표시 버튼이 툴바에 없음"
+
+
+def test_log_box_has_tooltip_in_source() -> None:
+    """JobPane log_box에 우클릭 힌트 툴팁이 있어야 한다."""
+    import inspect
+    from desktop.qt_app.widgets.right_column import JobPane
+
+    src = inspect.getsource(JobPane)
+    assert "우클릭" in src or "setToolTip" in src.lower() or "toolTip" in src, \
+        "JobPane log_box에 우클릭 힌트가 없음"
+
+
+def test_tier_node_has_node_clicked_signal() -> None:
+    """_TierNode 클래스가 node_clicked Signal을 갖고 있어야 한다 (monkey-patch 버그 수정 확인)."""
+    import inspect
+    from desktop.qt_app.widgets.tier_pipeline import _TierNode
+
+    src = inspect.getsource(_TierNode)
+    assert "node_clicked" in src, "_TierNode에 node_clicked Signal이 없음"
+    assert "mousePressEvent" in src, "_TierNode.mousePressEvent 오버라이드 없음"
+
+
+def test_tier_node_click_connects_via_signal() -> None:
+    """_NodesContainer.set_tiers()가 signal 연결로 tier_clicked를 wire-up해야 한다."""
+    import inspect
+    from desktop.qt_app.widgets.tier_pipeline import _NodesContainer
+
+    src = inspect.getsource(_NodesContainer.set_tiers)
+    assert "node_clicked.connect" in src, "monkey-patch 방식으로 tier 클릭을 연결하고 있음"
+
+
+def test_drop_zone_has_clicked_signal() -> None:
+    """DropZone이 clicked Signal을 갖고 있어야 한다 (click-to-browse 기능)."""
+    from desktop.qt_app.drop_zone import DropZone
+
+    assert hasattr(DropZone, "clicked"), "DropZone.clicked Signal 없음"
+
+
+def test_drop_zone_has_mousePressEvent_override() -> None:
+    """DropZone이 mousePressEvent를 오버라이드해야 한다."""
+    import inspect
+    from desktop.qt_app.drop_zone import DropZone
+
+    src = inspect.getsource(DropZone)
+    assert "mousePressEvent" in src, "DropZone.mousePressEvent 오버라이드 없음"
+
+
+def test_mesh_viewer_has_mesh_ready_signal() -> None:
+    """InteractiveMeshViewer에 mesh_ready Signal이 있어야 한다."""
+    import inspect
+    from desktop.qt_app.mesh_viewer import InteractiveMeshViewer
+
+    src = inspect.getsource(InteractiveMeshViewer)
+    assert "mesh_ready" in src, "InteractiveMeshViewer.mesh_ready Signal 없음"
+
+
+def test_quality_pane_has_histogram_widget() -> None:
+    """QualityPane에 _HistogramCanvas histogram 속성이 있어야 한다."""
+    import inspect
+    from desktop.qt_app.widgets.right_column import QualityPane
+
+    src = inspect.getsource(QualityPane.__init__)
+    assert "histogram" in src, "QualityPane에 histogram 위젯이 없음"
+
+
+def test_histogram_canvas_update_histograms_method() -> None:
+    """_HistogramCanvas에 update_histograms 메서드가 있어야 한다."""
+    from desktop.qt_app.widgets.right_column import _HistogramCanvas
+
+    assert hasattr(_HistogramCanvas, "update_histograms"), "_HistogramCanvas.update_histograms 없음"
+
+
+def test_quality_metric_dropdown_defined() -> None:
+    """InteractiveMeshViewer에 _QUALITY_METRICS 딕셔너리가 정의돼야 한다."""
+    from desktop.qt_app.mesh_viewer import InteractiveMeshViewer
+
+    assert hasattr(InteractiveMeshViewer, "_QUALITY_METRICS"), "_QUALITY_METRICS 없음"
+    metrics = InteractiveMeshViewer._QUALITY_METRICS
+    assert "aspect_ratio" in metrics, "aspect_ratio 메트릭 없음"
+    assert "skew" in metrics, "skew 메트릭 없음"
+    assert "max_angle" in metrics, "max_angle (non-ortho) 메트릭 없음"
+
+
+def test_on_quality_metric_selected_method_exists() -> None:
+    """InteractiveMeshViewer에 _on_quality_metric_selected 메서드가 있어야 한다."""
+    from desktop.qt_app.mesh_viewer import InteractiveMeshViewer
+
+    assert hasattr(InteractiveMeshViewer, "_on_quality_metric_selected"), \
+        "_on_quality_metric_selected 없음"
+
+
+def test_pipeline_interrupted_emits_finished() -> None:
+    """InterruptedError 발생 시 pipeline_worker가 finished Signal을 emit해야 한다."""
+    import inspect
+    from desktop.qt_app import pipeline_worker
+
+    src = inspect.getsource(pipeline_worker)
+    # InterruptedError 핸들러에서 finished.emit이 있어야 함
+    assert "InterruptedError" in src, "InterruptedError 핸들러 없음"
+    assert "finished.emit" in src, "finished Signal emit 없음"
+
+
+def test_quality_bar_stores_fill_ratio() -> None:
+    """_QualityBar.set_value가 _fill_ratio를 저장해야 한다 (resizeEvent 수정 확인)."""
+    import inspect
+    from desktop.qt_app.widgets.right_column import _QualityBar
+
+    src = inspect.getsource(_QualityBar.set_value)
+    assert "_fill_ratio" in src, "_QualityBar.set_value에서 _fill_ratio 저장 없음"

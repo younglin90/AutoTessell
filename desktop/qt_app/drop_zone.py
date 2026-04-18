@@ -6,7 +6,7 @@ C++ virtual dispatch 때문에 작동하지 않으므로 반드시 QLabel 서브
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent, QEnterEvent
+from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent, QEnterEvent, QMouseEvent
 from PySide6.QtWidgets import QLabel
 
 
@@ -14,6 +14,7 @@ class DropZone(QLabel):
     """드래그앤드롭 가능한 파일 투하 영역."""
 
     file_dropped = Signal(str)  # 드롭된 파일 경로
+    clicked = Signal()          # 클릭으로 파일 선택 다이얼로그 열기
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -22,6 +23,10 @@ class DropZone(QLabel):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._set_idle_style()
         self.setText("STL · OBJ · PLY · STEP · IGES\nOFF · 3MF · MSH · VTK · LAS/LAZ\nDrop file or click to browse")
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
+        self.clicked.emit()
+        super().mousePressEvent(event)
 
     # ── 마우스 hover ──────────────────────────────────────────────────
     def enterEvent(self, event: QEnterEvent) -> None:  # type: ignore[override]
