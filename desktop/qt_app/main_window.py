@@ -453,6 +453,28 @@ class AutoTessellWindow:  # type: ignore[misc]
                 )
             except Exception:
                 pass
+        # Breadcrumbs + StatusCard 업데이트
+        if getattr(self, "_viewport_chrome", None) is not None:
+            try:
+                parts = [resolved.parent.name or "Viewport", resolved.name]
+                self._viewport_chrome.set_crumbs(parts)  # type: ignore[union-attr]
+            except Exception:
+                pass
+        if getattr(self, "_right_column", None) is not None:
+            try:
+                size_kb = resolved.stat().st_size // 1024
+                size_txt = (
+                    f"{size_kb / 1024:.1f} MB" if size_kb > 1024 else f"{size_kb} KB"
+                )
+                self._right_column.job_pane.status_card.set_state(  # type: ignore[union-attr]
+                    badge="Ready",
+                    badge_level="info",
+                    job_id=resolved.stem[:8],
+                    filename=resolved.name,
+                    subtitle=f"{resolved.suffix.upper().lstrip('.')} · {size_txt}",
+                )
+            except Exception:
+                pass
         if self._output_edit is not None and self._output_dir is not None:
             self._output_edit.setText(str(self._output_dir))  # type: ignore[union-attr]
         if self._output_path_label is not None and self._output_dir is not None:
@@ -684,6 +706,62 @@ QTableView::item:selected, QTreeView::item:selected, QListView::item:selected { 
         from desktop.qt_app.widgets.titlebar_strip import TitlebarStrip
         self._titlebar_strip = TitlebarStrip()
         root_vbox.addWidget(self._titlebar_strip)
+
+        # ── 메뉴바 (파일 / 도움말) ────────────────────────────────────
+        from PySide6.QtGui import QAction
+        menubar = self._qmain.menuBar()
+        menubar.setStyleSheet(
+            "QMenuBar { background: #101318; border-bottom: 1px solid #262c36; "
+            "color: #b6bdc9; font-size: 12.5px; padding: 2px 6px; }"
+            "QMenuBar::item { padding: 6px 10px; background: transparent; "
+            "border-radius: 4px; }"
+            "QMenuBar::item:selected { background: #1c2129; color: #e8ecf2; }"
+            "QMenuBar::item:pressed { background: #242a33; }"
+        )
+        file_menu = menubar.addMenu("파일")
+        file_menu.setStyleSheet(
+            "QMenu { background: #101318; border: 1px solid #323a46; "
+            "border-radius: 6px; padding: 4px; color: #b6bdc9; }"
+            "QMenu::item { padding: 6px 18px 6px 12px; border-radius: 4px; font-size: 12px; }"
+            "QMenu::item:selected { background: #4ea3ff; color: #05111e; }"
+            "QMenu::separator { height: 1px; background: #262c36; margin: 4px 2px; }"
+        )
+        act_new = QAction("새 프로젝트", self._qmain); act_new.setShortcut("Ctrl+N")
+        act_open = QAction("프로젝트 열기…", self._qmain); act_open.setShortcut("Ctrl+O")
+        act_save = QAction("저장", self._qmain); act_save.setShortcut("Ctrl+S")
+        act_save_as = QAction("다른 이름으로 저장…", self._qmain); act_save_as.setShortcut("Shift+Ctrl+S")
+        act_export = QAction("내보내기…", self._qmain); act_export.setShortcut("Ctrl+E")
+        act_quit = QAction("종료", self._qmain); act_quit.setShortcut("Ctrl+Q")
+        act_open.triggered.connect(lambda: self._on_pick_input())
+        act_quit.triggered.connect(self._qmain.close)
+        file_menu.addAction(act_new)
+        file_menu.addAction(act_open)
+        file_menu.addSeparator()
+        file_menu.addAction(act_save)
+        file_menu.addAction(act_save_as)
+        file_menu.addAction(act_export)
+        file_menu.addSeparator()
+        file_menu.addAction(act_quit)
+
+        help_menu = menubar.addMenu("도움말")
+        help_menu.setStyleSheet(file_menu.styleSheet())
+        act_docs = QAction("문서 보기", self._qmain); act_docs.setShortcut("F1")
+        act_shortcuts = QAction("키보드 단축키", self._qmain)
+        act_release = QAction("릴리즈 노트", self._qmain)
+        act_report = QAction("문제 보고…", self._qmain)
+        try:
+            from core.version import APP_VERSION as _AV
+        except Exception:
+            _AV = "0.3.5"
+        version_action = QAction(f"AutoTessell {_AV}", self._qmain)
+        version_action.setEnabled(False)
+        help_menu.addAction(act_docs)
+        help_menu.addAction(act_shortcuts)
+        help_menu.addAction(act_release)
+        help_menu.addSeparator()
+        help_menu.addAction(act_report)
+        help_menu.addSeparator()
+        help_menu.addAction(version_action)
 
         # 메인 영역: 수평 (사이드바 + 콘텐츠 + 우측 패널)
         main_hbox = QHBoxLayout()
@@ -1338,6 +1416,11 @@ QTableView::item:selected, QTreeView::item:selected, QListView::item:selected { 
             stack_layout.addWidget(self._mesh_viewer)
             self._viewport_overlays = ViewportOverlayContainer()
             stack_layout.addWidget(self._viewport_overlays)
+            # 뷰포트 상단 chrome (breadcrumbs + actions)
+            from desktop.qt_app.widgets.viewport_chrome import ViewportChromeOverlay
+            self._viewport_chrome = ViewportChromeOverlay()
+            self._viewport_chrome.set_crumbs(["Viewport", "No file"])
+            stack_layout.addWidget(self._viewport_chrome)
             viewer_tab_layout.addWidget(viewer_stack, stretch=1)
             _viewer_added = True
         except ImportError:
@@ -1446,36 +1529,14 @@ QTableView::item:selected, QTreeView::item:selected, QListView::item:selected { 
         )
         log_tab_layout.addWidget(self._log_edit, stretch=1)
 
-        # ── 우측 340px 패널 (Log 전용) ─────────────────────────────────
-        rightcol = QWidget()
-        rightcol.setFixedWidth(340)
-        rightcol.setStyleSheet("background: #101318; border-left: 1px solid #262c36;")
-        rightcol_layout = QVBoxLayout(rightcol)
-        rightcol_layout.setContentsMargins(0, 0, 0, 0)
-        rightcol_layout.setSpacing(0)
-
-        # 우측 컬럼 상단 탭 헤더 (Log / Quality / Export 자리)
-        rc_tabs_header = QFrame()
-        rc_tabs_header.setFixedHeight(40)
-        rc_tabs_header.setStyleSheet(
-            "QFrame { background: transparent; border-bottom: 1px solid #262c36; }"
-        )
-        rc_tabs_layout = QHBoxLayout(rc_tabs_header)
-        rc_tabs_layout.setContentsMargins(0, 0, 0, 0)
-        rc_tabs_layout.setSpacing(0)
-        rc_log_lbl = QLabel("Log")
-        rc_log_lbl.setAlignment(Qt.AlignCenter)
-        rc_log_lbl.setStyleSheet(
-            "color: #e8ecf2; font-size: 12px; font-weight: 500; padding: 10px 14px; "
-            "border-bottom: 2px solid #4ea3ff; background: transparent;"
-        )
-        rc_tabs_layout.addWidget(rc_log_lbl)
-        rc_tabs_layout.addStretch()
-        rightcol_layout.addWidget(rc_tabs_header)
-
-        # log_tab 본체를 우측 컬럼에 배치
-        rightcol_layout.addWidget(log_tab, stretch=1)
-        main_hbox.addWidget(rightcol)
+        # ── 우측 340px 컬럼 (Job / Quality / Export 3탭) — 디자인 스펙 ──
+        from desktop.qt_app.widgets.right_column import RightColumn
+        self._right_column = RightColumn()
+        # 기존 _log_edit 은 Job pane 의 log_box 를 대신 바인딩
+        self._log_edit = self._right_column.job_pane.log_box
+        # (기존에 생성된 log_tab 은 표시되지 않지만 레퍼런스 유지)
+        _unused_log_tab = log_tab
+        main_hbox.addWidget(self._right_column)
 
         # ── [탭 3] Report ─────────────────────────────────────────────
         report_tab = QWidget()
@@ -1567,7 +1628,18 @@ QTableView::item:selected, QTreeView::item:selected, QListView::item:selected { 
         self._active_tier_label = ready_lbl
         status_bar_layout.addWidget(ready_lbl)
 
-        root_vbox.addWidget(status_bar)
+        # 기존 status_bar 는 내부 호환 유지용으로만 남기고, 실제 표시는
+        # 디자인 스펙의 CustomStatusBar 로 대체한다.
+        status_bar.setVisible(False)
+
+        # ── CustomStatusBar — 디자인 스펙 26px ─────────────────────────
+        from desktop.qt_app.widgets.status_bar import CustomStatusBar
+        self._design_statusbar = CustomStatusBar()
+        self._design_statusbar.set_phase("Ready", busy=False)
+        self._design_statusbar.set_cpu("0%")
+        self._design_statusbar.set_gpu("0%")
+        self._design_statusbar.set_io("—")
+        root_vbox.addWidget(self._design_statusbar)
 
         self._set_help_topic("tier")
         self._log_dep_summary()
