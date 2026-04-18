@@ -444,6 +444,15 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._output_dir = resolved.parent / f"{resolved.stem}_case"
         if self._input_edit is not None:
             self._input_edit.setText(str(resolved))  # type: ignore[union-attr]
+        if getattr(self, "_titlebar_strip", None) is not None:
+            try:
+                self._titlebar_strip.set_title(  # type: ignore[union-attr]
+                    "AutoTessell",
+                    subtitle=resolved.name,
+                    path=str(resolved.parent),
+                )
+            except Exception:
+                pass
         if self._output_edit is not None and self._output_dir is not None:
             self._output_edit.setText(str(self._output_dir))  # type: ignore[union-attr]
         if self._output_path_label is not None and self._output_dir is not None:
@@ -666,12 +675,17 @@ QTableView::item:selected, QTreeView::item:selected, QListView::item:selected { 
         central = QWidget()
         self._qmain.setCentralWidget(central)
 
-        # ── 최상위 레이아웃: 수직 (메인 영역 + 하단 상태바) ──────────
+        # ── 최상위 레이아웃: 수직 (titlebar strip + 메인 영역 + 하단 상태바) ──
         root_vbox = QVBoxLayout(central)
         root_vbox.setContentsMargins(0, 0, 0, 0)
         root_vbox.setSpacing(0)
 
-        # 메인 영역: 수평 (사이드바 + 콘텐츠)
+        # ── Titlebar strip (신호등 + 제목) — 디자인 데코레이션 ──────────
+        from desktop.qt_app.widgets.titlebar_strip import TitlebarStrip
+        self._titlebar_strip = TitlebarStrip()
+        root_vbox.addWidget(self._titlebar_strip)
+
+        # 메인 영역: 수평 (사이드바 + 콘텐츠 + 우측 패널)
         main_hbox = QHBoxLayout()
         main_hbox.setContentsMargins(0, 0, 0, 0)
         main_hbox.setSpacing(0)
@@ -1288,6 +1302,21 @@ QTableView::item:selected, QTreeView::item:selected, QListView::item:selected { 
         self._main_tab_widget = tab_widget
         content_layout.addWidget(tab_widget, stretch=1)
 
+        # ── Pipeline Tier strip + 범례 (컨텐츠 하단) ─────────────────
+        from desktop.qt_app.widgets.tier_pipeline import TierPipelineStrip
+        from desktop.qt_app.widgets.pipeline_legend import PipelineLegendStrip
+        self._tier_pipeline = TierPipelineStrip()
+        self._tier_pipeline.set_tiers([
+            ("Analyze", "file_reader"),
+            ("Preprocess", "pymeshfix"),
+            ("Strategy", "tier_selector"),
+            ("Generate", "—"),
+            ("Evaluate", "checkMesh"),
+        ])
+        content_layout.addWidget(self._tier_pipeline)
+        self._pipeline_legend = PipelineLegendStrip()
+        content_layout.addWidget(self._pipeline_legend)
+
         # ── [탭 1] 3D Viewer ─────────────────────────────────────────
         viewer_tab = QWidget()
         viewer_tab.setStyleSheet("background: #0b0d10;")
@@ -1298,7 +1327,19 @@ QTableView::item:selected, QTreeView::item:selected, QListView::item:selected { 
         try:
             from desktop.qt_app.mesh_viewer import MeshViewerWidget
             self._mesh_viewer = MeshViewerWidget()
-            viewer_tab_layout.addWidget(self._mesh_viewer, stretch=1)
+            # 뷰포트 오버레이 래퍼: viewer + overlays 겹치기
+            from desktop.qt_app.widgets.viewport_overlays import ViewportOverlayContainer
+            viewer_stack = QWidget()
+            viewer_stack.setStyleSheet("background: #0b0d10;")
+            from PySide6.QtWidgets import QStackedLayout
+            stack_layout = QStackedLayout(viewer_stack)
+            stack_layout.setStackingMode(QStackedLayout.StackAll)
+            stack_layout.setContentsMargins(0, 0, 0, 0)
+            stack_layout.addWidget(self._mesh_viewer)
+            self._viewport_overlays = ViewportOverlayContainer()
+            stack_layout.addWidget(self._viewport_overlays)
+            viewer_tab_layout.addWidget(viewer_stack, stretch=1)
+            _viewer_added = True
         except ImportError:
             fallback_frame = QFrame()
             fallback_frame.setStyleSheet("background: #0b0d10;")
@@ -1405,7 +1446,36 @@ QTableView::item:selected, QTreeView::item:selected, QListView::item:selected { 
         )
         log_tab_layout.addWidget(self._log_edit, stretch=1)
 
-        tab_widget.addTab(log_tab, "Log")
+        # ── 우측 340px 패널 (Log 전용) ─────────────────────────────────
+        rightcol = QWidget()
+        rightcol.setFixedWidth(340)
+        rightcol.setStyleSheet("background: #101318; border-left: 1px solid #262c36;")
+        rightcol_layout = QVBoxLayout(rightcol)
+        rightcol_layout.setContentsMargins(0, 0, 0, 0)
+        rightcol_layout.setSpacing(0)
+
+        # 우측 컬럼 상단 탭 헤더 (Log / Quality / Export 자리)
+        rc_tabs_header = QFrame()
+        rc_tabs_header.setFixedHeight(40)
+        rc_tabs_header.setStyleSheet(
+            "QFrame { background: transparent; border-bottom: 1px solid #262c36; }"
+        )
+        rc_tabs_layout = QHBoxLayout(rc_tabs_header)
+        rc_tabs_layout.setContentsMargins(0, 0, 0, 0)
+        rc_tabs_layout.setSpacing(0)
+        rc_log_lbl = QLabel("Log")
+        rc_log_lbl.setAlignment(Qt.AlignCenter)
+        rc_log_lbl.setStyleSheet(
+            "color: #e8ecf2; font-size: 12px; font-weight: 500; padding: 10px 14px; "
+            "border-bottom: 2px solid #4ea3ff; background: transparent;"
+        )
+        rc_tabs_layout.addWidget(rc_log_lbl)
+        rc_tabs_layout.addStretch()
+        rightcol_layout.addWidget(rc_tabs_header)
+
+        # log_tab 본체를 우측 컬럼에 배치
+        rightcol_layout.addWidget(log_tab, stretch=1)
+        main_hbox.addWidget(rightcol)
 
         # ── [탭 3] Report ─────────────────────────────────────────────
         report_tab = QWidget()
