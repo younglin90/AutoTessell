@@ -1452,6 +1452,61 @@ def test_preset_get_returns_correct() -> None:
     assert get("존재하지 않는 프리셋") is None
 
 
+def test_error_recovery_classify_openfoam_missing() -> None:
+    """OpenFOAM 미설치 에러 메시지를 분류한다."""
+    from desktop.qt_app.error_recovery import classify_error
+
+    result = classify_error("FOAM FATAL ERROR: cannot find controlDict")
+    assert result is not None
+    guide, actions = result
+    assert "OpenFOAM" in guide
+    keys = [a.handler_key for a in actions]
+    assert "install_openfoam" in keys
+    assert "lower_quality" in keys
+
+
+def test_error_recovery_classify_hausdorff() -> None:
+    """Hausdorff 실패 에러를 분류한다."""
+    from desktop.qt_app.error_recovery import classify_error
+
+    result = classify_error("hausdorff ratio exceeded threshold 10%")
+    assert result is not None
+    guide, actions = result
+    assert "Hausdorff" in guide or "지오메트리" in guide
+    keys = [a.handler_key for a in actions]
+    assert "repair_surface" in keys
+
+
+def test_error_recovery_classify_watertight() -> None:
+    """Watertight/manifold 실패 에러를 분류한다."""
+    from desktop.qt_app.error_recovery import classify_error
+
+    result = classify_error("mesh is not watertight, non-manifold edges detected")
+    assert result is not None
+    _, actions = result
+    keys = [a.handler_key for a in actions]
+    assert "enable_ai_fallback" in keys
+
+
+def test_error_recovery_classify_all_tiers_failed() -> None:
+    """모든 Tier 실패 → GitHub issue 액션."""
+    from desktop.qt_app.error_recovery import classify_error
+
+    result = classify_error("Failed after 3 iterations")
+    assert result is not None
+    _, actions = result
+    keys = [a.handler_key for a in actions]
+    assert "issue_url" in keys
+
+
+def test_error_recovery_no_match_returns_none() -> None:
+    """패턴 미매치면 None."""
+    from desktop.qt_app.error_recovery import classify_error
+
+    assert classify_error("") is None
+    assert classify_error("some random unclassified error") is None
+
+
 def test_preset_save_user_preset_and_load(tmp_path, monkeypatch) -> None:
     """save_user_preset + all_presets 재조회 시 새 프리셋 포함."""
     from desktop.qt_app import presets

@@ -1693,6 +1693,59 @@ class AutoTessellWindow:  # type: ignore[misc]
                     )
                 except Exception:
                     pass
+            # 에러 복구 다이얼로그 — 패턴 매칭해 구체 가이드 제시
+            self._show_error_recovery(str(err))
+
+    def _show_error_recovery(self, error_message: str) -> None:  # pragma: no cover
+        """에러 메시지 패턴 분석 → 복구 다이얼로그 표시."""
+        if self._qmain is None:
+            return
+        from desktop.qt_app.error_recovery import ErrorRecoveryDialog, classify_error
+
+        classified = classify_error(error_message)
+        if classified is None:
+            return  # 패턴 매칭 실패 — 로그만 남김
+        guide, actions = classified
+        dlg = ErrorRecoveryDialog(
+            parent=self._qmain,
+            error_message=error_message,
+            guide_text=guide,
+            actions=actions,
+        )
+        dlg.exec()
+        if dlg.chosen_action:
+            self._handle_recovery_action(dlg.chosen_action)
+
+    def _handle_recovery_action(self, key: str) -> None:  # pragma: no cover
+        """복구 다이얼로그에서 선택된 액션 실행."""
+        import webbrowser
+
+        if key == "install_openfoam":
+            webbrowser.open("https://www.openfoam.com/download/install-binary-linux")
+            self._log("[INFO] OpenFOAM 설치 가이드 열림")
+        elif key == "lower_quality":
+            self._set_quality_level(QualityLevel.DRAFT)
+            self._log("[INFO] 품질 Draft로 강등 — 재실행하려면 '실행' 버튼")
+        elif key == "raise_quality":
+            self._set_quality_level(QualityLevel.FINE)
+            self._log("[INFO] 품질 Fine으로 상승 — 재실행하려면 '실행' 버튼")
+        elif key == "repair_surface":
+            if self._surface_remesh_check is not None:
+                try:
+                    self._surface_remesh_check.setChecked(True)  # type: ignore[union-attr]
+                    self._log("[INFO] 표면 리메쉬 활성화 — 재실행하려면 '실행' 버튼")
+                except Exception:
+                    pass
+        elif key == "enable_ai_fallback":
+            if self._allow_ai_fallback_check is not None:
+                try:
+                    self._allow_ai_fallback_check.setChecked(True)  # type: ignore[union-attr]
+                    self._log("[INFO] AI fallback 활성화 — 재실행하려면 '실행' 버튼")
+                except Exception:
+                    pass
+        elif key == "issue_url":
+            webbrowser.open("https://github.com/younglin90/AutoTessell/issues/new")
+            self._log("[INFO] GitHub 이슈 페이지 열림")
 
     def _on_progress_line(self, line: str) -> None:  # pragma: no cover
         """워커의 progress 시그널 — 로그 + Tier pipeline 상태 + 뷰포트 KPI 추출."""
