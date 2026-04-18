@@ -456,6 +456,39 @@ class AutoTessellWindow:  # type: ignore[misc]
                 self._rebuild_recent_menu()
         except Exception:
             pass
+        # 지오메트리 힌트 — 빠른 분석 + 추천 품질 + ETA
+        try:
+            self._show_geometry_hint(resolved)
+        except Exception:
+            pass
+
+    def _show_geometry_hint(self, path: Path) -> None:  # pragma: no cover
+        """드롭 즉시 지오메트리 요약을 로그/KPI/오버레이에 표시."""
+        from desktop.qt_app.geometry_hint import analyze, format_hint
+
+        hint = analyze(path)
+        text = format_hint(hint)
+        self._log("[INFO] 지오메트리 분석 — " + text.replace("\n", " / "))
+
+        # 뷰포트 KPI 오버레이 — 미실행 상태에서 프리뷰 정보 표시
+        if self._viewport_overlays is not None and not hint.error:
+            try:
+                kpi = self._viewport_overlays.kpi
+                kpi.set_value("Cells", f"~{hint.n_triangles:,} tri")
+                kpi.set_value("Tier", f"추천: {hint.recommended_quality}", highlight=True)
+                # ETA 표시
+                eta = None
+                if hint.recommended_quality == "draft":
+                    eta = hint.eta_seconds_draft
+                elif hint.recommended_quality == "standard":
+                    eta = hint.eta_seconds_standard
+                elif hint.recommended_quality == "fine":
+                    eta = hint.eta_seconds_fine
+                if eta is not None:
+                    from desktop.qt_app.geometry_hint import _fmt_time
+                    kpi.set_value("Time", f"ETA ~{_fmt_time(eta)}")
+            except Exception:
+                pass
 
     def get_input_path(self) -> Path | None:
         return self._input_path

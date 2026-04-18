@@ -1452,6 +1452,121 @@ def test_preset_get_returns_correct() -> None:
     assert get("존재하지 않는 프리셋") is None
 
 
+def test_geometry_hint_analyze_sphere() -> None:
+    """sphere.stl 실제 파일로 지오메트리 분석."""
+    from pathlib import Path
+
+    from desktop.qt_app.geometry_hint import analyze
+
+    sphere = Path("tests/benchmarks/sphere.stl")
+    if not sphere.exists():
+        pytest.skip("sphere.stl 없음")
+
+    hint = analyze(sphere)
+    assert hint.error is None
+    assert hint.n_triangles > 0
+    assert hint.n_vertices > 0
+    assert hint.bbox_diag > 0
+    assert hint.file_size_mb > 0
+    # sphere는 watertight
+    assert hint.is_watertight is True
+
+
+def test_geometry_hint_recommend_quality_by_triangles() -> None:
+    """삼각형 수에 따른 품질 추천."""
+    from desktop.qt_app.geometry_hint import GeometryHint, _recommend_quality
+
+    # 작은 메쉬 → draft
+    h1 = GeometryHint(n_triangles=1000, is_watertight=True)
+    _recommend_quality(h1)
+    assert h1.recommended_quality == "draft"
+
+    # 중간 크기 → standard
+    h2 = GeometryHint(n_triangles=50_000, is_watertight=True)
+    _recommend_quality(h2)
+    assert h2.recommended_quality == "standard"
+
+    # 큰 메쉬 → fine
+    h3 = GeometryHint(n_triangles=500_000, is_watertight=True)
+    _recommend_quality(h3)
+    assert h3.recommended_quality == "fine"
+
+    # Watertight 아님 → 수리 힌트 포함
+    h4 = GeometryHint(n_triangles=1000, is_watertight=False)
+    _recommend_quality(h4)
+    assert "L1" in h4.recommended_reason or "수리" in h4.recommended_reason
+
+
+def test_geometry_hint_format_complete() -> None:
+    """format_hint 모든 필드 포함."""
+    from desktop.qt_app.geometry_hint import GeometryHint, format_hint
+
+    h = GeometryHint(
+        n_triangles=12000,
+        n_vertices=6000,
+        bbox_diag=1.732,
+        is_watertight=True,
+        is_winding_consistent=True,
+        file_size_mb=0.5,
+        recommended_quality="standard",
+        recommended_reason="12,000 삼각형",
+        eta_seconds_draft=5.0,
+        eta_seconds_standard=120.0,
+        eta_confidence="medium",
+    )
+    text = format_hint(h)
+    assert "12,000" in text or "12000" in text
+    assert "✓ Watertight" in text
+    assert "추천" in text
+    assert "ETA" in text
+
+
+def test_geometry_hint_cad_file_unsupported() -> None:
+    """STEP 파일은 trimesh로 직접 분석 불가 — 적절한 에러."""
+    from pathlib import Path
+
+    from desktop.qt_app.geometry_hint import analyze
+
+    # 가짜 STEP 파일 (trimesh는 로드 못함)
+    p = Path("/tmp/fake_cad.step")
+    p.write_text("ISO-10303-21;\nHEADER;")
+    try:
+        hint = analyze(p)
+        # CAD 파일은 ext 검사에서 걸러짐
+        assert hint.error is not None
+        assert "tessellation" in hint.error.lower() or ".step" in hint.error.lower()
+    finally:
+        p.unlink(missing_ok=True)
+
+
+def test_geometry_hint_eta_from_history(tmp_path, monkeypatch) -> None:
+    """history에 기록된 유사 실행 시간 → ETA 예측."""
+    from desktop.qt_app import geometry_hint, history
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr(history, "_HISTORY_DIR", fake_home)
+    monkeypatch.setattr(history, "_HISTORY_FILE", fake_home / "history.jsonl")
+
+    # 10,000 셀 정도의 draft 성공 이력 3개
+    for elapsed, cells in [(2.8, 8500), (3.2, 11000), (2.5, 9200)]:
+        history.record(history.HistoryEntry(
+            timestamp="2026-04-18T10:00:00",
+            input_file="/x.stl", output_dir="/o",
+            quality_level="draft", tier_used="tier2_tetwild",
+            success=True, elapsed_seconds=elapsed, n_cells=cells,
+        ))
+
+    # 새 메쉬: 1000 삼각형 (→ 약 10000 셀 예상 — 유사)
+    h = geometry_hint.GeometryHint(n_triangles=1000, is_watertight=True)
+    geometry_hint._predict_eta(h)
+
+    assert h.eta_seconds_draft is not None
+    # 중앙값 2.8 근처
+    assert 2.0 < h.eta_seconds_draft < 4.0
+    assert h.eta_confidence in ("low", "medium", "high")
+
+
 def test_history_record_and_load(tmp_path, monkeypatch) -> None:
     """history.record → load_all 왕복 + 최신순 정렬."""
     from desktop.qt_app import history
