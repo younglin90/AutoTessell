@@ -1430,15 +1430,17 @@ def test_recent_files_skip_nonexistent(tmp_path, monkeypatch) -> None:
 
 
 def test_presets_builtin_list() -> None:
-    """내장 프리셋 5종이 정의돼 있어야 한다."""
+    """내장 프리셋 8종 (기본 5 + WildMesh 3)이 정의돼 있어야 한다."""
     from desktop.qt_app.presets import BUILTIN_PRESETS, all_presets
 
-    assert len(BUILTIN_PRESETS) == 5
+    assert len(BUILTIN_PRESETS) == 8
     names = [p.name for p in BUILTIN_PRESETS]
     assert "Draft Quick (Tet)" in names
     assert any("External" in n for n in names)
     assert any("Internal" in n for n in names)
     assert any("Aerospace" in n for n in names)
+    # WildMesh 프리셋도 확인
+    assert any("WildMesh" in n for n in names)
 
 
 def test_preset_get_returns_correct() -> None:
@@ -1450,6 +1452,226 @@ def test_preset_get_returns_correct() -> None:
     assert p.quality_level == "draft"
     assert p.tier_hint == "tier2_tetwild"
     assert get("존재하지 않는 프리셋") is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Phase N — WildMesh-only 정책 검증 (단일 엔진 모드)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_engine_policy_default_is_all(tmp_path, monkeypatch) -> None:
+    """정책 파일 없음 + env 없음 → 'all' 기본."""
+    from desktop.qt_app import engine_policy
+
+    monkeypatch.delenv("AUTOTESSELL_ENGINE_POLICY", raising=False)
+    monkeypatch.setattr(engine_policy, "_POLICY_DIR", tmp_path / "x")
+    monkeypatch.setattr(engine_policy, "_POLICY_FILE", tmp_path / "x" / "engine_policy.json")
+
+    policy = engine_policy.load()
+    assert policy.mode == "all"
+    assert policy.allow_strategist_fallback is True
+    assert policy.is_allowed("tier_wildmesh") is True
+    assert policy.is_allowed("tier2_tetwild") is True
+
+
+def test_engine_policy_wildmesh_only_blocks_other_engines(tmp_path, monkeypatch) -> None:
+    """wildmesh_only 모드 — 타 엔진 차단, fallback 없음."""
+    from desktop.qt_app import engine_policy
+
+    monkeypatch.setenv("AUTOTESSELL_ENGINE_POLICY", "wildmesh_only")
+    policy = engine_policy.load()
+
+    assert policy.mode == "wildmesh_only"
+    assert policy.default_tier == "tier_wildmesh"
+    assert policy.allow_strategist_fallback is False
+    assert policy.is_allowed("tier_wildmesh") is True
+    assert policy.is_allowed("tier2_tetwild") is False
+    assert policy.is_allowed("tier1_snappy") is False
+    # auto는 Strategist 경유이므로 정책 적용 전까진 허용
+    assert policy.is_allowed("auto") is True
+
+    # fallback 필터
+    fb = policy.fallback_order("tier_wildmesh", ["tier2_tetwild", "tier1_snappy"])
+    assert fb == []
+
+
+def test_engine_policy_save_and_load_roundtrip(tmp_path, monkeypatch) -> None:
+    """set_mode → 파일 저장 → load 재조회 일치."""
+    from desktop.qt_app import engine_policy
+
+    monkeypatch.delenv("AUTOTESSELL_ENGINE_POLICY", raising=False)
+    monkeypatch.setattr(engine_policy, "_POLICY_DIR", tmp_path / "home")
+    monkeypatch.setattr(engine_policy, "_POLICY_FILE", tmp_path / "home" / "engine_policy.json")
+
+    engine_policy.set_mode("wildmesh_only")
+    reloaded = engine_policy.load()
+    assert reloaded.mode == "wildmesh_only"
+    assert reloaded.allow_strategist_fallback is False
+
+
+def test_tier_selector_policy_filter_forces_wildmesh(monkeypatch) -> None:
+    """_policy_filter_tier: wildmesh_only 하에서 다른 tier 요청시 wildmesh로 교체."""
+    monkeypatch.setenv("AUTOTESSELL_ENGINE_POLICY", "wildmesh_only")
+    from core.strategist.tier_selector import _policy_filter_tier
+
+    sel, fb = _policy_filter_tier("tier2_tetwild", ["tier05_netgen", "tier1_snappy"])
+    assert sel == "tier_wildmesh"
+    assert fb == []
+
+
+def test_tier_selector_policy_filter_all_mode_passthrough(monkeypatch) -> None:
+    """'all' 정책 → 필터 통과, 원본 그대로."""
+    monkeypatch.setenv("AUTOTESSELL_ENGINE_POLICY", "all")
+    from core.strategist.tier_selector import _policy_filter_tier
+
+    sel, fb = _policy_filter_tier("tier2_tetwild", ["tier05_netgen", "tier1_snappy"])
+    assert sel == "tier2_tetwild"
+    assert fb == ["tier05_netgen", "tier1_snappy"]
+
+
+def test_resolve_engine_canonical_mapping() -> None:
+    """GUI 짧은 키 → canonical tier 변환."""
+    from desktop.qt_app.main_window import _resolve_engine_canonical
+
+    assert _resolve_engine_canonical("wildmesh") == "tier_wildmesh"
+    assert _resolve_engine_canonical("tetwild") == "tier2_tetwild"
+    assert _resolve_engine_canonical("snappy") == "tier1_snappy"
+    assert _resolve_engine_canonical("auto") == "auto"
+    # 모르는 키는 그대로 반환
+    assert _resolve_engine_canonical("unknown_xyz") == "unknown_xyz"
+
+
+def test_wildmesh_presets_exist() -> None:
+    """WildMesh 전용 프리셋 3종 내장 확인."""
+    from desktop.qt_app.presets import BUILTIN_PRESETS
+
+    wildmesh_presets = [p for p in BUILTIN_PRESETS if p.tier_hint == "wildmesh"]
+    assert len(wildmesh_presets) == 3
+    names = [p.name for p in wildmesh_presets]
+    assert "WildMesh Draft" in names
+    assert "WildMesh Standard" in names
+    assert "WildMesh Fine (Feature Preserving)" in names
+
+    # 파라미터 검증 — 모든 wildmesh 프리셋이 wildmesh_epsilon 포함
+    for p in wildmesh_presets:
+        assert "wildmesh_epsilon" in p.params
+        assert "wildmesh_edge_length_r" in p.params
+        assert "wildmesh_stop_quality" in p.params
+
+
+def test_cli_tier_choice_includes_wildmesh() -> None:
+    """CLI --tier choice 목록에 wildmesh + 신규 엔진 포함."""
+    import inspect
+    import cli.main as cli_main
+
+    src = inspect.getsource(cli_main)
+    # --tier Choice 리스트에 wildmesh 등 최신 엔진들이 있어야
+    assert '"wildmesh"' in src, "CLI --tier choice에 wildmesh 없음"
+    for engine in ["mmg3d", "algohex", "robust_hex", "jigsaw"]:
+        assert f'"{engine}"' in src, f"CLI --tier choice에 {engine} 누락"
+
+
+@pytest.mark.slow
+def test_pipeline_worker_runs_sphere_wildmesh_end_to_end(tmp_path) -> None:
+    """PipelineWorker.start() with tier_hint='wildmesh' → success + polyMesh."""
+    from pathlib import Path
+
+    from desktop.qt_app.main_window import QualityLevel
+    from desktop.qt_app.pipeline_worker import PipelineWorker
+
+    sphere = Path(__file__).parent / "benchmarks" / "sphere.stl"
+    assert sphere.exists()
+
+    out_dir = tmp_path / "case"
+    worker = PipelineWorker(
+        input_path=sphere,
+        quality_level=QualityLevel.DRAFT,
+        output_dir=out_dir,
+        tier_hint="wildmesh",
+    )
+
+    finished_flag: list = [False]
+    finished_result: list = [None]
+    progress_count: list = [0]
+    worker.finished.connect(  # type: ignore[attr-defined]
+        lambda r: (finished_result.__setitem__(0, r), finished_flag.__setitem__(0, True))
+    )
+    worker.progress.connect(lambda _m: progress_count.__setitem__(0, progress_count[0] + 1))  # type: ignore[attr-defined]
+
+    worker.start()  # type: ignore[attr-defined]
+    try:
+        assert _wait_for_signal(finished_flag, worker, timeout_s=60.0), \
+            "wildmesh 파이프라인 finished 미수신"
+        worker.wait(5_000)  # type: ignore[attr-defined]
+
+        result = finished_result[0]
+        assert result is not None
+        assert getattr(result, "success", False) is True, \
+            f"wildmesh 실패: error={getattr(result, 'error', None)!r}"
+
+        polymesh = out_dir / "constant" / "polyMesh"
+        assert polymesh.exists()
+        assert (polymesh / "points").exists()
+
+        # 실제 wildmesh가 사용됐는지 확인
+        gen_log = getattr(result, "generator_log", None)
+        summary = getattr(gen_log, "execution_summary", None) if gen_log else None
+        selected_tier = getattr(summary, "selected_tier", "") if summary else ""
+        assert selected_tier == "tier_wildmesh", \
+            f"wildmesh이 아닌 엔진 사용됨: {selected_tier}"
+
+        assert progress_count[0] >= 5
+    finally:
+        if worker.isRunning():  # type: ignore[attr-defined]
+            worker.requestInterruption()  # type: ignore[attr-defined]
+            worker.wait(5_000)  # type: ignore[attr-defined]
+
+
+@pytest.mark.slow
+def test_wildmesh_only_policy_rewrites_tier_hint(tmp_path, monkeypatch) -> None:
+    """wildmesh_only 정책 하에서 tier_hint='snappy' 요청 → 실제로 tier_wildmesh 사용."""
+    from pathlib import Path
+
+    from desktop.qt_app.main_window import QualityLevel
+    from desktop.qt_app.pipeline_worker import PipelineWorker
+
+    # 정책을 env로 설정
+    monkeypatch.setenv("AUTOTESSELL_ENGINE_POLICY", "wildmesh_only")
+
+    sphere = Path(__file__).parent / "benchmarks" / "sphere.stl"
+    out_dir = tmp_path / "case"
+    worker = PipelineWorker(
+        input_path=sphere,
+        quality_level=QualityLevel.DRAFT,
+        output_dir=out_dir,
+        tier_hint="snappy",  # 정책이 wildmesh로 덮어씀
+    )
+
+    finished_flag: list = [False]
+    finished_result: list = [None]
+    worker.finished.connect(  # type: ignore[attr-defined]
+        lambda r: (finished_result.__setitem__(0, r), finished_flag.__setitem__(0, True))
+    )
+
+    worker.start()  # type: ignore[attr-defined]
+    try:
+        assert _wait_for_signal(finished_flag, worker, timeout_s=60.0)
+        worker.wait(5_000)  # type: ignore[attr-defined]
+
+        result = finished_result[0]
+        assert result is not None
+        assert getattr(result, "success", False) is True
+
+        # tier_wildmesh가 실제로 사용됐는지
+        gen_log = getattr(result, "generator_log", None)
+        summary = getattr(gen_log, "execution_summary", None) if gen_log else None
+        selected_tier = getattr(summary, "selected_tier", "") if summary else ""
+        assert selected_tier == "tier_wildmesh", \
+            f"정책이 snappy를 wildmesh로 바꾸지 못함: {selected_tier}"
+    finally:
+        if worker.isRunning():  # type: ignore[attr-defined]
+            worker.requestInterruption()  # type: ignore[attr-defined]
+            worker.wait(5_000)  # type: ignore[attr-defined]
 
 
 def test_geometry_hint_analyze_sphere() -> None:
@@ -2140,7 +2362,7 @@ def test_preset_save_user_preset_and_load(tmp_path, monkeypatch) -> None:
     all_p = presets.all_presets()
     names = [p.name for p in all_p]
     assert "My Custom" in names
-    assert len(all_p) == 6  # 5 builtin + 1 custom
+    assert len(all_p) == 9  # 8 builtin (5 기본 + 3 WildMesh) + 1 custom
 
 
 def test_viewport_kpi_overlay_reset_clears_all() -> None:

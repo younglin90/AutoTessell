@@ -2,10 +2,96 @@
 
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
+
 from core.schemas import GeometryReport, QualityLevel, SurfaceQualityLevel
 from core.utils.logging import get_logger
 
 log = get_logger(__name__)
+
+
+# ─── 엔진 정책 (runtime filter) ──────────────────────────────────────────
+# desktop/qt_app/engine_policy.py가 저장하는 정책을 환경변수 또는 파일로 읽어
+# tier 선택·fallback을 제한한다. core는 desktop에 의존하지 않도록 직접 파싱.
+
+_POLICY_ENV = "AUTOTESSELL_ENGINE_POLICY"
+_POLICY_FILE = Path.home() / ".autotessell" / "engine_policy.json"
+_BUILTIN_POLICY_TIERS: dict[str, list[str]] = {
+    "wildmesh_only": ["tier_wildmesh"],
+}
+
+
+def _load_active_policy() -> tuple[str, list[str], bool]:
+    """반환: (mode, allowed_tiers, allow_fallback).
+
+    mode='all' 이면 allowed_tiers는 빈 리스트(제한 없음)·fallback 허용.
+    """
+    # 1) ENV override
+    env = os.environ.get(_POLICY_ENV, "").strip()
+    if env in _BUILTIN_POLICY_TIERS:
+        return (env, list(_BUILTIN_POLICY_TIERS[env]), False)
+    if env == "all":
+        return ("all", [], True)
+
+    # 2) 파일
+    if _POLICY_FILE.exists():
+        try:
+            data = json.loads(_POLICY_FILE.read_text(encoding="utf-8"))
+            mode = str(data.get("mode", "all"))
+            if mode in _BUILTIN_POLICY_TIERS:
+                return (
+                    mode,
+                    list(_BUILTIN_POLICY_TIERS[mode]),
+                    bool(data.get("allow_strategist_fallback", False)),
+                )
+            if mode == "custom":
+                return (
+                    "custom",
+                    list(data.get("allowed_tiers", [])),
+                    bool(data.get("allow_strategist_fallback", True)),
+                )
+        except Exception:
+            pass
+
+    # 3) 기본: 전체 허용
+    return ("all", [], True)
+
+
+def _policy_filter_tier(
+    selected: str, fallbacks: list[str]
+) -> tuple[str, list[str]]:
+    """정책에 맞춰 selected + fallback 필터링.
+
+    wildmesh_only 모드 예시:
+    - selected != tier_wildmesh → tier_wildmesh 로 강제 교체 + fallbacks=[]
+    - selected == tier_wildmesh → fallbacks=[] (실패시 파이프라인 중단)
+    """
+    mode, allowed, allow_fb = _load_active_policy()
+    if mode == "all":
+        return selected, fallbacks
+    if not allowed:
+        return selected, fallbacks
+
+    # 선택된 tier가 허용 목록에 없으면 교체
+    if selected not in allowed:
+        new_selected = allowed[0]
+        log.warning(
+            "tier_overridden_by_policy",
+            mode=mode,
+            original=selected,
+            forced=new_selected,
+        )
+        selected = new_selected
+
+    # fallback 필터
+    if not allow_fb:
+        filtered_fb: list[str] = []
+    else:
+        filtered_fb = [t for t in fallbacks if t in allowed and t != selected]
+
+    return selected, filtered_fb
 
 # Tier 우선순위 (품질/안정성 순)
 _TIER_ORDER = [
@@ -119,6 +205,7 @@ class TierSelector:
         if canonical != "auto":
             log.info("tier_hint_override", hint=tier_hint, canonical=canonical)
             fallbacks = [t for t in _TIER_ORDER if t != canonical]
+            canonical, fallbacks = _policy_filter_tier(canonical, fallbacks)
             self.last_selection_context = {
                 "source": "hint_override",
                 "hint": tier_hint,
@@ -142,37 +229,39 @@ class TierSelector:
             )
             # Use most robust fallback for critical issues
             fallbacks = [t for t in _TIER_ORDER if t != "tier_jigsaw_fallback"]
+            selected, fallbacks = _policy_filter_tier("tier_jigsaw_fallback", fallbacks)
             self.last_selection_context = {
                 "source": "auto",
                 "hint": tier_hint,
                 "reason": "critical_input_issues",
                 "quality_level": ql,
                 "surface_quality_level": sql,
-                "selected_tier": "tier_jigsaw_fallback",
+                "selected_tier": selected,
                 "fallback_tiers": list(fallbacks),
             }
-            log.info("tier_auto_selected", tier="tier_jigsaw_fallback", quality_level=ql, fallbacks=fallbacks)
-            return "tier_jigsaw_fallback", fallbacks
+            log.info("tier_auto_selected", tier=selected, quality_level=ql, fallbacks=fallbacks)
+            return selected, fallbacks
 
         # l3_ai 표면 → tetwild 강제
         if sql == SurfaceQualityLevel.L3_AI.value:
             log.info("tier_forced_l3ai", tier="tier2_tetwild")
             fallbacks = [t for t in _TIER_ORDER if t != "tier2_tetwild"]
+            selected, fallbacks = _policy_filter_tier("tier2_tetwild", fallbacks)
             self.last_selection_context = {
                 "source": "surface_quality_forced",
                 "hint": tier_hint,
                 "reason": "l3_ai_forces_tetwild",
                 "quality_level": ql,
                 "surface_quality_level": sql,
-                "selected_tier": "tier2_tetwild",
+                "selected_tier": selected,
                 "fallback_tiers": list(fallbacks),
             }
-            return "tier2_tetwild", fallbacks
+            return selected, fallbacks
 
         selected, reason = self._auto_select(report, ql)
         # fallback: 선택된 tier를 제외한 모든 tier를 우선순위대로 정렬
-        # (이렇게 하면 _QUALITY_FALLBACKS의 불일치 문제 해결)
         fallbacks = [t for t in _TIER_ORDER if t != selected]
+        selected, fallbacks = _policy_filter_tier(selected, fallbacks)
         self.last_selection_context = {
             "source": "auto",
             "hint": tier_hint,

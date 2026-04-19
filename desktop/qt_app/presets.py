@@ -65,6 +65,45 @@ BUILTIN_PRESETS: list[Preset] = [
         tier_hint="tier15_cfmesh",
         params={"bl_layers": 3, "bl_expansion_ratio": 1.3},
     ),
+    # ── WildMesh 전용 프리셋 ─────────────────────────────────────
+    Preset(
+        name="WildMesh Draft",
+        description="WildMesh (fTetWild) 빠른 점검. epsilon=0.002, edge=0.06, 품질=20.",
+        quality_level="draft",
+        tier_hint="wildmesh",
+        params={
+            "wildmesh_epsilon": 0.002,
+            "wildmesh_edge_length_r": 0.06,
+            "wildmesh_stop_quality": 20.0,
+            "wildmesh_max_its": 40,
+        },
+    ),
+    Preset(
+        name="WildMesh Standard",
+        description="WildMesh 균형 품질. envelope 0.1%, edge 4%. 대부분 형상 적합.",
+        quality_level="standard",
+        tier_hint="wildmesh",
+        surface_remesh=True,
+        params={
+            "wildmesh_epsilon": 0.001,
+            "wildmesh_edge_length_r": 0.04,
+            "wildmesh_stop_quality": 10.0,
+            "wildmesh_max_its": 80,
+        },
+    ),
+    Preset(
+        name="WildMesh Fine (Feature Preserving)",
+        description="WildMesh 고품질. envelope 0.03%, edge 2%, 형상 특징 보존.",
+        quality_level="fine",
+        tier_hint="wildmesh",
+        surface_remesh=True,
+        params={
+            "wildmesh_epsilon": 0.0003,
+            "wildmesh_edge_length_r": 0.02,
+            "wildmesh_stop_quality": 5.0,
+            "wildmesh_max_its": 120,
+        },
+    ),
 ]
 
 

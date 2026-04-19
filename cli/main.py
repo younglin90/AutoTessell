@@ -501,7 +501,14 @@ def evaluate(
 @click.option("--output", "-o", type=click.Path(path_type=Path), default=Path("./case"))
 # --- Tier / Quality ---
 @click.option("--tier", default="auto", show_default=True,
-              type=click.Choice(["auto", "core", "netgen", "snappy", "cfmesh", "tetwild"]),
+              type=click.Choice([
+                  "auto", "core", "netgen", "snappy", "cfmesh", "tetwild",
+                  "wildmesh", "mmg3d", "algohex", "robust_hex",
+                  "jigsaw", "jigsaw_fallback",
+                  "meshpy", "hex_classy", "classy_blocks",
+                  "gmsh_hex", "cinolib_hex", "voro_poly",
+                  "polyhedral", "hohqmesh", "2d",
+              ]),
               help="볼륨 메쉬 엔진 (auto=품질레벨에 따라 자동)")
 @click.option("--quality", default="standard", show_default=True,
               type=click.Choice(["draft", "standard", "fine"], case_sensitive=False),
@@ -514,7 +521,14 @@ def evaluate(
               type=click.Choice(["auto", "quadwild", "vorpalite", "pyacvd", "pymeshlab", "none"]),
               help="L2 표면 리메쉬 라이브러리 (vorpalite=geogram, 최고 품질)")
 @click.option("--volume-engine", default="auto", show_default=True,
-              type=click.Choice(["auto", "tetwild", "netgen", "snappy", "cfmesh"]),
+              type=click.Choice([
+                  "auto", "tetwild", "netgen", "snappy", "cfmesh",
+                  "wildmesh", "mmg3d", "algohex", "robust_hex",
+                  "jigsaw", "jigsaw_fallback",
+                  "meshpy", "hex_classy", "classy_blocks",
+                  "gmsh_hex", "cinolib_hex", "voro_poly",
+                  "polyhedral", "hohqmesh", "2d",
+              ]),
               help="볼륨 메쉬 엔진 (--tier와 동일, 더 명시적 이름)")
 @click.option("--checker-engine", default="auto", show_default=True,
               type=click.Choice(["auto", "openfoam", "native"]),

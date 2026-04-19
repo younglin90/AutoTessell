@@ -429,6 +429,9 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._preset_combo: object | None = None
         self._preset_desc_label: object | None = None
 
+        # 엔진 정책 (wildmesh_only 모드 등)
+        self._engine_policy: object | None = None
+
     # ═════════════════════════════════════════════════════════════════════
     # Public API
     # ═════════════════════════════════════════════════════════════════════
@@ -724,6 +727,32 @@ class AutoTessellWindow:  # type: ignore[misc]
         dlg = HistoryDialog(self._qmain)
         dlg.exec()
 
+    def _on_set_engine_policy(self, mode: str) -> None:  # pragma: no cover
+        """엔진 정책 메뉴 → 모드 전환 + 영속 저장 + 배너 갱신."""
+        from desktop.qt_app import engine_policy
+
+        policy = engine_policy.set_mode(mode)
+        self._engine_policy = policy
+        self._log(f"[INFO] 엔진 정책: {mode}")
+
+        # 체크마크 갱신
+        if hasattr(self, "_engine_policy_actions"):
+            for k, act in self._engine_policy_actions.items():
+                try:
+                    act.setChecked(k == mode)
+                except Exception:
+                    pass
+
+        # 알림 + 재시작 안내 (콤보박스 재구성 필요)
+        from PySide6.QtWidgets import QMessageBox
+
+        QMessageBox.information(
+            self._qmain, "엔진 정책 변경",
+            f"정책이 '{mode}'로 변경되었습니다.\n\n"
+            f"새 정책은 다음 파이프라인 실행부터 적용됩니다.\n"
+            f"GUI 엔진 드롭다운은 새 프로젝트 생성 또는 재시작시 갱신됩니다.",
+        )
+
     def _show_shortcuts_dialog(self) -> None:  # pragma: no cover
         """키보드 단축키 전체 맵 표시."""
         from PySide6.QtWidgets import QDialog, QLabel, QVBoxLayout
@@ -882,6 +911,25 @@ class AutoTessellWindow:  # type: ignore[misc]
         act_history.setShortcut("Ctrl+H")
         act_history.triggered.connect(self._on_open_history_dialog)
         view_menu.addAction(act_history)
+
+        # ── 엔진 정책 메뉴 ────────────────────────────────
+        engine_menu = mb.addMenu("엔진 정책")
+        from desktop.qt_app import engine_policy as _pol
+
+        _current_mode = _pol.load().mode
+
+        def _make_policy_action(mode: str, label: str) -> object:
+            act = QAction(label, self._qmain)
+            act.setCheckable(True)
+            act.setChecked(mode == _current_mode)
+            act.triggered.connect(lambda _checked=False, _m=mode: self._on_set_engine_policy(_m))
+            return act
+
+        act_all = _make_policy_action("all", "전체 엔진 허용 (기본)")
+        act_wild = _make_policy_action("wildmesh_only", "WildMesh 전용")
+        self._engine_policy_actions = {"all": act_all, "wildmesh_only": act_wild}
+        engine_menu.addAction(act_all)
+        engine_menu.addAction(act_wild)
 
         help_menu = mb.addMenu("도움말")
         act_docs = QAction("문서 보기", self._qmain); act_docs.setShortcut("F1")
@@ -1222,24 +1270,51 @@ class AutoTessellWindow:  # type: ignore[misc]
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QStandardItem, QStandardItemModel
         from PySide6.QtWidgets import QComboBox, QFrame, QHBoxLayout, QLabel, QWidget
+
+        from desktop.qt_app import engine_policy
+
         f, v = self._section_frame("메시 엔진")
+
+        # 현재 정책 로드
+        policy = engine_policy.load()
+        self._engine_policy = policy
+
+        # 정책이 wildmesh_only 면 배너 표시
+        if policy.mode != "all":
+            banner = QLabel(f"⚙ 정책: {policy.mode}")
+            banner.setStyleSheet(
+                f"color: {PALETTE['accent']}; font-size: 10.5px; "
+                f"background: transparent; padding: 2px 4px; "
+                f"border: 1px dashed {PALETTE['accent']}; border-radius: 3px;"
+            )
+            v.addWidget(banner)
 
         combo = QComboBox()
         model = QStandardItemModel(combo)
+        default_idx = 1  # 기본 auto
+        row_idx = 0
         for group, items in self.ENGINE_GROUPS:
             header = QStandardItem(f"── {group} ──")
             header.setFlags(Qt.NoItemFlags)
             header.setForeground(_qcolor(PALETTE["text_3"]))
-            model.appendRow(header)
+            model.appendRow(header); row_idx += 1
             for value, display, status in items:
                 marker = {"ok": "● 설치됨", "off": "○ 미설치", "warn": "⚠ 설정 필요"}.get(status, "")
+                # 정책으로 차단된 엔진은 회색
+                canonical = _resolve_engine_canonical(value)
+                blocked = not policy.is_allowed(canonical)
+                if blocked:
+                    marker = "🔒 정책 차단"
                 item = QStandardItem(f"{display}  {marker}")
                 item.setData(value)
-                if status == "off":
+                if status == "off" or blocked:
                     item.setEnabled(False)
-                model.appendRow(item)
+                model.appendRow(item); row_idx += 1
+                # 정책의 default_tier와 매치되면 초기 선택 인덱스
+                if policy.default_tier != "auto" and canonical == policy.default_tier:
+                    default_idx = row_idx
         combo.setModel(model)
-        combo.setCurrentIndex(1)  # 기본 auto
+        combo.setCurrentIndex(default_idx)
         self._engine_combo = combo
         self._tier_combo = combo  # 호환
         v.addWidget(combo)
@@ -3184,6 +3259,37 @@ class AutoTessellWindow:  # type: ignore[misc]
 def _qcolor(hex_str: str):  # pragma: no cover
     from PySide6.QtGui import QColor
     return QColor(hex_str)
+
+
+# GUI 짧은 키 → canonical tier 이름 매핑 (engine_policy 판정용)
+_GUI_ENGINE_CANONICAL: dict[str, str] = {
+    "auto": "auto",
+    "tetwild": "tier2_tetwild",
+    "wildmesh": "tier_wildmesh",
+    "netgen": "tier05_netgen",
+    "snappy": "tier1_snappy",
+    "cfmesh": "tier15_cfmesh",
+    "algohex": "tier_algohex",
+    "robust_hex": "tier_robust_hex",
+    "hex_classy": "tier_hex_classy_blocks",
+    "cinolib_hex": "tier_cinolib_hex",
+    "gmsh_hex": "tier_gmsh_hex",
+    "hohqmesh": "tier_hohqmesh",
+    "mmg3d": "tier_mmg3d",
+    "meshpy": "tier_meshpy",
+    "jigsaw": "tier_jigsaw",
+    "jigsaw_fallback": "tier_jigsaw_fallback",
+    "core": "tier0_core",
+    "polyhedral": "tier_polyhedral",
+    "voro_poly": "tier_voro_poly",
+    "classy_blocks": "tier_classy_blocks",
+    "2d": "tier0_2d_meshpy",
+}
+
+
+def _resolve_engine_canonical(gui_key: str) -> str:
+    """GUI 엔진 키(짧은 이름)를 canonical tier 이름으로 변환."""
+    return _GUI_ENGINE_CANONICAL.get(gui_key, gui_key)
 
 
 def _qt_cursor_pointing():  # pragma: no cover
