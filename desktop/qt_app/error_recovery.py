@@ -125,7 +125,8 @@ class ErrorRecoveryDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle(title)
-        self.setMinimumWidth(560)
+        # 표준 MEDIUM 다이얼로그 크기 (main_window.DIALOG_MEDIUM)
+        self.setMinimumSize(720, 520)
         self.setStyleSheet(
             "QDialog { background: #0f1318; color: #e8ecf2; }"
         )

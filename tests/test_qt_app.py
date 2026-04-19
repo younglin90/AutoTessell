@@ -1459,6 +1459,262 @@ def test_preset_get_returns_correct() -> None:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Phase O — WildMesh 안정화 + GUI 렌더 수정 + 백로그 Tier A
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_wildmesh_param_clamp_out_of_range() -> None:
+    """WM1: epsilon/edge_length_r/stop_quality/max_its 범위 밖 → clamp."""
+    from core.generator.tier_wildmesh import _PARAM_RANGES, _clamp_param, _get_quality_params
+
+    # 너무 작은 값 → lo로 clamp
+    assert _clamp_param("epsilon", 1e-8) == _PARAM_RANGES["epsilon"][0]
+    assert _clamp_param("edge_length_r", 0.001) == _PARAM_RANGES["edge_length_r"][0]
+    # 너무 큰 값 → hi로 clamp
+    assert _clamp_param("epsilon", 0.5) == _PARAM_RANGES["epsilon"][1]
+    # 정상 범위 통과
+    assert _clamp_param("epsilon", 0.002) == 0.002
+
+    # _get_quality_params 통합 테스트
+    p = _get_quality_params("draft", {"wildmesh_epsilon": 1e-10})
+    assert p["epsilon"] >= _PARAM_RANGES["epsilon"][0]
+    p = _get_quality_params("draft", {"wildmesh_epsilon": 10.0})
+    assert p["epsilon"] <= _PARAM_RANGES["epsilon"][1]
+
+
+def test_wildmesh_timeout_scales_with_mesh_size() -> None:
+    """WM3: 메쉬 크기에 따라 동적 timeout, 상한 30분."""
+    from core.generator.tier_wildmesh import _TIMEOUT_MAX_SEC, _compute_timeout
+
+    # 작은 메쉬
+    t_small = _compute_timeout("draft", 1000, {})
+    # 큰 메쉬
+    t_large = _compute_timeout("draft", 100_000, {})
+    assert t_large > t_small, "큰 메쉬가 더 긴 timeout 필요"
+
+    # 매우 큰 메쉬 → 상한
+    t_huge = _compute_timeout("fine", 10_000_000, {})
+    assert t_huge == _TIMEOUT_MAX_SEC
+
+    # 사용자 override
+    t_user = _compute_timeout("draft", 100_000, {"wildmesh_timeout": 90})
+    assert t_user == 90
+
+    # override도 상한 적용
+    t_override_huge = _compute_timeout("draft", 100, {"wildmesh_timeout": 999999})
+    assert t_override_huge == _TIMEOUT_MAX_SEC
+
+
+def test_wildmesh_preflight_watertight_warning(tmp_path) -> None:
+    """WM4: non-watertight 메쉬 → WARN 경고 포함."""
+    import trimesh
+
+    from desktop.qt_app.wildmesh_preflight import WarningLevel, analyze
+
+    # 구멍 있는 메쉬 생성
+    path = tmp_path / "open.stl"
+    mesh = trimesh.creation.box(extents=[1, 1, 1])
+    # 한 face 제거해서 open shell 만들기
+    mesh.faces = mesh.faces[:-2]
+    mesh.export(str(path))
+
+    report = analyze(path)
+    # watertight 경고 또는 다른 위험 경고가 있어야 함
+    titles = " ".join(w.title for w in report.warnings)
+    assert "watertight" in titles.lower() or "non-watertight" in titles.lower()
+
+
+def test_wildmesh_preflight_thin_wall_danger(tmp_path) -> None:
+    """WM4: 극도 thin-wall (aspect > 100) → DANGER."""
+    import numpy as _np
+    import trimesh
+
+    from desktop.qt_app.wildmesh_preflight import WarningLevel, analyze
+
+    # 1000 x 1 x 0.005 극얇은 판 → aspect ~200k
+    path = tmp_path / "thin.stl"
+    mesh = trimesh.creation.box(extents=[1000.0, 1.0, 0.005])
+    mesh.export(str(path))
+
+    report = analyze(path)
+    danger_titles = [w.title for w in report.warnings if w.level == WarningLevel.DANGER]
+    assert any("thin" in t.lower() or "planar" in t.lower() for t in danger_titles), \
+        f"thin-wall DANGER 감지 실패: {danger_titles}"
+    assert report.is_safe is False
+
+
+def test_wildmesh_preflight_empty_missing_file(tmp_path) -> None:
+    """WM4: 없는 파일 → DANGER."""
+    from desktop.qt_app.wildmesh_preflight import WarningLevel, analyze
+
+    report = analyze(tmp_path / "nothing.stl")
+    assert report.is_safe is False
+    assert any(w.level == WarningLevel.DANGER for w in report.warnings)
+
+
+def test_param_history_push_and_revert(tmp_path, monkeypatch) -> None:
+    """A3: push/pop_previous/peek 왕복."""
+    from desktop.qt_app import param_history
+
+    monkeypatch.setattr(param_history, "_HISTORY_DIR", tmp_path / "x")
+    monkeypatch.setattr(param_history, "_HISTORY_FILE", tmp_path / "x" / "ph.json")
+
+    param_history.push({"wildmesh_epsilon": 0.001})
+    param_history.push({"wildmesh_epsilon": 0.002})
+    param_history.push({"wildmesh_epsilon": 0.0005})
+
+    # peek은 최신
+    latest = param_history.peek()
+    assert latest == {"wildmesh_epsilon": 0.0005}
+
+    # pop_previous: [0] 제거하고 [1] 반환 (이전 값)
+    prev = param_history.pop_previous()
+    assert prev == {"wildmesh_epsilon": 0.002}
+
+    # 스냅샷 하나만 있으면 pop_previous → None
+    param_history.clear()
+    param_history.push({"only_one": 1})
+    assert param_history.pop_previous() is None
+
+
+def test_param_history_max_5() -> None:
+    """A3: 최대 5개 제한."""
+    import tempfile
+    from pathlib import Path
+    from unittest.mock import patch
+
+    from desktop.qt_app import param_history
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_p = Path(tmp)
+        with patch.object(param_history, "_HISTORY_DIR", tmp_p), \
+             patch.object(param_history, "_HISTORY_FILE", tmp_p / "ph.json"):
+            for i in range(10):
+                param_history.push({"v": i})
+            entries = param_history.load()
+            assert len(entries) == 5
+            # 최신이 맨 앞
+            assert entries[0]["v"] == 9
+            assert entries[-1]["v"] == 5
+
+
+def test_param_history_deduplicates() -> None:
+    """A3: 동일 스냅샷 중복 제거."""
+    import tempfile
+    from pathlib import Path
+    from unittest.mock import patch
+
+    from desktop.qt_app import param_history
+
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_p = Path(tmp)
+        with patch.object(param_history, "_HISTORY_DIR", tmp_p), \
+             patch.object(param_history, "_HISTORY_FILE", tmp_p / "ph.json"):
+            param_history.push({"a": 1})
+            param_history.push({"a": 1})  # 같은 값
+            entries = param_history.load()
+            assert len(entries) == 1
+
+
+def test_param_validator_numeric_ok() -> None:
+    """A2: numeric_validator 정상 값 → ok."""
+    from desktop.qt_app.widgets.param_validator import numeric_validator
+
+    v = numeric_validator("float", min_val=0.0, max_val=1.0,
+                          recommended_min=0.1, recommended_max=0.9)
+    result = v("0.5")
+    assert result.level == "ok"
+    assert result.parsed_value == 0.5
+
+    # 빈 문자열은 ok
+    result = v("")
+    assert result.level == "ok"
+
+
+def test_param_validator_numeric_warn_and_err() -> None:
+    """A2: 권장 범위 밖 → warn, hard 범위 밖 → err, 파싱 실패 → err."""
+    from desktop.qt_app.widgets.param_validator import numeric_validator
+
+    v = numeric_validator("float", min_val=0.0, max_val=1.0,
+                          recommended_min=0.1, recommended_max=0.9)
+    # warn (권장 밖)
+    assert v("0.05").level == "warn"
+    assert v("0.95").level == "warn"
+    # err (hard 밖)
+    assert v("-0.1").level == "err"
+    assert v("1.5").level == "err"
+    # err (파싱)
+    assert v("abc").level == "err"
+
+
+def test_wildmesh_param_panel_presets() -> None:
+    """A1: WildMeshParamPanel 프리셋 적용 → current_params 반환."""
+    from desktop.qt_app.widgets.wildmesh_param_panel import PRESETS, WildMeshParamPanel
+
+    panel = WildMeshParamPanel()
+    # 기본은 draft
+    params = panel.current_params()
+    assert abs(params["wildmesh_epsilon"] - PRESETS["draft"]["epsilon"]) < 1e-4
+
+    # standard로 전환
+    panel.apply_preset("standard")
+    params = panel.current_params()
+    assert abs(params["wildmesh_epsilon"] - PRESETS["standard"]["epsilon"]) < 1e-4
+
+    # 외부에서 set_params
+    panel.set_params({"wildmesh_epsilon": 0.005, "wildmesh_stop_quality": 7})
+    params = panel.current_params()
+    assert 0.003 < params["wildmesh_epsilon"] < 0.008
+
+
+def test_wildmesh_param_panel_emits_signal() -> None:
+    """A1: 프리셋 변경시 params_changed Signal emit."""
+    from PySide6.QtTest import QSignalSpy
+    from desktop.qt_app.widgets.wildmesh_param_panel import WildMeshParamPanel
+
+    panel = WildMeshParamPanel()
+    spy = QSignalSpy(panel.params_changed)
+    panel.apply_preset("fine")
+    assert spy.count() >= 1
+
+
+def test_gu1_matplotlib_korean_fonts_configured() -> None:
+    """GU1: matplotlib rcParams에 한국어 폰트가 앞쪽에 있어야 한다."""
+    # __init__.py 가 import 시 _configure_matplotlib_fonts() 호출됨
+    import desktop.qt_app  # noqa: F401
+
+    import matplotlib
+
+    sans = list(matplotlib.rcParams.get("font.sans-serif", []))
+    # Pretendard가 DejaVu보다 앞에
+    assert "Pretendard" in sans
+    assert "DejaVu Sans" in sans
+    pret_idx = sans.index("Pretendard")
+    dejavu_idx = sans.index("DejaVu Sans")
+    assert pret_idx < dejavu_idx
+
+
+def test_gu2_palette_has_new_semantic_keys() -> None:
+    """GU2: PALETTE에 accent_fg/err_fg/code_bg/dialog_bg 추가."""
+    from desktop.qt_app.main_window import PALETTE
+
+    for key in ("accent_fg", "err_fg", "code_bg", "dialog_bg"):
+        assert key in PALETTE, f"PALETTE['{key}'] 없음"
+        assert PALETTE[key].startswith("#")
+
+
+def test_gu4_dialog_size_constants_defined() -> None:
+    """GU4: DIALOG_SMALL/MEDIUM/LARGE 상수 정의."""
+    from desktop.qt_app.main_window import DIALOG_LARGE, DIALOG_MEDIUM, DIALOG_SMALL
+
+    assert isinstance(DIALOG_SMALL, tuple) and len(DIALOG_SMALL) == 2
+    assert isinstance(DIALOG_MEDIUM, tuple) and len(DIALOG_MEDIUM) == 2
+    assert isinstance(DIALOG_LARGE, tuple) and len(DIALOG_LARGE) == 2
+    # 순서대로 커지는지
+    assert DIALOG_SMALL[0] < DIALOG_MEDIUM[0] < DIALOG_LARGE[0]
+
+
 def test_engine_policy_default_is_all(tmp_path, monkeypatch) -> None:
     """정책 파일 없음 + env 없음 → 'all' 기본."""
     from desktop.qt_app import engine_policy

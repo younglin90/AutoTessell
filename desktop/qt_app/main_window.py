@@ -32,7 +32,18 @@ PALETTE = {
     "accent_soft": "rgba(78,163,255,0.12)",
     "ok": "#4ade80", "warn": "#f5b454", "err": "#ff6b6b",
     "hex": "#9b87ff", "tet": "#5ee5d6",
+    # GU2: 하드코딩됐던 값들을 의미있는 이름으로
+    "accent_fg": "#05111e",     # accent 배경 위 텍스트 (어두운 남색)
+    "err_fg": "#ff8888",        # 에러 버튼 텍스트 (밝은 붉은)
+    "code_bg": "#05070a",       # 로그 박스 극흑 배경
+    "dialog_bg": "#0f1318",     # 모달 다이얼로그 배경
 }
+
+
+# GU4: 다이얼로그 크기 표준 (width, height)
+DIALOG_SMALL = (480, 360)
+DIALOG_MEDIUM = (720, 520)
+DIALOG_LARGE = (960, 640)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -57,7 +68,7 @@ QMenu {{
     border-radius: 6px; padding: 4px; color: {PALETTE['text_1']};
 }}
 QMenu::item {{ padding: 6px 18px 6px 12px; border-radius: 4px; font-size: 12px; }}
-QMenu::item:selected {{ background: {PALETTE['accent']}; color: #05111e; }}
+QMenu::item:selected {{ background: {PALETTE['accent']}; color: {PALETTE['accent_fg']}; }}
 QMenu::separator {{ height: 1px; background: {PALETTE['line_1']}; margin: 4px 2px; }}
 
 QComboBox {{
@@ -93,12 +104,12 @@ QPushButton:hover {{ background: {PALETTE['bg_3']}; border-color: {PALETTE['line
 QPushButton:pressed {{ background: {PALETTE['bg_4']}; }}
 QPushButton:disabled {{ background: {PALETTE['bg_0']}; color: {PALETTE['text_3']}; border-color: {PALETTE['line_1']}; }}
 QPushButton[accent="primary"] {{
-    background: {PALETTE['accent']}; border: 1px solid {PALETTE['accent']}; color: #05111e;
+    background: {PALETTE['accent']}; border: 1px solid {PALETTE['accent']}; color: {PALETTE['accent_fg']};
     font-weight: 600;
 }}
 QPushButton[accent="primary"]:hover {{ background: {PALETTE['accent_hover']}; border-color: {PALETTE['accent_hover']}; }}
 QPushButton[accent="danger"] {{
-    background: rgba(255,60,60,0.08); border: 1px solid #5f2d2d; color: #ff8888;
+    background: rgba(255,60,60,0.08); border: 1px solid #5f2d2d; color: {PALETTE['err_fg']};
 }}
 QPushButton[accent="danger"]:hover {{ background: rgba(255,60,60,0.15); color: {PALETTE['err']}; }}
 
@@ -116,7 +127,7 @@ QScrollBar::add-line, QScrollBar::sub-line {{ width: 0; height: 0; }}
 QScrollBar::add-page, QScrollBar::sub-page {{ background: transparent; }}
 
 QPlainTextEdit, QTextBrowser, QTextEdit {{
-    background: #05070a; border: none; color: {PALETTE['text_1']};
+    background: {PALETTE['code_bg']}; border: none; color: {PALETTE['text_1']};
     font-family: 'JetBrains Mono', 'SF Mono', 'Consolas', monospace;
     font-size: 11px;
     selection-background-color: {PALETTE['accent_dim']};
@@ -431,6 +442,11 @@ class AutoTessellWindow:  # type: ignore[misc]
 
         # 엔진 정책 (wildmesh_only 모드 등)
         self._engine_policy: object | None = None
+
+        # WildMesh 파라미터 슬라이더 패널 (tier=wildmesh 선택시 표시)
+        self._wildmesh_param_panel: object | None = None
+        self._wildmesh_param_frame: object | None = None
+        self._param_revert_btn: object | None = None
 
     # ═════════════════════════════════════════════════════════════════════
     # Public API
@@ -759,10 +775,10 @@ class AutoTessellWindow:  # type: ignore[misc]
 
         d = QDialog(self._qmain)
         d.setWindowTitle("키보드 단축키")
-        d.setMinimumSize(440, 420)
+        d.setMinimumSize(*DIALOG_SMALL)
         d.setStyleSheet(
-            "QDialog { background: #0f1318; color: #e8ecf2; }"
-            "QLabel { color: #e8ecf2; background: transparent; }"
+            f"QDialog {{ background: {PALETTE['dialog_bg']}; color: {PALETTE['text_0']}; }}"
+            f"QLabel {{ color: {PALETTE['text_0']}; background: transparent; }}"
         )
         layout = QVBoxLayout(d)
         layout.setContentsMargins(20, 16, 20, 16)
@@ -816,10 +832,10 @@ class AutoTessellWindow:  # type: ignore[misc]
 
         close_btn = QPushButton("닫기")
         close_btn.setStyleSheet(
-            "QPushButton { background: #4ea3ff; color: #05111e; "
-            "border: none; border-radius: 4px; padding: 8px 20px; "
-            "font-size: 12px; font-weight: 600; }"
-            "QPushButton:hover { background: #6ab4ff; }"
+            f"QPushButton {{ background: {PALETTE['accent']}; color: {PALETTE['accent_fg']}; "
+            f"border: none; border-radius: 4px; padding: 8px 20px; "
+            f"font-size: 12px; font-weight: 600; }}"
+            f"QPushButton:hover {{ background: {PALETTE['accent_hover']}; }}"
         )
         close_btn.clicked.connect(d.accept)
         layout.addWidget(close_btn, alignment=_Qt.AlignRight)
@@ -1018,6 +1034,7 @@ class AutoTessellWindow:  # type: ignore[misc]
         v.addWidget(self._build_section_input_geometry())
         v.addWidget(self._build_section_preset())
         v.addWidget(self._build_section_engine())
+        v.addWidget(self._build_section_wildmesh_params())
         v.addWidget(self._build_section_quality())
         v.addWidget(self._build_section_preprocess())
         v.addWidget(self._build_section_surface_mesh())
@@ -1317,6 +1334,10 @@ class AutoTessellWindow:  # type: ignore[misc]
         combo.setCurrentIndex(default_idx)
         self._engine_combo = combo
         self._tier_combo = combo  # 호환
+        # 엔진 변경시 WildMesh 파라미터 패널 표시/숨김
+        combo.currentIndexChanged.connect(
+            lambda _idx: self._refresh_wildmesh_panel_visibility()
+        )
         v.addWidget(combo)
 
         # engine-legend — 도트 설명
@@ -1343,6 +1364,80 @@ class AutoTessellWindow:  # type: ignore[misc]
         lrow.addStretch()
         v.addWidget(legend)
         return f
+
+    def _build_section_wildmesh_params(self) -> object:  # pragma: no cover
+        """WildMesh 슬라이더 패널 + '⟲ 이전 값' 버튼. tier=wildmesh 선택시만 표시."""
+        from PySide6.QtWidgets import QHBoxLayout, QPushButton
+
+        from desktop.qt_app.widgets.wildmesh_param_panel import WildMeshParamPanel
+
+        f, v = self._section_frame("WildMesh 튜닝")
+        panel = WildMeshParamPanel()
+        panel.params_changed.connect(self._on_wildmesh_params_changed)
+        self._wildmesh_param_panel = panel
+        v.addWidget(panel)
+
+        # ⟲ 이전 값 버튼
+        revert_row = QHBoxLayout()
+        revert_row.addStretch()
+        revert_btn = QPushButton("⟲ 이전 값")
+        revert_btn.setToolTip("최근 변경 전 파라미터로 되돌리기")
+        revert_btn.setStyleSheet(
+            f"QPushButton {{ background: {PALETTE['bg_2']}; color: {PALETTE['text_1']}; "
+            f"border: 1px solid {PALETTE['line_2']}; border-radius: 3px; "
+            f"padding: 3px 10px; font-size: 11px; }} "
+            f"QPushButton:hover {{ border-color: {PALETTE['accent']}; color: {PALETTE['text_0']}; }} "
+            f"QPushButton:disabled {{ color: {PALETTE['text_3']}; }}"
+        )
+        revert_btn.setEnabled(False)
+        revert_btn.clicked.connect(self._on_revert_wildmesh_params)
+        self._param_revert_btn = revert_btn
+        revert_row.addWidget(revert_btn)
+        v.addLayout(revert_row)
+
+        self._wildmesh_param_frame = f
+        # 기본적으로는 tier=wildmesh 가 아닐 수 있으므로 show/hide는 엔진 선택 핸들러에서 제어
+        self._refresh_wildmesh_panel_visibility()
+        return f
+
+    def _refresh_wildmesh_panel_visibility(self) -> None:  # pragma: no cover
+        """tier 선택에 따라 wildmesh 패널 표시/숨김."""
+        if self._wildmesh_param_frame is None:
+            return
+        try:
+            tier = self._tier_combo_text().lower()
+        except Exception:
+            tier = "auto"
+        show = (tier == "wildmesh")
+        self._wildmesh_param_frame.setVisible(show)  # type: ignore[union-attr]
+
+    def _on_wildmesh_params_changed(self, params: dict) -> None:  # pragma: no cover
+        """슬라이더 변경시 revert 버튼 활성화 + param_history 적재."""
+        if self._param_revert_btn is not None:
+            try:
+                from desktop.qt_app import param_history
+
+                entries = param_history.load()
+                self._param_revert_btn.setEnabled(len(entries) >= 1)  # type: ignore[union-attr]
+            except Exception:
+                pass
+
+    def _on_revert_wildmesh_params(self) -> None:  # pragma: no cover
+        """이전 파라미터 스냅샷 복원."""
+        from desktop.qt_app import param_history
+
+        prev = param_history.pop_previous()
+        if prev is None:
+            self._log("[INFO] 이전 파라미터 스냅샷 없음")
+            if self._param_revert_btn is not None:
+                self._param_revert_btn.setEnabled(False)  # type: ignore[union-attr]
+            return
+        if self._wildmesh_param_panel is not None:
+            try:
+                self._wildmesh_param_panel.set_params(prev)  # type: ignore[union-attr]
+                self._log(f"[INFO] 이전 파라미터 복원: {prev}")
+            except Exception:
+                pass
 
     def _build_section_quality(self) -> object:  # pragma: no cover
         from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QWidget
@@ -1670,12 +1765,53 @@ class AutoTessellWindow:  # type: ignore[misc]
         if path:
             self.set_output_dir(path)
 
+    def _run_wildmesh_preflight_if_applicable(self) -> bool:  # pragma: no cover
+        """wildmesh_only 정책 활성시 입력 파일 preflight. 사용자 취소시 False."""
+        from desktop.qt_app import engine_policy as _pol
+
+        policy = _pol.load()
+        if policy.mode != "wildmesh_only":
+            return True  # 정책 off면 생략
+        if self._input_path is None:
+            return True
+
+        from desktop.qt_app.wildmesh_preflight import analyze, format_summary
+
+        report = analyze(self._input_path)
+        if not report.warnings:
+            return True  # 감지된 이슈 없음
+
+        # 경고 로그
+        for w in report.warnings:
+            level_tag = {"info": "INFO", "warn": "WARN", "danger": "ERR"}.get(w.level.value, "INFO")
+            self._log(f"[{level_tag}] preflight: {w.title} — {w.description}")
+
+        # DANGER 있으면 모달로 확인받음
+        if report.is_safe:
+            return True
+        from PySide6.QtWidgets import QMessageBox
+
+        summary = format_summary(report)
+        resp = QMessageBox.warning(
+            self._qmain,
+            "WildMesh-only 위험 경고",
+            f"WildMesh-only 모드에서 실행 전 위험 패턴이 감지됐습니다:\n\n{summary}\n\n"
+            "계속 진행하시겠습니까? (WildMesh가 실패하면 fallback 없음)",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        return resp == QMessageBox.Yes
+
     def _on_run_clicked(self) -> None:  # pragma: no cover
         if self._input_path is None:
             self._log("[WARN] 입력 파일이 없습니다 — 먼저 파일을 드롭하세요")
             return
         if self._output_dir is None:
             self._output_dir = self._input_path.parent / f"{self._input_path.stem}_case"
+
+        # wildmesh_only 모드 preflight — 위험 케이스 발견시 사용자 경고
+        if not self._run_wildmesh_preflight_if_applicable():
+            return  # 사용자가 cancel
 
         # 사이드바 surface mesh 파라미터 → 워커 전달
         element_size = _parse_float(
@@ -1693,6 +1829,20 @@ class AutoTessellWindow:  # type: ignore[misc]
         tier_params: dict[str, object] = {}
         if feature_angle is not None:
             tier_params["bl_feature_angle"] = feature_angle
+
+        # WildMesh 슬라이더 패널이 있고 tier=wildmesh면 현재 슬라이더값 병합
+        if (
+            tier_hint.lower() == "wildmesh"
+            and self._wildmesh_param_panel is not None
+        ):
+            try:
+                tier_params.update(self._wildmesh_param_panel.current_params())  # type: ignore[union-attr]
+                # 실행 직전 스냅샷 저장 (revert 용)
+                from desktop.qt_app import param_history
+
+                param_history.push(self._wildmesh_param_panel.current_params())  # type: ignore[union-attr]
+            except Exception:
+                pass
 
         self._log(
             f"[INFO] Running pipeline — {self._input_path.name} "
@@ -1717,6 +1867,23 @@ class AutoTessellWindow:  # type: ignore[misc]
                 # 히스토그램 초기화
                 if hasattr(q, "histogram"):
                     q.histogram.update_histograms()
+                # 셀 구성 바도 초기화 (이전 결과 잔존 방지)
+                if hasattr(q, "cell_comp_rows"):
+                    for _name, _row in q.cell_comp_rows.items():
+                        try:
+                            _row.set_value(0.0, "—")
+                        except Exception:
+                            pass
+                # Job 탭 KPI 라벨 초기화
+                if hasattr(self._right_column, "job_pane"):
+                    try:
+                        jp = self._right_column.job_pane
+                        for _lbl_name in ("kpi_cells", "kpi_hex", "kpi_ram", "kpi_elapsed"):
+                            _lbl = getattr(jp, _lbl_name, None)
+                            if _lbl is not None and hasattr(_lbl, "set_value"):
+                                _lbl.set_value("—")
+                    except Exception:
+                        pass
                 import time
                 self._quality_last_updated = time.strftime("%H:%M:%S")
                 if hasattr(q, "set_stale_label"):
@@ -1875,7 +2042,7 @@ class AutoTessellWindow:  # type: ignore[misc]
 
         close_btn = QPushButton("닫기")
         close_btn.setStyleSheet(
-            f"QPushButton {{ background: {PALETTE['accent']}; color: #05111e; "
+            f"QPushButton {{ background: {PALETTE['accent']}; color: {PALETTE['accent_fg']}; "
             f"border: none; border-radius: 5px; padding: 8px 20px; font-weight: 600; }}"
         )
         close_btn.clicked.connect(dlg.accept)

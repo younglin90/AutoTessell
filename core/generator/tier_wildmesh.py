@@ -49,8 +49,81 @@ except ImportError:
     _HAS_WILDMESHING = False
 
 
+# 파라미터 안전 범위 — 범위 밖은 clamp + warning log
+_PARAM_RANGES: dict[str, tuple[float, float]] = {
+    "epsilon":       (0.0001, 0.1),    # 너무 작으면 timeout, 너무 크면 형상 손상
+    "edge_length_r": (0.005, 0.2),     # 너무 작으면 OOM, 너무 크면 저해상도
+    "stop_quality":  (3.0, 100.0),     # fTetWild 내부 수렴 안정 범위
+    "max_its":       (10.0, 500.0),    # 10 미만 덜수렴, 500 초과 과부하
+}
+
+
+_TIMEOUT_MAX_SEC = 30 * 60  # 30분 상한 — 무한 대기 방지
+
+
+def _compute_timeout(quality_level: str, n_faces: int, params: dict[str, Any]) -> int:
+    """quality_level + face 수 기반 동적 timeout 계산. 사용자 override 지원.
+
+    공식:
+      draft:    60 + n_faces / 500
+      standard: 150 + n_faces / 300
+      fine:     400 + n_faces / 100
+
+    상한 30분. 사용자 `wildmesh_timeout` override는 clamp.
+    """
+    # 명시적 override
+    if "wildmesh_timeout" in params:
+        try:
+            override = int(params["wildmesh_timeout"])
+            return max(1, min(override, _TIMEOUT_MAX_SEC))
+        except (TypeError, ValueError):
+            pass
+
+    _BASE = {"draft": 60, "standard": 150, "fine": 400}
+    _DIVISOR = {"draft": 500, "standard": 300, "fine": 100}
+    base = _BASE.get(quality_level, 150)
+    divisor = _DIVISOR.get(quality_level, 300)
+    computed = int(base + max(0, n_faces) / divisor)
+    result = min(computed, _TIMEOUT_MAX_SEC)
+    logger.debug(
+        "wildmesh_timeout_computed",
+        quality_level=quality_level,
+        n_faces=n_faces,
+        computed_sec=result,
+        max_sec=_TIMEOUT_MAX_SEC,
+    )
+    return result
+
+
+def _clamp_param(name: str, value: float) -> float:
+    """파라미터를 안전 범위로 clamp. 범위 밖이면 warning log."""
+    lo, hi = _PARAM_RANGES[name]
+    if value < lo:
+        logger.warning(
+            "wildmesh_param_clamped",
+            param=name,
+            requested=value,
+            clamped_to=lo,
+            valid_range=[lo, hi],
+        )
+        return lo
+    if value > hi:
+        logger.warning(
+            "wildmesh_param_clamped",
+            param=name,
+            requested=value,
+            clamped_to=hi,
+            valid_range=[lo, hi],
+        )
+        return hi
+    return value
+
+
 def _get_quality_params(quality_level: str, params: dict[str, Any]) -> dict[str, Any]:
-    """quality_level에 따른 기본 파라미터를 반환하고 tier_specific_params로 오버라이드한다."""
+    """quality_level에 따른 기본 파라미터를 반환하고 tier_specific_params로 오버라이드한다.
+
+    외부 override 값은 _PARAM_RANGES로 clamp되어 fTetWild의 timeout/OOM/형상 손상을 방지한다.
+    """
     # epsilon 0.002 이하 → cube 꼭짓점 완벽 보존
     # epsilon 0.02 이상 → 모서리에서 1~2cm 이탈 (형상 변화 심함)
     _defaults: dict[str, dict[str, Any]] = {
@@ -59,13 +132,17 @@ def _get_quality_params(quality_level: str, params: dict[str, Any]) -> dict[str,
         "fine":     {"stop_quality": 5.0,  "max_its": 200, "epsilon": 0.0003, "edge_length_r": 0.02},
     }
     d = _defaults.get(quality_level, _defaults["standard"])
+    raw_stop = float(params.get("wildmesh_stop_quality",  d["stop_quality"]))
+    raw_max_its = int(params.get("wildmesh_max_its",      d["max_its"]))
+    raw_eps = float(params.get("wildmesh_epsilon",        d["epsilon"]))
+    raw_edge = float(params.get("wildmesh_edge_length_r",
+                                params.get("wildmesh_edge_length",
+                                           d["edge_length_r"])))
     return {
-        "stop_quality":  float(params.get("wildmesh_stop_quality",  d["stop_quality"])),
-        "max_its":       int(params.get("wildmesh_max_its",          d["max_its"])),
-        "epsilon":       float(params.get("wildmesh_epsilon",        d["epsilon"])),
-        "edge_length_r": float(params.get("wildmesh_edge_length_r",
-                                          params.get("wildmesh_edge_length",
-                                                     d["edge_length_r"]))),
+        "stop_quality":  _clamp_param("stop_quality", raw_stop),
+        "max_its":       int(_clamp_param("max_its", float(raw_max_its))),
+        "epsilon":       _clamp_param("epsilon", raw_eps),
+        "edge_length_r": _clamp_param("edge_length_r", raw_edge),
     }
 
 
@@ -221,6 +298,10 @@ class TierWildMeshGenerator:
 
         # 표면 로드 및 닫기
         surf: _trimesh.Trimesh = _trimesh.load(str(preprocessed_path), force="mesh")  # type: ignore[assignment]
+        # strict_watertight: 사용자가 off로 명시하면 기존처럼 경고만 (기본 on)
+        strict_watertight = str(
+            params.get("wildmesh_strict_watertight", "true")
+        ).lower() != "false"
         if not surf.is_watertight:
             logger.info("wildmesh_pre_close_open_surface")
             surf.fill_holes()
@@ -234,6 +315,14 @@ class TierWildMeshGenerator:
                 except Exception as e:  # noqa: BLE001
                     logger.warning("wildmesh_pre_close_pymeshfix_failed", error=str(e))
             if not surf.is_watertight:
+                if strict_watertight:
+                    raise RuntimeError(
+                        "WildMesh는 watertight surface를 요구합니다. "
+                        "fill_holes + pymeshfix 수리가 모두 실패했습니다. "
+                        "해결: (1) 표면 리메쉬 활성화 (L2), "
+                        "(2) AI fallback 활성화 (L3 MeshAnything), "
+                        "또는 (3) wildmesh_strict_watertight=false로 경고만 하고 진행."
+                    )
                 logger.warning("wildmesh_surface_still_open_proceeding")
 
         orig_surf = surf
@@ -248,12 +337,39 @@ class TierWildMeshGenerator:
             domain_box.apply_translation(box_center)
             domain_box.invert()
             compound = _trimesh.util.concatenate([surf, domain_box])
+
+            # Compound winding·watertight 검증 — fTetWild가 non-manifold 입력에서
+            # 예측 불가 메쉬를 생성하는 것을 방지.
+            try:
+                compound_watertight = bool(compound.is_watertight)
+                compound_winding = bool(compound.is_winding_consistent)
+            except Exception:
+                compound_watertight = False
+                compound_winding = False
+            if not (compound_watertight and compound_winding):
+                logger.warning(
+                    "wildmesh_external_compound_invalid",
+                    watertight=compound_watertight,
+                    winding=compound_winding,
+                    note="compound domain+body not manifold — fTetWild may fail",
+                )
+                if strict_watertight:
+                    raise RuntimeError(
+                        "External flow 도메인 박스와 물체 표면의 compound가 non-manifold입니다 "
+                        f"(watertight={compound_watertight}, winding={compound_winding}). "
+                        "물체 표면의 winding이 일관적이어야 하며, 물체가 도메인 내부에 완전히 "
+                        "포함되어야 합니다. "
+                        "해결: Internal flow로 변경하거나 wildmesh_strict_watertight=false."
+                    )
+
             vertices = np.asarray(compound.vertices, dtype=np.float64)
             faces = np.asarray(compound.faces, dtype=np.int32)
             logger.info(
                 "wildmesh_external_flow_compound",
                 body_faces=len(surf.faces),
                 domain_faces=len(domain_box.faces),
+                compound_watertight=compound_watertight,
+                compound_winding=compound_winding,
             )
         else:
             vertices = np.asarray(surf.vertices, dtype=np.float64)
@@ -270,8 +386,9 @@ class TierWildMeshGenerator:
         )
         tetra.set_log_level(6)
 
-        _TIMEOUT_SEC = {"draft": 60, "standard": 150, "fine": 400}
-        timeout_sec = int(params.get("wildmesh_timeout", _TIMEOUT_SEC.get(quality_level, 150)))
+        # 동적 timeout — 메쉬 크기 기반. 큰 메쉬일수록 비례 증가.
+        # 사용자 override 는 wildmesh_timeout 로 가능 (상한 30분).
+        timeout_sec = _compute_timeout(quality_level, int(len(faces)), params)
 
         def _tetrahedralize() -> tuple[Any, Any, Any]:
             tetra.set_mesh(vertices, faces)

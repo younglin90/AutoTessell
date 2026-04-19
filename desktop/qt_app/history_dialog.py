@@ -29,7 +29,8 @@ class HistoryDialog(QDialog):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("실행 이력")
-        self.setMinimumSize(960, 520)
+        # 표준 LARGE 다이얼로그 크기
+        self.setMinimumSize(960, 640)
         self.setStyleSheet(
             "QDialog { background: #0f1318; color: #e8ecf2; }"
             "QLabel { color: #b6bdc9; background: transparent; }"
