@@ -359,7 +359,7 @@ codex exec "docs/plans/next-steps-phase3-2026-04-19.md 를 읽고 Phase 1부터 
 <!-- 세션 끝나면 아래 채우기 -->
 
 - 시작 commit: `8a8c6d7`
-- 완료 commit: `미커밋 working tree (HEAD 8a8c6d7)`
+- 완료 commit: `b1e2771`
 - 최종 테스트: `185 passed, 8 skipped`
 - Baseline 개수: `13`
 - Compare Mode: `기본 구현 완료`
@@ -370,6 +370,6 @@ codex exec "docs/plans/next-steps-phase3-2026-04-19.md 를 읽고 Phase 1부터 
   - visual baseline `13_compare_dialog_two_cases.png` 추가.
 - 실기계 QA: `미수행`
 - 다음 세션 이월 항목:
-  - Phase 1의 태스크 단위 커밋 분리와 `git push origin master`.
+  - Phase 1의 push는 완료했지만, 기존 변경이 같은 파일에 여러 세션 분량으로 섞여 있어 태스크 단위 7개 커밋 분리는 수행하지 않고 단일 통합 커밋(`b1e2771`)으로 고정했다.
   - 실제 디스플레이/WSL X11에서 PyVistaQt Compare Mode 카메라 동기, 실제 polyMesh 로딩, KPI overlay 육안 검증.
   - Compare Mode의 실제 PyVista camera callback 기반 양방향 동기화 고도화.
