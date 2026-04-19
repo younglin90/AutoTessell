@@ -24,6 +24,8 @@ from PySide6.QtWidgets import (
 )
 
 from desktop.qt_app.batch import BatchJob, BatchSummary, JobStatus, make_parameter_sweep
+from desktop.qt_app.main_window import get_dialog_qss, get_table_qss
+from desktop.qt_app.widgets.dialog_mixin import EscDismissMixin
 
 _STATUS_COLORS = {
     JobStatus.PENDING: "#5a6270",
@@ -42,7 +44,7 @@ _STATUS_LABELS = {
 }
 
 
-class BatchDialog(QDialog):
+class BatchDialog(EscDismissMixin, QDialog):
     """배치 처리 다이얼로그.
 
     사용자 플로우:
@@ -57,17 +59,7 @@ class BatchDialog(QDialog):
         self.setWindowTitle("배치 처리")
         # 표준 LARGE 다이얼로그 크기 (main_window.DIALOG_LARGE)
         self.setMinimumSize(960, 640)
-        self.setStyleSheet(
-            "QDialog { background: #0f1318; color: #e8ecf2; }"
-            "QLabel { color: #b6bdc9; background: transparent; }"
-            "QLineEdit, QComboBox { background: #161a20; color: #e8ecf2; "
-            "border: 1px solid #323a46; border-radius: 4px; padding: 5px 8px; }"
-            "QPushButton { background: #21262d; color: #e8ecf2; "
-            "border: 1px solid #30363d; border-radius: 4px; "
-            "padding: 6px 12px; } "
-            "QPushButton:hover { background: #2d333b; border-color: #4ea3ff; } "
-            "QPushButton:disabled { color: #5a6270; background: #101318; }"
-        )
+        self.setStyleSheet(get_dialog_qss())
 
         self._jobs: list[BatchJob] = []
         self._running_idx: int = -1
@@ -115,17 +107,10 @@ class BatchDialog(QDialog):
         self.table.setHorizontalHeaderLabels([
             "파일", "프리셋", "출력", "상태", "시간(s)", "셀수",
         ])
-        self.table.setStyleSheet(
-            "QTableWidget { background: #0f1318; color: #e8ecf2; "
-            "gridline-color: #262c36; border: 1px solid #262c36; }"
-            "QHeaderView::section { background: #161a20; color: #b6bdc9; "
-            "border: none; border-right: 1px solid #262c36; "
-            "border-bottom: 1px solid #262c36; padding: 6px 8px; }"
-            "QTableWidget::item { padding: 4px 6px; }"
-            "QTableWidget::item:selected { background: #1c2129; color: #e8ecf2; }"
-        )
+        self.table.setStyleSheet(get_table_qss())
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.itemSelectionChanged.connect(self._on_selection_changed)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.Stretch)
         header.setSectionResizeMode(2, QHeaderView.Stretch)
@@ -141,9 +126,10 @@ class BatchDialog(QDialog):
         btn_sweep.clicked.connect(self._add_sweep)
         btn_row.addWidget(btn_sweep)
 
-        btn_remove = QPushButton("선택 제거")
-        btn_remove.clicked.connect(self._remove_selected)
-        btn_row.addWidget(btn_remove)
+        self.remove_btn = QPushButton("선택 제거")
+        self.remove_btn.setEnabled(False)
+        self.remove_btn.clicked.connect(self._remove_selected)
+        btn_row.addWidget(self.remove_btn)
 
         btn_clear = QPushButton("모두 제거")
         btn_clear.clicked.connect(self._clear_all)
@@ -335,6 +321,11 @@ class BatchDialog(QDialog):
                 del self._jobs[r]
         self._refresh_table()
 
+    def _on_selection_changed(self) -> None:
+        """선택된 job이 있을 때만 제거 버튼을 활성화한다."""
+        has_selection = bool(self.table.selectedIndexes())
+        self.remove_btn.setEnabled(has_selection and not self._cancel_requested)
+
     def _clear_all(self) -> None:
         if any(j.status == JobStatus.RUNNING for j in self._jobs):
             QMessageBox.warning(self, "실행 중", "실행 중인 job이 있어 제거할 수 없습니다.")
@@ -363,6 +354,7 @@ class BatchDialog(QDialog):
             sum(1 for j in self._jobs
                 if j.status in (JobStatus.SUCCESS, JobStatus.FAILED, JobStatus.CANCELLED))
         )
+        self._on_selection_changed()
 
     def _update_row(self, idx: int) -> None:
         job = self._jobs[idx]

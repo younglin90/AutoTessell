@@ -22,6 +22,9 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from desktop.qt_app.main_window import get_dialog_qss
+from desktop.qt_app.widgets.dialog_mixin import EscDismissMixin
+
 
 @dataclass
 class RecoveryAction:
@@ -112,7 +115,7 @@ def classify_error(error_message: str) -> tuple[str, list[RecoveryAction]] | Non
     return None
 
 
-class ErrorRecoveryDialog(QDialog):
+class ErrorRecoveryDialog(EscDismissMixin, QDialog):
     """파이프라인 실패 시 사용자에게 복구 옵션을 제공하는 모달."""
 
     def __init__(
@@ -127,9 +130,7 @@ class ErrorRecoveryDialog(QDialog):
         self.setWindowTitle(title)
         # 표준 MEDIUM 다이얼로그 크기 (main_window.DIALOG_MEDIUM)
         self.setMinimumSize(720, 520)
-        self.setStyleSheet(
-            "QDialog { background: #0f1318; color: #e8ecf2; }"
-        )
+        self.setStyleSheet(get_dialog_qss())
 
         self.chosen_action: str | None = None
 

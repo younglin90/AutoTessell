@@ -46,6 +46,41 @@ DIALOG_MEDIUM = (720, 520)
 DIALOG_LARGE = (960, 640)
 
 
+def get_dialog_qss() -> str:
+    """모든 QDialog 공통 스타일시트 — PALETTE 기반."""
+    return (
+        f"QDialog {{ background: {PALETTE['dialog_bg']}; "
+        f"color: {PALETTE['text_0']}; }}"
+        f"QLabel {{ color: {PALETTE['text_1']}; background: transparent; }}"
+        f"QLineEdit, QComboBox {{ background: {PALETTE['bg_2']}; "
+        f"color: {PALETTE['text_0']}; border: 1px solid {PALETTE['line_2']}; "
+        f"border-radius: 4px; padding: 5px 8px; }}"
+        f"QPushButton {{ background: {PALETTE['bg_3']}; color: {PALETTE['text_0']}; "
+        f"border: 1px solid {PALETTE['line_2']}; border-radius: 4px; "
+        f"padding: 6px 12px; }}"
+        f"QPushButton:hover {{ background: {PALETTE['bg_4']}; "
+        f"border-color: {PALETTE['accent']}; }}"
+        f"QPushButton:disabled {{ color: {PALETTE['text_3']}; "
+        f"background: {PALETTE['bg_1']}; }}"
+    )
+
+
+def get_table_qss() -> str:
+    """QTableWidget 공통 스타일시트."""
+    return (
+        f"QTableWidget {{ background: {PALETTE['dialog_bg']}; "
+        f"color: {PALETTE['text_0']}; gridline-color: {PALETTE['line_1']}; "
+        f"border: 1px solid {PALETTE['line_1']}; }}"
+        f"QHeaderView::section {{ background: {PALETTE['bg_2']}; "
+        f"color: {PALETTE['text_1']}; border: none; "
+        f"border-right: 1px solid {PALETTE['line_1']}; "
+        f"border-bottom: 1px solid {PALETTE['line_1']}; padding: 6px 8px; }}"
+        f"QTableWidget::item {{ padding: 4px 6px; }}"
+        f"QTableWidget::item:selected {{ background: {PALETTE['bg_3']}; "
+        f"color: {PALETTE['text_0']}; }}"
+    )
+
+
 # ═════════════════════════════════════════════════════════════════════════════
 # 글로벌 QSS 스타일시트
 # ═════════════════════════════════════════════════════════════════════════════
@@ -743,6 +778,13 @@ class AutoTessellWindow:  # type: ignore[misc]
         dlg = HistoryDialog(self._qmain)
         dlg.exec()
 
+    def _on_open_compare_dialog(self) -> None:  # pragma: no cover
+        """도구 → 메시 비교 메뉴 핸들러."""
+        from desktop.qt_app.compare_dialog import CompareDialog
+
+        dlg = CompareDialog(self._qmain)
+        dlg.exec()
+
     def _on_set_engine_policy(self, mode: str) -> None:  # pragma: no cover
         """엔진 정책 메뉴 → 모드 전환 + 영속 저장 + 배너 갱신."""
         from desktop.qt_app import engine_policy
@@ -750,6 +792,7 @@ class AutoTessellWindow:  # type: ignore[misc]
         policy = engine_policy.set_mode(mode)
         self._engine_policy = policy
         self._log(f"[INFO] 엔진 정책: {mode}")
+        self._rebuild_engine_combo_model()
 
         # 체크마크 갱신
         if hasattr(self, "_engine_policy_actions"):
@@ -759,27 +802,29 @@ class AutoTessellWindow:  # type: ignore[misc]
                 except Exception:
                     pass
 
-        # 알림 + 재시작 안내 (콤보박스 재구성 필요)
+        # 알림
         from PySide6.QtWidgets import QMessageBox
 
         QMessageBox.information(
             self._qmain, "엔진 정책 변경",
             f"정책이 '{mode}'로 변경되었습니다.\n\n"
             f"새 정책은 다음 파이프라인 실행부터 적용됩니다.\n"
-            f"GUI 엔진 드롭다운은 새 프로젝트 생성 또는 재시작시 갱신됩니다.",
+            f"GUI 엔진 드롭다운도 즉시 갱신되었습니다.",
         )
 
     def _show_shortcuts_dialog(self) -> None:  # pragma: no cover
         """키보드 단축키 전체 맵 표시."""
         from PySide6.QtWidgets import QDialog, QLabel, QVBoxLayout
 
-        d = QDialog(self._qmain)
+        from desktop.qt_app.widgets.dialog_mixin import EscDismissMixin
+
+        class _ShortcutDialog(EscDismissMixin, QDialog):
+            pass
+
+        d = _ShortcutDialog(self._qmain)
         d.setWindowTitle("키보드 단축키")
         d.setMinimumSize(*DIALOG_SMALL)
-        d.setStyleSheet(
-            f"QDialog {{ background: {PALETTE['dialog_bg']}; color: {PALETTE['text_0']}; }}"
-            f"QLabel {{ color: {PALETTE['text_0']}; background: transparent; }}"
-        )
+        d.setStyleSheet(get_dialog_qss())
         layout = QVBoxLayout(d)
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(8)
@@ -927,6 +972,13 @@ class AutoTessellWindow:  # type: ignore[misc]
         act_history.setShortcut("Ctrl+H")
         act_history.triggered.connect(self._on_open_history_dialog)
         view_menu.addAction(act_history)
+
+        # ── 도구 메뉴 ────────────────────────────────────
+        tools_menu = mb.addMenu("도구")
+        act_compare = QAction("메시 비교…", self._qmain)
+        act_compare.setShortcut("Ctrl+D")
+        act_compare.triggered.connect(self._on_open_compare_dialog)
+        tools_menu.addAction(act_compare)
 
         # ── 엔진 정책 메뉴 ────────────────────────────────
         engine_menu = mb.addMenu("엔진 정책")
@@ -1280,13 +1332,87 @@ class AutoTessellWindow:  # type: ignore[misc]
             except Exception:
                 pass
 
+        if (
+            preset.tier_hint == "wildmesh"
+            and self._wildmesh_param_panel is not None
+            and preset.params
+        ):
+            try:
+                wm_params = {
+                    k: v for k, v in preset.params.items()
+                    if k.startswith("wildmesh_")
+                }
+                if wm_params:
+                    self._wildmesh_param_panel.set_params(wm_params)  # type: ignore[union-attr]
+            except Exception:
+                pass
+
         self._preset_desc_label.setText(preset.description)
         self._log(f"[INFO] 프리셋 적용: {preset.name}")
 
-    def _build_section_engine(self) -> object:  # pragma: no cover
+    def _make_engine_combo_model(self, parent=None) -> tuple[object, int]:  # pragma: no cover
         from PySide6.QtCore import Qt
         from PySide6.QtGui import QStandardItem, QStandardItemModel
-        from PySide6.QtWidgets import QComboBox, QFrame, QHBoxLayout, QLabel, QWidget
+
+        from desktop.qt_app import engine_policy
+
+        policy = engine_policy.load()
+        self._engine_policy = policy
+
+        model = QStandardItemModel(parent)
+        default_idx = 1  # 기본 auto
+        for group, items in self.ENGINE_GROUPS:
+            header = QStandardItem(f"── {group} ──")
+            header.setFlags(Qt.NoItemFlags)
+            header.setForeground(_qcolor(PALETTE["text_3"]))
+            model.appendRow(header)
+            for value, display, status in items:
+                marker = {"ok": "● 설치됨", "off": "○ 미설치", "warn": "⚠ 설정 필요"}.get(status, "")
+                canonical = _resolve_engine_canonical(value)
+                blocked = not policy.is_allowed(canonical)
+                if blocked:
+                    marker = "🔒 정책 차단"
+                item = QStandardItem(f"{display}  {marker}")
+                item.setData(value, Qt.UserRole)
+                if status == "off" or blocked:
+                    item.setEnabled(False)
+                if policy.default_tier != "auto" and canonical == policy.default_tier:
+                    default_idx = model.rowCount()
+                model.appendRow(item)
+        return model, default_idx
+
+    def _rebuild_engine_combo_model(self) -> None:  # pragma: no cover
+        """현재 엔진 정책 기준으로 엔진 콤보 모델을 다시 만든다."""
+        from PySide6.QtCore import Qt
+
+        if self._engine_combo is None:
+            return
+        try:
+            current = self._engine_combo.currentData()  # type: ignore[union-attr]
+        except Exception:
+            current = None
+
+        model, default_idx = self._make_engine_combo_model(self._engine_combo)
+        self._engine_combo.setModel(model)  # type: ignore[union-attr]
+
+        restored_idx = -1
+        if current is not None:
+            try:
+                for i in range(model.rowCount()):  # type: ignore[attr-defined]
+                    item = model.item(i)  # type: ignore[attr-defined]
+                    if item and item.data(Qt.UserRole) == current and item.isEnabled():
+                        restored_idx = i
+                        break
+            except Exception:
+                restored_idx = -1
+
+        self._engine_combo.setCurrentIndex(  # type: ignore[union-attr]
+            restored_idx if restored_idx >= 0 else default_idx
+        )
+        self._refresh_wildmesh_panel_visibility()
+
+    def _build_section_engine(self) -> object:  # pragma: no cover
+        from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QWidget
 
         from desktop.qt_app import engine_policy
 
@@ -1307,29 +1433,7 @@ class AutoTessellWindow:  # type: ignore[misc]
             v.addWidget(banner)
 
         combo = QComboBox()
-        model = QStandardItemModel(combo)
-        default_idx = 1  # 기본 auto
-        row_idx = 0
-        for group, items in self.ENGINE_GROUPS:
-            header = QStandardItem(f"── {group} ──")
-            header.setFlags(Qt.NoItemFlags)
-            header.setForeground(_qcolor(PALETTE["text_3"]))
-            model.appendRow(header); row_idx += 1
-            for value, display, status in items:
-                marker = {"ok": "● 설치됨", "off": "○ 미설치", "warn": "⚠ 설정 필요"}.get(status, "")
-                # 정책으로 차단된 엔진은 회색
-                canonical = _resolve_engine_canonical(value)
-                blocked = not policy.is_allowed(canonical)
-                if blocked:
-                    marker = "🔒 정책 차단"
-                item = QStandardItem(f"{display}  {marker}")
-                item.setData(value)
-                if status == "off" or blocked:
-                    item.setEnabled(False)
-                model.appendRow(item); row_idx += 1
-                # 정책의 default_tier와 매치되면 초기 선택 인덱스
-                if policy.default_tier != "auto" and canonical == policy.default_tier:
-                    default_idx = row_idx
+        model, default_idx = self._make_engine_combo_model(combo)
         combo.setModel(model)
         combo.setCurrentIndex(default_idx)
         self._engine_combo = combo
@@ -1961,6 +2065,10 @@ class AutoTessellWindow:  # type: ignore[misc]
     def _on_tier_node_clicked(self, index: int) -> None:  # pragma: no cover
         """Tier 노드 클릭 → 해당 Tier 파라미터 팝업 표시."""
         from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QTextBrowser, QPushButton
+        from desktop.qt_app.widgets.dialog_mixin import EscDismissMixin
+
+        class _TierParamDialog(EscDismissMixin, QDialog):
+            pass
 
         # Tier 이름/엔진 정보 (TierPipelineStrip 공개 API 경유)
         info = None
@@ -2010,12 +2118,10 @@ class AutoTessellWindow:  # type: ignore[misc]
                 param_lines.append(f"  {param_label}: {default}")
 
         # 팝업 다이얼로그
-        dlg = QDialog(self._qmain)
+        dlg = _TierParamDialog(self._qmain)
         dlg.setWindowTitle(f"Tier {index} 파라미터 (읽기 전용)")
         dlg.setMinimumSize(420, 340)
-        dlg.setStyleSheet(
-            f"QDialog {{ background: {PALETTE['bg_2']}; color: {PALETTE['text_0']}; }}"
-        )
+        dlg.setStyleSheet(get_dialog_qss())
         v = QVBoxLayout(dlg)
         v.setContentsMargins(16, 16, 16, 16)
         v.setSpacing(10)

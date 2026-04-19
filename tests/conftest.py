@@ -13,6 +13,15 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 BENCHMARKS_DIR = Path(__file__).parent / "benchmarks"
 
 
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--skip-visual",
+        action="store_true",
+        default=False,
+        help="skip GUI screenshot regression tests",
+    )
+
+
 def pytest_collection_modifyitems(items: list) -> None:
     """오프스크린/headless 환경에서 requires_display 마크 테스트를 자동 skip."""
     is_offscreen = os.environ.get("QT_QPA_PLATFORM", "") == "offscreen"
@@ -26,6 +35,8 @@ def pytest_collection_modifyitems(items: list) -> None:
     for item in items:
         if item.get_closest_marker("requires_display"):
             item.add_marker(skip_marker)
+        if item.get_closest_marker("visual") and item.config.getoption("--skip-visual"):
+            item.add_marker(pytest.mark.skip(reason="visual tests skipped by --skip-visual"))
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -40,6 +51,23 @@ def _qt_application():
         yield app
     except Exception:
         yield None
+
+
+@pytest.fixture(autouse=True)
+def _force_static_viewer_in_offscreen(monkeypatch: pytest.MonkeyPatch) -> None:
+    """offscreen Qt에서는 PyVistaQt QtInteractor 대신 정적 뷰어를 사용한다.
+
+    PyVistaQt의 VTK/Qt 렌더 윈도우는 일부 headless 환경에서 Python 예외가 아니라
+    native abort를 일으킬 수 있어 GUI 테스트 프로세스 전체를 종료한다.
+    """
+    if os.environ.get("QT_QPA_PLATFORM") != "offscreen":
+        return
+    try:
+        from desktop.qt_app import mesh_viewer
+
+        monkeypatch.setattr(mesh_viewer, "PYVISTAQT_AVAILABLE", False, raising=False)
+    except Exception:
+        pass
 
 
 @pytest.fixture(scope="session")

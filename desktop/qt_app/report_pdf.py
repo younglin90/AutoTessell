@@ -162,10 +162,11 @@ def _write_page(pdf, data: ReportData) -> None:
             mcolor = "#5a6270"
         else:
             passed = (val == 0) if (thr == 0) else (val < thr)
-            mark = "✓" if passed else "✗"
+            mark = "[OK]" if passed else "[FAIL]"
             mcolor = "#22c55e" if passed else "#ef4444"
-        ax_pass.text(0.0, y, mark, fontsize=12, color=mcolor, fontweight="bold")
-        ax_pass.text(0.04, y, label, fontsize=9, color="#0d1117")
+        ax_pass.text(0.0, y, mark, fontsize=9, color=mcolor, fontweight="bold",
+                     family="monospace")
+        ax_pass.text(0.08, y, label, fontsize=9, color="#0d1117")
         if val is not None:
             ax_pass.text(0.7, y, f"실측: {val}", fontsize=9, color="#5a6270",
                          family="monospace")

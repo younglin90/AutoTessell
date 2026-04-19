@@ -2332,6 +2332,38 @@ def test_report_pdf_generation(tmp_path) -> None:
     assert out.stat().st_size > 5000  # 최소 5KB (matplotlib PDF는 보통 20KB+)
 
 
+def test_report_pdf_no_glyph_missing_warning(tmp_path) -> None:
+    """PDF 리포트 생성 중 glyph missing 경고가 없어야 한다."""
+    import warnings
+
+    from desktop.qt_app.report_pdf import ReportData, write_pdf, _MPL_AVAILABLE
+
+    if not _MPL_AVAILABLE:
+        pytest.skip("matplotlib 미설치")
+
+    data = ReportData(
+        input_file="/path/to/sphere.stl",
+        output_dir="/tmp/case",
+        tier_used="tier_wildmesh",
+        quality_level="draft",
+        total_time_seconds=1.5,
+        n_cells=1000,
+        n_points=500,
+        max_aspect_ratio=2.0,
+        max_skewness=0.4,
+        max_non_orthogonality=20.0,
+        negative_volumes=0,
+    )
+    out = tmp_path / "report.pdf"
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        ok = write_pdf(data, out)
+
+    assert ok is True
+    glyph_warnings = [w for w in caught if "Glyph" in str(w.message)]
+    assert glyph_warnings == []
+
+
 def test_report_pdf_verdict_logic() -> None:
     """_compute_verdict: 임계값 기반 PASS/WARN/FAIL."""
     from desktop.qt_app.report_pdf import ReportData, _compute_verdict
@@ -2793,3 +2825,447 @@ def test_pipeline_worker_requestInterruption_emits_finished(tmp_path) -> None:
         if worker.isRunning():  # type: ignore[attr-defined]
             worker.requestInterruption()  # type: ignore[attr-defined]
             worker.wait(5_000)  # type: ignore[attr-defined]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Codex GUI Verification Handoff — interaction, QSS, signal, modal tests
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_engine_policy_switch_rebuilds_dropdown(monkeypatch, tmp_path) -> None:
+    """정책 변경시 드롭다운 disabled 아이템 수가 바뀌어야 한다."""
+    from desktop.qt_app import engine_policy
+    from desktop.qt_app import mesh_viewer
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    monkeypatch.setattr(mesh_viewer, "PYVISTAQT_AVAILABLE", False)
+    monkeypatch.setattr(engine_policy, "_POLICY_DIR", tmp_path / "x")
+    monkeypatch.setattr(engine_policy, "_POLICY_FILE", tmp_path / "x" / "p.json")
+    monkeypatch.delenv("AUTOTESSELL_ENGINE_POLICY", raising=False)
+
+    win = AutoTessellWindow()
+    win._build()
+    assert win._engine_combo is not None
+
+    def _count_enabled() -> int:
+        model = win._engine_combo.model()
+        enabled = 0
+        for i in range(model.rowCount()):
+            item = model.item(i)
+            if item and item.isEnabled():
+                enabled += 1
+        return enabled
+
+    before = _count_enabled()
+    engine_policy.set_mode("wildmesh_only")
+    win._rebuild_engine_combo_model()
+    after = _count_enabled()
+
+    assert after < before
+    assert after >= 2
+
+
+def test_preset_wildmesh_fine_syncs_slider_panel(monkeypatch, tmp_path) -> None:
+    """WildMesh Fine 프리셋 선택 → 슬라이더 값이 프리셋 params와 동기화된다."""
+    from desktop.qt_app import engine_policy
+    from desktop.qt_app import mesh_viewer
+    from desktop.qt_app.main_window import AutoTessellWindow
+    from desktop.qt_app.presets import get
+
+    monkeypatch.setattr(mesh_viewer, "PYVISTAQT_AVAILABLE", False)
+    monkeypatch.setattr(engine_policy, "_POLICY_DIR", tmp_path / "ep")
+    monkeypatch.setattr(engine_policy, "_POLICY_FILE", tmp_path / "ep" / "p.json")
+    monkeypatch.delenv("AUTOTESSELL_ENGINE_POLICY", raising=False)
+
+    win = AutoTessellWindow()
+    win._build()
+
+    preset = get("WildMesh Fine (Feature Preserving)")
+    assert preset is not None
+
+    for i in range(win._preset_combo.count()):
+        if win._preset_combo.itemData(i) == preset.name:
+            win._preset_combo.setCurrentIndex(i)
+            break
+
+    cur = win._wildmesh_param_panel.current_params()
+    assert abs(cur["wildmesh_epsilon"] - 0.0003) < 1e-4
+    assert abs(cur["wildmesh_edge_length_r"] - 0.02) < 1e-3
+    assert int(cur["wildmesh_stop_quality"]) == 5
+
+
+def test_signal_connections_completeness(monkeypatch) -> None:
+    """최근 위젯 주요 signal이 실제 receiver를 갖고 있어야 한다."""
+    from desktop.qt_app import mesh_viewer
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    monkeypatch.setattr(mesh_viewer, "PYVISTAQT_AVAILABLE", False)
+    win = AutoTessellWindow()
+    win._build()
+
+    def _receivers(obj, signal) -> int:
+        sig = repr(signal).split("SignalInstance ", 1)[1].split(" at ", 1)[0]
+        return obj.receivers(f"2{sig}")
+
+    checks = [
+        ("_drop_label", "clicked", 1),
+        ("_drop_label", "file_dropped", 1),
+        ("_tier_pipeline", "tier_clicked", 1),
+        ("_tier_pipeline", "resume_requested", 1),
+        ("_tier_pipeline", "stop_requested", 1),
+        ("_tier_pipeline", "rerun_requested", 1),
+        ("_wildmesh_param_panel", "params_changed", 1),
+    ]
+    for attr, sig_name, min_r in checks:
+        obj = getattr(win, attr, None)
+        assert obj is not None, f"{attr} 없음"
+        signal = getattr(obj, sig_name, None)
+        assert signal is not None, f"{attr}.{sig_name} 없음"
+        receivers = _receivers(obj, signal)
+        assert receivers >= min_r, (
+            f"{attr}.{sig_name} receivers={receivers} < {min_r}"
+        )
+
+
+def test_export_pane_signal_wired(monkeypatch) -> None:
+    """ExportPane.save_requested → main_window handler 연결 확인."""
+    from desktop.qt_app import mesh_viewer
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    monkeypatch.setattr(mesh_viewer, "PYVISTAQT_AVAILABLE", False)
+    win = AutoTessellWindow()
+    win._build()
+    assert win._right_column is not None
+    pane = win._right_column.export_pane
+    sig = repr(pane.save_requested).split("SignalInstance ", 1)[1].split(" at ", 1)[0]
+    receivers = pane.receivers(f"2{sig}")
+    assert receivers >= 1
+
+
+def test_dialog_qss_uses_palette() -> None:
+    """공통 다이얼로그 QSS는 PALETTE 기반으로 생성된다."""
+    import inspect
+
+    from desktop.qt_app.main_window import PALETTE, get_dialog_qss, get_table_qss
+
+    qss = get_dialog_qss()
+    table_qss = get_table_qss()
+    assert PALETTE["dialog_bg"] in qss
+    assert PALETTE["text_0"] in qss
+    assert PALETTE["line_1"] in table_qss
+
+    src = inspect.getsource(get_dialog_qss) + inspect.getsource(get_table_qss)
+    assert "#0f1318" not in src
+    assert "#e8ecf2" not in src
+
+
+def test_esc_dismisses_batch_dialog() -> None:
+    """Esc 키 → BatchDialog reject 호출."""
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
+    from desktop.qt_app.batch_dialog import BatchDialog
+
+    d = BatchDialog()
+    rejected = []
+    d.rejected.connect(lambda: rejected.append(True))
+
+    event = QKeyEvent(QEvent.KeyPress, Qt.Key_Escape, Qt.NoModifier)
+    d.keyPressEvent(event)
+    assert rejected == [True]
+
+
+def test_esc_dismisses_history_and_error_dialogs() -> None:
+    """Esc 키 공통 mixin이 이력/에러 복구 다이얼로그에도 적용된다."""
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
+    from desktop.qt_app.error_recovery import ErrorRecoveryDialog
+    from desktop.qt_app.history_dialog import HistoryDialog
+
+    for dialog in (HistoryDialog(), ErrorRecoveryDialog()):
+        event = QKeyEvent(QEvent.KeyPress, Qt.Key_Escape, Qt.NoModifier)
+        rejected = []
+        dialog.rejected.connect(lambda: rejected.append(True))
+        dialog.keyPressEvent(event)
+        assert rejected == [True]
+
+
+def test_engine_policy_wildmesh_only_marks_blocked_items(monkeypatch, tmp_path) -> None:
+    """wildmesh_only 모델에는 wildmesh 외 엔진에 정책 차단 마커가 있어야 한다."""
+    from desktop.qt_app import engine_policy
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    monkeypatch.setattr(engine_policy, "_POLICY_DIR", tmp_path / "ep")
+    monkeypatch.setattr(engine_policy, "_POLICY_FILE", tmp_path / "ep" / "p.json")
+    monkeypatch.delenv("AUTOTESSELL_ENGINE_POLICY", raising=False)
+    engine_policy.set_mode("wildmesh_only")
+
+    win = AutoTessellWindow()
+    model, _ = win._make_engine_combo_model()
+    labels = [
+        model.item(i).text()
+        for i in range(model.rowCount())
+        if model.item(i) is not None
+    ]
+    assert any("정책 차단" in label for label in labels)
+    assert any("WildMesh" in label and "정책 차단" not in label for label in labels)
+
+
+def test_engine_policy_all_mode_has_no_blocked_items(monkeypatch, tmp_path) -> None:
+    """all 모드 모델에는 정책 차단 마커가 없어야 한다."""
+    from desktop.qt_app import engine_policy
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    monkeypatch.setattr(engine_policy, "_POLICY_DIR", tmp_path / "ep")
+    monkeypatch.setattr(engine_policy, "_POLICY_FILE", tmp_path / "ep" / "p.json")
+    monkeypatch.delenv("AUTOTESSELL_ENGINE_POLICY", raising=False)
+    engine_policy.set_mode("all")
+
+    win = AutoTessellWindow()
+    model, _ = win._make_engine_combo_model()
+    labels = [
+        model.item(i).text()
+        for i in range(model.rowCount())
+        if model.item(i) is not None
+    ]
+    assert all("정책 차단" not in label for label in labels)
+
+
+def test_wildmesh_draft_preset_syncs_slider_panel(monkeypatch, tmp_path) -> None:
+    """WildMesh Draft 프리셋도 슬라이더 패널에 정확히 적용된다."""
+    from desktop.qt_app import engine_policy, mesh_viewer
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    monkeypatch.setattr(mesh_viewer, "PYVISTAQT_AVAILABLE", False)
+    monkeypatch.setattr(engine_policy, "_POLICY_DIR", tmp_path / "ep")
+    monkeypatch.setattr(engine_policy, "_POLICY_FILE", tmp_path / "ep" / "p.json")
+    monkeypatch.delenv("AUTOTESSELL_ENGINE_POLICY", raising=False)
+
+    win = AutoTessellWindow()
+    win._build()
+    idx = win._preset_combo.findData("WildMesh Draft")
+    assert idx >= 0
+    win._preset_combo.setCurrentIndex(idx)
+
+    cur = win._wildmesh_param_panel.current_params()
+    assert abs(cur["wildmesh_epsilon"] - 0.002) < 1e-4
+    assert abs(cur["wildmesh_edge_length_r"] - 0.06) < 1e-3
+    assert int(cur["wildmesh_stop_quality"]) == 20
+
+
+def test_wildmesh_standard_preset_syncs_slider_panel(monkeypatch, tmp_path) -> None:
+    """WildMesh Standard 프리셋도 슬라이더 패널에 정확히 적용된다."""
+    from desktop.qt_app import engine_policy, mesh_viewer
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    monkeypatch.setattr(mesh_viewer, "PYVISTAQT_AVAILABLE", False)
+    monkeypatch.setattr(engine_policy, "_POLICY_DIR", tmp_path / "ep")
+    monkeypatch.setattr(engine_policy, "_POLICY_FILE", tmp_path / "ep" / "p.json")
+    monkeypatch.delenv("AUTOTESSELL_ENGINE_POLICY", raising=False)
+
+    win = AutoTessellWindow()
+    win._build()
+    idx = win._preset_combo.findData("WildMesh Standard")
+    assert idx >= 0
+    win._preset_combo.setCurrentIndex(idx)
+
+    cur = win._wildmesh_param_panel.current_params()
+    assert abs(cur["wildmesh_epsilon"] - 0.001) < 1e-4
+    assert abs(cur["wildmesh_edge_length_r"] - 0.04) < 1e-3
+    assert int(cur["wildmesh_stop_quality"]) == 10
+
+
+def test_dialog_classes_use_esc_mixin() -> None:
+    """커스텀 다이얼로그 클래스가 EscDismissMixin을 상속한다."""
+    from desktop.qt_app.batch_dialog import BatchDialog
+    from desktop.qt_app.error_recovery import ErrorRecoveryDialog
+    from desktop.qt_app.history_dialog import HistoryDialog
+    from desktop.qt_app.widgets.dialog_mixin import EscDismissMixin
+
+    assert issubclass(BatchDialog, EscDismissMixin)
+    assert issubclass(HistoryDialog, EscDismissMixin)
+    assert issubclass(ErrorRecoveryDialog, EscDismissMixin)
+
+
+def test_batch_dialog_uses_common_qss_helpers() -> None:
+    """BatchDialog 루트/테이블 스타일은 공통 QSS 헬퍼 결과를 사용한다."""
+    from desktop.qt_app.batch_dialog import BatchDialog
+    from desktop.qt_app.main_window import get_dialog_qss, get_table_qss
+
+    dlg = BatchDialog()
+    assert dlg.styleSheet() == get_dialog_qss()
+    assert dlg.table.styleSheet() == get_table_qss()
+
+
+def test_history_dialog_uses_common_qss_helpers(tmp_path, monkeypatch) -> None:
+    """HistoryDialog 루트/테이블 스타일은 공통 QSS 헬퍼 결과를 사용한다."""
+    from desktop.qt_app import history
+    from desktop.qt_app.history_dialog import HistoryDialog
+    from desktop.qt_app.main_window import get_dialog_qss, get_table_qss
+
+    monkeypatch.setattr(history, "_HISTORY_DIR", tmp_path / "x")
+    monkeypatch.setattr(history, "_HISTORY_FILE", tmp_path / "x" / "h.json")
+
+    dlg = HistoryDialog()
+    assert dlg.styleSheet() == get_dialog_qss()
+    assert dlg.table.styleSheet() == get_table_qss()
+
+
+def test_error_recovery_dialog_uses_common_dialog_qss() -> None:
+    """ErrorRecoveryDialog 루트 스타일은 공통 다이얼로그 QSS를 사용한다."""
+    from desktop.qt_app.error_recovery import ErrorRecoveryDialog
+    from desktop.qt_app.main_window import get_dialog_qss
+
+    dlg = ErrorRecoveryDialog()
+    assert dlg.styleSheet() == get_dialog_qss()
+
+
+def test_sidebar_uses_scroll_area() -> None:
+    """사이드바는 작은 viewport에서도 잘리지 않도록 QScrollArea를 사용한다."""
+    from PySide6.QtWidgets import QScrollArea
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    sidebar = win._build_sidebar()
+    assert isinstance(sidebar, QScrollArea)
+    assert sidebar.widgetResizable() is True
+    assert sidebar.widget() is not None
+
+
+def test_pipeline_worker_signals_wired_in_main_window_source() -> None:
+    """main window 실행 경로가 PipelineWorker 주요 signal을 연결한다."""
+    import inspect
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    src = inspect.getsource(AutoTessellWindow._on_run_clicked)
+    for signal_name in (
+        "progress.connect",
+        "progress_percent.connect",
+        "quality_update.connect",
+        "intermediate_ready.connect",
+        "finished.connect",
+    ):
+        assert signal_name in src, f"{signal_name} 연결 없음"
+
+
+def test_history_dialog_filter_signals_wired(tmp_path, monkeypatch) -> None:
+    """HistoryDialog 필터 combo/search edit signal이 refresh에 연결돼야 한다."""
+    from desktop.qt_app import history
+    from desktop.qt_app.history_dialog import HistoryDialog
+
+    monkeypatch.setattr(history, "_HISTORY_DIR", tmp_path / "x")
+    monkeypatch.setattr(history, "_HISTORY_FILE", tmp_path / "x" / "h.json")
+
+    dlg = HistoryDialog()
+
+    combo_sig = repr(dlg.status_combo.currentIndexChanged).split(
+        "SignalInstance ", 1
+    )[1].split(" at ", 1)[0]
+    search_sig = repr(dlg.search_edit.textChanged).split(
+        "SignalInstance ", 1
+    )[1].split(" at ", 1)[0]
+    assert dlg.status_combo.receivers(f"2{combo_sig}") >= 1
+    assert dlg.search_edit.receivers(f"2{search_sig}") >= 1
+
+
+def test_batch_dialog_selection_signal_updates_remove_button(tmp_path) -> None:
+    """BatchDialog table selection changed → 선택 제거 버튼 상태 갱신."""
+    from pathlib import Path
+    from desktop.qt_app.batch import BatchJob
+    from desktop.qt_app.batch_dialog import BatchDialog
+
+    dlg = BatchDialog()
+    f = tmp_path / "x.stl"
+    f.write_text("solid")
+    dlg.add_jobs([BatchJob(Path(f), tmp_path / "case")])
+
+    assert dlg.remove_btn.isEnabled() is False
+    dlg.table.selectRow(0)
+    assert dlg.remove_btn.isEnabled() is True
+
+    sig = repr(dlg.table.itemSelectionChanged).split(
+        "SignalInstance ", 1
+    )[1].split(" at ", 1)[0]
+    assert dlg.table.receivers(f"2{sig}") >= 1
+
+
+def test_compare_dialog_loads_two_cases(tmp_path) -> None:
+    """CompareDialog가 두 OpenFOAM case 디렉토리를 로드하고 표를 갱신한다."""
+    from desktop.qt_app.compare_dialog import CompareDialog
+
+    case_a = tmp_path / "case_a"
+    case_b = tmp_path / "case_b"
+    for case in (case_a, case_b):
+        poly = case / "constant" / "polyMesh"
+        poly.mkdir(parents=True)
+        (poly / "points").write_text("dummy")
+
+    dlg = CompareDialog()
+    dlg.set_case_path("A", case_a)
+    dlg.set_case_path("B", case_b)
+    loaded_a, loaded_b = dlg.load_selected()
+
+    assert loaded_a is True
+    assert loaded_b is True
+    assert dlg.table.rowCount() == 4
+    assert dlg.table.item(3, 1).text() != "-"
+    assert dlg.table.item(3, 2).text() != "-"
+
+
+def test_compare_dialog_camera_sync() -> None:
+    """A viewer camera state 변경 → B viewer에 동기화된다."""
+    from desktop.qt_app.compare_dialog import CompareDialog
+
+    dlg = CompareDialog()
+    dlg.sync_camera_check.setChecked(True)
+    dlg.viewer_a.emit_camera_state({"view": "front", "position": [1, 2, 3]})
+
+    assert dlg.viewer_b._camera_state["view"] == "front"
+    assert dlg.viewer_b._camera_state["position"] == [1, 2, 3]
+
+    dlg.sync_camera_check.setChecked(False)
+    dlg.viewer_a.emit_camera_state({"view": "top"})
+    assert dlg.viewer_b._camera_state["view"] == "front"
+
+
+def test_compare_dialog_histogram_overlay() -> None:
+    """CompareDialog histogram overlay가 A/B 데이터를 가진 3개 subplot을 만든다."""
+    from desktop.qt_app.compare_dialog import CompareDialog
+
+    dlg = CompareDialog()
+    dlg._on_stats(
+        "A",
+        {
+            "hist_aspect_ratio": [1.0, 1.2, 1.4],
+            "hist_skewness": [0.1, 0.2, 0.3],
+            "hist_non_orthogonality": [10.0, 20.0, 30.0],
+            "n_cells": 10,
+        },
+    )
+    dlg._on_stats(
+        "B",
+        {
+            "hist_aspect_ratio": [1.1, 1.3, 1.5],
+            "hist_skewness": [0.2, 0.3, 0.4],
+            "hist_non_orthogonality": [12.0, 22.0, 32.0],
+            "n_cells": 12,
+        },
+    )
+
+    if dlg.histogram._fig is not None:
+        axes = dlg.histogram._fig.get_axes()
+        assert len(axes) == 3
+    assert dlg.table.item(3, 3).text().startswith("+")
+
+
+def test_main_window_compare_menu_action_wired() -> None:
+    """main window에 도구→메시 비교 Ctrl+D 메뉴 액션이 연결돼야 한다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    win._build()
+    actions = win._qmain.menuBar().actions()
+    tools = [a.menu() for a in actions if a.text() == "도구"]
+    assert tools and tools[0] is not None
+    compare_actions = [a for a in tools[0].actions() if "메시 비교" in a.text()]
+    assert compare_actions
+    assert compare_actions[0].shortcut().toString() == "Ctrl+D"

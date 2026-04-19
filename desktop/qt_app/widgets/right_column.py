@@ -506,6 +506,73 @@ class _HistogramCanvas(QWidget):
         _draw(axs[2], non_ortho_data, "Non-ortho °", "#ff7b54", threshold=65.0)
         self._canvas.draw()
 
+    def update_compare_histograms(
+        self,
+        data_a: dict[str, list[float]] | None = None,
+        data_b: dict[str, list[float]] | None = None,
+    ) -> None:
+        """A/B 두 메시의 품질 분포를 같은 축에 겹쳐 그린다."""
+        if self._fig is None or self._canvas is None:
+            return
+        self._fig.clear()
+        axs = self._fig.subplots(1, 3)
+        data_a = data_a or {}
+        data_b = data_b or {}
+
+        def _draw(
+            ax,
+            key: str,
+            title: str,
+            threshold: float | None = None,
+        ) -> None:
+            ax.set_facecolor("#161a20")
+            ax.tick_params(colors="#818a99", labelsize=7)
+            for spine in ax.spines.values():
+                spine.set_edgecolor("#323a46")
+            ax.set_title(title, color="#b6bdc9", fontsize=8, pad=3)
+
+            drew = False
+            try:
+                import numpy as _np
+
+                for label, values, color in (
+                    ("A", data_a.get(key), "#4ea3ff"),
+                    ("B", data_b.get(key), "#f5b454"),
+                ):
+                    if values and len(values) > 1:
+                        arr = _np.asarray(values, dtype=float)
+                        arr = arr[_np.isfinite(arr)]
+                        if len(arr) > 0:
+                            p99 = _np.percentile(arr, 99)
+                            ax.hist(
+                                _np.clip(arr, 0, p99),
+                                bins=30,
+                                color=color,
+                                alpha=0.55,
+                                edgecolor="none",
+                                label=label,
+                            )
+                            drew = True
+            except Exception:
+                drew = False
+
+            if threshold is not None:
+                ax.axvline(
+                    x=threshold, color="#ff6b6b", linestyle="--",
+                    linewidth=1.0, alpha=0.7,
+                )
+            if drew:
+                ax.legend(facecolor="#161a20", edgecolor="#323a46",
+                          labelcolor="#b6bdc9", fontsize=7)
+            else:
+                ax.text(0.5, 0.5, "데이터 없음", ha="center", va="center",
+                        transform=ax.transAxes, color="#5a6270", fontsize=8)
+
+        _draw(axs[0], "aspect", "Aspect Ratio", threshold=100.0)
+        _draw(axs[1], "skew", "Skewness", threshold=4.0)
+        _draw(axs[2], "non_ortho", "Non-ortho °", threshold=65.0)
+        self._canvas.draw()
+
 
 class QualityPane(QWidget):
     def __init__(self, parent=None) -> None:

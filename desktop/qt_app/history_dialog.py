@@ -21,9 +21,11 @@ from PySide6.QtWidgets import (
 )
 
 from desktop.qt_app import history
+from desktop.qt_app.main_window import get_dialog_qss, get_table_qss
+from desktop.qt_app.widgets.dialog_mixin import EscDismissMixin
 
 
-class HistoryDialog(QDialog):
+class HistoryDialog(EscDismissMixin, QDialog):
     """실행 이력 조회 + 필터."""
 
     def __init__(self, parent=None) -> None:
@@ -31,16 +33,7 @@ class HistoryDialog(QDialog):
         self.setWindowTitle("실행 이력")
         # 표준 LARGE 다이얼로그 크기
         self.setMinimumSize(960, 640)
-        self.setStyleSheet(
-            "QDialog { background: #0f1318; color: #e8ecf2; }"
-            "QLabel { color: #b6bdc9; background: transparent; }"
-            "QLineEdit, QComboBox { background: #161a20; color: #e8ecf2; "
-            "border: 1px solid #323a46; border-radius: 4px; padding: 5px 8px; }"
-            "QPushButton { background: #21262d; color: #e8ecf2; "
-            "border: 1px solid #30363d; border-radius: 4px; "
-            "padding: 6px 12px; }"
-            "QPushButton:hover { background: #2d333b; border-color: #4ea3ff; }"
-        )
+        self.setStyleSheet(get_dialog_qss())
 
         self._all_entries: list[history.HistoryEntry] = history.load_all()
 
@@ -78,15 +71,7 @@ class HistoryDialog(QDialog):
             "시각", "입력", "Tier", "품질", "결과",
             "시간(s)", "셀수", "Non-ortho",
         ])
-        self.table.setStyleSheet(
-            "QTableWidget { background: #0f1318; color: #e8ecf2; "
-            "gridline-color: #262c36; border: 1px solid #262c36; }"
-            "QHeaderView::section { background: #161a20; color: #b6bdc9; "
-            "border: none; border-right: 1px solid #262c36; "
-            "border-bottom: 1px solid #262c36; padding: 6px 8px; }"
-            "QTableWidget::item { padding: 4px 6px; }"
-            "QTableWidget::item:selected { background: #1c2129; color: #e8ecf2; }"
-        )
+        self.table.setStyleSheet(get_table_qss())
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSortingEnabled(True)
