@@ -3269,3 +3269,65 @@ def test_main_window_compare_menu_action_wired() -> None:
     compare_actions = [a for a in tools[0].actions() if "메시 비교" in a.text()]
     assert compare_actions
     assert compare_actions[0].shortcut().toString() == "Ctrl+D"
+
+
+def test_qt_app_module_entrypoint_exists() -> None:
+    """QA 명령 `python -m desktop.qt_app`가 실행 가능한 module entrypoint를 가져야 한다."""
+    import importlib.util
+    import inspect
+
+    spec = importlib.util.find_spec("desktop.qt_app.__main__")
+    assert spec is not None
+
+    import desktop.qt_app.__main__ as entry
+
+    src = inspect.getsource(entry)
+    assert "desktop.qt_main" in src
+    assert "main()" in src
+
+
+def test_qt_main_pyvista_runtime_respects_display(monkeypatch) -> None:
+    """실제 display가 있으면 PyVista offscreen을 강제하지 않아야 한다."""
+    import sys
+    from types import SimpleNamespace
+
+    from desktop.qt_main import _configure_pyvista_runtime
+
+    calls: list[str] = []
+    fake_pyvista = SimpleNamespace(
+        OFF_SCREEN=None,
+        start_xvfb=lambda: calls.append("xvfb"),
+    )
+    monkeypatch.setitem(sys.modules, "pyvista", fake_pyvista)
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("QT_QPA_PLATFORM", raising=False)
+    monkeypatch.setenv("DISPLAY", ":0")
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+
+    _configure_pyvista_runtime()
+
+    assert fake_pyvista.OFF_SCREEN is False
+    assert calls == []
+
+
+def test_qt_main_pyvista_runtime_uses_offscreen_when_headless(monkeypatch) -> None:
+    """display가 없거나 Qt offscreen이면 PyVista offscreen fallback을 사용한다."""
+    import sys
+    from types import SimpleNamespace
+
+    from desktop.qt_main import _configure_pyvista_runtime
+
+    calls: list[str] = []
+    fake_pyvista = SimpleNamespace(
+        OFF_SCREEN=None,
+        start_xvfb=lambda: calls.append("xvfb"),
+    )
+    monkeypatch.setitem(sys.modules, "pyvista", fake_pyvista)
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+
+    _configure_pyvista_runtime()
+
+    assert fake_pyvista.OFF_SCREEN is True

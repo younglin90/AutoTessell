@@ -17,22 +17,29 @@ except ModuleNotFoundError:
     APP_VERSION = "1.0.0"
 
 
-def main() -> None:  # pragma: no cover
-    """QApplication 을 생성하고 AutoTessellWindow 를 표시한다."""
-    import sys
+def _configure_pyvista_runtime() -> None:
+    """GUI 실행 환경에 맞게 PyVista 렌더링 모드를 설정한다.
 
-    # PyVista 오프스크린 렌더링 초기화
+    실제 Windows/WSL X11/Wayland 디스플레이가 있으면 PyVistaQt가 네이티브
+    OpenGL 컨텍스트를 쓰도록 두고, headless/offscreen 환경에서만 offscreen
+    fallback을 켠다.
+    """
     try:
         import os
         import sys as _sys
         import pyvista as pv
 
-        pv.OFF_SCREEN = True
+        qt_offscreen = os.environ.get("QT_QPA_PLATFORM") == "offscreen"
+        has_display = bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+        is_windows = _sys.platform == "win32"
+        is_headless = qt_offscreen or (not is_windows and not has_display)
 
-        if _sys.platform == "win32":
-            # Windows: Xvfb 불필요, 네이티브 OpenGL 사용
-            pass
-        else:
+        pv.OFF_SCREEN = bool(is_headless)
+
+        if is_windows:
+            return
+
+        if is_headless:
             # WSL 환경 감지
             is_wsl = "wsl" in os.environ.get("PATH", "").lower() or (
                 os.path.exists("/proc/version")
@@ -42,7 +49,7 @@ def main() -> None:  # pragma: no cover
                 # WSL: OSMesa 강제
                 os.environ.setdefault("PYOPENGL_PLATFORM", "osmesa")
             else:
-                # 순수 Linux/Mac: Xvfb 시도 (deprecated 경고 억제)
+                # 순수 Linux headless: Xvfb 시도 (deprecated 경고 억제)
                 import warnings
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", DeprecationWarning)
@@ -53,6 +60,13 @@ def main() -> None:  # pragma: no cover
 
     except Exception:
         pass  # PyVista 미설치 또는 초기화 실패
+
+
+def main() -> None:  # pragma: no cover
+    """QApplication 을 생성하고 AutoTessellWindow 를 표시한다."""
+    import sys
+
+    _configure_pyvista_runtime()
 
     from PySide6.QtCore import QTimer, Qt
     from PySide6.QtWidgets import QApplication
