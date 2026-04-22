@@ -571,6 +571,16 @@ def evaluate(
 @click.option("--snappy-castellated-level", type=str, default=None, help="castellated refinement [min,max] (예: 2,3)")
 @click.option("--snappy-snap-tolerance", type=float, default=None, help="snap tolerance (기본: 2.0)")
 @click.option("--snappy-snap-iterations", type=int, default=None, help="snap solve iterations (기본: 5)")
+# --- Generic tier params (v0.4.0-beta20+) ---
+@click.option(
+    "--tier-param", "tier_param", multiple=True,
+    metavar="KEY=VALUE",
+    help=(
+        "generic tier 파라미터 override (반복 가능, 예: --tier-param seed_density=20 "
+        "--tier-param max_iter=4). native_tet/hex/poly HARNESS_PARAMS 테이블과 동일한 "
+        "키를 받는다. int/float/bool/str 은 자동 추론."
+    ),
+)
 # --- Output control ---
 @click.option(
     "--mesh-type",
@@ -639,6 +649,7 @@ def run(
     snappy_castellated_level: str | None,
     snappy_snap_tolerance: float | None,
     snappy_snap_iterations: int | None,
+    tier_param: tuple[str, ...],
     mesh_type: str,
     prefer_native: bool,
     auto_retry: str,
@@ -705,6 +716,34 @@ def run(
         parts = snappy_castellated_level.split(",")
         if len(parts) == 2:
             tier_params["snappy_castellated_level"] = [int(parts[0]), int(parts[1])]
+
+    # v0.4.0-beta20: generic --tier-param key=value (반복) 파싱.
+    # int → float → bool → str 순서로 자동 추론.
+    for _entry in tier_param or ():
+        if "=" not in _entry:
+            console.print(f"[yellow]⚠ --tier-param 잘못된 형식 (KEY=VALUE 필요): {_entry!r}[/yellow]")
+            continue
+        _k, _v = _entry.split("=", 1)
+        _k = _k.strip()
+        _v = _v.strip()
+        if not _k:
+            console.print(f"[yellow]⚠ --tier-param 빈 키: {_entry!r}[/yellow]")
+            continue
+        # 자동 type 추론
+        _parsed: object
+        if _v.lower() in {"true", "yes", "on"}:
+            _parsed = True
+        elif _v.lower() in {"false", "no", "off"}:
+            _parsed = False
+        else:
+            try:
+                _parsed = int(_v)
+            except ValueError:
+                try:
+                    _parsed = float(_v)
+                except ValueError:
+                    _parsed = _v
+        tier_params[_k] = _parsed
 
     effective_max_cells: int | None = None
     if max_cells is not None:

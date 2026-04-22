@@ -121,15 +121,24 @@ def run_native_tier(
         strategy: MeshStrategy (target_cell_size 및 quality_level 파싱용).
         preprocessed_path: 입력 STL path.
         case_dir: 출력 디렉터리.
-        extra_kwargs: caller 가 고정하고 싶은 파라미터. ``HARNESS_PARAMS`` 의
-            per-quality 기본값보다 **우선**. 즉 caller 가 명시한 값은 override 되지
-            않는다.
+        extra_kwargs: caller 가 고정하고 싶은 파라미터. 우선순위 최상위.
 
     Returns:
         TierAttempt (success / failed).
 
-    v0.4.0-beta17+: tier × quality 기본 harness 파라미터를 ``get_harness_params`` 로
-    조회해 runner_fn 에 주입. caller 가 ``extra_kwargs`` 로 명시한 키는 존중.
+    파라미터 병합 우선순위 (beta20):
+        1. ``extra_kwargs`` (caller override — 최우선)
+        2. ``strategy.tier_specific_params`` (Strategist / CLI ``--tier-param`` 주입)
+        3. ``HARNESS_PARAMS[tier][quality]`` (테이블 기본값)
+        4. 함수 signature default
+
+    ``strategy.tier_specific_params`` 에서는 ``seed_density`` / ``max_iter`` /
+    ``snap_boundary`` 등 runner_fn kwargs 와 일치하는 키만 전달된다. 그 외 키
+    (``engine_selection`` / ``recommended_mesh_type``) 는 runner_fn 의 ``**_unused``
+    로 흡수되거나 silently 무시.
+
+    v0.4.0-beta17+: HARNESS_PARAMS 테이블 기반 quality-aware 주입.
+    v0.4.0-beta20+: strategy.tier_specific_params 도 merge 대상.
     """
     t_start = time.monotonic()
 
@@ -152,9 +161,20 @@ def run_native_tier(
 
     target_edge = _parse_target_edge(strategy)
 
-    # quality-specific harness 기본값 (caller override 를 우선) — beta17
+    # beta17: tier × quality 기본값
     params = get_harness_params(tier_name, strategy.quality_level)
-    params.update(dict(extra_kwargs or {}))  # caller override 는 마지막에 덮어씀
+
+    # beta20: strategy.tier_specific_params 의 runner-호환 키를 merge (HARNESS_PARAMS
+    # 위, extra_kwargs 아래 우선순위). runner_fn 이 인식하지 못하는 키는 **_unused
+    # 로 흡수되거나 dropped.
+    _TIER_PARAM_KEYS = {"seed_density", "max_iter", "snap_boundary"}
+    tsp = getattr(strategy, "tier_specific_params", None) or {}
+    for k in _TIER_PARAM_KEYS:
+        if k in tsp:
+            params[k] = tsp[k]
+
+    # extra_kwargs 가 최상위 우선
+    params.update(dict(extra_kwargs or {}))
     params["target_edge_length"] = target_edge
     kwargs = params
 
