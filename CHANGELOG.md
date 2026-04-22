@@ -17,16 +17,19 @@
   실행 스크립트. 결과는 `bench_v04_result.json` 으로 저장.
 
 ### v0.4 Bench Matrix 결과 (5 난이도 × 3 native 엔진, draft, --prefer-native)
+
+**beta3 최종 (inside-test AABB prefilter 적용 후):**
 ```
-| STL                      | native_tet | native_hex | native_poly |
-|--------------------------|------------|------------|-------------|
-| 01_easy_cube             | ✓ 132s     | ✓ 32s OK   | ✓ 47s       |
-| 02_medium_cylinder       | ✓ 35s      | ✓ 10s OK   | ✓ 50s       |
-| 03_hard_bracket          | ✓ 4s       | ✓ 3s OK    | ✓ 5s        |
-| 04_extreme_gear          | ✓ 16s      | ✓ 6s OK    | ✓ 10s       |
-| 05_ultra_knot            | ✗ 5min TO  | ✓ 172s OK  | ✓ 124s      |
+| STL                      | native_tet  | native_hex  | native_poly |
+|--------------------------|-------------|-------------|-------------|
+| 01_easy_cube             | ✓ 170s      | ✓ 33s OK    | ✓ 49s       |
+| 02_medium_cylinder       | ✓ 36s       | ✓ 11s OK    | ✓ 52s       |
+| 03_hard_bracket          | ✓ 4s        | ✓ 3s OK     | ✓ 5s        |
+| 04_extreme_gear          | ✓ 13s       | ✓ 6s OK     | ✓ 11s       |
+| 05_ultra_knot            | ✓ 13s       | ✓ 179s OK   | ✓ 125s      |
 ```
-총 15 조합 중 **14 polyMesh 생성 성공 (93.3%)**. native_hex 는 5/5 Evaluator PASS.
+총 15 조합 중 **15 polyMesh 생성 성공 (100%)**. native_hex 는 5/5 Evaluator PASS.
+ultra_knot native_tet 이전 300s timeout → 13s 완주 (inside-test 23× 가속).
 
 ### Fixed
 - native_tet 의 sliver tet 제거 (q = 8.48·V/edge_max³ < 0.02 탈락). sphere 에서

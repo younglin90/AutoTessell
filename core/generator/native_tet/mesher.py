@@ -45,36 +45,63 @@ def _seed_points_uniform(
 def _inside_winding_number(
     query: np.ndarray, V: np.ndarray, F: np.ndarray,
 ) -> np.ndarray:
-    """ray casting 기반 inside 판정 (+x 방향 ray, face 교차 수 홀수면 inside).
+    """ray casting (+x ray) 기반 inside 판정. AABB y/z prefilter + 벡터화.
 
-    Robustness 는 간이적 — MVP 수준. 빠른 벡터화 구현.
+    v0.4.0-beta3 개선: query 와 face 의 y/z bbox 를 먼저 비교해 candidate face 수
+    를 크게 줄인다. ultra_knot (1280+ faces × 수천 query) 에서 300s → 수초 수준.
     """
     Q = np.asarray(query, dtype=np.float64)
     N = Q.shape[0]
-    inside = np.zeros(N, dtype=bool)
-    # 각 face 에 대해 ray-triangle 교차 누적 (Möller–Trumbore)
+    if N == 0 or F.size == 0:
+        return np.zeros(N, dtype=bool)
+
     v0 = V[F[:, 0]]; v1 = V[F[:, 1]]; v2 = V[F[:, 2]]
     edge1 = v1 - v0; edge2 = v2 - v0
     d = np.array([1.0, 0.0, 0.0])
-    # 각 query 당 count (vectorized per-query)
-    # F 가 크면 batch 로 (query 를 batch 로 순회)
-    batch = 128
+    pvec = np.cross(d, edge2)
+    det = (edge1 * pvec).sum(axis=1)
+    safe = np.abs(det) > 1e-12
+    inv_det = np.zeros_like(det)
+    np.divide(1.0, det, where=safe, out=inv_det)
+
+    # 각 face 의 y, z bbox
+    face_pts_y = np.stack([v0[:, 1], v1[:, 1], v2[:, 1]], axis=1)
+    face_pts_z = np.stack([v0[:, 2], v1[:, 2], v2[:, 2]], axis=1)
+    face_y_min = face_pts_y.min(axis=1); face_y_max = face_pts_y.max(axis=1)
+    face_z_min = face_pts_z.min(axis=1); face_z_max = face_pts_z.max(axis=1)
+    face_x_max = np.maximum.reduce([v0[:, 0], v1[:, 0], v2[:, 0]])
+
+    inside = np.zeros(N, dtype=bool)
+    batch = 64
     for qi in range(0, N, batch):
         qs = Q[qi:qi + batch]   # (B, 3)
-        # for each face, for each query: compute t, u, v
-        pvec = np.cross(d, edge2)                       # (F, 3)
-        det = (edge1 * pvec).sum(axis=1)                # (F,)
-        safe = np.abs(det) > 1e-12
-        inv_det = np.zeros_like(det)
-        np.divide(1.0, det, where=safe, out=inv_det)
-        tvec = qs[:, None, :] - v0[None, :, :]          # (B, F, 3)
-        u = (tvec * pvec[None, :, :]).sum(axis=2) * inv_det[None, :]
-        qvec = np.cross(tvec, edge1[None, :, :])        # (B, F, 3)
-        v = (qvec * d).sum(axis=2) * inv_det[None, :]
-        t = (edge2[None, :, :] * qvec).sum(axis=2) * inv_det[None, :]
-        hit = (u >= 0) & (v >= 0) & (u + v <= 1) & (t > 1e-9)
-        count = hit.sum(axis=1)
-        inside[qi:qi + batch] = (count % 2) == 1
+        B = qs.shape[0]
+        qy = qs[:, 1:2]   # (B, 1)
+        qz = qs[:, 2:3]
+        qx = qs[:, 0:1]
+        # query 별 candidate face mask: y/z in bbox + face_x_max >= qx
+        # (ray 가 +x 로 가니 qx 보다 x 큰 face 만 후보)
+        mask_qf = (
+            (qy >= face_y_min[None, :]) & (qy <= face_y_max[None, :])
+            & (qz >= face_z_min[None, :]) & (qz <= face_z_max[None, :])
+            & (face_x_max[None, :] >= (qx - 1e-9))
+        )
+        if not mask_qf.any():
+            continue
+        # 각 query 를 개별 처리 — candidate face 수가 적으므로 loop 가 vectorized
+        # 전체보다 빠름.
+        for li in range(B):
+            cand = np.where(mask_qf[li])[0]
+            if cand.size == 0:
+                continue
+            tv = qs[li] - v0[cand]
+            u = (tv * pvec[cand]).sum(axis=1) * inv_det[cand]
+            qvec = np.cross(tv, edge1[cand])
+            v = (qvec * d).sum(axis=1) * inv_det[cand]
+            t = (edge2[cand] * qvec).sum(axis=1) * inv_det[cand]
+            hit = (u >= 0) & (v >= 0) & (u + v <= 1) & (t > 1e-9)
+            if int(hit.sum()) % 2 == 1:
+                inside[qi + li] = True
     return inside
 
 

@@ -191,23 +191,40 @@ class GeometryAnalyzer:
         num_vertices = len(mesh.vertices)
         num_faces = len(mesh.faces)
 
-        is_watertight = bool(mesh.is_watertight)
-        is_manifold = self._is_surface_manifold(mesh, is_watertight)
-
-        # connected components
+        # v0.4: topology 지표는 자체 numpy 구현 (trimesh 속성 의존 제거).
+        # 어떤 이유로 실패 시 trimesh 로 graceful fallback.
+        faces_np = np.asarray(mesh.faces, dtype=np.int64)
         try:
-            components = trimesh.graph.connected_components(mesh.face_adjacency)
-            num_components = len(components) if components is not None else 1
-        except (ImportError, Exception):
-            # scipy/networkx 없이 trimesh split으로 fallback
+            from core.analyzer import topology as _T  # noqa: PLC0415
+            is_watertight = bool(_T.is_watertight(faces_np))
+            is_manifold = bool(_T.is_manifold(faces_np))
+            euler = int(_T.compute_euler(num_vertices, faces_np))
+            num_components = int(_T.num_connected_components(faces_np)) or 1
+            log.debug(
+                "geometry_topology_native",
+                watertight=is_watertight, manifold=is_manifold,
+                euler=euler, components=num_components,
+            )
+        except Exception as exc:
+            log.warning(
+                "geometry_topology_native_failed_fallback_trimesh",
+                error=str(exc),
+            )
+            is_watertight = bool(mesh.is_watertight)
+            is_manifold = self._is_surface_manifold(mesh, is_watertight)
             try:
-                split_meshes = mesh.split(only_watertight=False)
-                num_components = len(split_meshes) if split_meshes is not None else 1
+                components = trimesh.graph.connected_components(mesh.face_adjacency)
+                num_components = len(components) if components is not None else 1
             except Exception:
-                num_components = 1
+                try:
+                    split_meshes = mesh.split(only_watertight=False)
+                    num_components = (
+                        len(split_meshes) if split_meshes is not None else 1
+                    )
+                except Exception:
+                    num_components = 1
+            euler = int(mesh.euler_number)
 
-        # Euler number & genus
-        euler = int(mesh.euler_number)
         # genus = (2 - euler) / 2 for single closed surface (orientable)
         genus = max(0, (2 - euler) // 2)
 

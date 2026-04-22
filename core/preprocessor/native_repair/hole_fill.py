@@ -174,6 +174,26 @@ def fill_small_holes(
     loops = _extract_boundary_loops(F)
     if not loops:
         return F, 0
+
+    # 기존 mesh 의 directed edge set — ear-clip face 의 winding 을 일관되게
+    # 맞추는 데 사용. manifold 에서는 같은 edge 가 두 face 에서 반대 방향으로
+    # 쓰여야 한다.
+    existing_dirs: set[tuple[int, int]] = set()
+    for f in F:
+        existing_dirs.add((int(f[0]), int(f[1])))
+        existing_dirs.add((int(f[1]), int(f[2])))
+        existing_dirs.add((int(f[2]), int(f[0])))
+
+    def _winding_ok(tri: tuple[int, int, int]) -> bool:
+        """tri 의 directed edge 중 하나라도 existing_dirs 에 이미 있으면 반대로
+        돌려야 manifold (공유 edge 는 반대 방향). True = 현재 winding 그대로 OK."""
+        for a, b in ((tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])):
+            if (int(a), int(b)) in existing_dirs:
+                return False
+            if (int(b), int(a)) in existing_dirs:
+                return True
+        return True  # 판정 불가 시 그대로
+
     added: list[list[int]] = []
     for loop in loops:
         if len(loop) > max_boundary or len(loop) < 3:
@@ -185,7 +205,10 @@ def fill_small_holes(
             continue
         # 3 → fan 밖에 없음
         if len(loop) == 3:
-            added.append([loop[0], loop[1], loop[2]])
+            tri = (loop[0], loop[1], loop[2])
+            if not _winding_ok(tri):
+                tri = (tri[0], tri[2], tri[1])
+            added.append(list(tri))
             continue
         # 3D loop → 평면 basis → 2D ear-clipping → 3D face index 로 환원
         c, e1, e2 = _loop_plane_basis(V, loop)
@@ -193,8 +216,16 @@ def fill_small_holes(
         rel = pts_3d - c
         verts_2d = np.stack([rel @ e1, rel @ e2], axis=1)
         tris_local = _ear_clip_2d(verts_2d)
+        # 첫 triangle 로 전체 batch 의 winding 결정.
+        if not tris_local:
+            continue
+        first_tri = (loop[tris_local[0][0]], loop[tris_local[0][1]], loop[tris_local[0][2]])
+        flip_all = not _winding_ok(first_tri)
         for (i0, i1, i2) in tris_local:
-            added.append([loop[i0], loop[i1], loop[i2]])
+            tri = (loop[i0], loop[i1], loop[i2])
+            if flip_all:
+                tri = (tri[0], tri[2], tri[1])
+            added.append(list(tri))
 
     if not added:
         return F, 0
