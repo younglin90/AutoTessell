@@ -229,6 +229,90 @@ def test_pipeline_worker_accepts_mesh_type_and_auto_retry() -> None:
     assert getattr(w, "_auto_retry", None) == "once"
 
 
+def test_qt_pipeline_native_tet_e2e(monkeypatch, tmp_path) -> None:
+    """v0.4 e2e: AutoTessellWindow(mesh_type=tet) + PipelineWorker(tier=native_tet)
+    가 PipelineOrchestrator.run() 을 올바른 tier/mesh_type 으로 호출한다.
+
+    실제 메시 생성은 하지 않고 orchestrator 를 monkeypatch 로 교체. QThread.run
+    을 직접 호출해 finished 시그널 payload 를 캡처한다 (headless 안전).
+    """
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QCoreApplication, QObject, Slot
+    from core.schemas import QualityLevel as _QL
+    from desktop.qt_app.main_window import AutoTessellWindow
+    from desktop.qt_app.pipeline_worker import PipelineWorker
+
+    app = QCoreApplication.instance() or QCoreApplication([])
+
+    win = AutoTessellWindow()
+    win.set_mesh_type("tet")
+    assert win._mesh_type == "tet"
+
+    # 더미 STL 경로 (파일 존재 여부는 orchestrator 가 처리 — 여기서는 mock)
+    stub_stl = tmp_path / "dummy.stl"
+    stub_stl.write_text("solid empty\nendsolid\n")
+
+    captured: dict = {}
+
+    class _StubOrchestrator:
+        def run(self, **kwargs):  # noqa: ANN003
+            captured.update(kwargs)
+            return SimpleNamespace(
+                success=True,
+                iterations=1,
+                total_time_seconds=0.0,
+                error=None,
+                final_case_dir=str(tmp_path),
+                quality_report=None,
+            )
+
+    import core.pipeline.orchestrator as orch_mod  # noqa: PLC0415
+
+    monkeypatch.setattr(orch_mod, "PipelineOrchestrator", _StubOrchestrator)
+
+    # Worker 인스턴스 생성 (tier=native_tet, mesh_type=tet)
+    worker = PipelineWorker(
+        stub_stl,
+        _QL.DRAFT,
+        output_dir=tmp_path / "case",
+        tier_hint="native_tet",
+        mesh_type="tet",
+        auto_retry="off",
+        prefer_native=True,
+    )
+    assert worker._tier_hint == "native_tet"
+    assert worker._mesh_type == "tet"
+    assert worker._prefer_native is True
+
+    # finished payload 캡처
+    class _Sink(QObject):
+        def __init__(self) -> None:
+            super().__init__()
+            self.received = None
+
+        @Slot(object)
+        def on_finished(self, result) -> None:  # noqa: ANN001
+            self.received = result
+
+    sink = _Sink()
+    worker.finished.connect(sink.on_finished)
+
+    # QThread.start() 대신 run() 을 synchronously 호출 — orchestrator 가 stub 이라
+    # 즉시 반환.
+    worker.run()
+    app.processEvents()
+
+    assert captured, "orchestrator.run() 이 호출되지 않음"
+    assert captured.get("tier_hint") == "native_tet"
+    assert captured.get("mesh_type") == "tet"
+    assert captured.get("quality_level") == _QL.DRAFT.value
+    assert captured.get("prefer_native") is True
+    assert sink.received is not None
+    assert sink.received.success is True
+
+
 def test_pipeline_step_labels_attribute_exists() -> None:
     """AutoTessellWindow 가 _pipeline_step_labels list 속성을 갖는다."""
     from desktop.qt_app.main_window import AutoTessellWindow

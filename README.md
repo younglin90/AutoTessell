@@ -27,7 +27,7 @@ auto-tessell run input.stl -o ./case --prefer-native
 auto-tessell run input.stl -o ./case --checker-engine native
 ```
 
-## 자체 코드화 진행 (v0.4.0-beta4)
+## 자체 코드화 진행 (v0.4.0-beta12)
 
 | 영역 | 기본 경로 | legacy fallback |
 |------|-----------|-----------------|
@@ -39,10 +39,18 @@ auto-tessell run input.stl -o ./case --checker-engine native
 | BL 생성 (hex) | `native_bl` Phase 2 polyMesh 직접 | cfMesh/snappy |
 | BL 생성 (tet) | `tet_bl_subdivide` 순수 tet | - |
 | BL 생성 (poly) | `poly_bl_transition` + polyDualMesh | - |
-| Volume 엔진 | `native_tet/hex/poly` MVP | 17 legacy Tier |
+| Volume 엔진 | `native_tet/hex/poly` (+harness) | 17 legacy Tier |
+| Hausdorff 거리 | `fidelity._native_sample_surface` + chunked kNN | trimesh.sample/scipy.cKDTree |
+| inside-test | `core/utils/geometry.inside_winding_number` 공용 | — |
+| Tier wrapper | `core/generator/_tier_native_common.run_native_tier` 공용 | — |
+| polyMesh writer | `polymesh_writer.write_generic_polymesh` 공용 | — |
 
-**Bench matrix (5 난이도 × 3 native 엔진):** 15/15 = 100% polyMesh 생성.
-native_hex 5/5 Evaluator PASS. 세부는 `CHANGELOG.md`.
+**Bench matrix (5 난이도 × 3 native 엔진 × 2 quality = 30 조합):** 30/30 polyMesh 생성.
+세부는 `tests/stl/bench_v04_result.json`, 진화 이력은 `CHANGELOG.md`.
+
+**Harness 패턴 (v0.4.0-beta6~)**: Generator ⇄ Evaluator (NativeMeshChecker) 반복.
+safety cap (`max_tet_cells`, target_edge clamp) 로 cell 폭증 방지. 자세한 내용은
+`core/generator/native_{tet,poly}/harness.py` 참조.
 
 ## 외부 라이브러리 정리
 
