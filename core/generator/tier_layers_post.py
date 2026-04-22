@@ -1127,6 +1127,22 @@ class LayersPostGenerator:
                 error_message="layers_post_disabled",
             )
 
+        # v0.4: engine="auto" 이면 strategy.mesh_type 을 보고 메쉬 타입에 맞는
+        # BL 엔진을 자동 선택.
+        if engine in ("auto",):
+            mt_raw = getattr(strategy, "mesh_type", None)
+            mt = getattr(mt_raw, "value", None) or str(mt_raw or "auto")
+            mt = str(mt).lower()
+            if mt == "tet":
+                engine = "tet_bl_subdivide"
+            elif mt == "hex_dominant":
+                engine = "native_bl"
+            elif mt == "poly":
+                engine = "native_bl"
+            else:
+                engine = "native_bl"
+            log.info("tier_layers_post_auto_engine", mesh_type=mt, engine=engine)
+
         poly_dir = case_dir / "constant" / "polyMesh"
         if not (poly_dir / "faces").exists():
             elapsed = time.monotonic() - t_start
@@ -1209,6 +1225,42 @@ class LayersPostGenerator:
                 )
                 _res = generate_native_bl(case_dir, cfg_bl)
                 ok, msg = bool(_res.success), str(_res.message)
+        elif engine in ("tet_bl_subdivide", "tet_bl", "native_bl_tet"):
+            # v0.4 mesh_type=tet 전용: native_bl 로 prism 삽입 후 wedge 를 tet 3 개로
+            # 분할. 결과는 전체 tet mesh.
+            try:
+                from core.layers.native_bl import BLConfig, generate_native_bl
+                from core.layers.tet_bl_subdivide import (
+                    subdivide_prism_layers_to_tet,
+                )
+            except Exception as exc:
+                ok, msg = False, f"tet_bl 유틸 import 실패: {exc}"
+            else:
+                cfg_bl = BLConfig(
+                    num_layers=int(num_layers),
+                    growth_ratio=float(growth_ratio),
+                    first_thickness=float(first_thickness),
+                    wall_patch_names=params.get("post_layers_wall_patch_names"),
+                    backup_original=bool(params.get(
+                        "post_layers_backup_original", True,
+                    )),
+                    max_total_ratio=float(params.get(
+                        "post_layers_max_total_ratio", 0.3,
+                    )),
+                )
+                _res = generate_native_bl(case_dir, cfg_bl)
+                if not _res.success:
+                    ok, msg = False, f"native_bl 단계 실패: {_res.message}"
+                else:
+                    _res2 = subdivide_prism_layers_to_tet(
+                        case_dir, backup_original=False,
+                    )
+                    ok = bool(_res2.success)
+                    msg = (
+                        f"{_res.message}\n{_res2.message}"
+                        if ok
+                        else f"subdivide 실패: {_res2.message}"
+                    )
         elif engine in ("netgen_bl", "netgen_layers"):
             ok, msg = _run_netgen_bl(
                 case_dir, num_layers, growth_ratio, first_thickness,
