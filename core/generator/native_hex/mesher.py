@@ -49,7 +49,11 @@ _HEX_FACES: tuple[tuple[int, int, int, int], ...] = (
 def _inside_winding_number(
     query: np.ndarray, V: np.ndarray, F: np.ndarray,
 ) -> np.ndarray:
-    """ray-casting (+x dir) inside 판정. Möller-Trumbore, numpy 벡터화."""
+    """ray-casting (+x dir) inside 판정. Möller-Trumbore + AABB y/z prefilter.
+
+    v0.4.0-beta4: native_tet 과 동일한 방식으로 y/z bbox prefilter 를 추가해
+    ultra_knot 류 대형 surface 에서 속도 대폭 향상.
+    """
     Q = np.asarray(query, dtype=np.float64)
     N = Q.shape[0]
     if N == 0 or F.size == 0:
@@ -63,18 +67,37 @@ def _inside_winding_number(
     inv_det = np.zeros_like(det)
     np.divide(1.0, det, where=safe, out=inv_det)
 
+    face_y = np.stack([v0[:, 1], v1[:, 1], v2[:, 1]], axis=1)
+    face_z = np.stack([v0[:, 2], v1[:, 2], v2[:, 2]], axis=1)
+    face_y_min = face_y.min(axis=1); face_y_max = face_y.max(axis=1)
+    face_z_min = face_z.min(axis=1); face_z_max = face_z.max(axis=1)
+    face_x_max = np.maximum.reduce([v0[:, 0], v1[:, 0], v2[:, 0]])
+
     inside = np.zeros(N, dtype=bool)
-    batch = 128
+    batch = 64
     for qi in range(0, N, batch):
         qs = Q[qi:qi + batch]
-        tvec = qs[:, None, :] - v0[None, :, :]
-        u = (tvec * pvec[None, :, :]).sum(axis=2) * inv_det[None, :]
-        qvec = np.cross(tvec, edge1[None, :, :])
-        v = (qvec * d).sum(axis=2) * inv_det[None, :]
-        t = (edge2[None, :, :] * qvec).sum(axis=2) * inv_det[None, :]
-        hit = (u >= 0) & (v >= 0) & (u + v <= 1) & (t > 1e-9)
-        count = hit.sum(axis=1)
-        inside[qi:qi + batch] = (count % 2) == 1
+        B = qs.shape[0]
+        qy = qs[:, 1:2]; qz = qs[:, 2:3]; qx = qs[:, 0:1]
+        mask_qf = (
+            (qy >= face_y_min[None, :]) & (qy <= face_y_max[None, :])
+            & (qz >= face_z_min[None, :]) & (qz <= face_z_max[None, :])
+            & (face_x_max[None, :] >= (qx - 1e-9))
+        )
+        if not mask_qf.any():
+            continue
+        for li in range(B):
+            cand = np.where(mask_qf[li])[0]
+            if cand.size == 0:
+                continue
+            tv = qs[li] - v0[cand]
+            u = (tv * pvec[cand]).sum(axis=1) * inv_det[cand]
+            qvec = np.cross(tv, edge1[cand])
+            v = (qvec * d).sum(axis=1) * inv_det[cand]
+            t = (edge2[cand] * qvec).sum(axis=1) * inv_det[cand]
+            hit = (u >= 0) & (v >= 0) & (u + v <= 1) & (t > 1e-9)
+            if int(hit.sum()) % 2 == 1:
+                inside[qi + li] = True
     return inside
 
 

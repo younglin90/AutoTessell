@@ -240,6 +240,25 @@ def generate_native_poly_voronoi(
             False, time.perf_counter() - t0, message="Voronoi vertex 없음",
         )
 
+    # v0.4: 경계 clipping MVP — surface 밖 Voronoi vertex 를 KDTree 로 가장 가까운
+    # surface vertex 로 snap. 완전한 polygon clipping 은 아니지만 boundary 근처
+    # open cell 감소 효과.
+    try:
+        from scipy.spatial import cKDTree  # noqa: PLC0415
+        tree = cKDTree(V)
+        vv_inside = _inside_ray_cast(vor_vertices, V, F)
+        outside_idx = np.where(~vv_inside)[0]
+        if outside_idx.size > 0:
+            _, nearest = tree.query(vor_vertices[outside_idx], k=1)
+            vor_vertices = vor_vertices.copy()
+            vor_vertices[outside_idx] = V[nearest]
+            log.info(
+                "native_poly_boundary_snap",
+                n_outside_snapped=int(outside_idx.size),
+            )
+    except Exception as exc:
+        log.warning("native_poly_boundary_snap_failed", error=str(exc))
+
     # 각 seed (region) → vertex indices
     region_of_point = vor.point_region
     # 유지할 region 식별 — surface-inside 만 검사 (bbox 체크는 MVP 에서 포기).
