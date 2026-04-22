@@ -171,6 +171,29 @@ class StrategyPlanner:
                 log.warning("mesh_type_unknown_fallback_auto", value=mesh_type)
                 mt = MeshType.AUTO
 
+        # v0.4: mesh_type=AUTO 이면 strategy.mesh_type 에는 그대로 AUTO 를 기록.
+        # (tier_selector 가 AUTO 면 매핑 단계를 skip 하고 기존 geometry 기반
+        # _auto_select 로 fallback 하므로 legacy 동작 그대로 보존된다.) 대신 사용자가
+        # 참고할 "추천 mesh_type" 을 tier_specific_params 에 힌트로 기록.
+        recommended_mt_hint: str | None = None
+        if mt == MeshType.AUTO:
+            auto_mt = MeshType.HEX_DOMINANT
+            if ql == QualityLevel.DRAFT:
+                auto_mt = MeshType.TET
+            try:
+                is_wt = geometry_report.geometry.surface.is_watertight
+                n_comp = geometry_report.geometry.surface.num_connected_components
+                if not is_wt or n_comp > 1:
+                    auto_mt = MeshType.TET
+            except Exception:
+                pass
+            recommended_mt_hint = auto_mt.value
+            log.info(
+                "mesh_type_auto_recommendation",
+                recommended=auto_mt.value,
+                quality_level=ql.value,
+            )
+
         # Determine surface_quality_level from preprocessed_report (if available)
         sql_str = SurfaceQualityLevel.L1_REPAIR.value
         if preprocessed_report is not None:
@@ -302,6 +325,11 @@ class StrategyPlanner:
             tier_specific_params=tier_params,
             previous_attempt=previous_attempt,
         )
+        # mesh_type=AUTO 추천 힌트를 tier_specific_params 에 추가 (사용자 참고용).
+        if recommended_mt_hint is not None:
+            strategy.tier_specific_params.setdefault(
+                "recommended_mesh_type", recommended_mt_hint,
+            )
 
         if adjustments and adjustments.modifications:
             log.info(

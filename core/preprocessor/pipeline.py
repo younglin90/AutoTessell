@@ -155,6 +155,7 @@ class Preprocessor:
                     mesh,
                     remesh_target_faces,
                     remesh_engine=remesh_engine,
+                    prefer_native=prefer_native,
                 )
                 steps_performed.append(PreprocessStep(**l2_record))
 
@@ -188,6 +189,7 @@ class Preprocessor:
                     mesh,
                     remesh_target_faces,
                     remesh_engine=remesh_engine,
+                    prefer_native=prefer_native,
                 )
                 steps_performed.append(PreprocessStep(**l2_record))
                 surface_quality_level = "l2_remesh" if l2_passed else None
@@ -300,20 +302,75 @@ class Preprocessor:
         target_faces: int | None,
         *,
         remesh_engine: str = "auto",
+        prefer_native: bool = False,
     ) -> tuple[trimesh.Trimesh, bool, dict[str, Any]]:
         """L2 표면 리메쉬 수행.
 
-        pyACVD + 선택적 pymeshlab isotropic remeshing.
+        기본: pyACVD + 선택적 pymeshlab isotropic remeshing (SurfaceRemesher).
+        prefer_native=True: 자체 native_remesh.isotropic_remesh (pyACVD 없이).
+
         리메쉬 후 gate 검사를 실행한다.
 
         Returns:
             (리메쉬된 메쉬, gate_passed, step_record) 튜플.
         """
+        if prefer_native:
+            return self._l2_remesh_native(mesh, target_faces)
         return self._remesher.remesh_l2(
             mesh,
             target_faces=target_faces,
             remesh_engine=remesh_engine,
         )
+
+    def _l2_remesh_native(
+        self,
+        mesh: trimesh.Trimesh,
+        target_faces: int | None,
+    ) -> tuple[trimesh.Trimesh, bool, dict[str, Any]]:
+        """v0.4: 자체 isotropic_remesh 로 L2 수행 (pyACVD/pymeshlab 없이)."""
+        import time as _time  # noqa: PLC0415
+
+        import numpy as np  # noqa: PLC0415
+        import trimesh as _tm  # noqa: PLC0415
+        from core.preprocessor.native_remesh import isotropic_remesh  # noqa: PLC0415
+        from core.preprocessor.repair import gate_check as _gate  # noqa: PLC0415
+
+        t0 = _time.perf_counter()
+        V = np.asarray(mesh.vertices, dtype=np.float64)
+        F = np.asarray(mesh.faces, dtype=np.int64)
+        # target edge length — bbox / sqrt(target_faces) 근사
+        bmin = V.min(axis=0); bmax = V.max(axis=0)
+        diag = float(np.linalg.norm(bmax - bmin))
+        if target_faces and target_faces > 0:
+            target_edge = diag / (float(target_faces) ** 0.5) * 1.5
+        else:
+            # 기존 edge 평균 유지
+            e01 = np.linalg.norm(V[F[:, 1]] - V[F[:, 0]], axis=1)
+            target_edge = float(e01.mean()) if e01.size else diag / 50
+        V2, F2 = isotropic_remesh(
+            V, F, target_edge_length=float(target_edge), n_iter=3,
+        )
+        elapsed = _time.perf_counter() - t0
+        new_mesh = _tm.Trimesh(vertices=V2, faces=F2, process=False)
+        passed = bool(_gate(new_mesh))
+        step_record = {
+            "step": "l2_remesh",
+            "method": "native_isotropic",
+            "params": {
+                "target_edge": float(target_edge),
+                "n_iter": 3,
+            },
+            "input_faces": int(F.shape[0]),
+            "output_faces": int(F2.shape[0]),
+            "time_seconds": round(elapsed, 4),
+            "gate_passed": passed,
+        }
+        log.info(
+            "l2_native_remesh_done",
+            input_faces=F.shape[0], output_faces=F2.shape[0],
+            gate_passed=passed,
+        )
+        return new_mesh, passed, step_record
 
     def _l3_ai_fix(
         self,

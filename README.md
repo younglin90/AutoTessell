@@ -1,7 +1,56 @@
 # Auto-Tessell
 
 CAD/메쉬 파일 → OpenFOAM polyMesh 자동 생성 도구.
-오픈소스 메쉬 라이브러리 총동원, 사용자 개입 최소화.
+**v0.4 "Native-First"**: 외부 라이브러리 의존 → 자체 코드 점진 전환. 라이브러리는
+참고·카피 대상이지 의존 대상이 아님.
+
+## v0.4 신규 사용법
+
+```bash
+# 메쉬 타입 3 카테고리 (tet / hex_dominant / poly)
+auto-tessell run input.stl -o ./case --mesh-type tet --quality draft
+auto-tessell run input.stl -o ./case --mesh-type hex_dominant --quality fine   # + BL
+auto-tessell run input.stl -o ./case --mesh-type poly --quality standard
+
+# 자체 native 엔진 직접 호출 (OpenFOAM / trimesh / pymeshfix 없이)
+auto-tessell run input.stl -o ./case --tier native_tet --quality draft
+auto-tessell run input.stl -o ./case --tier native_hex --quality standard
+auto-tessell run input.stl -o ./case --tier native_poly
+
+# 자동 재시도 off (기본, FAIL 시 사용자 y/N prompt)
+auto-tessell run input.stl -o ./case --auto-retry off
+
+# L1/L2 수리/리메쉬 native 경로 (pymeshfix/pyACVD/pymeshlab 없이)
+auto-tessell run input.stl -o ./case --prefer-native
+
+# NativeMeshChecker 기본 (OpenFOAM 불필요)
+auto-tessell run input.stl -o ./case --checker-engine native
+```
+
+## 자체 코드화 진행 (v0.4.0-beta4)
+
+| 영역 | 기본 경로 | legacy fallback |
+|------|-----------|-----------------|
+| STL/OBJ/PLY/OFF reader | `core/analyzer/readers/` native | trimesh |
+| Topology | `core/analyzer/topology.py` native | trimesh 속성 |
+| MeshChecker | `NativeMeshChecker` 기본 | OpenFOAM checkMesh (명시 시) |
+| L1 repair | `--prefer-native` → native | pymeshfix (기본) |
+| L2 remesh | `--prefer-native` → isotropic + CVT | pyACVD/pymeshlab |
+| BL 생성 (hex) | `native_bl` Phase 2 polyMesh 직접 | cfMesh/snappy |
+| BL 생성 (tet) | `tet_bl_subdivide` 순수 tet | - |
+| BL 생성 (poly) | `poly_bl_transition` + polyDualMesh | - |
+| Volume 엔진 | `native_tet/hex/poly` MVP | 17 legacy Tier |
+
+**Bench matrix (5 난이도 × 3 native 엔진):** 15/15 = 100% polyMesh 생성.
+native_hex 5/5 Evaluator PASS. 세부는 `CHANGELOG.md`.
+
+## 외부 라이브러리 정리
+
+`pyproject.toml` 의 `legacy-preprocess` extras 로 이동 (기본 미설치):
+- `pymeshfix` / `pyacvd` / `pymeshlab`
+
+`--prefer-native` + `--checker-engine native` + `--tier native_*` 로 위 legacy
+라이브러리 없이도 전체 파이프라인 완주 가능.
 
 ## 현재 기준선 (Primary Track)
 
