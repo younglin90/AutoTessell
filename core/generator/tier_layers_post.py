@@ -1138,7 +1138,7 @@ class LayersPostGenerator:
             elif mt == "hex_dominant":
                 engine = "native_bl"
             elif mt == "poly":
-                engine = "native_bl"
+                engine = "poly_bl_transition"
             else:
                 engine = "native_bl"
             log.info("tier_layers_post_auto_engine", mesh_type=mt, engine=engine)
@@ -1261,6 +1261,37 @@ class LayersPostGenerator:
                         if ok
                         else f"subdivide 실패: {_res2.message}"
                     )
+        elif engine in ("poly_bl_transition", "poly_bl", "native_bl_poly"):
+            # v0.4 mesh_type=poly 전용: native_bl 로 prism 삽입 + (옵션)
+            # OpenFOAM polyDualMesh 로 bulk dual 변환.
+            try:
+                from core.layers.poly_bl_transition import (
+                    run_poly_bl_transition,
+                )
+            except Exception as exc:
+                ok, msg = False, f"poly_bl_transition import 실패: {exc}"
+            else:
+                _res = run_poly_bl_transition(
+                    case_dir,
+                    num_layers=int(num_layers),
+                    growth_ratio=float(growth_ratio),
+                    first_thickness=float(first_thickness),
+                    wall_patch_names=params.get("post_layers_wall_patch_names"),
+                    backup_original=bool(params.get(
+                        "post_layers_backup_original", True,
+                    )),
+                    max_total_ratio=float(params.get(
+                        "post_layers_max_total_ratio", 0.3,
+                    )),
+                    apply_bulk_dual=bool(params.get(
+                        "post_layers_apply_bulk_dual", True,
+                    )),
+                    dual_feature_angle=float(params.get(
+                        "post_layers_dual_feature_angle", 30.0,
+                    )),
+                )
+                ok = bool(_res.success)
+                msg = str(_res.message)
         elif engine in ("netgen_bl", "netgen_layers"):
             ok, msg = _run_netgen_bl(
                 case_dir, num_layers, growth_ratio, first_thickness,
