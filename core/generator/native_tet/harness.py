@@ -80,13 +80,31 @@ def run_native_tet_harness(
     target_edge_length: float | None = None,
     seed_density: int = 12,
     max_iter: int = 2,
+    max_cells: int = 50000,
 ) -> TetHarnessResult:
     """native_tet Generator ↔ Evaluator 반복.
 
     FAIL 시 seed_density 를 1.3× 늘려 mesh 를 더 조밀하게. 이는 surface 근처
     tet 이 많아져 Hausdorff 개선 + boundary sliver 감소 → non-ortho 도 개선.
+
+    Safety cap:
+      - target_edge_length < bbox_diag/40 이면 clamp (tet 폭증 방지).
+      - tet 생성 결과 cells > max_cells 이면 target_edge 1.6×, seed 0.7× 재시도.
     """
     t0 = time.perf_counter()
+
+    # target_edge_length 하한 clamp
+    if target_edge_length is not None:
+        bmin = np.asarray(vertices).min(axis=0)
+        bmax = np.asarray(vertices).max(axis=0)
+        diag = float(np.linalg.norm(bmax - bmin))
+        floor = diag / 40.0
+        if target_edge_length < floor:
+            log.info(
+                "native_tet_harness_target_edge_clamp",
+                requested=target_edge_length, clamped_to=floor,
+            )
+            target_edge_length = floor
 
     last_metrics: dict = {}
     best_case: Path | None = None
@@ -111,6 +129,18 @@ def run_native_tet_harness(
                     iteration=it, message=res.message,
                 )
                 current_seed = int(current_seed * 1.3)
+                shutil.rmtree(tmp, ignore_errors=True)
+                continue
+
+            # cell 수 cap
+            if res.n_cells > max_cells and it < max_iter:
+                log.warning(
+                    "native_tet_harness_too_many_cells",
+                    n_cells=res.n_cells, cap=max_cells, iteration=it,
+                )
+                if target_edge_length is not None:
+                    target_edge_length = float(target_edge_length) * 1.6
+                current_seed = max(int(current_seed * 0.7), 4)
                 shutil.rmtree(tmp, ignore_errors=True)
                 continue
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.4.0-beta8] - 2026-04-22 — "harness 확장 + 성능 안정화"
+
+### Added
+
+- **`core/generator/native_tet/harness.py`** (`run_native_tet_harness`):
+  native_tet Generator ↔ Evaluator 반복으로 non_ortho 개선. sphere 에서 iter=1
+  PASS, non_ortho 81.2° → **76.8°** (draft 임계 < 80 통과).
+- `tier_native_tet` 이 harness 기본 경로로 전환 (실패 시 기본 generate_native_tet
+  fallback).
+
+### Fixed
+
+- native_poly harness 에 **max_tet_cells cap** (default 30000): target_edge_length
+  가 Strategist 에서 매우 작게 전달될 경우 tet mesh 가 121k cells 로 폭증 → dual
+  변환 이 timeout 되는 문제 해결. bbox_diag/50 하한 + cell 수 초과 시 target_edge
+  1.6×, seed 0.6× 로 재조정.
+- CLI 에서 `--tier native_poly` 로 easy_cube 실행 시 300s+ timeout → **30s 이하**
+  로 완주.
+
+---
+
 ## [0.4.0-beta7] - 2026-04-22 — "poly mesh 자체 완성 + harness 패턴"
 
 ### Added — poly mesh 완성 (OpenFOAM 의존 제거)
