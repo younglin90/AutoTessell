@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import time
-from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -52,99 +51,18 @@ from core.utils.geometry import inside_winding_number as _inside_winding_number
 def _write_polymesh_hex(
     vertices: np.ndarray, hexes: np.ndarray, case_dir: Path,
 ) -> dict[str, int]:
-    """hex (N, 8) array → OpenFOAM polyMesh 쓰기.
+    """hex (N, 8) array → OpenFOAM polyMesh (``write_generic_polymesh`` wrapper).
 
-    PolyMeshWriter 는 tet 전용이라 hex 용 간이 writer 가 필요.
+    각 hex 셀의 6 face 를 OpenFOAM 외향 vertex 순서로 변환 → generic writer 위임.
     """
-    poly_dir = case_dir / "constant" / "polyMesh"
-    poly_dir.mkdir(parents=True, exist_ok=True)
+    from core.generator.polymesh_writer import write_generic_polymesh  # noqa: PLC0415
 
-    n_cells = int(hexes.shape[0])
+    cell_faces: list[list[list[int]]] = []
+    for cell in hexes:
+        faces = [[int(cell[v]) for v in local] for local in _HEX_FACES]
+        cell_faces.append(faces)
 
-    # 각 cell 의 6 face 를 enumerate, canonical key (sorted vertex tuple) 로 dedupe.
-    # face_map: key → [(cell_id, ordered_verts), ...]
-    face_map: dict[tuple[int, ...], list[tuple[int, tuple[int, int, int, int]]]] = (
-        defaultdict(list)
-    )
-    for ci in range(n_cells):
-        cell = hexes[ci]
-        for local in _HEX_FACES:
-            fv = tuple(int(cell[v]) for v in local)
-            key = tuple(sorted(fv))
-            face_map[key].append((ci, fv))
-
-    internal_verts: list[tuple[int, int, int, int]] = []
-    internal_owner: list[int] = []
-    internal_nbr: list[int] = []
-    boundary_verts: list[tuple[int, int, int, int]] = []
-    boundary_owner: list[int] = []
-
-    for key, refs in face_map.items():
-        if len(refs) == 2:
-            (ca, fa), (cb, fb) = refs
-            owner_c = min(ca, cb)
-            nbr_c = max(ca, cb)
-            verts = fa if ca == owner_c else fb
-            internal_verts.append(verts)
-            internal_owner.append(owner_c)
-            internal_nbr.append(nbr_c)
-        elif len(refs) == 1:
-            (ci, fv) = refs[0]
-            boundary_verts.append(fv)
-            boundary_owner.append(ci)
-        else:
-            raise RuntimeError(
-                f"hex face key {key} 가 {len(refs)} cell 공유 — manifold 위반"
-            )
-
-    # 정렬: internal 은 (owner, neighbour) 순, boundary 는 owner 순
-    int_order = sorted(
-        range(len(internal_verts)),
-        key=lambda i: (internal_owner[i], internal_nbr[i]),
-    )
-    bnd_order = sorted(range(len(boundary_verts)), key=lambda i: boundary_owner[i])
-
-    final_faces: list[tuple[int, int, int, int]] = []
-    final_owner: list[int] = []
-    final_nbr: list[int] = []
-    for i in int_order:
-        final_faces.append(internal_verts[i])
-        final_owner.append(internal_owner[i])
-        final_nbr.append(internal_nbr[i])
-    for i in bnd_order:
-        final_faces.append(boundary_verts[i])
-        final_owner.append(boundary_owner[i])
-
-    # 쓰기
-    from core.layers.native_bl import (
-        _write_boundary, _write_faces, _write_labels, _write_points,
-    )
-    _write_points(poly_dir / "points", vertices)
-    _write_faces(poly_dir / "faces", [list(f) for f in final_faces])
-    _write_labels(
-        poly_dir / "owner",
-        np.array(final_owner, dtype=np.int64), "owner",
-    )
-    _write_labels(
-        poly_dir / "neighbour",
-        np.array(final_nbr, dtype=np.int64), "neighbour",
-    )
-    _write_boundary(
-        poly_dir / "boundary",
-        [{
-            "name": "defaultWall",
-            "type": "wall",
-            "nFaces": len(boundary_verts),
-            "startFace": len(int_order),
-        }],
-    )
-
-    return {
-        "num_cells": n_cells,
-        "num_points": int(vertices.shape[0]),
-        "num_faces": len(final_faces),
-        "num_internal_faces": len(int_order),
-    }
+    return write_generic_polymesh(vertices, cell_faces, case_dir)
 
 
 def generate_native_hex(

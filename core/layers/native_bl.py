@@ -151,7 +151,15 @@ def compute_vertex_normals(
 # ---------------------------------------------------------------------------
 
 
-_FOAM_HEADER = """FoamFile
+_FOAM_HEADER = """\
+/*--------------------------------*- C++ -*----------------------------------*\\
+  =========                 |
+  \\\\      /  F ield         | OpenFOAM: The Open Source CFD Toolbox
+   \\\\    /   O peration     |
+    \\\\  /    A nd           | Version: 13
+     \\\\/     M anipulation  |
+\\*---------------------------------------------------------------------------*/
+FoamFile
 {{
     version     2.0;
     format      ascii;
@@ -159,7 +167,10 @@ _FOAM_HEADER = """FoamFile
     location    "constant/polyMesh";
     object      {obj};
 }}
+// * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * //
 """
+
+_FOAM_FOOTER = "\n// ************************************************************************* //\n"
 
 
 def _write_points(path: Path, points: np.ndarray) -> None:
@@ -167,7 +178,8 @@ def _write_points(path: Path, points: np.ndarray) -> None:
     lines.append(f"{len(points)}\n(")
     for p in points:
         lines.append(f"({p[0]:.9g} {p[1]:.9g} {p[2]:.9g})")
-    lines.append(")\n")
+    lines.append(")")
+    lines.append(_FOAM_FOOTER)
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -176,16 +188,37 @@ def _write_faces(path: Path, faces: list[list[int]]) -> None:
     lines.append(f"{len(faces)}\n(")
     for f in faces:
         lines.append(f"{len(f)}(" + " ".join(str(v) for v in f) + ")")
-    lines.append(")\n")
+    lines.append(")")
+    lines.append(_FOAM_FOOTER)
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-def _write_labels(path: Path, labels: np.ndarray, obj_name: str) -> None:
-    lines = [_FOAM_HEADER.format(cls="labelList", obj=obj_name)]
+def _write_labels(
+    path: Path,
+    labels: np.ndarray,
+    obj_name: str,
+    *,
+    note: str | None = None,
+) -> None:
+    """FoamFile labelList 쓰기.
+
+    Args:
+        note: 선택적으로 FoamFile 블록에 ``note "...";`` 삽입. Ofpp 등 일부
+            파서는 owner 파일의 note 로부터 nPoints/nCells 를 추출한다.
+    """
+    header = _FOAM_HEADER.format(cls="labelList", obj=obj_name)
+    if note:
+        # FoamFile {...} 블록 내부 object 앞에 note 삽입
+        header = header.replace(
+            f"    object      {obj_name};",
+            f'    note        "{note}";\n    object      {obj_name};',
+        )
+    lines = [header]
     lines.append(f"{len(labels)}\n(")
     for v in labels:
         lines.append(str(int(v)))
-    lines.append(")\n")
+    lines.append(")")
+    lines.append(_FOAM_FOOTER)
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -199,7 +232,8 @@ def _write_boundary(path: Path, entries: list[dict[str, Any]]) -> None:
         lines.append(f"        nFaces          {e['nFaces']};")
         lines.append(f"        startFace       {e['startFace']};")
         lines.append("    }")
-    lines.append(")\n")
+    lines.append(")")
+    lines.append(_FOAM_FOOTER)
     path.write_text("\n".join(lines), encoding="utf-8")
 
 

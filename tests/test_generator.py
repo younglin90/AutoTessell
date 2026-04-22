@@ -498,24 +498,24 @@ class TestTierGracefulFail:
         assert p["edge_length_r"] == 0.06
 
     def test_tier_wildmesh_quality_params_standard(self) -> None:
-        """standard quality_level → stop_quality=10, max_its=80, epsilon=0.001."""
+        """standard quality_level → TetWild 매칭 (epsilon=0.001, edge_len=0.05, sq=10)."""
         from core.generator.tier_wildmesh import _get_quality_params
 
         p = _get_quality_params("standard", {})
         assert p["stop_quality"] == 10.0
         assert p["max_its"] == 80
         assert p["epsilon"] == 0.001
-        assert p["edge_length_r"] == 0.04
+        assert p["edge_length_r"] == 0.05
 
     def test_tier_wildmesh_quality_params_fine(self) -> None:
-        """fine quality_level → stop_quality=5, max_its=200, epsilon=0.0003."""
+        """fine quality_level → sq=6, max_its=120, epsilon=0.0005 (tight 한계값)."""
         from core.generator.tier_wildmesh import _get_quality_params
 
         p = _get_quality_params("fine", {})
-        assert p["stop_quality"] == 5.0
-        assert p["max_its"] == 200
-        assert p["epsilon"] == 0.0003
-        assert p["edge_length_r"] == 0.02
+        assert p["stop_quality"] == 6.0
+        assert p["max_its"] == 120
+        assert p["epsilon"] == 0.0005
+        assert p["edge_length_r"] == 0.03
 
     def test_tier_wildmesh_quality_params_override(self) -> None:
         """tier_specific_params 값이 기본값을 오버라이드한다."""
@@ -548,23 +548,47 @@ class TestTierGracefulFail:
         tet_v = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
         tet_f = np.array([[0, 1, 2, 3]], dtype=np.int32)
 
-        mock_tetra = MagicMock()
-        mock_tetra.get_tet_mesh.return_value = (tet_v, tet_f)
-
-        mock_wm = MagicMock()
-        mock_wm.Tetrahedralizer.return_value = mock_tetra
-
         mock_writer = MagicMock()
         mock_writer.write.return_value = {"num_cells": 1}
+        mesh_strategy.flow_type = "internal"
 
         generator = TierWildMeshGenerator()
         with patch("core.generator.tier_wildmesh._HAS_WILDMESHING", True), \
-             patch.dict("sys.modules", {"wildmeshing": mock_wm}), \
+             patch(
+                 "core.generator.tier_wildmesh._run_tetrahedralize_subprocess",
+                 return_value=(tet_v, tet_f, None),
+             ), \
              patch("core.generator.tier_wildmesh.PolyMeshWriter", return_value=mock_writer):
             attempt = generator.run(mesh_strategy, dummy_stl, tmp_path)
 
         assert attempt.tier == "tier_wildmesh"
         assert attempt.time_seconds >= 0.0
+
+    def test_tier_wildmesh_subprocess_segfault_is_reported(self) -> None:
+        """wildmeshing child process segfault는 부모 프로세스 예외로 변환된다."""
+        import numpy as np
+        from subprocess import CompletedProcess
+
+        from core.generator.tier_wildmesh import _run_tetrahedralize_subprocess
+
+        vertices = np.array(
+            [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
+            dtype=np.float64,
+        )
+        faces = np.array([[0, 1, 2]], dtype=np.int32)
+        params = {
+            "stop_quality": 20.0,
+            "max_its": 40,
+            "epsilon": 0.002,
+            "edge_length_r": 0.06,
+        }
+
+        with patch(
+            "core.generator.tier_wildmesh.subprocess.run",
+            return_value=CompletedProcess(args=[], returncode=-11, stdout="", stderr=""),
+        ):
+            with pytest.raises(RuntimeError, match="segmentation fault"):
+                _run_tetrahedralize_subprocess(vertices, faces, params, timeout_sec=10)
 
 
 # ---------------------------------------------------------------------------
@@ -1417,23 +1441,27 @@ class TestPolyMeshWriter:
 
     def test_polymesh_writer_single_tet_boundary_nfaces(self, tmp_path: Path) -> None:
         """Single tet boundary file reports nFaces = 4."""
+        import re  # noqa: PLC0415
+
         from core.generator.polymesh_writer import PolyMeshWriter
 
         vertices, tets = self._single_tet_mesh()
         PolyMeshWriter().write(vertices, tets, tmp_path)
 
         content = (tmp_path / "constant" / "polyMesh" / "boundary").read_text()
-        assert "nFaces 4" in content
+        assert re.search(r"nFaces\s+4\b", content)
 
     def test_polymesh_writer_single_tet_start_face_zero(self, tmp_path: Path) -> None:
         """Single tet: all faces are boundary → startFace = 0."""
+        import re  # noqa: PLC0415
+
         from core.generator.polymesh_writer import PolyMeshWriter
 
         vertices, tets = self._single_tet_mesh()
         PolyMeshWriter().write(vertices, tets, tmp_path)
 
         content = (tmp_path / "constant" / "polyMesh" / "boundary").read_text()
-        assert "startFace 0" in content
+        assert re.search(r"startFace\s+0\b", content)
 
     # ------------------------------------------------------------------
     # two-tet topology
@@ -1509,6 +1537,8 @@ class TestPolyMeshWriter:
 
     def test_polymesh_writer_two_tets_boundary_start_face(self, tmp_path: Path) -> None:
         """Two tets: boundary startFace equals number of internal faces."""
+        import re  # noqa: PLC0415
+
         from core.generator.polymesh_writer import PolyMeshWriter
 
         vertices, tets = self._two_tet_mesh()
@@ -1516,7 +1546,7 @@ class TestPolyMeshWriter:
 
         content = (tmp_path / "constant" / "polyMesh" / "boundary").read_text()
         n_internal = stats["num_internal_faces"]
-        assert f"startFace {n_internal}" in content
+        assert re.search(rf"startFace\s+{n_internal}\b", content)
 
     # ------------------------------------------------------------------
     # points file content

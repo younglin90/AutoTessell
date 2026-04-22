@@ -1,8 +1,14 @@
-"""OpenFOAM polyMesh writer for tetrahedral meshes.
+"""OpenFOAM polyMesh writer.
 
-Converts numpy tet mesh arrays (vertices, tets) into the five files that
-OpenFOAM expects under ``constant/polyMesh/``:
+Converts numpy mesh arrays into the five files that OpenFOAM expects under
+``constant/polyMesh/``:
     points, faces, owner, neighbour, boundary
+
+두 경로 제공:
+    - ``PolyMeshWriter``: 전용 tet writer (하위 호환; 내부적으로 generic writer 호출).
+    - ``write_generic_polymesh``: 임의 cell (tet/hex/poly 공용) writer. 호출 측이
+      각 cell 의 외향 face vertex list 를 넘기면 face dedup + owner/neighbour 정렬을
+      수행한다.
 
 No external tools (OpenFOAM, meshio) are required.
 """
@@ -11,7 +17,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, Sequence
 
 import numpy as np
 
@@ -117,6 +123,151 @@ def _normalize_tet_winding(vertices: np.ndarray, tets: np.ndarray) -> np.ndarray
     return tets
 
 
+def write_generic_polymesh(
+    vertices: np.ndarray,
+    cell_faces: Sequence[Sequence[Sequence[int]]],
+    case_dir: Path,
+    *,
+    patch_name: str = "defaultWall",
+    patch_type: str = "wall",
+) -> dict[str, int]:
+    """Generic polyMesh writer — cell → list of face vertex lists.
+
+    Args:
+        vertices: (N, 3) float 좌표 배열.
+        cell_faces: ``cell_faces[i]`` = cell i 를 구성하는 face 목록. 각 face 는
+            vertex index 시퀀스 (길이 가변: 삼각형 3, 사각형 4, n-gon n).
+            **각 face 는 소유 cell 외향 (CCW from outside) 으로 기록되어야 한다.**
+        case_dir: 결과 case 디렉터리 — ``constant/polyMesh/`` 하위에 쓰기.
+        patch_name / patch_type: 단일 boundary patch 설정 (기본 defaultWall/wall).
+
+    Returns:
+        ``{num_cells, num_points, num_faces, num_internal_faces}``.
+
+    Algorithm:
+        1. canonical key = tuple(sorted(face_verts)) 로 face dedup.
+        2. 공유 2 cells → internal, 1 cell → boundary.
+        3. internal face 의 orientation 은 owner cell 측 기록 그대로 사용 (owner
+           외향 = owner→neighbour normal).
+        4. internal sort by (owner, neighbour); boundary sort by owner.
+        5. points/faces/owner/neighbour/boundary 파일 + 최소 system/ 쓰기.
+
+    Non-manifold (3+ cells 공유) face 는 첫 2 cell 을 internal 로 선택하고 나머지는
+    무시한다 (경고 로그 포함).
+    """
+    # Lazy imports — 순환 import 회피
+    from core.generator.tier_layers_post import (  # noqa: PLC0415
+        _ensure_minimal_controldict,
+        _write_minimal_fv_dicts,
+    )
+    from core.layers.native_bl import (  # noqa: PLC0415
+        _write_boundary,
+        _write_faces,
+        _write_labels,
+        _write_points,
+    )
+
+    vertices_arr = np.asarray(vertices, dtype=np.float64)
+    poly_dir = case_dir / "constant" / "polyMesh"
+    poly_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_minimal_controldict(case_dir)
+    _write_minimal_fv_dicts(case_dir)
+
+    # face_map: canonical key → [(cell_id, ordered_verts), ...]
+    face_map: dict[tuple[int, ...], list[tuple[int, list[int]]]] = defaultdict(list)
+    for ci, faces_of_cell in enumerate(cell_faces):
+        for f in faces_of_cell:
+            verts = [int(v) for v in f]
+            if len(verts) < 3:
+                continue
+            key = tuple(sorted(verts))
+            face_map[key].append((ci, verts))
+
+    internal_faces: list[list[int]] = []
+    internal_owner: list[int] = []
+    internal_nbr: list[int] = []
+    boundary_faces: list[list[int]] = []
+    boundary_owner: list[int] = []
+
+    for key, refs in face_map.items():
+        n_refs = len(refs)
+        if n_refs == 2:
+            (ca, fa), (cb, fb) = refs
+        elif n_refs == 1:
+            ci, fv = refs[0]
+            boundary_faces.append(fv)
+            boundary_owner.append(ci)
+            continue
+        else:
+            # non-manifold: 첫 2 cell 만 internal 로 사용, 나머지 무시.
+            logger.warning(
+                "generic_polymesh_non_manifold_face",
+                n_refs=n_refs,
+                key_len=len(key),
+            )
+            (ca, fa), (cb, fb) = refs[0], refs[1]
+
+        owner_c = min(ca, cb)
+        nbr_c = max(ca, cb)
+        f_use = fa if ca == owner_c else fb
+        internal_faces.append(f_use)
+        internal_owner.append(owner_c)
+        internal_nbr.append(nbr_c)
+
+    int_order = sorted(
+        range(len(internal_faces)),
+        key=lambda i: (internal_owner[i], internal_nbr[i]),
+    )
+    bnd_order = sorted(range(len(boundary_faces)), key=lambda i: boundary_owner[i])
+
+    n_internal = len(int_order)
+    final_faces = [internal_faces[i] for i in int_order] + [
+        boundary_faces[i] for i in bnd_order
+    ]
+    final_owner = [internal_owner[i] for i in int_order] + [
+        boundary_owner[i] for i in bnd_order
+    ]
+    final_nbr = [internal_nbr[i] for i in int_order]
+
+    n_faces = len(final_faces)
+    owner_note = (
+        f"nPoints:{int(vertices_arr.shape[0])}  nCells:{len(cell_faces)}  "
+        f"nFaces:{n_faces}  nInternalFaces:{n_internal}"
+    )
+
+    _write_points(poly_dir / "points", vertices_arr)
+    _write_faces(poly_dir / "faces", final_faces)
+    _write_labels(
+        poly_dir / "owner",
+        np.array(final_owner, dtype=np.int64),
+        "owner",
+        note=owner_note,
+    )
+    _write_labels(
+        poly_dir / "neighbour",
+        np.array(final_nbr, dtype=np.int64),
+        "neighbour",
+    )
+    _write_boundary(
+        poly_dir / "boundary",
+        [
+            {
+                "name": patch_name,
+                "type": patch_type,
+                "nFaces": len(boundary_faces),
+                "startFace": n_internal,
+            }
+        ],
+    )
+
+    return {
+        "num_cells": len(cell_faces),
+        "num_points": int(vertices_arr.shape[0]),
+        "num_faces": len(final_faces),
+        "num_internal_faces": n_internal,
+    }
+
+
 class PolyMeshWriter:
     """Writes an OpenFOAM polyMesh directory from raw tet mesh data.
 
@@ -176,93 +327,29 @@ class PolyMeshWriter:
         # lead to checkMesh "incorrectly oriented" and "negative volume" errors.
         tets = _normalize_tet_winding(vertices, tets)
 
-        poly_dir = case_dir / "constant" / "polyMesh"
-        poly_dir.mkdir(parents=True, exist_ok=True)
-
         logger.info(
             "polymesh_writer_start",
             num_points=len(vertices),
             num_cells=len(tets),
-            poly_dir=str(poly_dir),
+            case_dir=str(case_dir),
         )
 
-        # Step 1-3: build face → cells mapping
-        face_cells: dict[tuple[int, int, int], list[int]] = defaultdict(list)
-        # Store the ordered (non-canonical) vertices and the generating cell for
-        # each canonical key.  We record the orientation from the *first* cell
-        # that registers the face together with that cell's ID so we can later
-        # fix the winding for internal faces.
-        face_ordered: dict[tuple[int, int, int], tuple[int, int, int]] = {}
-        face_generator: dict[tuple[int, int, int], int] = {}  # canonical key → generating cell ID
+        # Step 1: build cell_faces (각 cell 의 외향 face 4 개) — generic writer 위임.
+        cell_faces: list[list[list[int]]] = []
+        for tet in tets:
+            faces = [
+                [int(tet[lf[0]]), int(tet[lf[1]]), int(tet[lf[2]])]
+                for lf in _TET_FACES
+            ]
+            cell_faces.append(faces)
 
-        for cell_id, tet in enumerate(tets):
-            for lf in _TET_FACES:
-                gv = (int(tet[lf[0]]), int(tet[lf[1]]), int(tet[lf[2]]))
-                key = _canonical(*gv)
-                face_cells[key].append(cell_id)
-                if key not in face_ordered:
-                    face_ordered[key] = gv
-                    face_generator[key] = cell_id
+        stats = write_generic_polymesh(vertices, cell_faces, case_dir)
 
-        # Step 4-5: separate internal and boundary, then sort
-        internal: list[tuple[int, int, tuple[int, int, int]]] = []  # (owner, neighbour, key)
-        boundary: list[tuple[int, tuple[int, int, int]]] = []        # (owner, key)
-
-        for key, cells in face_cells.items():
-            if len(cells) == 2:
-                own = min(cells[0], cells[1])
-                nbr = max(cells[0], cells[1])
-                internal.append((own, nbr, key))
-            else:
-                boundary.append((cells[0], key))
-
-        # Sort internal by (owner, neighbour) so OpenFOAM's consistency check passes
-        internal.sort(key=lambda x: (x[0], x[1]))
-        # Sort boundary by owner
-        boundary.sort(key=lambda x: x[0])
-
-        n_internal = len(internal)
-        n_boundary = len(boundary)
-        n_faces = n_internal + n_boundary
-
-        # Build flat lists for writing
-        all_face_verts: list[tuple[int, int, int]] = []
-        owner_list: list[int] = []
-        neighbour_list: list[int] = []
-
-        for own, nbr, key in internal:
-            verts = face_ordered[key]
-            # The stored orientation is outward from face_generator[key].
-            # OpenFOAM requires the face normal to point from owner toward
-            # neighbour (i.e. outward from the owner cell).
-            # If the stored orientation came from the neighbour cell it points
-            # *toward* the owner → reverse it so it points toward the neighbour.
-            if face_generator[key] != own:
-                verts = (verts[2], verts[1], verts[0])
-            all_face_verts.append(verts)
-            owner_list.append(own)
-            neighbour_list.append(nbr)
-
-        for own, key in boundary:
-            all_face_verts.append(face_ordered[key])
-            owner_list.append(own)
-
-        # Write all files
-        self._write_points(poly_dir, vertices)
-        self._write_faces(poly_dir, all_face_verts)
-        self._write_owner(poly_dir, owner_list, len(vertices), n_faces, len(tets), n_internal)
-        self._write_neighbour(poly_dir, neighbour_list, n_internal)
-        self._write_boundary(poly_dir, n_boundary, n_internal)
-
-        # system/ 파일 생성 (checkMesh 등에 필요)
+        # Writer-specific system files (GAMG solver 등 tet 솔루션 설정) 덮어쓰기.
+        # generic writer 의 최소 controlDict 는 generic 솔루션이므로, tet 전용
+        # PolyMeshWriter 는 자체 고정 스펙을 유지해 하위 호환 보장.
         self._ensure_system_files(case_dir)
 
-        stats = {
-            "num_cells": len(tets),
-            "num_points": len(vertices),
-            "num_faces": n_faces,
-            "num_internal_faces": n_internal,
-        }
         logger.info("polymesh_writer_done", **stats)
         return stats
 

@@ -46,86 +46,10 @@ def _write_polymesh_poly(
     cells: list[list[list[int]]],  # cell 별 face (vertex index list)
     case_dir: Path,
 ) -> dict[str, int]:
-    """각 cell 을 face list 로 정의한 polyMesh 쓰기."""
-    poly_dir = case_dir / "constant" / "polyMesh"
-    poly_dir.mkdir(parents=True, exist_ok=True)
-    # 최소 system/ 파일
-    from core.generator.tier_layers_post import (  # noqa: PLC0415
-        _ensure_minimal_controldict, _write_minimal_fv_dicts,
-    )
-    _ensure_minimal_controldict(case_dir)
-    _write_minimal_fv_dicts(case_dir)
+    """각 cell 을 face list 로 정의한 polyMesh — generic writer 위임."""
+    from core.generator.polymesh_writer import write_generic_polymesh  # noqa: PLC0415
 
-    # face canonical dedupe
-    face_map: dict[tuple[int, ...], list[tuple[int, list[int]]]] = defaultdict(list)
-    for ci, face_list in enumerate(cells):
-        for f in face_list:
-            key = tuple(sorted(f))
-            face_map[key].append((ci, list(f)))
-
-    internal_faces: list[list[int]] = []
-    internal_owner: list[int] = []
-    internal_nbr: list[int] = []
-    boundary_faces: list[list[int]] = []
-    boundary_owner: list[int] = []
-
-    for key, refs in face_map.items():
-        if len(refs) == 2:
-            (ca, fa), (cb, fb) = refs
-            own = min(ca, cb); nbr = max(ca, cb)
-            f_use = fa if ca == own else fb
-            internal_faces.append(f_use)
-            internal_owner.append(own)
-            internal_nbr.append(nbr)
-        elif len(refs) == 1:
-            ci, fv = refs[0]
-            boundary_faces.append(fv)
-            boundary_owner.append(ci)
-
-    int_order = sorted(
-        range(len(internal_faces)),
-        key=lambda i: (internal_owner[i], internal_nbr[i]),
-    )
-    bnd_order = sorted(range(len(boundary_faces)), key=lambda i: boundary_owner[i])
-
-    final_faces: list[list[int]] = []
-    final_owner: list[int] = []
-    final_nbr: list[int] = []
-    for i in int_order:
-        final_faces.append(internal_faces[i])
-        final_owner.append(internal_owner[i])
-        final_nbr.append(internal_nbr[i])
-    for i in bnd_order:
-        final_faces.append(boundary_faces[i])
-        final_owner.append(boundary_owner[i])
-
-    from core.layers.native_bl import (  # noqa: PLC0415
-        _write_boundary, _write_faces, _write_labels, _write_points,
-    )
-    _write_points(poly_dir / "points", vertices)
-    _write_faces(poly_dir / "faces", final_faces)
-    _write_labels(
-        poly_dir / "owner", np.array(final_owner, dtype=np.int64), "owner",
-    )
-    _write_labels(
-        poly_dir / "neighbour", np.array(final_nbr, dtype=np.int64), "neighbour",
-    )
-    _write_boundary(
-        poly_dir / "boundary",
-        [{
-            "name": "defaultWall",
-            "type": "wall",
-            "nFaces": len(boundary_faces),
-            "startFace": len(int_order),
-        }],
-    )
-
-    return {
-        "num_cells": len(cells),
-        "num_points": int(vertices.shape[0]),
-        "num_faces": len(final_faces),
-        "num_internal_faces": len(int_order),
-    }
+    return write_generic_polymesh(vertices, cells, case_dir)
 
 
 def _ccw_sort_face_vertices(
