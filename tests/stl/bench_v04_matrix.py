@@ -38,7 +38,7 @@ ENGINES = [
     ("native_poly", "poly"),
 ]
 
-QUALITIES = ["draft"]  # 매트릭스 20 개 — draft 만으로 제한 (시간 예산)
+QUALITIES = ["draft", "standard"]  # v0.4.0-beta4+: standard 확장
 
 
 def _run_one(

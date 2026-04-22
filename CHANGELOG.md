@@ -16,7 +16,22 @@
 - **tests/stl/bench_v04_matrix.py**: 5 난이도 × native_tet/hex/poly 매트릭스
   실행 스크립트. 결과는 `bench_v04_result.json` 으로 저장.
 
-### v0.4 Bench Matrix 결과 (5 난이도 × 3 native 엔진, draft, --prefer-native)
+### v0.4 Bench Matrix 결과 (5 난이도 × 3 native 엔진 × draft+standard)
+
+**beta4+ (standard quality 확장 — 30 조합):**
+```
+| STL                      | native_tet           | native_hex           | native_poly         |
+|                          | draft    | standard  | draft    | standard  | draft   | standard  |
+|--------------------------|----------|-----------|----------|-----------|---------|-----------|
+| 01_easy_cube             | ✓ 168s   | ✓ 268s    | ✓ 37s OK | ✓ 36s OK  | ✓ 50s   | ✓ 50s     |
+| 02_medium_cylinder       | ✓ 35s    | ✓ 189s    | ✓ 11s OK | ✓ 30s OK  | ✓ 59s   | ✓ 59s     |
+| 03_hard_bracket          | ✓ 4s     | ✓ 22s     | ✓ 3s OK  | ✓ 7s OK   | ✓ 6s    | ✓ 15s     |
+| 04_extreme_gear          | ✓ 13s    | ✓ 35s     | ✓ 5s OK  | ✓ 8s OK   | ✓ 13s   | ✓ 27s     |
+| 05_ultra_knot            | ✓ 13s    | ✓ 23s     | ✓ 5s OK  | ✓ 7s OK   | ✓ 224s  | ✓ 263s    |
+```
+**30/30 polyMesh 생성 성공 (100%)**. native_hex 는 draft+standard 둘 다 모두
+Evaluator PASS (rc=0). native_tet/poly 는 polyMesh 는 생성되나 품질 판정 FAIL
+(향후 개선 대상).
 
 **beta3 최종 (inside-test AABB prefilter 적용 후):**
 ```

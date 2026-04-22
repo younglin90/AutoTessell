@@ -6,11 +6,26 @@
     "quality": "draft",
     "returncode": 0,
     "polyMesh_created": true,
-    "elapsed_s": 170.38,
+    "elapsed_s": 167.86,
     "last_lines": [
       "Boundary patches:",
       "  defaultWall          \u2192 wall            (591124 faces)",
-      "\u2713 PASS (1 iteration, 168.7s)"
+      "\u2713 PASS (1 iteration, 166.3s)"
+    ],
+    "difficulty": "01_easy"
+  },
+  {
+    "stl": "01_easy_cube.stl",
+    "tier": "native_tet",
+    "mesh_type": "tet",
+    "quality": "standard",
+    "returncode": 1,
+    "polyMesh_created": true,
+    "elapsed_s": 267.81,
+    "last_lines": [
+      "Boundary patches:",
+      "  defaultWall          \u2192 wall            (1030900 faces)",
+      "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "01_easy"
   },
@@ -21,11 +36,26 @@
     "quality": "draft",
     "returncode": 0,
     "polyMesh_created": true,
-    "elapsed_s": 33.0,
+    "elapsed_s": 36.77,
     "last_lines": [
       "Boundary patches:",
       "  defaultWall          \u2192 wall            (22916 faces)",
-      "\u2713 PASS (1 iteration, 31.4s)"
+      "\u2713 PASS (1 iteration, 35.2s)"
+    ],
+    "difficulty": "01_easy"
+  },
+  {
+    "stl": "01_easy_cube.stl",
+    "tier": "native_hex",
+    "mesh_type": "hex_dominant",
+    "quality": "standard",
+    "returncode": 1,
+    "polyMesh_created": true,
+    "elapsed_s": 35.66,
+    "last_lines": [
+      "Boundary patches:",
+      "  defaultWall          \u2192 wall            (22916 faces)",
+      "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "01_easy"
   },
@@ -36,10 +66,25 @@
     "quality": "draft",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 49.46,
+    "elapsed_s": 49.62,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (22057 faces)",
+      "  defaultWall          \u2192 wall            (18308 faces)",
+      "\u2717 FAIL \u2014 Failed after 1 iterations"
+    ],
+    "difficulty": "01_easy"
+  },
+  {
+    "stl": "01_easy_cube.stl",
+    "tier": "native_poly",
+    "mesh_type": "poly",
+    "quality": "standard",
+    "returncode": 1,
+    "polyMesh_created": true,
+    "elapsed_s": 49.84,
+    "last_lines": [
+      "Boundary patches:",
+      "  defaultWall          \u2192 wall            (18328 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "01_easy"
@@ -51,7 +96,7 @@
     "quality": "draft",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 36.41,
+    "elapsed_s": 35.38,
     "last_lines": [
       "Boundary patches:",
       "  defaultWall          \u2192 wall            (130780 faces)",
@@ -61,16 +106,46 @@
   },
   {
     "stl": "02_medium_cylinder.stl",
+    "tier": "native_tet",
+    "mesh_type": "tet",
+    "quality": "standard",
+    "returncode": 1,
+    "polyMesh_created": true,
+    "elapsed_s": 189.43,
+    "last_lines": [
+      "Boundary patches:",
+      "  defaultWall          \u2192 wall            (746778 faces)",
+      "\u2717 FAIL \u2014 Failed after 1 iterations"
+    ],
+    "difficulty": "02_medium"
+  },
+  {
+    "stl": "02_medium_cylinder.stl",
     "tier": "native_hex",
     "mesh_type": "hex_dominant",
     "quality": "draft",
     "returncode": 0,
     "polyMesh_created": true,
-    "elapsed_s": 10.7,
+    "elapsed_s": 10.58,
     "last_lines": [
       "Boundary patches:",
       "  defaultWall          \u2192 wall            (7632 faces)",
       "\u2713 PASS (1 iteration, 9.0s)"
+    ],
+    "difficulty": "02_medium"
+  },
+  {
+    "stl": "02_medium_cylinder.stl",
+    "tier": "native_hex",
+    "mesh_type": "hex_dominant",
+    "quality": "standard",
+    "returncode": 0,
+    "polyMesh_created": true,
+    "elapsed_s": 30.2,
+    "last_lines": [
+      "Boundary patches:",
+      "  defaultWall          \u2192 wall            (16392 faces)",
+      "\u2713 PASS (1 iteration, 28.6s)"
     ],
     "difficulty": "02_medium"
   },
@@ -81,10 +156,25 @@
     "quality": "draft",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 52.18,
+    "elapsed_s": 59.4,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (19597 faces)",
+      "  defaultWall          \u2192 wall            (13796 faces)",
+      "\u2717 FAIL \u2014 Failed after 1 iterations"
+    ],
+    "difficulty": "02_medium"
+  },
+  {
+    "stl": "02_medium_cylinder.stl",
+    "tier": "native_poly",
+    "mesh_type": "poly",
+    "quality": "standard",
+    "returncode": 1,
+    "polyMesh_created": true,
+    "elapsed_s": 58.86,
+    "last_lines": [
+      "Boundary patches:",
+      "  defaultWall          \u2192 wall            (14399 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "02_medium"
@@ -96,7 +186,7 @@
     "quality": "draft",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 4.41,
+    "elapsed_s": 4.4,
     "last_lines": [
       "Boundary patches:",
       "  defaultWall          \u2192 wall            (11582 faces)",
@@ -106,16 +196,46 @@
   },
   {
     "stl": "03_hard_bracket.stl",
+    "tier": "native_tet",
+    "mesh_type": "tet",
+    "quality": "standard",
+    "returncode": 1,
+    "polyMesh_created": true,
+    "elapsed_s": 22.15,
+    "last_lines": [
+      "Boundary patches:",
+      "  defaultWall          \u2192 wall            (75236 faces)",
+      "\u2717 FAIL \u2014 Failed after 1 iterations"
+    ],
+    "difficulty": "03_hard"
+  },
+  {
+    "stl": "03_hard_bracket.stl",
     "tier": "native_hex",
     "mesh_type": "hex_dominant",
     "quality": "draft",
     "returncode": 0,
     "polyMesh_created": true,
-    "elapsed_s": 3.08,
+    "elapsed_s": 2.76,
     "last_lines": [
       "Boundary patches:",
       "  defaultWall          \u2192 wall            (2716 faces)",
-      "\u2713 PASS (1 iteration, 1.5s)"
+      "\u2713 PASS (1 iteration, 1.2s)"
+    ],
+    "difficulty": "03_hard"
+  },
+  {
+    "stl": "03_hard_bracket.stl",
+    "tier": "native_hex",
+    "mesh_type": "hex_dominant",
+    "quality": "standard",
+    "returncode": 0,
+    "polyMesh_created": true,
+    "elapsed_s": 6.73,
+    "last_lines": [
+      "Boundary patches:",
+      "  defaultWall          \u2192 wall            (8584 faces)",
+      "\u2713 PASS (1 iteration, 5.2s)"
     ],
     "difficulty": "03_hard"
   },
@@ -126,10 +246,25 @@
     "quality": "draft",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 5.28,
+    "elapsed_s": 6.26,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (4077 faces)",
+      "  defaultWall          \u2192 wall            (5157 faces)",
+      "\u2717 FAIL \u2014 Failed after 1 iterations"
+    ],
+    "difficulty": "03_hard"
+  },
+  {
+    "stl": "03_hard_bracket.stl",
+    "tier": "native_poly",
+    "mesh_type": "poly",
+    "quality": "standard",
+    "returncode": 1,
+    "polyMesh_created": true,
+    "elapsed_s": 15.4,
+    "last_lines": [
+      "Boundary patches:",
+      "  defaultWall          \u2192 wall            (12545 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "03_hard"
@@ -141,10 +276,25 @@
     "quality": "draft",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 13.14,
+    "elapsed_s": 12.86,
     "last_lines": [
       "Boundary patches:",
       "  defaultWall          \u2192 wall            (39848 faces)",
+      "\u2717 FAIL \u2014 Failed after 1 iterations"
+    ],
+    "difficulty": "04_extreme"
+  },
+  {
+    "stl": "04_extreme_gear.stl",
+    "tier": "native_tet",
+    "mesh_type": "tet",
+    "quality": "standard",
+    "returncode": 1,
+    "polyMesh_created": true,
+    "elapsed_s": 34.58,
+    "last_lines": [
+      "Boundary patches:",
+      "  defaultWall          \u2192 wall            (115540 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "04_extreme"
@@ -156,11 +306,26 @@
     "quality": "draft",
     "returncode": 0,
     "polyMesh_created": true,
-    "elapsed_s": 6.34,
+    "elapsed_s": 5.05,
     "last_lines": [
       "Boundary patches:",
       "  defaultWall          \u2192 wall            (5712 faces)",
-      "\u2713 PASS (1 iteration, 4.7s)"
+      "\u2713 PASS (1 iteration, 3.5s)"
+    ],
+    "difficulty": "04_extreme"
+  },
+  {
+    "stl": "04_extreme_gear.stl",
+    "tier": "native_hex",
+    "mesh_type": "hex_dominant",
+    "quality": "standard",
+    "returncode": 0,
+    "polyMesh_created": true,
+    "elapsed_s": 8.26,
+    "last_lines": [
+      "Boundary patches:",
+      "  defaultWall          \u2192 wall            (8792 faces)",
+      "\u2713 PASS (1 iteration, 6.7s)"
     ],
     "difficulty": "04_extreme"
   },
@@ -171,10 +336,25 @@
     "quality": "draft",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 11.53,
+    "elapsed_s": 13.45,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (5128 faces)",
+      "  defaultWall          \u2192 wall            (5829 faces)",
+      "\u2717 FAIL \u2014 Failed after 1 iterations"
+    ],
+    "difficulty": "04_extreme"
+  },
+  {
+    "stl": "04_extreme_gear.stl",
+    "tier": "native_poly",
+    "mesh_type": "poly",
+    "quality": "standard",
+    "returncode": 1,
+    "polyMesh_created": true,
+    "elapsed_s": 27.11,
+    "last_lines": [
+      "Boundary patches:",
+      "  defaultWall          \u2192 wall            (10665 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "04_extreme"
@@ -186,10 +366,25 @@
     "quality": "draft",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 13.29,
+    "elapsed_s": 12.8,
     "last_lines": [
       "Boundary patches:",
       "  defaultWall          \u2192 wall            (22500 faces)",
+      "\u2717 FAIL \u2014 Failed after 1 iterations"
+    ],
+    "difficulty": "05_ultra"
+  },
+  {
+    "stl": "05_ultra_knot.stl",
+    "tier": "native_tet",
+    "mesh_type": "tet",
+    "quality": "standard",
+    "returncode": 1,
+    "polyMesh_created": true,
+    "elapsed_s": 22.77,
+    "last_lines": [
+      "Boundary patches:",
+      "  defaultWall          \u2192 wall            (40362 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "05_ultra"
@@ -201,11 +396,26 @@
     "quality": "draft",
     "returncode": 0,
     "polyMesh_created": true,
-    "elapsed_s": 179.27,
+    "elapsed_s": 4.59,
     "last_lines": [
       "Boundary patches:",
       "  defaultWall          \u2192 wall            (5288 faces)",
-      "\u2713 PASS (1 iteration, 177.6s)"
+      "\u2713 PASS (1 iteration, 3.0s)"
+    ],
+    "difficulty": "05_ultra"
+  },
+  {
+    "stl": "05_ultra_knot.stl",
+    "tier": "native_hex",
+    "mesh_type": "hex_dominant",
+    "quality": "standard",
+    "returncode": 0,
+    "polyMesh_created": true,
+    "elapsed_s": 7.06,
+    "last_lines": [
+      "Boundary patches:",
+      "  defaultWall          \u2192 wall            (8616 faces)",
+      "\u2713 PASS (1 iteration, 5.5s)"
     ],
     "difficulty": "05_ultra"
   },
@@ -216,10 +426,25 @@
     "quality": "draft",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 125.19,
+    "elapsed_s": 223.99,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (13829 faces)",
+      "  defaultWall          \u2192 wall            (14987 faces)",
+      "\u2717 FAIL \u2014 Failed after 1 iterations"
+    ],
+    "difficulty": "05_ultra"
+  },
+  {
+    "stl": "05_ultra_knot.stl",
+    "tier": "native_poly",
+    "mesh_type": "poly",
+    "quality": "standard",
+    "returncode": 1,
+    "polyMesh_created": true,
+    "elapsed_s": 263.05,
+    "last_lines": [
+      "Boundary patches:",
+      "  defaultWall          \u2192 wall            (17103 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "05_ultra"
