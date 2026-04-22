@@ -43,10 +43,11 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
         "fine":     {"seed_density": 16, "max_iter": 3},
     },
     "tier_native_hex": {
-        # native_hex 는 uniform grid (harness 미사용). seed_density 만 의미.
-        "draft":    {"seed_density": 12},
-        "standard": {"seed_density": 16},
-        "fine":     {"seed_density": 24},
+        # native_hex 는 uniform grid (harness 미사용). seed_density / snap_boundary 만 의미.
+        # beta22: fine quality 는 기본적으로 surface snap 활성화.
+        "draft":    {"seed_density": 12, "snap_boundary": False},
+        "standard": {"seed_density": 16, "snap_boundary": False},
+        "fine":     {"seed_density": 24, "snap_boundary": True},
     },
     "tier_native_poly": {
         "draft":    {"seed_density": 8,  "max_iter": 2},

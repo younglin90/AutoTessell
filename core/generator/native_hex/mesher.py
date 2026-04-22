@@ -72,6 +72,7 @@ def generate_native_hex(
     *,
     target_edge_length: float | None = None,
     seed_density: int = 16,
+    snap_boundary: bool = False,
 ) -> NativeHexResult:
     """uniform hex grid 생성 + inside filter.
 
@@ -81,6 +82,9 @@ def generate_native_hex(
         case_dir: 결과 case 디렉터리.
         target_edge_length: hex edge length. None 이면 bbox_diag / seed_density.
         seed_density: target_edge_length None 일 때 bbox_diag 분할 수.
+        snap_boundary: True 면 boundary 근처 hex vertex 를 STL surface 로
+            projection (Hausdorff 개선). skewness 저하 방지용 safety cap 내장.
+            기본 False (backwards compat).
 
     Returns:
         NativeHexResult.
@@ -152,6 +156,19 @@ def generate_native_hex(
     remap[used] = np.arange(used.shape[0])
     final_hexes = remap[kept].astype(np.int64)
     final_pts = grid_pts[used]
+
+    # v0.4.0-beta22: optional boundary snap — hex vertex 를 STL surface 로 projection.
+    if snap_boundary:
+        try:
+            from core.generator.native_hex.snap import (  # noqa: PLC0415
+                snap_hex_boundary_to_surface,
+            )
+            final_pts, snap_stats = snap_hex_boundary_to_surface(
+                final_pts, V, F, target_edge=h,
+            )
+            log.info("native_hex_boundary_snap_applied", **snap_stats)
+        except Exception as exc:
+            log.warning("native_hex_boundary_snap_failed", error=str(exc))
 
     # 최소 system/controlDict + fvSchemes + fvSolution 생성 (checkMesh 가 요구).
     from core.generator.tier_layers_post import (  # noqa: PLC0415
