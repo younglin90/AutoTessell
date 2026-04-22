@@ -532,7 +532,8 @@ def evaluate(
               help="볼륨 메쉬 엔진 (--tier와 동일, 더 명시적 이름)")
 @click.option("--checker-engine", default="auto", show_default=True,
               type=click.Choice(["auto", "openfoam", "native"]),
-              help="품질 검증 엔진 (auto=OpenFOAM 우선, native=OpenFOAM 불필요)")
+              help="품질 검증 엔진. v0.4 이후 auto=NativeMeshChecker 기본 "
+                   "(openfoam 명시 시에만 OpenFOAM checkMesh 사용, 교차 검증용).")
 @click.option("--cad-engine", default="auto", show_default=True,
               type=click.Choice(["auto", "cadquery", "gmsh"]),
               help="CAD 파일(STEP/IGES) 변환 라이브러리")
@@ -759,6 +760,7 @@ def run(
         remesh_engine=remesh_engine,
         allow_ai_fallback=allow_ai_fallback,
         strict_tier=strict_tier,
+        validator_engine=checker_engine,
     )
 
     # base_cell_num은 이미 element_size로 변환되어 orchestrator에 전달됨
@@ -814,6 +816,80 @@ def run(
                 console.print(f"[green]✓[/green] VTK → {vtk_path}")
     else:
         console.print(f"[bold red]✗ FAIL[/bold red] — {result.error}")
+
+        # v0.4: Evaluator FAIL + auto_retry=off 기본 경로 + tty 환경 → 사용자에게
+        # 재시도 여부 prompt. 응답이 'y' 이면 orchestrator 를 auto_retry="once" 로
+        # 재호출해 Strategist 의 권고 파라미터가 반영된 2 번째 시도를 수행.
+        _q_report = getattr(result, "quality_report", None)
+        _is_eval_fail = (
+            _q_report is not None
+            and getattr(getattr(_q_report, "evaluation_summary", None),
+                        "verdict", None) == "FAIL"
+        )
+        if (
+            _is_eval_fail
+            and str(auto_retry).lower() == "off"
+            and sys.stdin.isatty()
+        ):
+            try:
+                ans = click.prompt(
+                    "\n[?] Evaluator FAIL 입니다. Strategist 권고 파라미터로 "
+                    "한 번 더 시도할까요? [y/N]",
+                    default="N",
+                    show_default=False,
+                    type=str,
+                )
+            except click.exceptions.Abort:
+                ans = "N"
+            if str(ans).strip().lower() in ("y", "yes"):
+                try:
+                    _q_report.evaluation_summary.user_decision = "retry"
+                except Exception:
+                    pass
+                console.print(
+                    "[cyan]재시도 중... (auto_retry=once 로 Strategist 권고 반영)"
+                    "[/cyan]"
+                )
+                result = orchestrator.run(
+                    input_path=input_file,
+                    output_dir=output,
+                    quality_level=quality,
+                    mesh_type=mesh_type,
+                    tier_hint=effective_tier,
+                    max_iterations=max_iterations,
+                    auto_retry="once",
+                    dry_run=dry_run,
+                    element_size=effective_element_size,
+                    max_cells=effective_max_cells,
+                    tier_specific_params=tier_params,
+                    no_repair=no_repair,
+                    surface_remesh=force_remesh,
+                    remesh_engine=remesh_engine,
+                    allow_ai_fallback=allow_ai_fallback,
+                    strict_tier=strict_tier,
+                    validator_engine=checker_engine,
+                )
+                if result.quality_report:
+                    from core.evaluator.report import render_terminal
+                    render_terminal(result.quality_report)
+                if result.success:
+                    console.print(
+                        f"[bold green]✓ PASS (재시도 성공)[/bold green] "
+                        f"({result.iterations} iteration, "
+                        f"{result.total_time_seconds:.1f}s)"
+                    )
+                    return
+                console.print(
+                    f"[bold red]✗ FAIL (재시도 실패)[/bold red] — {result.error}"
+                )
+            else:
+                try:
+                    _q_report.evaluation_summary.user_decision = "accept"
+                except Exception:
+                    pass
+                console.print(
+                    "[yellow]사용자가 재시도 안 함 — 현재 mesh 유지[/yellow]"
+                )
         sys.exit(1)
 
     # 프로파일링 출력

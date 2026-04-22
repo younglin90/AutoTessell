@@ -62,6 +62,31 @@ class TestCLIHelp:
         assert result.exit_code == 0
         assert "파이프라인" in result.output or "pipeline" in result.output.lower() or "input_file" in result.output.lower() or "INPUT_FILE" in result.output
 
+    def test_run_help_shows_mesh_type_flag(self, runner: CliRunner):
+        """v0.4: --mesh-type flag 가 run --help 에 노출된다."""
+        result = runner.invoke(cli, ["run", "--help"])
+        assert result.exit_code == 0
+        assert "--mesh-type" in result.output
+        assert "hex_dominant" in result.output
+
+    def test_run_help_shows_auto_retry_flag(self, runner: CliRunner):
+        """v0.4: --auto-retry flag 가 run --help 에 노출된다."""
+        result = runner.invoke(cli, ["run", "--help"])
+        assert result.exit_code == 0
+        assert "--auto-retry" in result.output
+        assert "continue" in result.output
+
+    def test_run_rejects_invalid_mesh_type(self, runner: CliRunner):
+        """--mesh-type invalid_value 는 click Choice 에 의해 거부된다."""
+        from pathlib import Path
+        # stl 파일은 존재하지 않아도 선택지 검증이 먼저 수행됨
+        result = runner.invoke(cli, [
+            "run", "dummy.stl", "-o", "/tmp/nope",
+            "--mesh-type", "invalid",
+        ])
+        assert result.exit_code != 0
+        assert "invalid" in result.output.lower() or "choice" in result.output.lower()
+
     def test_analyze_help(self, runner: CliRunner):
         result = runner.invoke(cli, ["analyze", "--help"])
         assert result.exit_code == 0

@@ -94,7 +94,7 @@ class PipelineOrchestrator:
         allow_ai_fallback: bool = False,
         write_of_case: bool = True,
         strict_tier: bool = False,
-        validator_engine: str = "checkmesh",
+        validator_engine: str = "auto",
         progress_callback: Callable[[int, str], None] | None = None,
     ) -> PipelineResult:
         """전체 파이프라인을 실행한다.
@@ -125,13 +125,22 @@ class PipelineOrchestrator:
         max_iterations = max(1, int(max_iterations))
         stage = "init"
 
-        # Tier 5 엔진 선택: "native" 면 NativeMeshChecker 강제 사용,
-        # "disabled" 는 아직 orchestrator 수준에서 verdict 스킵 미구현이라 native로 fallback.
-        _prefer_native = validator_engine in ("native", "disabled")
+        # Tier 5 엔진 선택 (v0.4 native-first):
+        #   "auto"    → NativeMeshChecker 기본, OpenFOAM 은 교차 검증용
+        #   "native"  → NativeMeshChecker 강제
+        #   "checkmesh" / "openfoam" → OpenFOAM checkMesh 우선 (없으면 native fallback)
+        #   "disabled"→ 아직 verdict 스킵 미구현 → native fallback
+        _v = str(validator_engine or "auto").lower()
+        _prefer_native = _v in ("auto", "native", "disabled")
         try:
             self._checker.set_prefer_native(_prefer_native)
         except Exception:
             pass
+        log.info(
+            "validator_engine_selected",
+            requested=validator_engine,
+            prefer_native=_prefer_native,
+        )
 
         def emit_progress(percent: int, message: str) -> None:
             if progress_callback is None:
@@ -565,7 +574,7 @@ class PipelineOrchestrator:
 
         elapsed = time.perf_counter() - eval_start
 
-        return self._reporter.evaluate(
+        report = self._reporter.evaluate(
             checkmesh=checkmesh,
             strategy=strategy,
             metrics=metrics,
@@ -575,6 +584,22 @@ class PipelineOrchestrator:
             elapsed=elapsed,
             quality_level=quality_level,
         )
+        # v0.4: 어느 checker 엔진이 실제 사용됐는지 + mesh_type 을 report 에 주입.
+        try:
+            engine_used = getattr(self._checker, "last_engine_used", None)
+            # MagicMock 등 str 이 아닌 값은 None 처리 (pydantic 직렬화 경고 회피)
+            if engine_used is not None and not isinstance(engine_used, str):
+                engine_used = None
+            report.evaluation_summary.checker_engine_used = engine_used
+            mt_val = getattr(strategy, "mesh_type", None)
+            if hasattr(mt_val, "value"):
+                mt_val = mt_val.value
+            if mt_val is not None and not isinstance(mt_val, str):
+                mt_val = str(mt_val)
+            report.evaluation_summary.mesh_type = mt_val
+        except Exception:
+            pass
+        return report
 
     @staticmethod
     def _find_successful_tier(generator_log: GeneratorLog) -> str | None:

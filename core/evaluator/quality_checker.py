@@ -98,30 +98,50 @@ class CheckMeshParser:
 
 
 class MeshQualityChecker:
-    """OpenFOAM checkMesh를 실행하고 결과를 파싱하는 클래스."""
+    """OpenFOAM checkMesh를 실행하고 결과를 파싱하는 클래스.
 
-    def __init__(self, parser: CheckMeshParser | None = None) -> None:
+    ``prefer_native=True`` 로 생성하면 OpenFOAM 설치 여부와 무관하게
+    ``NativeMeshChecker`` 를 직접 사용한다 (GUI의 Tier 5 "Native Python 검증"
+    옵션에서 활용).
+    """
+
+    def __init__(
+        self,
+        parser: CheckMeshParser | None = None,
+        *,
+        prefer_native: bool = False,
+    ) -> None:
         self._parser = parser or CheckMeshParser()
+        self._prefer_native = prefer_native
+        # 마지막 run 이 어떤 엔진을 사용했는지 기록 ("native" | "openfoam")
+        self.last_engine_used: str | None = None
+
+    def set_prefer_native(self, value: bool) -> None:
+        """런타임에 native checker 우선 여부를 변경한다."""
+        self._prefer_native = bool(value)
 
     def run(self, case_dir: Path) -> CheckMeshResult:
         """checkMesh -allGeometry -allTopology를 실행하고 결과를 반환한다.
 
-        OpenFOAM이 없으면 NativeMeshChecker로 폴백한다.
-
-        Args:
-            case_dir: OpenFOAM case 디렉터리 경로.
-
-        Returns:
-            파싱된 CheckMeshResult 객체.
+        OpenFOAM이 없거나 ``prefer_native`` 가 True이면 NativeMeshChecker로 폴백.
         """
+        if self._prefer_native:
+            log.info("Using NativeMeshChecker (prefer_native=True)",
+                     case_dir=str(case_dir))
+            from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+            self.last_engine_used = "native"
+            return NativeMeshChecker().run(case_dir)
         try:
-            return self._run_openfoam(case_dir)
+            result = self._run_openfoam(case_dir)
+            self.last_engine_used = "openfoam"
+            return result
         except FileNotFoundError:
             log.info(
                 "OpenFOAM checkMesh not available, falling back to NativeMeshChecker",
                 case_dir=str(case_dir),
             )
             from core.evaluator.native_checker import NativeMeshChecker  # noqa: PLC0415
+            self.last_engine_used = "native"
             return NativeMeshChecker().run(case_dir)
 
     def _run_openfoam(self, case_dir: Path) -> CheckMeshResult:
