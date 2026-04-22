@@ -37,31 +37,66 @@ class PolyBLResult:
     message: str = ""
 
 
-def _try_openfoam_poly_dual(
-    case_dir: Path, feature_angle: float = 30.0,
-) -> tuple[bool, str]:
-    """OpenFOAM polyDualMesh 로 bulk 를 dual 변환 시도 (가용한 경우).
+def _try_native_poly_dual(case_dir: Path) -> tuple[bool, str]:
+    """v0.4 native: polyMesh 에서 tet array 를 복원해 tet_to_poly_dual 로 변환.
 
-    polyDualMesh 는 wall 근처 prism 을 건드리지 않도록 featureAngle 로 각도
-    제약 하에 tet → polyhedral dual 을 생성한다. BL 보존을 위해
-    featureAngle 을 낮춰 wall boundary edge 가 보존되도록 한다.
+    OpenFOAM polyDualMesh 호출 없이 순수 Python. case_dir 의 polyMesh 가 **전체
+    tet cell** 로 구성되어 있어야 함 (이 함수는 native_bl 후 bulk 부분만 대상).
     """
     try:
-        from core.utils.openfoam_utils import run_openfoam  # noqa: PLC0415
-    except Exception as exc:
-        return False, f"openfoam_utils import 실패: {exc}"
-
-    try:
-        run_openfoam(
-            "polyDualMesh",
-            case_dir,
-            args=[str(feature_angle), "-overwrite"],
+        import numpy as np  # noqa: PLC0415
+        from core.generator.native_poly.dual import tet_to_poly_dual  # noqa: PLC0415
+        from core.utils.polymesh_reader import (  # noqa: PLC0415
+            parse_foam_faces, parse_foam_labels, parse_foam_points,
         )
-        return True, f"polyDualMesh (featureAngle={feature_angle}) OK"
-    except FileNotFoundError as exc:
-        return False, f"openfoam_missing: {exc}"
     except Exception as exc:
-        return False, f"polyDualMesh 실패: {str(exc)[-200:]}"
+        return False, f"native dual import 실패: {exc}"
+
+    poly_dir = case_dir / "constant" / "polyMesh"
+    try:
+        pts = np.array(parse_foam_points(poly_dir / "points"), dtype=np.float64)
+        faces = parse_foam_faces(poly_dir / "faces")
+        owner = np.array(parse_foam_labels(poly_dir / "owner"), dtype=np.int64)
+        neighbour = np.array(
+            parse_foam_labels(poly_dir / "neighbour"), dtype=np.int64,
+        )
+    except Exception as exc:
+        return False, f"polyMesh 읽기 실패: {exc}"
+
+    n_cells = (int(owner.max()) + 1) if len(owner) else 0
+    if len(neighbour):
+        n_cells = max(n_cells, int(neighbour.max()) + 1)
+    if n_cells == 0:
+        return False, "cell 없음"
+
+    # 각 cell 에 속한 face vertex 들을 모아 unique vertex set 으로 tet 추출.
+    # 4 vertex cell 만 tet 으로 인정, 그 외 (prism 등) 은 제외 후 dual 변환 불가.
+    cell_verts: list[set[int]] = [set() for _ in range(n_cells)]
+    for fi, f in enumerate(faces):
+        cell_verts[int(owner[fi])].update(int(v) for v in f)
+        if fi < len(neighbour):
+            cell_verts[int(neighbour[fi])].update(int(v) for v in f)
+    tets: list[tuple[int, int, int, int]] = []
+    n_non_tet = 0
+    for cv in cell_verts:
+        if len(cv) == 4:
+            tets.append(tuple(sorted(cv)))    # type: ignore[arg-type]
+        else:
+            n_non_tet += 1
+    if not tets:
+        return False, (
+            f"tet cell 0 — 입력 mesh 는 순수 tet 이어야 함 (non-tet={n_non_tet})"
+        )
+    if n_non_tet > 0:
+        # prism 등 혼합 mesh 는 지원 안 함 → 실패
+        return False, (
+            f"혼합 mesh (non-tet={n_non_tet}) — native dual 은 순수 tet 만 지원"
+        )
+    T = np.array(tets, dtype=np.int64)
+    res = tet_to_poly_dual(pts, T, case_dir)
+    if not res.success:
+        return False, f"native tet_to_poly_dual 실패: {res.message}"
+    return True, f"native tet→poly dual OK ({res.message})"
 
 
 def run_poly_bl_transition(
@@ -107,7 +142,9 @@ def run_poly_bl_transition(
     bulk_dual_applied = False
     dual_msg = ""
     if apply_bulk_dual:
-        ok, dual_msg = _try_openfoam_poly_dual(case_dir, dual_feature_angle)
+        # v0.4: OpenFOAM polyDualMesh 대신 자체 구현 tet→poly dual 사용.
+        # dual_feature_angle 은 현재 native 경로에서 사용 안 함 (호환용으로 유지).
+        ok, dual_msg = _try_native_poly_dual(case_dir)
         bulk_dual_applied = ok
         if not ok:
             log.info("poly_bl_bulk_dual_skipped", reason=dual_msg)

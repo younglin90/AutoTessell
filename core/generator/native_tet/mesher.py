@@ -20,6 +20,9 @@ class NativeTetResult:
     n_cells: int = 0
     n_points: int = 0
     message: str = ""
+    # v0.4: dual 변환 등 downstream 사용을 위해 tet array 와 points 를 함께 반환.
+    tet_points: np.ndarray | None = None
+    tets: np.ndarray | None = None
 
 
 def _seed_points_uniform(
@@ -253,4 +256,5 @@ def generate_native_tet(
             f"native_tet OK — cells={n_cells}, points={n_points}, "
             f"seed_grid={grid.shape[0]}, target_edge={target_edge_length:.4g}"
         ),
+        tet_points=final_pts, tets=final_tets,
     )

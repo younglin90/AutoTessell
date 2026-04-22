@@ -14,9 +14,24 @@ MVP 전략 (두 경로):
 """
 from __future__ import annotations
 
+from core.generator.native_poly.dual import (
+    PolyDualResult,
+    tet_to_poly_dual,
+)
+from core.generator.native_poly.harness import (
+    PolyHarnessResult,
+    run_native_poly_harness,
+)
 from core.generator.native_poly.voronoi import (
     NativePolyResult,
     generate_native_poly_voronoi,
 )
 
-__all__ = ["NativePolyResult", "generate_native_poly_voronoi"]
+__all__ = [
+    "NativePolyResult",
+    "generate_native_poly_voronoi",
+    "PolyDualResult",
+    "tet_to_poly_dual",
+    "PolyHarnessResult",
+    "run_native_poly_harness",
+]

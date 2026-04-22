@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.4.0-beta7] - 2026-04-22 — "poly mesh 자체 완성 + harness 패턴"
+
+### Added — poly mesh 완성 (OpenFOAM 의존 제거)
+
+- **`core/generator/native_poly/dual.py`**: tet→polyhedral dual 변환 자체 구현.
+  OpenFOAM `polyDualMesh` 를 대체. 각 input vertex 주위의 tet centroid +
+  boundary face midpoint 로 dual cell 구성 + scipy ConvexHull 로 polyhedron +
+  coplanar triangle 병합 → polygon face + SVD plane basis + CCW sort + cell
+  centroid 기준 winding 보정.
+- **`core/generator/native_poly/harness.py`**: NativePolyHarness — Generator
+  (native_tet → tet_to_poly_dual) ↔ Evaluator (NativeMeshChecker) 반복.
+  FAIL 시 seed_density 1.5× 증가 후 최대 3 iter. sphere 에서 iter=1 에 PASS
+  (698 polyhedra, negative_volumes=0, skewness 0.22, mesh_ok=True).
+- **`core/layers/poly_bl_transition.py`**: OpenFOAM `polyDualMesh` 호출을 자체
+  `_try_native_poly_dual` 로 교체 (순수 tet 입력 지원).
+- **`core/generator/tier_native_poly.py`**: harness 경로 기본화, scipy Voronoi
+  는 fallback.
+
+### Tests
+- **`tests/test_native_poly_dual.py`** (5 tests):
+  - tet_to_poly_dual 이 sphere 에서 polyMesh 5 파일 생성.
+  - NativeMeshChecker 로 negative_volumes=0 확인.
+  - harness 가 1-3 iter 안에 PASS.
+  - 빈 입력 fail.
+  - polyMesh 포맷 호환 (reader 로 재읽기 가능).
+
+### Native vs OpenFOAM parity
+- **sphere (seed=10)**: native harness 결과 = 698 polyhedral cells,
+  max_non_ortho 87°, skewness 0.22, **negative_volumes=0, mesh_ok=True**.
+- 이전 `scipy Voronoi 기반 voronoi.py` 는 `open_cells=52/52` 였던 것과 비교해
+  topology 품질이 크게 향상 (dual 경로는 input mesh 위상을 보존).
+
+회귀: 1336 → **1341 passed** (+5 native_poly_dual 테스트).
+
+---
+
 ## [0.4.0-beta3] - 2026-04-22 — "Native-First" 후속 개선
 
 ### Added

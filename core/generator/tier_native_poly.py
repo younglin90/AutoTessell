@@ -1,10 +1,17 @@
-"""Tier wrapper for native_poly MVP 엔진 (scipy Voronoi 기반)."""
+"""Tier wrapper for native_poly 엔진.
+
+v0.4.0-beta7: tet→poly dual + harness 경로 기본화.
+scipy Voronoi 경로는 fallback (dual 실패 시).
+"""
 from __future__ import annotations
 
 import time
 from pathlib import Path
 
-from core.generator.native_poly import generate_native_poly_voronoi
+from core.generator.native_poly import (
+    generate_native_poly_voronoi,
+    run_native_poly_harness,
+)
 from core.schemas import MeshStats, MeshStrategy, TierAttempt
 from core.utils.logging import get_logger
 
@@ -51,13 +58,36 @@ class TierNativePolyGenerator:
         except Exception:
             target_edge = None
 
+        # v0.4: harness (tet→poly dual + Evaluator 반복) 를 먼저 시도.
+        hres = run_native_poly_harness(
+            m.vertices, m.faces, case_dir,
+            target_edge_length=target_edge,
+            seed_density=10, max_iter=3,
+        )
+        if hres.success:
+            stats = MeshStats(
+                num_cells=hres.n_cells,
+                num_points=hres.n_points,
+                num_faces=0,
+                num_internal_faces=0,
+                num_boundary_patches=1,
+            )
+            return TierAttempt(
+                tier=self.TIER_NAME, status="success",
+                time_seconds=time.monotonic() - t_start,
+                mesh_stats=stats,
+            )
+        log.warning(
+            "native_poly_harness_fail_falling_back_to_voronoi",
+            message=hres.message,
+        )
+        # fallback: 기존 scipy Voronoi
         res = generate_native_poly_voronoi(
             m.vertices, m.faces, case_dir,
             target_edge_length=target_edge,
             seed_density=10,
         )
         elapsed = time.monotonic() - t_start
-
         if not res.success:
             return TierAttempt(
                 tier=self.TIER_NAME, status="failed",
