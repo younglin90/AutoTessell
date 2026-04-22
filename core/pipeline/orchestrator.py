@@ -80,8 +80,10 @@ class PipelineOrchestrator:
         output_dir: Path,
         *,
         quality_level: str = "standard",
+        mesh_type: str = "auto",
         tier_hint: str = "auto",
         max_iterations: int = 3,
+        auto_retry: str = "off",
         dry_run: bool = False,
         element_size: float | None = None,
         max_cells: int | None = None,
@@ -92,6 +94,7 @@ class PipelineOrchestrator:
         allow_ai_fallback: bool = False,
         write_of_case: bool = True,
         strict_tier: bool = False,
+        validator_engine: str = "checkmesh",
         progress_callback: Callable[[int, str], None] | None = None,
     ) -> PipelineResult:
         """전체 파이프라인을 실행한다.
@@ -121,6 +124,14 @@ class PipelineOrchestrator:
         result = PipelineResult(success=False)
         max_iterations = max(1, int(max_iterations))
         stage = "init"
+
+        # Tier 5 엔진 선택: "native" 면 NativeMeshChecker 강제 사용,
+        # "disabled" 는 아직 orchestrator 수준에서 verdict 스킵 미구현이라 native로 fallback.
+        _prefer_native = validator_engine in ("native", "disabled")
+        try:
+            self._checker.set_prefer_native(_prefer_native)
+        except Exception:
+            pass
 
         def emit_progress(percent: int, message: str) -> None:
             if progress_callback is None:
@@ -192,12 +203,17 @@ class PipelineOrchestrator:
             # ------ 3. Strategize ------
             stage = "strategize"
             emit_progress(35, "Strategize 시작")
-            log.info("Pipeline stage: Strategize", quality_level=quality_level)
+            log.info(
+                "Pipeline stage: Strategize",
+                quality_level=quality_level,
+                mesh_type=mesh_type,
+            )
             strategy = self._planner.plan(
                 geometry_report=geometry_report,
                 preprocessed_report=preprocessed_report,
                 tier_hint=tier_hint,
                 quality_level=quality_level,
+                mesh_type=mesh_type,
             )
 
             self._apply_strategy_overrides(
@@ -206,6 +222,13 @@ class PipelineOrchestrator:
                 max_cells=max_cells,
                 tier_specific_params=tier_specific_params,
             )
+            # strict_tier 정보를 strategy 에 기록 (Generator 가 fallback 회피용으로 참조)
+            try:
+                strategy.strict_tier = bool(
+                    strict_tier and str(tier_hint).lower() != "auto"
+                )
+            except Exception:
+                pass
             if strict_tier and str(tier_hint).lower() != "auto":
                 if strategy.fallback_tiers:
                     log.info(
@@ -226,13 +249,38 @@ class PipelineOrchestrator:
                 return result
 
             # ------ 4 & 5. Generate ↔ Evaluate loop ------
-            quality_report: QualityReport | None = None
+            # auto_retry 가 자동 재시도 모드를 결정 (v0.4 이후 기본 off):
+            #   off      → 1 회 시도 후 FAIL 이어도 종료 (사용자가 결정)
+            #   once     → 최대 2 회
+            #   continue → 기존 max_iterations (하위호환)
+            _auto_retry_mode = str(auto_retry or "off").lower()
+            if _auto_retry_mode == "off":
+                effective_iters = 1
+            elif _auto_retry_mode == "once":
+                effective_iters = 2
+            elif _auto_retry_mode == "continue":
+                effective_iters = max_iterations
+            else:
+                # 알 수 없는 값 → off 취급 (가장 안전)
+                log.warning(
+                    "auto_retry_unknown_value_fallback_off", value=auto_retry,
+                )
+                effective_iters = 1
+            log.info(
+                "auto_retry_mode",
+                mode=_auto_retry_mode,
+                effective_iterations=effective_iters,
+                max_iterations=max_iterations,
+            )
 
-            for iteration in range(1, max_iterations + 1):
-                loop_start = 45 + int((iteration - 1) * (45 / max_iterations))
-                loop_generate_done = 45 + int(((iteration - 1) + 0.55) * (45 / max_iterations))
-                loop_eval_done = 45 + int(((iteration - 1) + 0.90) * (45 / max_iterations))
-                emit_progress(loop_start, f"Generate {iteration}/{max_iterations}")
+            quality_report: QualityReport | None = None
+            _last_iter_cells: int | None = None  # strict_tier early-stop 용
+
+            for iteration in range(1, effective_iters + 1):
+                loop_start = 45 + int((iteration - 1) * (45 / effective_iters))
+                loop_generate_done = 45 + int(((iteration - 1) + 0.55) * (45 / effective_iters))
+                loop_eval_done = 45 + int(((iteration - 1) + 0.90) * (45 / effective_iters))
+                emit_progress(loop_start, f"Generate {iteration}/{effective_iters}")
                 stage = f"generate(iter={iteration})"
                 log.info(
                     "Pipeline stage: Generate",
@@ -252,6 +300,7 @@ class PipelineOrchestrator:
                         tier_hint=tier_hint,
                         iteration=iteration,
                         quality_level=quality_level,
+                        mesh_type=mesh_type,
                     )
                     self._apply_strategy_overrides(
                         strategy,
@@ -259,7 +308,24 @@ class PipelineOrchestrator:
                         max_cells=max_cells,
                         tier_specific_params=tier_specific_params,
                     )
+                    # strict_tier: 사용자가 명시적으로 엔진을 선택했을 때 Strategist 가
+                    # 다른 tier 로 switch 해버리면 안 된다. tier_hint canonical 이름으로
+                    # 강제 복원 (planner 가 switch_tier 를 적용해 selected_tier 가
+                    # 바뀐 경우 되돌림).
                     if strict_tier and str(tier_hint).lower() != "auto":
+                        from core.strategist.tier_selector import canonical_tier
+                        try:
+                            forced = canonical_tier(str(tier_hint))
+                        except Exception:
+                            forced = None
+                        if forced and forced != "auto" and strategy.selected_tier != forced:
+                            log.warning(
+                                "strict_tier_override_switch",
+                                from_tier=strategy.selected_tier,
+                                forced_to=forced,
+                                reason="user 명시 엔진 유지",
+                            )
+                            strategy.selected_tier = forced
                         strategy.fallback_tiers = []
                     result.strategy = strategy
                     self._save_json(output_dir / "mesh_strategy.json", strategy)
@@ -300,6 +366,35 @@ class PipelineOrchestrator:
                     log.warning("All tiers failed", iteration=iteration)
                     result.error = "All mesh generation tiers failed"
                     break
+
+                # ── Tier 4 (BL post-processing) 선택적 실행 ──
+                # 주 엔진이 snappy/cfmesh 가 아니어도 tier_specific_params 로
+                # post_layers_engine 이 지정되면 layer 엔진 독립 실행.
+                _post_engine = (
+                    (strategy.tier_specific_params or {}).get("post_layers_engine", "disabled")
+                    if strategy else "disabled"
+                )
+                if str(_post_engine).lower() not in ("disabled", "none", "off", ""):
+                    try:
+                        from core.generator.tier_layers_post import LayersPostGenerator
+                        post_gen = LayersPostGenerator()
+                        post_result = post_gen.run(
+                            strategy=strategy,
+                            preprocessed_path=preprocessed_path,
+                            case_dir=case_dir,
+                        )
+                        log.info(
+                            "post_layers_stage_done",
+                            engine=_post_engine,
+                            status=post_result.status,
+                            elapsed=post_result.time_seconds,
+                            msg=post_result.error_message,
+                        )
+                    except Exception as exc:
+                        log.warning(
+                            "post_layers_stage_exception",
+                            engine=_post_engine, error=str(exc),
+                        )
 
                 # OpenFOAM 케이스 파일 생성 (write_of_case=True 일 때)
                 if write_of_case:
@@ -354,7 +449,7 @@ class PipelineOrchestrator:
 
                 result.quality_report = quality_report
                 self._save_json(output_dir / "quality_report.json", quality_report)
-                emit_progress(loop_eval_done, f"Evaluate 완료 {iteration}/{max_iterations}")
+                emit_progress(loop_eval_done, f"Evaluate 완료 {iteration}/{effective_iters}")
 
                 verdict = quality_report.evaluation_summary.verdict
                 if verdict in ("PASS", "PASS_WITH_WARNINGS"):
@@ -380,12 +475,45 @@ class PipelineOrchestrator:
                     emit_progress(100, f"PASS ({iteration}회)")
                     break
                 else:
+                    will_retry = iteration < effective_iters
                     log.warning(
-                        "Evaluation FAIL, will retry",
+                        "Evaluation FAIL",
                         verdict=verdict,
                         iteration=iteration,
                         max_iterations=max_iterations,
+                        effective_iterations=effective_iters,
+                        auto_retry=_auto_retry_mode,
+                        will_retry=will_retry,
                     )
+                    if not will_retry:
+                        # auto_retry=off / once-끝난 경우 → 루프 탈출,
+                        # recommendation 은 quality_report 에 이미 기록됨.
+                        # 사용자 확인은 cli/main.py 또는 GUI 가 처리.
+                        break
+                    # strict_tier 모드에서 Strategist 가 파라미터 조정 없이 동일한
+                    # tier/cell 수 를 반복하면 재시도가 의미 없다 → 조기 종료.
+                    if strict_tier and str(tier_hint).lower() != "auto":
+                        prev_cells = getattr(
+                            getattr(quality_report, "checkmesh", None),
+                            "cells", None,
+                        )
+                        if prev_cells is not None and prev_cells == _last_iter_cells:
+                            log.warning(
+                                "strict_tier_early_stop",
+                                reason=(
+                                    "동일 tier/cells 반복 — Strategist 에 "
+                                    "유효한 파라미터 조정 없음. 재시도 중단."
+                                ),
+                                iteration=iteration,
+                                cells=prev_cells,
+                            )
+                            result.error = (
+                                "strict_tier 모드 재시도 조기 종료: "
+                                f"tier={strategy.selected_tier} 가 동일 cells={prev_cells} "
+                                "을 반복 생성. 파라미터 수동 튜닝 필요."
+                            )
+                            break
+                        _last_iter_cells = prev_cells
 
             if not result.success and result.error is None:
                 result.error = f"Failed after {result.iterations} iterations"
@@ -525,6 +653,14 @@ class PipelineOrchestrator:
 
         # BL, 표면 메쉬 파라미터 처리 (tier_specific_params에서 추출)
         if tier_specific_params:
+            # GUI Tier 4 콤보 → BL on/off 강제 override
+            # (quality_level 기반 자동 결정보다 우선)
+            if "boundary_layers_enabled" in tier_specific_params:
+                bl_enabled = bool(tier_specific_params["boundary_layers_enabled"])
+                strategy.boundary_layers.enabled = bl_enabled
+                if not bl_enabled:
+                    strategy.boundary_layers.num_layers = 0
+                log.info("boundary_layers_enabled_override", enabled=bl_enabled)
             if "bl_layers" in tier_specific_params:
                 bl_layers = tier_specific_params["bl_layers"]
                 strategy.boundary_layers.enabled = bl_layers > 0

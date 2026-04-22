@@ -367,6 +367,9 @@ class AutoTessellWindow:  # type: ignore[misc]
             ("cinolib_hex", "Cinolib Hex", "ok"),
             ("gmsh_hex", "GMSH Hex", "ok"),
             ("hohqmesh", "HOHQMesh", "ok"),
+            # 추가 (설치 필요 — 미설치 시 placeholder tier 가 친절한 가이드 에러)
+            ("meshkit", "Sandia MeshKit (C++ build 필요)", "warn"),
+            ("su2_hexpress", "SU2 HexPress (SU2 source build 필요)", "warn"),
         ]),
         ("Tetrahedral", [
             ("netgen", "Netgen", "ok"),
@@ -376,6 +379,7 @@ class AutoTessellWindow:  # type: ignore[misc]
             ("meshpy", "MeshPy (TetGen)", "ok"),
             ("jigsaw", "JIGSAW", "ok"),
             ("core", "Geogram CDT", "ok"),
+            ("salome_smesh", "Salome SMESH (Salome 설치 필요)", "warn"),
         ]),
         ("Polyhedral", [
             ("voro_poly", "Voronoi Polyhedral", "ok"),
@@ -433,6 +437,10 @@ class AutoTessellWindow:  # type: ignore[misc]
         # ── 호환용 (pipeline/log/kpi) ─────────────────────
         self._log_edit: object | None = None
         self._mesh_type_cards: dict[str, object] = {}
+        # v0.4: 사용자가 선택한 메쉬 대분류 (auto/tet/hex_dominant/poly)
+        self._mesh_type: str = "auto"
+        # v0.4: Evaluator FAIL 시 자동 재시도 모드 (off/once/continue)
+        self._auto_retry: str = "off"
         self._pipeline_step_labels: list[object] = []
         self._kpi_labels: dict[str, object] = {}
         self._main_tab_widget: object | None = None
@@ -482,6 +490,32 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._wildmesh_param_panel: object | None = None
         self._wildmesh_param_frame: object | None = None
         self._param_revert_btn: object | None = None
+
+        # polyDualMesh 파라미터 패널 (tier=polyhedral 선택 시 표시)
+        self._polyhedral_param_panel: object | None = None
+        self._polyhedral_param_frame: object | None = None
+
+        # 일반 엔진 파라미터 패널 (wildmesh/polyhedral 외 나머지 엔진용 — spec-driven)
+        self._generic_param_panel: object | None = None
+        self._generic_param_frame: object | None = None
+
+        # 품질 레벨 섹션 (WildMesh 선택 시 숨김 — 중복 UI 제거)
+        self._quality_section_frame: object | None = None
+
+        # Tier별 엔진 선택 콤보 (Tier 0/1/2/4/5 — Tier 3은 _engine_combo가 담당)
+        self._tier0_engine_combo: object | None = None
+        self._tier1_engine_combo: object | None = None
+        self._tier2_engine_combo: object | None = None  # L2 remesh (기존 _remesh_engine_combo 미러)
+        self._tier4_engine_combo: object | None = None
+        self._tier5_engine_combo: object | None = None
+
+        # Surface Mesh 섹션 중복 제거용 위젯 ref
+        self._surface_size_lbl_el: object | None = None
+        self._surface_size_lbl_min: object | None = None
+        self._surface_size_dup_hint: object | None = None
+
+        # 파이프라인 실행 시작 시각 (단조 시계)
+        self._pipeline_start_time: float = 0.0
 
     # ═════════════════════════════════════════════════════════════════════
     # Public API
@@ -573,6 +607,11 @@ class AutoTessellWindow:  # type: ignore[misc]
                 )
             except Exception:
                 pass
+        # Tier 4 Layers 라벨은 품질 레벨에 따라 변한다 — 재갱신.
+        try:
+            self._refresh_tier_strip_engine_labels()
+        except Exception:
+            pass
 
     def get_quality_level(self) -> QualityLevel:
         return self._quality_level
@@ -697,23 +736,29 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._titlebar_strip = TitlebarStrip()
         root.addWidget(self._titlebar_strip)
 
-        # ── Body (3 column) ─────────────────────────────────
-        body = QWidget()
-        body.setStyleSheet(f"background: {PALETTE['bg_0']};")
-        body_layout = QHBoxLayout(body)
-        body_layout.setContentsMargins(0, 0, 0, 0)
-        body_layout.setSpacing(0)
+        # ── Body (3 column, QSplitter 로 사용자 조정 가능) ───
+        from PySide6.QtWidgets import QSplitter
+        body = QSplitter(Qt.Horizontal)
+        body.setStyleSheet(
+            f"QSplitter {{ background: {PALETTE['bg_0']}; }}"
+            f"QSplitter::handle {{ "
+            f"  background: {PALETTE['line_1']}; width: 3px; "
+            f"}}"
+            f"QSplitter::handle:hover {{ background: {PALETTE['accent']}; }}"
+        )
+        body.setChildrenCollapsible(False)
+        body.setHandleWidth(3)
         root.addWidget(body, stretch=1)
 
-        # [L] Sidebar 280px
+        # [L] Sidebar
         sidebar = self._build_sidebar()
-        body_layout.addWidget(sidebar)
+        body.addWidget(sidebar)
 
         # [M] Main area (viewport + pipeline)
         main_area = self._build_main_area()
-        body_layout.addWidget(main_area, stretch=1)
+        body.addWidget(main_area)
 
-        # [R] Right column 340px (Job/Quality/Export)
+        # [R] Right column (Job/Quality/Export)
         from desktop.qt_app.widgets.right_column import RightColumn
         self._right_column = RightColumn()
         self._log_edit = self._right_column.job_pane.log_box  # 호환용
@@ -736,7 +781,14 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._wire_log_filters()
         except Exception:
             pass
-        body_layout.addWidget(self._right_column)
+        body.addWidget(self._right_column)
+
+        # QSplitter 초기 분할 비율 + 각 구역 stretch
+        # [sidebar, main, right_column] 기본 크기 (사용자가 드래그로 조정 가능)
+        body.setSizes([340, 900, 360])
+        body.setStretchFactor(0, 0)  # sidebar: 고정 경향
+        body.setStretchFactor(1, 1)  # main: 대부분 흡수
+        body.setStretchFactor(2, 0)  # right: 고정 경향
 
         # ── Statusbar 26px ──────────────────────────────────
         from desktop.qt_app.widgets.status_bar import CustomStatusBar
@@ -753,6 +805,14 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._quality_desc_label.setText(
                 self._QUALITY_DESC.get(self._quality_level.value, "")
             )
+        # Tier strip 엔진 라벨 초기화 (기본 엔진 = WildMesh 반영)
+        try:
+            self._refresh_tier_strip_engine_labels()
+            self._refresh_wildmesh_panel_visibility()
+            self._refresh_polyhedral_panel_visibility()
+            self._refresh_generic_param_panel()
+        except Exception:
+            pass
 
         # 뷰포트 chrome 액션 배선 (Solid/Wire/Hybrid + Screenshot)
         self._wire_viewport_chrome()
@@ -1023,7 +1083,10 @@ class AutoTessellWindow:  # type: ignore[misc]
         )
 
         scroll = QScrollArea()
-        scroll.setFixedWidth(280)
+        # 사용자가 QSplitter로 드래그하여 조정 가능하도록 min/max 범위만 지정.
+        # 기본값은 main_window._build() 의 body.setSizes([340, ...]) 에서 결정.
+        scroll.setMinimumWidth(260)
+        scroll.setMaximumWidth(700)
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         scroll.setStyleSheet(
@@ -1087,10 +1150,15 @@ class AutoTessellWindow:  # type: ignore[misc]
         v.addWidget(self._build_section_preset())
         v.addWidget(self._build_section_engine())
         v.addWidget(self._build_section_wildmesh_params())
+        v.addWidget(self._build_section_polyhedral_params())
+        v.addWidget(self._build_section_generic_engine_params())
+        v.addWidget(self._build_section_tier_engines())
+        v.addWidget(self._build_section_mesh_type())
         v.addWidget(self._build_section_quality())
         v.addWidget(self._build_section_preprocess())
         v.addWidget(self._build_section_surface_mesh())
-        v.addWidget(self._build_run_buttons())
+        # 파이프라인 실행 버튼은 하단 Tier 스트립의 Run/Stop 버튼으로 통합됨.
+        # (중복 UI 제거 — 2026-04-19)
         v.addStretch()
         # 출력 디렉토리는 Export 탭에서 담당 — 사이드바에서 제거 (2026-04-18)
         # _output_path_edit 은 Export 탭의 path_box 로 리디렉션된다.
@@ -1166,6 +1234,9 @@ class AutoTessellWindow:  # type: ignore[misc]
             "border: 1px solid #323a46; border-radius: 4px; padding: 4px 8px; "
             "font-size: 12px; }"
             "QComboBox:hover { border-color: #4ea3ff; }"
+            "QComboBox QAbstractItemView { background: #161a20; color: #e8ecf2; "
+            "selection-background-color: #2c5f97; selection-color: #e8ecf2; "
+            "border: 1px solid #323a46; outline: none; padding: 2px; }"
         )
         self._preset_combo.addItem("(프리셋 선택…)", None)
         for p in _presets.all_presets():
@@ -1360,7 +1431,10 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._engine_policy = policy
 
         model = QStandardItemModel(parent)
-        default_idx = 1  # 기본 auto
+        # 기본 엔진: 정책이 지정한 값이 있으면 그것, 없으면 WildMesh
+        desired_default = policy.default_tier if policy.default_tier != "auto" else "tier_wildmesh"
+        default_idx = 1  # fallback: 첫 실제 아이템 (auto)
+        wildmesh_idx = -1
         for group, items in self.ENGINE_GROUPS:
             header = QStandardItem(f"── {group} ──")
             header.setFlags(Qt.NoItemFlags)
@@ -1376,9 +1450,15 @@ class AutoTessellWindow:  # type: ignore[misc]
                 item.setData(value, Qt.UserRole)
                 if status == "off" or blocked:
                     item.setEnabled(False)
-                if policy.default_tier != "auto" and canonical == policy.default_tier:
-                    default_idx = model.rowCount()
+                row_idx = model.rowCount()
+                if canonical == desired_default and item.isEnabled():
+                    default_idx = row_idx
+                if value == "wildmesh" and item.isEnabled():
+                    wildmesh_idx = row_idx
                 model.appendRow(item)
+        # 정책 default를 찾지 못했으면 WildMesh 로 fallback
+        if default_idx == 1 and wildmesh_idx >= 0:
+            default_idx = wildmesh_idx
         return model, default_idx
 
     def _rebuild_engine_combo_model(self) -> None:  # pragma: no cover
@@ -1433,14 +1513,15 @@ class AutoTessellWindow:  # type: ignore[misc]
             v.addWidget(banner)
 
         combo = QComboBox()
+        combo.setStyleSheet(self._dark_combo_qss())
         model, default_idx = self._make_engine_combo_model(combo)
         combo.setModel(model)
         combo.setCurrentIndex(default_idx)
         self._engine_combo = combo
         self._tier_combo = combo  # 호환
-        # 엔진 변경시 WildMesh 파라미터 패널 표시/숨김
+        # 엔진 변경시 WildMesh 파라미터 패널 표시/숨김 + Tier 3 라벨 갱신
         combo.currentIndexChanged.connect(
-            lambda _idx: self._refresh_wildmesh_panel_visibility()
+            lambda _idx: self._on_engine_changed()
         )
         v.addWidget(combo)
 
@@ -1451,7 +1532,7 @@ class AutoTessellWindow:  # type: ignore[misc]
         lrow.setContentsMargins(0, 4, 0, 0)
         lrow.setSpacing(12)
         for css_dot, lbl in [
-            (f"background: {PALETTE['ok']}; box-shadow: 0 0 4px rgba(74,222,128,0.5);", "설치됨"),
+            (f"background: {PALETTE['ok']};", "설치됨"),
             (f"background: transparent; border: 1px solid {PALETTE['line_3']};", "미설치"),
             (f"background: {PALETTE['warn']};", "설정 필요"),
         ]:
@@ -1504,8 +1585,220 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._refresh_wildmesh_panel_visibility()
         return f
 
+    def _build_section_polyhedral_params(self) -> object:  # pragma: no cover
+        """polyDualMesh 파라미터 패널. tier=polyhedral 선택 시만 표시."""
+        from desktop.qt_app.widgets.polyhedral_param_panel import PolyhedralParamPanel
+
+        f, v = self._section_frame("polyDualMesh 튜닝")
+        panel = PolyhedralParamPanel()
+        panel.params_changed.connect(self._on_polyhedral_params_changed)
+        self._polyhedral_param_panel = panel
+        v.addWidget(panel)
+
+        self._polyhedral_param_frame = f
+        # 초기에는 숨김 (polyhedral 엔진 선택 시 표시)
+        f.setVisible(False)
+        return f
+
+    def _on_polyhedral_params_changed(self, _params: dict) -> None:  # pragma: no cover
+        """polyDualMesh 패널 값 변경 — 현재는 파이프라인 실행 시 즉시 적용."""
+        # 별도 로깅 없이 단순 pass. 값은 _on_run_clicked 에서 current_params() 로 읽는다.
+        pass
+
+    def _build_section_generic_engine_params(self) -> object:  # pragma: no cover
+        """wildmesh / polyhedral 을 제외한 모든 엔진의 파라미터 패널.
+
+        엔진 콤보 변경 시 spec 레지스트리에서 해당 엔진 파라미터를 읽어
+        슬라이더/체크박스/콤보/ⓘ 팝업을 자동 생성한다.
+        """
+        from desktop.qt_app.widgets.generic_engine_param_panel import (
+            GenericEngineParamPanel,
+        )
+
+        f, v = self._section_frame("엔진 파라미터")
+        panel = GenericEngineParamPanel()
+        panel.params_changed.connect(self._on_generic_engine_params_changed)
+        self._generic_param_panel = panel
+        v.addWidget(panel)
+        self._generic_param_frame = f
+        f.setVisible(False)
+        return f
+
+    def _on_generic_engine_params_changed(self, _params: dict) -> None:  # pragma: no cover
+        """generic 엔진 파라미터 변경 — 값은 _on_run_clicked 에서 읽는다."""
+        pass
+
+    def _refresh_generic_param_panel(self) -> None:  # pragma: no cover
+        """엔진 변경 시 generic 패널을 현재 엔진 spec 으로 갱신.
+
+        wildmesh / polyhedral 은 전용 패널이 따로 있으므로 generic 은 숨긴다.
+        해당 엔진의 spec 이 비어 있어도 숨긴다.
+        """
+        if self._generic_param_frame is None or self._generic_param_panel is None:
+            return
+        try:
+            tier = self._tier_combo_text().lower()
+        except Exception:
+            tier = "auto"
+
+        if tier in ("wildmesh", "polyhedral", "auto", ""):
+            self._generic_param_frame.setVisible(False)  # type: ignore[union-attr]
+            return
+
+        try:
+            from desktop.qt_app.widgets.engine_params_spec import get_specs_for_engine
+            specs = get_specs_for_engine(tier)
+            if not specs:
+                self._generic_param_frame.setVisible(False)  # type: ignore[union-attr]
+                return
+            self._generic_param_panel.set_engine(tier)  # type: ignore[union-attr]
+            self._generic_param_frame.setVisible(True)  # type: ignore[union-attr]
+        except Exception:
+            self._generic_param_frame.setVisible(False)  # type: ignore[union-attr]
+
+    # Tier별 엔진 후보 — (combo value, display label). 기본값은 "disabled".
+    _TIER0_ENGINES: tuple[tuple[str, str], ...] = (
+        ("disabled", "비활성화 (기본)"),
+        ("pymeshfix", "pymeshfix"),
+        ("pymeshlab", "pymeshlab"),
+        ("trimesh", "trimesh.repair"),
+    )
+    _TIER1_ENGINES: tuple[tuple[str, str], ...] = (
+        ("disabled", "비활성화 (기본)"),
+        ("geogram_cdt", "Geogram CDT"),
+        ("tetgen", "TetGen surface"),
+        ("gmsh", "GMSH 2D"),
+        ("cadquery", "CadQuery"),
+    )
+    _TIER2_ENGINES: tuple[tuple[str, str], ...] = (
+        ("disabled", "비활성화 (기본)"),
+        ("auto", "auto (pyACVD+laplacian)"),
+        ("mmg", "MMG surface"),
+        ("quadwild", "Quadwild"),
+    )
+    _TIER4_ENGINES: tuple[tuple[str, str], ...] = (
+        ("disabled", "비활성화 (기본)"),
+        ("auto", "auto (품질 레벨 기반)"),
+        # 내장 (주 엔진의 일부로 실행)
+        ("snappy_layers", "snappy addLayers (snappyHexMesh 내부)"),
+        ("cfmesh_layers", "cfMesh boundaryLayers (cfMesh 내부)"),
+        # 독립 후처리 — 주 엔진 무관. polyMesh 만 있으면 OK.
+        ("generate_boundary_layers", "generateBoundaryLayers (cfMesh post, 엔진 무관)"),
+        ("refine_wall_layer", "refineWallLayer (OpenFOAM 순정 post)"),
+        ("snappy_addlayers", "snappy addLayers (독립 post)"),
+        ("extrude_mesh", "extrudeMesh (OpenFOAM linearNormal extrude)"),
+        # 추가 라이브러리 기반 (설치 필요 — 미설치 시 친절한 가이드 에러)
+        ("netgen_bl", "Netgen BoundaryLayer (ngsolve)"),
+        ("gmsh_bl", "GMSH BoundaryLayer Field"),
+        ("pyhyp", "pyHyp (MDOlab, source build 필요)"),
+        ("meshkit_bl", "MeshKit BL (Sandia, 설치 복잡)"),
+        ("su2_hexpress", "SU2 HexPress (SU2 source build 필요)"),
+        ("salome_bl", "Salome SMESH Viscous Layers (Salome 설치 필요)"),
+    )
+    _TIER5_ENGINES: tuple[tuple[str, str], ...] = (
+        ("native", "Native Python 검증 (기본)"),
+        ("checkmesh", "OpenFOAM checkMesh"),
+        ("disabled", "비활성화"),
+    )
+
+    def _build_section_tier_engines(self) -> object:  # pragma: no cover
+        """Tier 0/1/2/4/5 각 단계의 엔진을 개별 드롭다운으로 선택.
+
+        Tier 3 (볼륨 메쉬)는 상위 '메시 엔진' 섹션에서 이미 선택하므로 제외.
+        기본적으로 Tier 0/1/2/4는 비활성화 — WildMesh 단독으로 돌릴 수 있게.
+        """
+        from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QWidget
+
+        f, v = self._section_frame("Tier 엔진 (고급)")
+
+        rows: list[tuple[str, str, tuple[tuple[str, str], ...], str]] = [
+            ("Tier 0 · 표면 수리", "tier0", self._TIER0_ENGINES, "disabled"),
+            ("Tier 1 · 표면 생성", "tier1", self._TIER1_ENGINES, "disabled"),
+            ("Tier 2 · 표면 리메쉬", "tier2", self._TIER2_ENGINES, "disabled"),
+            ("Tier 4 · 경계층", "tier4", self._TIER4_ENGINES, "disabled"),
+            ("Tier 5 · 메쉬 검증", "tier5", self._TIER5_ENGINES, "native"),
+        ]
+
+        for label_text, slot, options, default in rows:
+            row = QWidget()
+            row.setStyleSheet("background: transparent;")
+            rl = QHBoxLayout(row)
+            rl.setContentsMargins(0, 0, 0, 0); rl.setSpacing(8)
+
+            lbl = QLabel(label_text)
+            lbl.setStyleSheet(
+                f"color: {PALETTE['text_2']}; font-size: 11px; "
+                f"background: transparent; min-width: 120px;"
+            )
+            rl.addWidget(lbl)
+
+            cb = QComboBox()
+            cb.setStyleSheet(self._dark_combo_qss())
+            for value, display in options:
+                cb.addItem(display, value)
+            # 기본값 설정
+            for i in range(cb.count()):
+                if cb.itemData(i) == default:
+                    cb.setCurrentIndex(i)
+                    break
+            cb.currentIndexChanged.connect(
+                lambda _idx: self._refresh_tier_strip_engine_labels()
+            )
+            setattr(self, f"_{slot}_engine_combo", cb)
+            rl.addWidget(cb, stretch=1)
+
+            v.addWidget(row)
+
+        # Tier 2 콤보는 사이드바의 L2 엔진 콤보와 동기화를 위해 참조 유지
+        # (기존 _remesh_engine_combo 는 preprocess 섹션의 콤보)
+        return f
+
+    def _tier0_engine_text(self) -> str:
+        try:
+            if self._tier0_engine_combo is not None:
+                return str(self._tier0_engine_combo.currentData() or "pymeshfix")  # type: ignore[union-attr]
+        except Exception:
+            pass
+        return "pymeshfix"
+
+    def _tier1_engine_text(self) -> str:
+        try:
+            if self._tier1_engine_combo is not None:
+                return str(self._tier1_engine_combo.currentData() or "geogram_cdt")  # type: ignore[union-attr]
+        except Exception:
+            pass
+        return "geogram_cdt"
+
+    def _tier2_engine_text(self) -> str:
+        try:
+            if self._tier2_engine_combo is not None:
+                return str(self._tier2_engine_combo.currentData() or "auto")  # type: ignore[union-attr]
+        except Exception:
+            pass
+        return "auto"
+
+    def _tier4_engine_text(self) -> str:
+        try:
+            if self._tier4_engine_combo is not None:
+                return str(self._tier4_engine_combo.currentData() or "auto")  # type: ignore[union-attr]
+        except Exception:
+            pass
+        return "auto"
+
+    def _tier5_engine_text(self) -> str:
+        try:
+            if self._tier5_engine_combo is not None:
+                return str(self._tier5_engine_combo.currentData() or "native")  # type: ignore[union-attr]
+        except Exception:
+            pass
+        return "native"
+
     def _refresh_wildmesh_panel_visibility(self) -> None:  # pragma: no cover
-        """tier 선택에 따라 wildmesh 패널 표시/숨김."""
+        """tier 선택에 따라 wildmesh 패널 표시/숨김.
+
+        WildMesh 선택 시 Surface Mesh 섹션의 중복 필드(Element Size / Min Size)도 숨긴다.
+        WildMesh Tuning 패널의 edge_length_r 슬라이더와 역할이 동일하여 중복을 방지한다.
+        """
         if self._wildmesh_param_frame is None:
             return
         try:
@@ -1514,6 +1807,159 @@ class AutoTessellWindow:  # type: ignore[misc]
             tier = "auto"
         show = (tier == "wildmesh")
         self._wildmesh_param_frame.setVisible(show)  # type: ignore[union-attr]
+        # WildMesh 선택 시 품질 레벨 섹션 숨김 (WildMesh 튜닝 패널의 draft/standard/fine 버튼과 중복)
+        if self._quality_section_frame is not None:
+            try:
+                self._quality_section_frame.setVisible(not show)  # type: ignore[union-attr]
+            except Exception:
+                pass
+        # Surface Mesh 섹션 중복 필드 동기화
+        try:
+            self._refresh_surface_mesh_section_for_tier(tier)
+        except Exception:
+            pass
+
+    @staticmethod
+    def _dark_combo_qss() -> str:
+        """모든 QComboBox에 공통으로 적용할 어두운 배경 스타일시트 (팝업 포함)."""
+        return (
+            f"QComboBox {{ background: {PALETTE['bg_2']}; color: {PALETTE['text_0']}; "
+            f"border: 1px solid {PALETTE['line_2']}; border-radius: 5px; "
+            f"padding: 6px 10px; font-size: 12px; min-height: 28px; }}"
+            f"QComboBox:hover {{ border-color: {PALETTE['accent']}; }}"
+            f"QComboBox::drop-down {{ border: none; width: 22px; }}"
+            f"QComboBox QAbstractItemView {{ background: {PALETTE['bg_2']}; "
+            f"color: {PALETTE['text_0']}; "
+            f"selection-background-color: {PALETTE['accent_dim']}; "
+            f"selection-color: {PALETTE['text_0']}; "
+            f"border: 1px solid {PALETTE['line_2']}; outline: none; padding: 2px; }}"
+        )
+
+    def _on_engine_changed(self) -> None:  # pragma: no cover
+        """엔진 콤보 변경 핸들러 — 파라미터 패널 표시/숨김 + Tier 3 라벨 동기화."""
+        self._refresh_wildmesh_panel_visibility()
+        self._refresh_polyhedral_panel_visibility()
+        self._refresh_generic_param_panel()
+        self._refresh_tier_strip_engine_labels()
+
+    def _refresh_polyhedral_panel_visibility(self) -> None:  # pragma: no cover
+        """엔진=polyhedral 일 때만 polyDualMesh 튜닝 패널 노출."""
+        if self._polyhedral_param_frame is None:
+            return
+        try:
+            tier = self._tier_combo_text().lower()
+        except Exception:
+            tier = "auto"
+        try:
+            self._polyhedral_param_frame.setVisible(tier == "polyhedral")  # type: ignore[union-attr]
+        except Exception:
+            pass
+
+    def _refresh_tier_strip_engine_labels(self) -> None:  # pragma: no cover
+        """현재 선택된 엔진 설정으로 모든 Tier 노드의 엔진명을 갱신한다."""
+        if self._tier_pipeline is None:
+            return
+        try:
+            tier = self._tier_combo_text()
+        except Exception:
+            tier = "auto"
+        # 엔진 값 → 표시 이름 매핑 (Tier 3 Volume)
+        display_map = {
+            "auto": "auto (strategist)",
+            "wildmesh": "WildMesh",
+            "tetwild": "TetWild",
+            "netgen": "Netgen",
+            "mmg3d": "MMG3D",
+            "meshpy": "MeshPy (TetGen)",
+            "jigsaw": "JIGSAW",
+            "core": "Geogram CDT",
+            "snappy": "snappyHexMesh",
+            "cfmesh": "cfMesh",
+            "algohex": "AlgoHex",
+            "robust_hex": "RobustHex",
+            "hex_classy": "HexClassyBlocks",
+            "cinolib_hex": "Cinolib Hex",
+            "gmsh_hex": "GMSH Hex",
+            "hohqmesh": "HOHQMesh",
+            "voro_poly": "Voronoi Polyhedral",
+            "polyhedral": "polyDualMesh",
+        }
+        volume_engine = display_map.get(tier, tier)
+
+        # Tier 콤보에서 선택된 값을 display label로 변환하는 helper
+        def _combo_display(combo, specs, fallback: str) -> str:
+            try:
+                value = combo.currentData() if combo is not None else None
+            except Exception:
+                value = None
+            if value is None:
+                return fallback
+            for v_val, display in specs:
+                if v_val == value:
+                    return display
+            return str(value)
+
+        # Tier 0 Preprocess — 사용자 선택 콤보 우선, 폴백은 no_repair 체크박스
+        preprocess_engine = _combo_display(
+            self._tier0_engine_combo, self._TIER0_ENGINES, "pymeshfix",
+        )
+        try:
+            if self._no_repair_check is not None and self._no_repair_check.isChecked():  # type: ignore[union-attr]
+                preprocess_engine = "(skip)"
+        except Exception:
+            pass
+
+        # Tier 1 Surface
+        surface_engine = _combo_display(
+            self._tier1_engine_combo, self._TIER1_ENGINES, "Geogram CDT",
+        )
+
+        # Tier 2 Remesh — 전용 콤보 사용 (surface_remesh 체크해제 시 skip)
+        remesh_engine = _combo_display(
+            self._tier2_engine_combo, self._TIER2_ENGINES, "auto",
+        )
+        try:
+            if self._surface_remesh_check is not None and not self._surface_remesh_check.isChecked():  # type: ignore[union-attr]
+                remesh_engine = "(skip)"
+        except Exception:
+            pass
+
+        # Tier 4 Layers — 사용자 선택 우선, "auto"면 품질 레벨별 자동 결정
+        layers_engine = _combo_display(
+            self._tier4_engine_combo, self._TIER4_ENGINES, "auto",
+        )
+        if layers_engine.startswith("auto"):
+            try:
+                ql = self._quality_level.value
+                if ql == "fine":
+                    layers_engine = "snappy addLayers (fine)"
+                elif ql == "standard":
+                    layers_engine = "optional (standard)"
+                else:
+                    layers_engine = "disabled (draft)"
+            except Exception:
+                pass
+
+        # Tier 5 Validate
+        validate_engine = _combo_display(
+            self._tier5_engine_combo, self._TIER5_ENGINES, "OpenFOAM checkMesh",
+        )
+
+        tier_engines = [
+            preprocess_engine, surface_engine, remesh_engine,
+            volume_engine, layers_engine, validate_engine,
+        ]
+
+        try:
+            nodes = getattr(self._tier_pipeline, "_nodes", None)
+            if not nodes:
+                return
+            for idx, eng in enumerate(tier_engines):
+                if idx < len(nodes):
+                    nodes[idx]._engine = eng
+                    nodes[idx].update()
+        except Exception:
+            pass
 
     def _on_wildmesh_params_changed(self, params: dict) -> None:  # pragma: no cover
         """슬라이더 변경시 revert 버튼 활성화 + param_history 적재."""
@@ -1543,9 +1989,96 @@ class AutoTessellWindow:  # type: ignore[misc]
             except Exception:
                 pass
 
+    _MESH_TYPE_DESC = {
+        "auto":         "Strategist 자동 선택 (geometry/quality 기반).",
+        "tet":          "Tet — 복잡 형상 강건, isotropic.",
+        "hex_dominant": "Hex-dominant — CFD BL 품질 우수, 셀 수 효율적.",
+        "poly":         "Poly — 셀 수 최소, large-gradient 해소 우수.",
+    }
+
+    def _build_section_mesh_type(self) -> object:  # pragma: no cover
+        """메쉬 타입 세그먼트 (Auto/Tet/Hex-Dom/Poly) — v0.4 신규."""
+        from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton
+
+        f, v = self._section_frame("메쉬 타입")
+
+        seg = QFrame()
+        seg.setStyleSheet(
+            f"QFrame {{ background: {PALETTE['bg_2']}; "
+            f"border: 1px solid {PALETTE['line_2']}; border-radius: 6px; }}"
+        )
+        row = QHBoxLayout(seg)
+        row.setContentsMargins(3, 3, 3, 3)
+        row.setSpacing(2)
+
+        def _on_click(mt: str) -> None:
+            self.set_mesh_type(mt)
+
+        self._mesh_type_seg_btns: dict[str, object] = {}
+        for mt, label in [
+            ("auto", "Auto"),
+            ("tet", "Tet"),
+            ("hex_dominant", "Hex-Dom"),
+            ("poly", "Poly"),
+        ]:
+            btn = QPushButton(label)
+            btn.setFlat(True)
+            btn.setCursor(_qt_cursor_pointing())
+            btn.setProperty("active", mt == self._mesh_type)
+            btn.setStyleSheet(
+                f"QPushButton {{ background: transparent; "
+                f"color: {PALETTE['text_2']}; "
+                f"border: none; border-radius: 4px; padding: 6px 8px; "
+                f"font-size: 11px; font-weight: 500; }}"
+                f"QPushButton[active=\"true\"] {{ background: {PALETTE['bg_4']}; "
+                f"color: {PALETTE['text_0']}; }}"
+                f"QPushButton:hover:!pressed {{ color: {PALETTE['text_1']}; }}"
+            )
+            btn.clicked.connect(lambda _, M=mt: _on_click(M))
+            row.addWidget(btn, stretch=1)
+            self._mesh_type_seg_btns[mt] = btn
+        v.addWidget(seg)
+
+        desc = QLabel(self._MESH_TYPE_DESC.get(self._mesh_type, ""))
+        desc.setWordWrap(True)
+        desc.setStyleSheet(
+            f"color: {PALETTE['text_2']}; font-size: 11px; font-style: italic; "
+            f"background: transparent; padding-top: 4px;"
+        )
+        self._mesh_type_desc_label = desc
+        v.addWidget(desc)
+        return f
+
+    def set_mesh_type(self, mesh_type: str) -> None:  # pragma: no cover
+        """메쉬 타입 변경 — 세그먼트 버튼 상태 + desc label 동기화."""
+        mt = str(mesh_type or "auto").lower()
+        if mt not in ("auto", "tet", "hex_dominant", "poly"):
+            return
+        prev = self._mesh_type
+        self._mesh_type = mt
+        for key, btn in getattr(self, "_mesh_type_seg_btns", {}).items():
+            try:
+                btn.setProperty("active", key == mt)  # type: ignore[attr-defined]
+                btn.style().unpolish(btn)             # type: ignore[attr-defined]
+                btn.style().polish(btn)               # type: ignore[attr-defined]
+            except Exception:
+                pass
+        lbl = getattr(self, "_mesh_type_desc_label", None)
+        if lbl is not None:
+            try:
+                lbl.setText(self._MESH_TYPE_DESC.get(mt, ""))  # type: ignore[attr-defined]
+            except Exception:
+                pass
+        if prev != mt:
+            try:
+                self._log(f"[INFO] 메쉬 타입 변경: {prev} → {mt}")
+            except Exception:
+                pass
+
     def _build_section_quality(self) -> object:  # pragma: no cover
         from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QWidget
         f, v = self._section_frame("품질 레벨")
+        self._quality_section_frame = f
 
         seg = QFrame()
         seg.setStyleSheet(
@@ -1592,12 +2125,20 @@ class AutoTessellWindow:  # type: ignore[misc]
 
         self._no_repair_check = QCheckBox("표면 수리 스킵 (no-repair)")
         self._surface_remesh_check = QCheckBox("강제 L2 표면 리메쉬")
-        self._surface_remesh_check.setChecked(True)
         self._allow_ai_fallback_check = QCheckBox("AI 표면 재생성 허용 (L3)")
+        # 기본값: 전부 해제 — WildMesh 단독 경로를 clean 하게 유지
+        self._no_repair_check.setChecked(False)
+        self._surface_remesh_check.setChecked(False)
+        self._allow_ai_fallback_check.setChecked(False)
         for chk in (
             self._no_repair_check, self._surface_remesh_check, self._allow_ai_fallback_check,
         ):
             v.addWidget(chk)
+            # 체크 변경 → Tier 0/1/2 엔진 라벨 갱신
+            try:
+                chk.toggled.connect(lambda _v: self._refresh_tier_strip_engine_labels())
+            except Exception:
+                pass
 
         from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QWidget
         rem_row = QWidget()
@@ -1606,7 +2147,12 @@ class AutoTessellWindow:  # type: ignore[misc]
         rl.setContentsMargins(0, 6, 0, 0); rl.setSpacing(8)
         rl.addWidget(QLabel("L2 엔진:"))
         cb = QComboBox()
-        cb.addItems(["auto", "mmg", "quadwild"])
+        cb.setStyleSheet(self._dark_combo_qss())
+        cb.addItems(["disabled", "auto", "mmg", "quadwild"])
+        cb.setCurrentIndex(0)  # 기본값 disabled
+        cb.currentIndexChanged.connect(
+            lambda _idx: self._refresh_tier_strip_engine_labels()
+        )
         self._remesh_engine_combo = cb
         rl.addWidget(cb, stretch=1)
         v.addWidget(rem_row)
@@ -1673,14 +2219,57 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._surface_min_size_edit.setPlaceholderText("auto")
         self._surface_feature_angle_edit = QLineEdit("150.0")
 
-        g.addWidget(_lbl("Element Size"), 0, 0)
+        # Element Size / Min Size 행 — WildMesh 선택 시 WildMesh Tuning 패널의
+        # edge_length_r 슬라이더와 중복이므로 숨김. _refresh_wildmesh_panel_visibility에서 제어.
+        el_size_lbl = _lbl("Element Size")
+        min_size_lbl = _lbl("Min Size")
+        self._surface_size_lbl_el = el_size_lbl
+        self._surface_size_lbl_min = min_size_lbl
+
+        g.addWidget(el_size_lbl, 0, 0)
         g.addWidget(self._surface_element_size_edit, 0, 1)
-        g.addWidget(_lbl("Min Size"), 1, 0)
+        g.addWidget(min_size_lbl, 1, 0)
         g.addWidget(self._surface_min_size_edit, 1, 1)
-        g.addWidget(_lbl("Feature Angle"), 2, 0)
+        g.addWidget(_lbl("Feature Angle (BL)"), 2, 0)
         g.addWidget(self._surface_feature_angle_edit, 2, 1)
         v.addWidget(grid_w)
+
+        # 중복 방지 힌트 라벨 — WildMesh 선택 시에만 표시
+        from PySide6.QtWidgets import QLabel as _QL
+        dup_hint = _QL(
+            "Element Size는 WildMesh Tuning의\nedge_length_r 슬라이더로 제어하세요."
+        )
+        dup_hint.setStyleSheet(
+            f"color: {PALETTE['text_3']}; font-size: 10px; "
+            f"background: transparent; padding: 2px;"
+        )
+        dup_hint.setWordWrap(True)
+        dup_hint.setVisible(False)
+        self._surface_size_dup_hint = dup_hint
+        v.addWidget(dup_hint)
+
         return f
+
+    def _refresh_surface_mesh_section_for_tier(self, tier: str) -> None:  # pragma: no cover
+        """WildMesh 선택 여부에 따라 Surface Mesh 섹션 중복 필드를 숨김/표시한다."""
+        is_wildmesh = (tier.lower() == "wildmesh")
+        for w in (
+            getattr(self, "_surface_size_lbl_el", None),
+            getattr(self, "_surface_size_lbl_min", None),
+            self._surface_element_size_edit,
+            self._surface_min_size_edit,
+        ):
+            if w is not None:
+                try:
+                    w.setVisible(not is_wildmesh)  # type: ignore[union-attr]
+                except Exception:
+                    pass
+        hint = getattr(self, "_surface_size_dup_hint", None)
+        if hint is not None:
+            try:
+                hint.setVisible(is_wildmesh)  # type: ignore[union-attr]
+            except Exception:
+                pass
 
     def _build_run_buttons(self) -> object:  # pragma: no cover
         from PySide6.QtWidgets import QFrame, QHBoxLayout, QPushButton, QWidget
@@ -1772,9 +2361,10 @@ class AutoTessellWindow:  # type: ignore[misc]
             ("Tier 4 · Layers", "boundary layer"),
             ("Tier 5 · Validate", "checkMesh"),
         ])
+        self._tier_pipeline.run_requested.connect(self._on_run_clicked)
         self._tier_pipeline.rerun_requested.connect(self._on_run_clicked)
         self._tier_pipeline.stop_requested.connect(self._on_stop_clicked)
-        self._tier_pipeline.resume_requested.connect(self._on_resume_clicked)
+        self._tier_pipeline.reset_requested.connect(self._on_reset_pipeline)
         self._tier_pipeline.tier_clicked.connect(self._on_tier_node_clicked)
         v.addWidget(self._tier_pipeline)
 
@@ -1934,6 +2524,39 @@ class AutoTessellWindow:  # type: ignore[misc]
         if feature_angle is not None:
             tier_params["bl_feature_angle"] = feature_angle
 
+        # Tier 4 (경계층) 엔진 콤보 → 내부 BL (snappy/cfmesh) on/off + 독립 후처리 설정
+        try:
+            tier4_choice = self._tier4_engine_text()
+            # 내부 BL — 주 엔진이 자체적으로 BL 생성 (snappy addLayers / cfMesh boundaryLayers)
+            internal_bl = tier4_choice in ("snappy_layers", "cfmesh_layers")
+            post_engine = "disabled"
+            if tier4_choice == "disabled":
+                tier_params["boundary_layers_enabled"] = False
+                tier_params["skip_addLayers"] = True
+            elif internal_bl:
+                tier_params["boundary_layers_enabled"] = True
+                tier_params["skip_addLayers"] = False
+            elif tier4_choice in (
+                "generate_boundary_layers",
+                "refine_wall_layer",
+                "snappy_addlayers",
+                "extrude_mesh",
+                "netgen_bl",
+                "gmsh_bl",
+                "pyhyp",
+                "meshkit_bl",
+                "su2_hexpress",
+                "salome_bl",
+            ):
+                # 독립 후처리 — 주 엔진 내부 BL 은 끔 (중복 방지)
+                tier_params["boundary_layers_enabled"] = False
+                tier_params["skip_addLayers"] = True
+                post_engine = tier4_choice
+            # else: auto — override 없음 (quality_level 이 결정)
+            tier_params["post_layers_engine"] = post_engine
+        except Exception:
+            pass
+
         # WildMesh 슬라이더 패널이 있고 tier=wildmesh면 현재 슬라이더값 병합
         if (
             tier_hint.lower() == "wildmesh"
@@ -1945,6 +2568,27 @@ class AutoTessellWindow:  # type: ignore[misc]
                 from desktop.qt_app import param_history
 
                 param_history.push(self._wildmesh_param_panel.current_params())  # type: ignore[union-attr]
+            except Exception:
+                pass
+
+        # polyDualMesh 파라미터 패널 — tier=polyhedral 일 때 병합
+        if (
+            tier_hint.lower() == "polyhedral"
+            and self._polyhedral_param_panel is not None
+        ):
+            try:
+                tier_params.update(self._polyhedral_param_panel.current_params())  # type: ignore[union-attr]
+            except Exception:
+                pass
+
+        # Generic 엔진 파라미터 패널 — wildmesh/polyhedral 외 모든 엔진의 값 병합.
+        # 패널이 보여지는 조건은 엔진 spec 이 있을 때만 이므로 해당 엔진에 맞는 키만 들어감.
+        if (
+            tier_hint.lower() not in ("wildmesh", "polyhedral", "auto", "")
+            and self._generic_param_panel is not None
+        ):
+            try:
+                tier_params.update(self._generic_param_panel.current_params())  # type: ignore[union-attr]
             except Exception:
                 pass
 
@@ -2003,6 +2647,8 @@ class AutoTessellWindow:  # type: ignore[misc]
                 pass
 
         # 상태 UI 업데이트
+        import time as _time_mod
+        self._pipeline_start_time = _time_mod.monotonic()  # 항상 갱신
         if self._design_statusbar is not None:
             self._design_statusbar.set_phase("Starting pipeline…", busy=True)
         if self._right_column is not None:
@@ -2017,9 +2663,11 @@ class AutoTessellWindow:  # type: ignore[misc]
                         f"시작 {time.strftime('%H:%M:%S')}"
                     ),
                 )
-                self._pipeline_start_time = time.monotonic()
             except Exception:
                 pass
+
+        # 실행 중 중복 클릭 방지 — Run 비활성화, Stop 강조
+        self._set_pipeline_running(True)
 
         try:
             from desktop.qt_app.pipeline_worker import PipelineWorker
@@ -2028,6 +2676,8 @@ class AutoTessellWindow:  # type: ignore[misc]
                 self._input_path, self._quality_level,
                 output_dir=self._output_dir,
                 tier_hint=tier_hint,
+                mesh_type=str(self._mesh_type or "auto"),
+                auto_retry=str(self._auto_retry or "off"),
                 element_size=element_size,
                 tier_specific_params=tier_params or None,
                 no_repair=bool(self._no_repair_check.isChecked())
@@ -2036,7 +2686,17 @@ class AutoTessellWindow:  # type: ignore[misc]
                     if self._surface_remesh_check else True,
                 allow_ai_fallback=bool(self._allow_ai_fallback_check.isChecked())
                     if self._allow_ai_fallback_check else False,
-                remesh_engine=self._remesh_engine_text(),
+                # "disabled" 는 orchestrator가 모르는 값 → "auto"로 정규화
+                # (단, surface_remesh=False 면 애초에 L2 실행 안 함)
+                remesh_engine=(
+                    "auto" if self._remesh_engine_text() == "disabled"
+                    else self._remesh_engine_text()
+                ),
+                # Tier 5 엔진 선택을 orchestrator로 전달 (native/checkmesh/disabled)
+                validator_engine=self._tier5_engine_text(),
+                # 사용자가 명시적으로 엔진을 선택했으면 (auto가 아니면) strict_tier
+                # 모드로 돌려 Strategist 가 다른 tier 로 switch 하지 못하게 한다.
+                strict_tier=(tier_hint.lower() != "auto"),
             )
             worker.progress.connect(self._on_progress_line)
             if hasattr(worker, "progress_percent"):
@@ -2061,6 +2721,33 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._log(f"[ERR] 파이프라인 실행 실패: {e}")
             if self._design_statusbar is not None:
                 self._design_statusbar.set_phase("Failed", busy=False)
+            # 실행 실패 시 버튼 상태 복원
+            self._set_pipeline_running(False)
+
+    def _set_pipeline_running(self, running: bool) -> None:  # pragma: no cover
+        """파이프라인 실행 상태에 맞춰 tier strip의 버튼 그룹을 전환한다."""
+        try:
+            if self._tier_pipeline is not None:
+                # 실행 중: running / 아이들: 이전에 실행했으면 done, 아니면 idle
+                if running:
+                    self._tier_pipeline.set_state("running")  # type: ignore[union-attr]
+                else:
+                    has_result = self._pipeline_result is not None
+                    self._tier_pipeline.set_state("done" if has_result else "idle")  # type: ignore[union-attr]
+        except Exception:
+            pass
+
+    def _on_reset_pipeline(self) -> None:  # pragma: no cover
+        """초기화 버튼 — Tier 상태/결과를 지우고 idle 상태로 복귀."""
+        if self._tier_pipeline is not None:
+            try:
+                for i in range(self._tier_pipeline.node_count()):  # type: ignore[union-attr]
+                    self._tier_pipeline.set_status(i, "pending")  # type: ignore[union-attr]
+                self._tier_pipeline.set_state("idle")  # type: ignore[union-attr]
+            except Exception:
+                pass
+        self._pipeline_result = None
+        self._log("[INFO] 파이프라인 상태 초기화")
 
     def _on_tier_node_clicked(self, index: int) -> None:  # pragma: no cover
         """Tier 노드 클릭 → 해당 Tier 파라미터 팝업 표시."""
@@ -2108,8 +2795,8 @@ class AutoTessellWindow:  # type: ignore[misc]
 
         # tier-scope 파라미터 — tier_hint에 해당하는 것 나열
         relevant_params = [
-            (k, v) for k, v in self.TIER_PARAM_SPECS
-            if self._param_is_applicable(k, tier_hint, self._remesh_engine_text())
+            spec for spec in self.TIER_PARAM_SPECS
+            if self._param_is_applicable(spec[0], tier_hint, self._remesh_engine_text())
         ]
         if relevant_params:
             param_lines.append("")
@@ -2207,6 +2894,8 @@ class AutoTessellWindow:  # type: ignore[misc]
                     )
                 except Exception:
                     pass
+            # 버튼 상태 복원
+            self._set_pipeline_running(False)
             return
         self._pipeline_result = result
         success = bool(getattr(result, "success", False))
@@ -2270,6 +2959,9 @@ class AutoTessellWindow:  # type: ignore[misc]
                 try:
                     poly = Path(out_dir) / "constant" / "polyMesh"
                     if poly.exists():
+                        # foamToVTK 를 명시적으로 돌려 최신 polyMesh 기반 internal.vtu
+                        # 가 생성되도록 보장 (Quality 탭/3D 뷰어가 stale VTU 를 잡지 않게)
+                        self._ensure_fresh_foam_to_vtk(Path(out_dir))
                         self._mesh_viewer.load_polymesh(out_dir)  # type: ignore[union-attr]
                 except Exception:
                     pass
@@ -2287,6 +2979,47 @@ class AutoTessellWindow:  # type: ignore[misc]
                     pass
             # 에러 복구 다이얼로그 — 패턴 매칭해 구체 가이드 제시
             self._show_error_recovery(str(err))
+        # 성공·실패 모두 버튼 상태 복원
+        self._set_pipeline_running(False)
+
+    def _ensure_fresh_foam_to_vtk(self, case_dir: Path) -> None:  # pragma: no cover
+        """VTK/ 가 없거나 polyMesh보다 오래됐으면 foamToVTK를 실행한다.
+
+        Quality 탭의 셀 구성 분류(Hex/Tet/...)는 foamToVTK가 만든 internal.vtu
+        에 의존한다. 과거 실행의 stale VTU가 남아 있으면 사용자가 실제와 다른
+        결과를 보게 되므로 명시적으로 regenerate 한다.
+        """
+        try:
+            vtk_dir = case_dir / "VTK"
+            poly_faces = case_dir / "constant" / "polyMesh" / "faces"
+            needs_regen = True
+            if vtk_dir.exists() and poly_faces.exists():
+                try:
+                    newest_vtu = max(
+                        (p for p in vtk_dir.glob("**/internal.vtu") if p.is_file()),
+                        key=lambda p: p.stat().st_mtime,
+                        default=None,
+                    )
+                    if newest_vtu is not None:
+                        needs_regen = (
+                            newest_vtu.stat().st_mtime < poly_faces.stat().st_mtime
+                        )
+                except Exception:
+                    needs_regen = True
+
+            if not needs_regen:
+                return
+
+            # stale VTK 제거 후 foamToVTK 재실행
+            if vtk_dir.exists():
+                import shutil
+                shutil.rmtree(str(vtk_dir), ignore_errors=True)
+
+            from core.utils.openfoam_utils import run_openfoam
+            run_openfoam("foamToVTK", case_dir)
+            self._log("[INFO] foamToVTK 재생성 완료 — Quality 탭 갱신")
+        except Exception as exc:
+            self._log(f"[WARN] foamToVTK 실행 실패: {exc}")
 
     def _show_error_recovery(self, error_message: str) -> None:  # pragma: no cover
         """에러 메시지 패턴 분석 → 복구 다이얼로그 표시."""
@@ -2339,11 +3072,30 @@ class AutoTessellWindow:  # type: ignore[misc]
             webbrowser.open("https://github.com/younglin90/AutoTessell/issues/new")
             self._log("[INFO] GitHub 이슈 페이지 열림")
 
+    # 파이프라인 진행 단계 → Tier strip 인덱스 매핑
+    # 오케스트레이터의 progress_callback 메시지 키워드 기준
+    # Orchestrator stage 이름 → Tier strip index 매핑.
+    # Tier strip 라벨: [0 Preprocess, 1 Surface, 2 Remesh, 3 Volume, 4 Layers, 5 Validate]
+    # Layers(Tier4) 는 Generate 단계 내부에서 처리되므로 별도 pipeline stage 없음.
+    # Evaluate 는 checkMesh + fidelity 실행 — 이게 Tier 5 (Validate) 에 해당.
+    _STAGE_TO_TIER: list[tuple[str, int]] = [
+        ("Analyze", 0),
+        ("Preprocess", 1),
+        ("Strateg", 2),
+        ("Generat", 3),
+        # "Evaluat" 은 Tier 5 (Validate) — 기존엔 4로 잘못 매핑돼
+        # "Layers 에서 오래 걸린다" 는 오해를 일으켰다.
+        ("Evaluat", 5),
+        ("boundary_class", 5),
+        ("postprocess_boundary", 5),
+    ]
+
     def _on_progress_line(self, line: str) -> None:  # pragma: no cover
         """워커의 progress 시그널 — 로그 + Tier pipeline 상태 + 뷰포트 KPI 추출."""
         self._log(line)
         import re
         try:
+            # 1) 명시적 "Tier N" 패턴 (숫자 인덱스)
             m = re.search(r"[Tt]ier\s*(\d+)", line)
             if m and self._tier_pipeline is not None:
                 idx = int(m.group(1))
@@ -2351,6 +3103,19 @@ class AutoTessellWindow:  # type: ignore[misc]
                     for i in range(idx):
                         self._tier_pipeline.set_status(i, "done")
                     self._tier_pipeline.set_status(idx, "active")
+            # 2) 단계 키워드 매핑 — "[진행 NN%] Analyze 완료" 등
+            elif self._tier_pipeline is not None:
+                for keyword, stage_idx in self._STAGE_TO_TIER:
+                    if keyword.lower() in line.lower():
+                        # 완료 메시지면 done, 아니면 active
+                        if "완료" in line or "done" in line.lower() or "finish" in line.lower():
+                            for i in range(stage_idx + 1):
+                                self._tier_pipeline.set_status(i, "done")
+                        else:
+                            for i in range(stage_idx):
+                                self._tier_pipeline.set_status(i, "done")
+                            self._tier_pipeline.set_status(stage_idx, "active")
+                        break
         except Exception:
             pass
 
@@ -2379,7 +3144,7 @@ class AutoTessellWindow:  # type: ignore[misc]
         # 경과 시간 KPI 갱신 (Job 탭 + 뷰포트 오버레이)
         try:
             import time
-            if hasattr(self, "_pipeline_start_time"):
+            if self._pipeline_start_time > 0:
                 elapsed = time.monotonic() - self._pipeline_start_time
                 mins, secs = divmod(int(elapsed), 60)
                 time_str = f"{mins:02d}:{secs:02d}"
@@ -3268,6 +4033,30 @@ class AutoTessellWindow:  # type: ignore[misc]
         if len(self._all_log_lines) > 5000:
             self._all_log_lines = self._all_log_lines[-3000:]
         self._refilter_log()
+        self._update_log_chip_counts()
+
+    def _update_log_chip_counts(self) -> None:  # pragma: no cover
+        """로그 필터 chip의 카운트 (INFO/WARN/ERR/DBG/ALL)를 갱신."""
+        if self._right_column is None or not hasattr(self, "_all_log_lines"):
+            return
+        try:
+            job = self._right_column.job_pane
+        except Exception:
+            return
+        counts = {"INFO": 0, "WARN": 0, "ERR": 0, "DBG": 0}
+        for raw in self._all_log_lines:
+            lvl = self._classify_log_level(raw)
+            if lvl in counts:
+                counts[lvl] += 1
+        total = len(self._all_log_lines)
+        try:
+            job.chip_all.set_count(total)
+            job.chip_info.set_count(counts["INFO"])
+            job.chip_warn.set_count(counts["WARN"])
+            job.chip_err.set_count(counts["ERR"])
+            job.chip_dbg.set_count(counts["DBG"])
+        except Exception:
+            pass
 
     # ─── 파일 메뉴 ───────────────────────────────────────────────
     def _on_new_project(self) -> None:  # pragma: no cover
@@ -3480,6 +4269,23 @@ class AutoTessellWindow:  # type: ignore[misc]
             import psutil
             cpu = psutil.cpu_percent(interval=None)
             self._design_statusbar.set_cpu(f"{cpu:.0f}%")
+            # Peak RAM — 현재 프로세스의 RSS 피크를 추적해 Job 탭 KPI로 노출
+            try:
+                proc = psutil.Process()
+                rss_mb = proc.memory_info().rss / (1024 * 1024)
+                if not hasattr(self, "_peak_ram_mb"):
+                    self._peak_ram_mb = rss_mb
+                else:
+                    self._peak_ram_mb = max(self._peak_ram_mb, rss_mb)
+                if self._right_column is not None:
+                    peak = self._peak_ram_mb
+                    if peak >= 1024:
+                        ram_str = f"{peak / 1024:.2f} GB"
+                    else:
+                        ram_str = f"{peak:.0f} MB"
+                    self._right_column.job_pane.kpi_ram.set_value(ram_str)
+            except Exception:
+                pass
             # I/O — disk read/write rate
             if not hasattr(self, "_last_io"):
                 self._last_io = psutil.disk_io_counters()

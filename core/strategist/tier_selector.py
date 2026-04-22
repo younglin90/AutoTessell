@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 
-from core.schemas import GeometryReport, QualityLevel, SurfaceQualityLevel
+from core.schemas import GeometryReport, MeshType, QualityLevel, SurfaceQualityLevel
 from core.utils.logging import get_logger
 
 log = get_logger(__name__)
@@ -93,6 +93,59 @@ def _policy_filter_tier(
 
     return selected, filtered_fb
 
+# ─── mesh_type × quality_level → Tier 매핑 (v0.4) ───────────────────────
+# 사용자가 --mesh-type 으로 대분류를 선택하면 quality_level 과 교차해 primary tier +
+# 같은 카테고리 내 fallback 순서를 결정한다. mesh_type="auto" 이면 기존 auto_select
+# 로직이 모두 사용된다.
+_MESH_TYPE_TIER_MAP: dict[str, dict[str, list[str]]] = {
+    "tet": {
+        # draft: 빠른 검증. tetwild coarse ε 가 가장 관대하고 안정적.
+        "draft":    ["tier2_tetwild",  "tier_wildmesh", "tier05_netgen",
+                     "tier_meshpy",    "tier_jigsaw_fallback"],
+        # standard: 엔지니어링 용. Netgen 기본.
+        "standard": ["tier05_netgen",  "tier_wildmesh", "tier2_tetwild",
+                     "tier_meshpy",    "tier_mmg3d"],
+        # fine: 고품질. WildMesh tight ε + MMG 후처리.
+        "fine":     ["tier_wildmesh",  "tier2_tetwild", "tier_mmg3d",
+                     "tier05_netgen",  "tier_meshpy"],
+    },
+    "hex_dominant": {
+        "draft":    ["tier15_cfmesh",  "tier1_snappy",  "tier_hex_classy_blocks",
+                     "tier_gmsh_hex",  "tier_cinolib_hex"],
+        "standard": ["tier15_cfmesh",  "tier1_snappy",  "tier_hex_classy_blocks",
+                     "tier_gmsh_hex",  "tier_cinolib_hex"],
+        # fine: snappy + BL 을 기본. cfmesh 는 fallback.
+        "fine":     ["tier1_snappy",   "tier15_cfmesh", "tier_hex_classy_blocks",
+                     "tier_robust_hex","tier_algohex"],
+    },
+    "poly": {
+        "draft":    ["tier_voro_poly", "tier_polyhedral"],
+        "standard": ["tier_polyhedral","tier_voro_poly"],
+        "fine":     ["tier_polyhedral","tier_voro_poly"],
+    },
+}
+
+
+def resolve_mesh_type_tier(
+    mesh_type: str, quality_level: str,
+) -> tuple[str, list[str]] | None:
+    """mesh_type(auto/tet/hex_dominant/poly) × quality_level → (primary, fallbacks).
+
+    반환값 None 이면 mesh_type=auto 또는 매핑 없음 (기존 auto_select 로직 사용).
+    """
+    mt = str(mesh_type or "").lower()
+    if mt in ("auto", ""):
+        return None
+    ql = str(quality_level or "").lower()
+    table = _MESH_TYPE_TIER_MAP.get(mt)
+    if table is None:
+        return None
+    lst = table.get(ql) or table.get("standard") or []
+    if not lst:
+        return None
+    return lst[0], list(lst[1:])
+
+
 # Tier 우선순위 (품질/안정성 순)
 _TIER_ORDER = [
     "tier0_2d_meshpy",          # 2D 감지 시 먼저 시도
@@ -114,11 +167,18 @@ _TIER_ORDER = [
     "tier_classy_blocks",       # Classy Blocks
 ]
 
+def canonical_tier(tier_hint: str) -> str:
+    """CLI hint / alias 를 canonical tier 이름으로 변환. 없으면 그대로 반환."""
+    return _HINT_MAP.get(str(tier_hint).lower(), str(tier_hint))
+
+
 # CLI hint → canonical tier name
 _HINT_MAP: dict[str, str] = {
     "auto": "auto",
     "2d": "tier0_2d_meshpy",
     "hex": "tier_hex_classy_blocks",
+    "hex_classy": "tier_hex_classy_blocks",
+    "hex_classy_blocks": "tier_hex_classy_blocks",
     "polyhedral": "tier_polyhedral",
     "core": "tier0_core",
     "netgen": "tier05_netgen",
@@ -135,6 +195,15 @@ _HINT_MAP: dict[str, str] = {
     "algohex": "tier_algohex",
     "algo_hex": "tier_algohex",
     "tier_algohex": "tier_algohex",
+    "meshkit": "tier_meshkit",
+    "tier_meshkit": "tier_meshkit",
+    "su2_hexpress": "tier_su2_hexpress",
+    "hexpress": "tier_su2_hexpress",
+    "tier_su2_hexpress": "tier_su2_hexpress",
+    "salome": "tier_salome_smesh",
+    "salome_smesh": "tier_salome_smesh",
+    "smesh": "tier_salome_smesh",
+    "tier_salome_smesh": "tier_salome_smesh",
     "meshpy": "tier_meshpy",
     "classy_blocks": "tier_classy_blocks",
     "wildmesh": "tier_wildmesh",
@@ -177,14 +246,17 @@ class TierSelector:
         tier_hint: str = "auto",
         quality_level: QualityLevel | str = QualityLevel.STANDARD,
         surface_quality_level: SurfaceQualityLevel | str = SurfaceQualityLevel.L1_REPAIR,
+        mesh_type: MeshType | str = MeshType.AUTO,
     ) -> tuple[str, list[str]]:
         """Tier를 선택하고 fallback 순서를 반환한다.
 
         Args:
             report: GeometryReport (Analyzer 출력)
-            tier_hint: CLI --tier 값. 'auto'가 아니면 그 값을 사용한다.
+            tier_hint: CLI --tier 값. 'auto' 가 아니면 명시 override 로 최우선.
             quality_level: 품질 레벨 (draft / standard / fine).
             surface_quality_level: 표면 품질 레벨 (l1_repair / l2_remesh / l3_ai).
+            mesh_type: 사용자 1차 대분류 (auto / tet / hex_dominant / poly).
+                auto 아니면 해당 카테고리 우선 매핑을 tier_hint override 다음으로 적용.
 
         Returns:
             (selected_tier, fallback_tiers) 튜플.
@@ -200,7 +272,12 @@ class TierSelector:
         else:
             sql = str(surface_quality_level)
 
-        # tier_hint override
+        if isinstance(mesh_type, MeshType):
+            mt = mesh_type.value
+        else:
+            mt = str(mesh_type or "auto").lower()
+
+        # tier_hint override (최우선)
         canonical = _HINT_MAP.get(tier_hint, tier_hint)
         if canonical != "auto":
             log.info("tier_hint_override", hint=tier_hint, canonical=canonical)
@@ -257,6 +334,34 @@ class TierSelector:
                 "fallback_tiers": list(fallbacks),
             }
             return selected, fallbacks
+
+        # mesh_type 기반 매핑 (v0.4) — tier_hint=auto + 비-critical + 비-L3
+        mt_resolved = resolve_mesh_type_tier(mt, ql)
+        if mt_resolved is not None:
+            mt_primary, mt_fallbacks = mt_resolved
+            # 카테고리 외 나머지 tier 를 마지막 fallback 으로 추가 (last-resort)
+            extras = [t for t in _TIER_ORDER
+                      if t != mt_primary and t not in mt_fallbacks]
+            all_fallbacks = list(mt_fallbacks) + extras
+            mt_primary, all_fallbacks = _policy_filter_tier(
+                mt_primary, all_fallbacks,
+            )
+            self.last_selection_context = {
+                "source": "mesh_type_auto",
+                "hint": tier_hint,
+                "mesh_type": mt,
+                "reason": f"mesh_type={mt}_quality={ql}",
+                "quality_level": ql,
+                "surface_quality_level": sql,
+                "selected_tier": mt_primary,
+                "fallback_tiers": list(all_fallbacks),
+            }
+            log.info(
+                "tier_mesh_type_mapped",
+                mesh_type=mt, quality_level=ql, tier=mt_primary,
+                fallbacks=mt_fallbacks[:3],
+            )
+            return mt_primary, all_fallbacks
 
         selected, reason = self._auto_select(report, ql)
         # fallback: 선택된 tier를 제외한 모든 tier를 우선순위대로 정렬

@@ -8,6 +8,7 @@ from core.schemas import (
     BoundaryLayerConfig,
     GeometryReport,
     MeshStrategy,
+    MeshType,
     PreprocessedReport,
     PreviousAttempt,
     QualityLevel,
@@ -137,6 +138,7 @@ class StrategyPlanner:
         tier_hint: str = "auto",
         iteration: int = 1,
         quality_level: QualityLevel | str = QualityLevel.STANDARD,
+        mesh_type: "MeshType | str" = "auto",
     ) -> MeshStrategy:
         """MeshStrategy를 수립한다.
 
@@ -147,6 +149,8 @@ class StrategyPlanner:
             tier_hint: CLI --tier 값.
             iteration: 현재 시도 횟수 (1-indexed).
             quality_level: 품질 레벨 (draft / standard / fine).
+            mesh_type: 사용자가 1차로 선택한 메쉬 대분류
+                ("auto" / "tet" / "hex_dominant" / "poly"). v0.4 이후 도입.
 
         Returns:
             MeshStrategy Pydantic 모델.
@@ -156,6 +160,16 @@ class StrategyPlanner:
             ql = quality_level
         else:
             ql = QualityLevel(quality_level)
+
+        # Normalise mesh_type
+        if isinstance(mesh_type, MeshType):
+            mt = mesh_type
+        else:
+            try:
+                mt = MeshType(str(mesh_type).lower())
+            except ValueError:
+                log.warning("mesh_type_unknown_fallback_auto", value=mesh_type)
+                mt = MeshType.AUTO
 
         # Determine surface_quality_level from preprocessed_report (if available)
         sql_str = SurfaceQualityLevel.L1_REPAIR.value
@@ -174,7 +188,9 @@ class StrategyPlanner:
 
         # 1. Tier 선택
         selected_tier, fallback_tiers = self._selector.select(
-            geometry_report, tier_hint, quality_level=ql, surface_quality_level=sql
+            geometry_report, tier_hint,
+            quality_level=ql, surface_quality_level=sql,
+            mesh_type=mt,
         )
         selection_context = dict(self._selector.last_selection_context)
 
@@ -270,9 +286,10 @@ class StrategyPlanner:
         )
 
         strategy = MeshStrategy(
-            strategy_version=2,
+            strategy_version=3,
             iteration=iteration,
             quality_level=ql,
+            mesh_type=mt,
             surface_quality_level=sql,
             selected_tier=selected_tier,
             fallback_tiers=fallback_tiers,
@@ -726,6 +743,45 @@ class StrategyPlanner:
                 epsilon=tw_params["tetwild_epsilon"],
                 stop_energy=tw_params["tetwild_stop_energy"],
             )
+
+        # WildMesh 튜닝 — overall_score 기반으로 TetWild-매칭 파라미터 주입.
+        # ComplexityAnalyzer.classify() 는 threshold 가 50+ 라 knot류(score~7)가
+        # "simple"로 분류돼 기본값이 못 바뀌는 문제가 있음. 따라서 classification
+        # 대신 overall_score 를 직접 본다.
+        elif tier == "tier_wildmesh":
+            if complexity_score.overall >= 5.0:
+                # borderline~complex: TetWild 매칭 값 주입.
+                # 사용자/CLI 명시값은 보존 (setdefault).
+                wm_params = ComplexityAnalyzer.get_wildmesh_tuning_params(
+                    complexity_score
+                )
+                # classification "simple" 분기는 draft 와 동일 → 상향 효과 없음.
+                # overall_score >= 5.0 케이스는 최소 moderate 값 강제 적용.
+                if complexity_score.overall < ComplexityAnalyzer.THRESHOLD_SIMPLE:
+                    wm_params = {
+                        "wildmesh_epsilon": 1e-3,
+                        "wildmesh_edge_length_r": 0.05,
+                        "wildmesh_stop_quality": 10.0,
+                        "wildmesh_max_its": 80,
+                    }
+                for key, value in wm_params.items():
+                    params.setdefault(key, value)
+                log.info(
+                    "complexity_tuning_applied_wildmesh",
+                    classification=ComplexityAnalyzer.classify(complexity_score),
+                    overall=complexity_score.overall,
+                    epsilon=params.get("wildmesh_epsilon"),
+                    edge_length_r=params.get("wildmesh_edge_length_r"),
+                    stop_quality=params.get("wildmesh_stop_quality"),
+                    max_its=params.get("wildmesh_max_its"),
+                )
+            else:
+                # 단순 형상 (cube 등): tuning 안 해야 draft 값 유지돼 빠르게 통과.
+                log.debug(
+                    "wildmesh_tuning_skipped",
+                    overall=complexity_score.overall,
+                    reason="simple_geometry_uses_quality_level_defaults",
+                )
 
     @staticmethod
     def _build_refinement_regions(

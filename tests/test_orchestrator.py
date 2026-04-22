@@ -424,7 +424,10 @@ class TestRetryLoop:
 
     def test_retry_on_fail_then_pass(self, tmp_output):
         orch = self._make_retry_orchestrator(["FAIL", "PASS"])
-        result = orch.run(Path("sphere.stl"), tmp_output, max_iterations=3)
+        result = orch.run(
+            Path("sphere.stl"), tmp_output,
+            max_iterations=3, auto_retry="continue",
+        )
 
         assert result.success is True
         assert result.iterations == 2
@@ -434,7 +437,10 @@ class TestRetryLoop:
 
     def test_retry_exhausted(self, tmp_output):
         orch = self._make_retry_orchestrator(["FAIL", "FAIL", "FAIL"])
-        result = orch.run(Path("sphere.stl"), tmp_output, max_iterations=3)
+        result = orch.run(
+            Path("sphere.stl"), tmp_output,
+            max_iterations=3, auto_retry="continue",
+        )
 
         assert result.success is False
         assert result.iterations == 3
@@ -495,7 +501,10 @@ class TestRetryLoop:
 
         max_cells = 1000
         expected_base = (3000.0 / max_cells) ** (1.0 / 3.0)
-        result = orch.run(Path("sphere.stl"), tmp_output, max_iterations=3, max_cells=max_cells)
+        result = orch.run(
+            Path("sphere.stl"), tmp_output,
+            max_iterations=3, auto_retry="continue", max_cells=max_cells,
+        )
 
         assert result.success is True
         assert generator.run.call_count == 2

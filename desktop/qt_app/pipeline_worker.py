@@ -1,12 +1,57 @@
 """QThread 기반 백그라운드 파이프라인 실행 워커."""
 from __future__ import annotations
 
+import logging
 import traceback
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from desktop.qt_app.main_window import QualityLevel
+
+
+# ---------------------------------------------------------------------------
+# Log bridge — structlog/logging 출력을 worker.progress 시그널로 전달
+# ---------------------------------------------------------------------------
+
+
+class _QtLogHandler(logging.Handler):
+    """root logger의 모든 record를 worker.progress 시그널로 forward 한다."""
+
+    def __init__(self, worker: object) -> None:
+        super().__init__(level=logging.DEBUG)
+        self._worker = worker
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+        except Exception:
+            msg = record.getMessage()
+        level = record.levelname  # DEBUG/INFO/WARNING/ERROR/CRITICAL
+        tag = {"WARNING": "WARN", "CRITICAL": "ERR", "ERROR": "ERR"}.get(level, level)
+        try:
+            self._worker.progress.emit(f"[{tag}] {msg}")  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
+
+def _attach_log_bridge(worker: object) -> _QtLogHandler:
+    """워커가 돌아가는 동안 root logger에 QtLogHandler를 추가한다."""
+    handler = _QtLogHandler(worker)
+    # structlog 메시지의 타임스탬프/이벤트는 이미 포매팅되어 있으므로 message만 사용
+    handler.setFormatter(logging.Formatter("%(message)s"))
+    logging.getLogger().addHandler(handler)
+    return handler
+
+
+def _detach_log_bridge(handler: _QtLogHandler | None) -> None:
+    if handler is None:
+        return
+    try:
+        logging.getLogger().removeHandler(handler)
+    except Exception:
+        pass
+
 
 # ---------------------------------------------------------------------------
 # PipelineWorker
@@ -27,7 +72,9 @@ class PipelineWorker:
         output_dir: Path | None = None,
         *,
         tier_hint: str = "auto",
+        mesh_type: str = "auto",
         max_iterations: int = 3,
+        auto_retry: str = "off",
         dry_run: bool = False,
         element_size: float | None = None,
         max_cells: int | None = None,
@@ -36,6 +83,8 @@ class PipelineWorker:
         surface_remesh: bool = False,
         remesh_engine: str = "auto",
         allow_ai_fallback: bool = False,
+        validator_engine: str = "checkmesh",
+        strict_tier: bool = False,
     ) -> PipelineWorker:  # type: ignore[misc]
         """QThread 를 동적으로 상속한 인스턴스를 반환한다."""
         from PySide6.QtCore import QThread, Signal
@@ -65,7 +114,9 @@ class PipelineWorker:
                 quality_level: QualityLevel,
                 output_dir: Path | None = None,
                 tier_hint: str = "auto",
+                mesh_type: str = "auto",
                 max_iterations: int = 3,
+                auto_retry: str = "off",
                 dry_run: bool = False,
                 element_size: float | None = None,
                 max_cells: int | None = None,
@@ -74,13 +125,17 @@ class PipelineWorker:
                 surface_remesh: bool = False,
                 remesh_engine: str = "auto",
                 allow_ai_fallback: bool = False,
+                validator_engine: str = "checkmesh",
+                strict_tier: bool = False,
             ) -> None:
                 super().__init__()
                 self._input_path = input_path
                 self._quality_level = quality_level
                 self._output_dir = output_dir
                 self._tier_hint = tier_hint
+                self._mesh_type = mesh_type
                 self._max_iterations = max_iterations
+                self._auto_retry = auto_retry
                 self._dry_run = dry_run
                 self._element_size = element_size
                 self._max_cells = max_cells
@@ -89,9 +144,14 @@ class PipelineWorker:
                 self._surface_remesh = surface_remesh
                 self._remesh_engine = remesh_engine
                 self._allow_ai_fallback = allow_ai_fallback
+                self._validator_engine = validator_engine
+                self._strict_tier = strict_tier
 
             def run(self) -> None:
                 """파이프라인을 실행하고 결과를 finished 시그널로 emit."""
+                # GUI 로그와 콘솔 로그를 일치시키기 위해 structlog/logging 출력을
+                # progress 시그널로도 전달하는 핸들러를 설치한다.
+                log_bridge = _attach_log_bridge(self)
                 try:
                     from core.pipeline.orchestrator import PipelineOrchestrator
 
@@ -103,7 +163,9 @@ class PipelineWorker:
                     self.progress.emit(
                         f"파이프라인 시작: input={self._input_path.name} "
                         f"quality={self._quality_level.value} "
+                        f"mesh_type={self._mesh_type} "
                         f"tier={self._tier_hint} "
+                        f"auto_retry={self._auto_retry} "
                         f"max_iter={self._max_iterations} "
                         f"element_size={self._element_size} "
                         f"max_cells={self._max_cells} "
@@ -129,8 +191,10 @@ class PipelineWorker:
                         input_path=self._input_path,
                         output_dir=output_dir,
                         quality_level=self._quality_level.value,
+                        mesh_type=self._mesh_type,
                         tier_hint=self._tier_hint,
                         max_iterations=self._max_iterations,
+                        auto_retry=self._auto_retry,
                         dry_run=self._dry_run,
                         element_size=self._element_size,
                         max_cells=self._max_cells,
@@ -139,6 +203,8 @@ class PipelineWorker:
                         surface_remesh=self._surface_remesh,
                         remesh_engine=self._remesh_engine,
                         allow_ai_fallback=self._allow_ai_fallback,
+                        validator_engine=self._validator_engine,
+                        strict_tier=self._strict_tier,
                         progress_callback=_on_progress,
                     )
                     self.progress.emit(
@@ -186,6 +252,12 @@ class PipelineWorker:
                         self.progress.emit(f"[오류] {exc.__class__.__name__}: {exc}")
                         self.progress.emit(f"[디버그]\n{brief_tb}")
                         self.finished.emit(None)
+                finally:
+                    # 로그 브리지 제거 — 이 워커가 끝난 뒤에도 로그가 전파되면 곤란하다.
+                    try:
+                        _detach_log_bridge(log_bridge)
+                    except Exception:
+                        pass
 
         instance = _Worker.__new__(_Worker)
         instance.__init__(
@@ -193,7 +265,9 @@ class PipelineWorker:
             quality_level,
             output_dir,
             tier_hint=tier_hint,
+            mesh_type=mesh_type,
             max_iterations=max_iterations,
+            auto_retry=auto_retry,
             dry_run=dry_run,
             element_size=element_size,
             max_cells=max_cells,
@@ -202,6 +276,8 @@ class PipelineWorker:
             surface_remesh=surface_remesh,
             remesh_engine=remesh_engine,
             allow_ai_fallback=allow_ai_fallback,
+            validator_engine=validator_engine,
+            strict_tier=strict_tier,
         )
         return instance  # type: ignore[return-value]
 

@@ -36,6 +36,41 @@ class SurfaceQualityLevel(StrEnum):
     L3_AI = "l3_ai"
 
 
+class MeshType(StrEnum):
+    """사용자가 1차로 선택하는 볼륨 메쉬 대분류.
+
+    - AUTO: Strategist 가 geometry/quality 기반 자동 선택 (기본값, 하위호환용)
+    - TET: 순수 tetrahedral. 복잡 형상 강건.
+    - HEX_DOMINANT: 대부분 hex, 코너/곡면만 poly. CFD BL 품질 우수.
+    - POLY: Voronoi dual 기반 polyhedral. 셀 수 최소, gradient 해소 우수.
+    """
+
+    AUTO = "auto"
+    TET = "tet"
+    HEX_DOMINANT = "hex_dominant"
+    POLY = "poly"
+
+
+class UserDecision(StrEnum):
+    """Evaluator FAIL 시 사용자가 선택한 다음 행동."""
+
+    RETRY = "retry"
+    ACCEPT = "accept"
+
+
+class AutoRetryMode(StrEnum):
+    """Generator ⇄ Evaluator 자동 재시도 모드.
+
+    - OFF   (기본): 1 회 시도 후 FAIL 이어도 루프 없이 종료, recommendation 만 리포트.
+    - ONCE: FAIL 시 1 회만 재시도 (max_iterations=2 와 등가).
+    - CONTINUE: 예전 max_iterations 기반 루프 동작 (하위호환).
+    """
+
+    OFF = "off"
+    ONCE = "once"
+    CONTINUE = "continue"
+
+
 # ---------------------------------------------------------------------------
 # GeometryReport  (agents/specs/analyzer.md)
 # ---------------------------------------------------------------------------
@@ -228,12 +263,14 @@ class PreviousAttempt(BaseModel):
 
 
 class MeshStrategy(BaseModel):
-    strategy_version: int = 2
+    strategy_version: int = 3
     iteration: int = 1
     quality_level: QualityLevel = QualityLevel.STANDARD
+    mesh_type: MeshType = MeshType.AUTO
     surface_quality_level: SurfaceQualityLevel = SurfaceQualityLevel.L1_REPAIR
     selected_tier: str
     fallback_tiers: list[str] = Field(default_factory=list)
+    strict_tier: bool = False
     flow_type: str  # "external" | "internal"
     domain: DomainConfig
     surface_mesh: SurfaceMeshConfig
@@ -366,6 +403,9 @@ class EvaluationSummary(BaseModel):
     soft_fails: list[FailCriterion] = Field(default_factory=list)
     recommendations: list[Recommendation] = Field(default_factory=list)
     quality_level: str | None = None
+    mesh_type: str | None = None
+    checker_engine_used: str | None = None
+    user_decision: UserDecision | None = None
     verdict_reasoning: str = ""
     checkmesh_note: str = (
         "mesh_ok/failed_checks는 OpenFOAM checkMesh raw 출력값. "

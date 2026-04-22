@@ -422,7 +422,8 @@ class TestMeshStrategy:
 
     def test_strategy_version_default(self):
         ms = self._make()
-        assert ms.strategy_version == 2
+        # v0.4: strategy_version 3 (mesh_type / strict_tier 필드 도입)
+        assert ms.strategy_version == 3
 
     def test_iteration_default(self):
         ms = self._make()
@@ -469,7 +470,7 @@ class TestMeshStrategy:
         ms = self._make()
         ms2 = MeshStrategy.model_validate_json(ms.model_dump_json())
         assert ms2.selected_tier == "tier2_tetwild"
-        assert ms2.strategy_version == 2
+        assert ms2.strategy_version == 3
 
 
 # ---------------------------------------------------------------------------

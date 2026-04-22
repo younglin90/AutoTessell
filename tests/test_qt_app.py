@@ -193,6 +193,42 @@ def test_quality_level_set_via_internal_state() -> None:
     assert win.get_quality_level() == QualityLevel.FINE
 
 
+def test_mesh_type_default_and_set() -> None:
+    """v0.4: mesh_type 기본값은 'auto', set_mesh_type 으로 변경된다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    assert win._mesh_type == "auto"
+    win.set_mesh_type("tet")
+    assert win._mesh_type == "tet"
+    win.set_mesh_type("hex_dominant")
+    assert win._mesh_type == "hex_dominant"
+    win.set_mesh_type("poly")
+    assert win._mesh_type == "poly"
+    # 유효하지 않은 값은 무시되고 이전 값 유지
+    win.set_mesh_type("invalid")
+    assert win._mesh_type == "poly"
+
+
+def test_pipeline_worker_accepts_mesh_type_and_auto_retry() -> None:
+    """PipelineWorker 가 mesh_type / auto_retry kwargs 를 받아들인다."""
+    from pathlib import Path
+
+    from core.schemas import QualityLevel as _QL
+    from desktop.qt_app.pipeline_worker import PipelineWorker
+
+    # Worker 생성만 검증 (run() 은 호출 안 함 → QThread 시작 금지)
+    w = PipelineWorker(
+        Path("/tmp/does_not_exist.stl"),
+        _QL.DRAFT,
+        tier_hint="auto",
+        mesh_type="hex_dominant",
+        auto_retry="once",
+    )
+    assert getattr(w, "_mesh_type", None) == "hex_dominant"
+    assert getattr(w, "_auto_retry", None) == "once"
+
+
 def test_pipeline_step_labels_attribute_exists() -> None:
     """AutoTessellWindow 가 _pipeline_step_labels list 속성을 갖는다."""
     from desktop.qt_app.main_window import AutoTessellWindow
@@ -2723,17 +2759,28 @@ def test_tier_pipeline_strip_resume_stop_rerun_signals() -> None:
     strip = TierPipelineStrip()
     strip.set_tiers([("A", "a"), ("B", "b")])
 
-    resume_spy = QSignalSpy(strip.resume_requested)
+    run_spy = QSignalSpy(strip.run_requested)
     stop_spy = QSignalSpy(strip.stop_requested)
     rerun_spy = QSignalSpy(strip.rerun_requested)
+    reset_spy = QSignalSpy(strip.reset_requested)
 
-    QTest.mouseClick(strip.resume_btn, Qt.MouseButton.LeftButton)
+    # idle 상태: run_btn만 visible
+    strip.set_state("idle")
+    QTest.mouseClick(strip.run_btn, Qt.MouseButton.LeftButton)
+
+    # running 상태: stop_btn만 visible
+    strip.set_state("running")
     QTest.mouseClick(strip.stop_btn, Qt.MouseButton.LeftButton)
-    QTest.mouseClick(strip.rerun_btn, Qt.MouseButton.LeftButton)
 
-    assert resume_spy.count() == 1
+    # done 상태: rerun + reset visible
+    strip.set_state("done")
+    QTest.mouseClick(strip.rerun_btn, Qt.MouseButton.LeftButton)
+    QTest.mouseClick(strip.reset_btn, Qt.MouseButton.LeftButton)
+
+    assert run_spy.count() == 1
     assert stop_spy.count() == 1
     assert rerun_spy.count() == 1
+    assert reset_spy.count() == 1
 
 
 def test_drop_zone_drag_and_drop_emits_file_dropped() -> None:
@@ -2911,9 +2958,10 @@ def test_signal_connections_completeness(monkeypatch) -> None:
         ("_drop_label", "clicked", 1),
         ("_drop_label", "file_dropped", 1),
         ("_tier_pipeline", "tier_clicked", 1),
-        ("_tier_pipeline", "resume_requested", 1),
+        ("_tier_pipeline", "run_requested", 1),
         ("_tier_pipeline", "stop_requested", 1),
         ("_tier_pipeline", "rerun_requested", 1),
+        ("_tier_pipeline", "reset_requested", 1),
         ("_wildmesh_param_panel", "params_changed", 1),
     ]
     for attr, sig_name, min_r in checks:
@@ -3331,3 +3379,201 @@ def test_qt_main_pyvista_runtime_uses_offscreen_when_headless(monkeypatch) -> No
     _configure_pyvista_runtime()
 
     assert fake_pyvista.OFF_SCREEN is True
+
+
+def test_mesh_viewer_runtime_detects_headless_and_static_flag(monkeypatch) -> None:
+    """mesh_viewer도 Qt runtime 상태와 정적 뷰어 강제 flag를 따라야 한다."""
+    from desktop.qt_app import mesh_viewer
+
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.setenv("AUTOTESSELL_STATIC_VIEWER", "1")
+
+    assert mesh_viewer._qt_runtime_is_headless() is True
+    assert mesh_viewer._force_static_viewer_requested() is True
+
+
+def test_main_window_qss_avoids_unsupported_box_shadow() -> None:
+    """Qt QSS가 지원하지 않는 box-shadow 속성을 사용하지 않는다."""
+    from pathlib import Path
+
+    src = Path("desktop/qt_app/main_window.py").read_text(encoding="utf-8")
+    assert "box-shadow" not in src
+
+
+def test_mesh_viewer_prefers_foam_to_vtk_preview(tmp_path) -> None:
+    """polyMesh 직접 reader보다 foamToVTK preview 파일을 우선 사용한다."""
+    from desktop.qt_app.mesh_viewer import _find_case_preview_mesh
+
+    poly_dir = tmp_path / "constant" / "polyMesh"
+    poly_dir.mkdir(parents=True)
+    (poly_dir / "points").write_text("", encoding="utf-8")
+    vtk_dir = tmp_path / "VTK" / "case_0"
+    vtk_dir.mkdir(parents=True)
+    internal_vtu = vtk_dir / "internal.vtu"
+    internal_vtu.write_text("<VTKFile />", encoding="utf-8")
+
+    assert _find_case_preview_mesh(tmp_path) == internal_vtu
+
+
+def test_interactive_polymesh_load_uses_preview_before_openfoam_reader(tmp_path, monkeypatch) -> None:
+    """VTK preview가 있으면 OpenFOAMReader 경로를 타지 않는다."""
+    from types import SimpleNamespace
+
+    from desktop.qt_app.mesh_viewer import InteractiveMeshViewer
+
+    poly_dir = tmp_path / "constant" / "polyMesh"
+    poly_dir.mkdir(parents=True)
+    (poly_dir / "points").write_text("", encoding="utf-8")
+    vtk_dir = tmp_path / "VTK" / "case_0"
+    vtk_dir.mkdir(parents=True)
+    internal_vtu = vtk_dir / "internal.vtu"
+    internal_vtu.write_text("<VTKFile />", encoding="utf-8")
+
+    calls: list[tuple[str, bool]] = []
+
+    def _load_mesh(path, show_edges=True):
+        calls.append((str(path), show_edges))
+        return True
+
+    fake = SimpleNamespace(load_mesh=_load_mesh)
+    monkeypatch.setattr(
+        InteractiveMeshViewer,
+        "_read_openfoam",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("OpenFOAMReader called")),
+    )
+
+    assert InteractiveMeshViewer.load_polymesh(fake, tmp_path) is True
+    assert calls == [(str(internal_vtu), True)]
+
+
+def test_interactive_polymesh_direct_preview_is_opt_in(tmp_path, monkeypatch) -> None:
+    """VTK preview가 없으면 polyMesh 직접 preview를 기본 비활성화한다."""
+    from types import SimpleNamespace
+
+    from desktop.qt_app.mesh_viewer import InteractiveMeshViewer
+
+    poly_dir = tmp_path / "constant" / "polyMesh"
+    poly_dir.mkdir(parents=True)
+    (poly_dir / "points").write_text("", encoding="utf-8")
+    messages: list[str] = []
+    fake = SimpleNamespace(_info_label=SimpleNamespace(setText=messages.append))
+    monkeypatch.delenv("AUTOTESSELL_POLYMESH_DIRECT_PREVIEW", raising=False)
+    monkeypatch.setattr(
+        InteractiveMeshViewer,
+        "_read_openfoam",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("OpenFOAMReader called")),
+    )
+
+    assert InteractiveMeshViewer.load_polymesh(fake, tmp_path) is True
+    assert messages
+    assert "foamToVTK" in messages[-1]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Fix Regression Tests: GUI freeze / progress / sidebar duplicate
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_set_pipeline_running_method_exists() -> None:
+    """_set_pipeline_running 헬퍼가 AutoTessellWindow에 있어야 한다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    assert hasattr(win, "_set_pipeline_running"), "_set_pipeline_running 메서드 필요"
+    assert callable(win._set_pipeline_running)
+    # _build 없이 호출해도 예외 없이 동작 (위젯 None 상태)
+    win._set_pipeline_running(True)
+    win._set_pipeline_running(False)
+
+
+def test_pipeline_start_time_initialized_in_init() -> None:
+    """_pipeline_start_time이 __init__에서 0.0으로 초기화되어야 한다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    assert hasattr(win, "_pipeline_start_time"), "_pipeline_start_time 초기화 필요"
+    assert win._pipeline_start_time == 0.0
+
+
+def test_stage_to_tier_mapping_defined() -> None:
+    """_STAGE_TO_TIER 클래스 속성이 정의되어 있어야 한다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    assert hasattr(AutoTessellWindow, "_STAGE_TO_TIER"), "_STAGE_TO_TIER 없음"
+    mapping = AutoTessellWindow._STAGE_TO_TIER
+    assert isinstance(mapping, list), "_STAGE_TO_TIER는 list여야 한다"
+    assert len(mapping) >= 5, "최소 5개 단계 (Analyze/Preprocess/Strateg/Generat/Evaluat)"
+    keywords = [kw for kw, _ in mapping]
+    assert any("Analyze" in kw for kw in keywords), "Analyze 단계 없음"
+    assert any("Evaluat" in kw for kw in keywords), "Evaluate 단계 없음"
+
+
+def test_on_progress_line_tier_strip_updates_by_keyword() -> None:
+    """_on_progress_line이 키워드로 Tier strip 상태를 올바르게 갱신한다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+
+    # 가짜 Tier pipeline 스텁
+    statuses: dict[int, str] = {i: "pending" for i in range(6)}
+
+    class _FakeTier:
+        def set_status(self, idx: int, status: str) -> None:
+            statuses[idx] = status
+
+    win._tier_pipeline = _FakeTier()
+
+    # "Analyze" 키워드 → index 0 active
+    win._on_progress_line("[진행 10%] Analyze 시작")
+    assert statuses[0] == "active", f"Analyze 단계 active 기대, 실제: {statuses[0]}"
+
+    # "Preprocess 완료" → index 0,1 done
+    win._on_progress_line("[진행 30%] Preprocess 완료")
+    assert statuses[0] == "done", f"Preprocess 완료 후 index 0 done 기대"
+    assert statuses[1] == "done", f"Preprocess 완료 후 index 1 done 기대"
+
+
+def test_surface_mesh_duplicate_refs_initialized() -> None:
+    """Surface Mesh 중복 방지용 위젯 ref들이 __init__ 후 존재한다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    assert hasattr(win, "_surface_size_lbl_el"), "_surface_size_lbl_el 초기화 필요"
+    assert hasattr(win, "_surface_size_lbl_min"), "_surface_size_lbl_min 초기화 필요"
+    assert hasattr(win, "_surface_size_dup_hint"), "_surface_size_dup_hint 초기화 필요"
+    # _build 전에는 None
+    assert win._surface_size_lbl_el is None
+    assert win._surface_size_lbl_min is None
+    assert win._surface_size_dup_hint is None
+
+
+def test_refresh_surface_mesh_section_for_tier_no_error_before_build() -> None:
+    """_refresh_surface_mesh_section_for_tier는 _build 전에 호출해도 예외 없이 처리한다."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    # 위젯이 None인 상태에서도 예외 없이 동작해야 함
+    win._refresh_surface_mesh_section_for_tier("wildmesh")
+    win._refresh_surface_mesh_section_for_tier("netgen")
+
+
+def test_on_pipeline_finished_restores_run_button() -> None:
+    """_on_pipeline_finished 호출 후 _set_pipeline_running(False)가 호출되어야 한다 (소스 검증)."""
+    import inspect
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    src = inspect.getsource(AutoTessellWindow._on_pipeline_finished)
+    assert "_set_pipeline_running(False)" in src, \
+        "_on_pipeline_finished에 _set_pipeline_running(False) 없음"
+
+
+def test_on_run_clicked_sets_pipeline_running(monkeypatch) -> None:
+    """_on_run_clicked가 _set_pipeline_running(True)를 호출한다 (소스 검증)."""
+    import inspect
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    src = inspect.getsource(AutoTessellWindow._on_run_clicked)
+    assert "_set_pipeline_running(True)" in src, \
+        "_on_run_clicked에 _set_pipeline_running(True) 없음"

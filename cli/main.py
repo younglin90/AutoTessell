@@ -569,7 +569,27 @@ def evaluate(
 @click.option("--snappy-snap-tolerance", type=float, default=None, help="snap tolerance (기본: 2.0)")
 @click.option("--snappy-snap-iterations", type=int, default=None, help="snap solve iterations (기본: 5)")
 # --- Output control ---
-@click.option("--max-iterations", type=int, default=3, show_default=True, help="최대 재시도 횟수")
+@click.option(
+    "--mesh-type",
+    type=click.Choice(["auto", "tet", "hex_dominant", "poly"]),
+    default="auto",
+    show_default=True,
+    help="메쉬 타입 (v0.4 신규): tet / hex_dominant / poly. auto=Strategist 가 quality/geometry 기반 자동 선택",
+)
+@click.option(
+    "--auto-retry",
+    type=click.Choice(["off", "once", "continue"]),
+    default="off",
+    show_default=True,
+    help="Evaluator FAIL 시 자동 재시도 모드. off(기본, 사용자가 결정) / once / continue(예전 max_iterations 루프 복원)",
+)
+@click.option(
+    "--max-iterations",
+    type=int,
+    default=3,
+    show_default=True,
+    help="최대 재시도 횟수 (auto_retry=continue 일 때만 사용됨; deprecated, 하위호환용)",
+)
 @click.option("--dry-run", is_flag=True, help="전략 수립까지만 (메쉬 생성 안 함)")
 @click.option("--profile", is_flag=True, help="성능 프로파일링 (단계별 소요 시간)")
 @click.option("--export-vtk", "do_export_vtk", is_flag=True, help="완료 후 VTK (.vtu) 내보내기")
@@ -611,6 +631,8 @@ def run(
     snappy_castellated_level: str | None,
     snappy_snap_tolerance: float | None,
     snappy_snap_iterations: int | None,
+    mesh_type: str,
+    auto_retry: str,
     max_iterations: int,
     dry_run: bool,
     profile: bool,
@@ -633,7 +655,10 @@ def run(
         no_repair = True
 
     console.print(f"[bold magenta]Auto-Tessell[/bold magenta] {input_file} → {output}")
-    console.print(f"  quality={quality}  tier={effective_tier}  max_iter={max_iterations}")
+    console.print(
+        f"  quality={quality}  mesh_type={mesh_type}  tier={effective_tier}  "
+        f"auto_retry={auto_retry}  max_iter={max_iterations}"
+    )
     _print_dep_summary()
     if any(e != "auto" for e in [repair_engine, remesh_engine, volume_engine, checker_engine, cad_engine, postprocess_engine]):
         engines = []
@@ -721,8 +746,10 @@ def run(
         input_path=input_file,
         output_dir=output,
         quality_level=quality,
+        mesh_type=mesh_type,
         tier_hint=effective_tier,
         max_iterations=max_iterations,
+        auto_retry=auto_retry,
         dry_run=dry_run,
         element_size=effective_element_size,
         max_cells=effective_max_cells,

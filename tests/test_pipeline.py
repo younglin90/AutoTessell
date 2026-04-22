@@ -454,6 +454,7 @@ class TestPipelineWithMockedGenerator:
         generator_status: str = "success",
         quality_level: str = "draft",
         max_iterations: int = 3,
+        auto_retry: str = "continue",
         write_of_case: bool = False,
     ) -> PipelineResult:
         _require_sphere()
@@ -471,6 +472,7 @@ class TestPipelineWithMockedGenerator:
                 output_dir=out,
                 quality_level=quality_level,
                 max_iterations=max_iterations,
+                auto_retry=auto_retry,
                 write_of_case=write_of_case,
             )
 
@@ -518,10 +520,35 @@ class TestPipelineWithMockedGenerator:
         assert result.total_time_seconds > 0.0
 
     def test_hard_fail_retries_up_to_max(self) -> None:
-        """Hard FAIL → max_iterations까지 재시도한다 (여기서는 mock이 항상 같은 결과 반환)."""
+        """auto_retry=continue + max_iterations 까지 재시도한다 (mock 동일 결과)."""
         cm = _make_checkmesh_result(max_non_orthogonality=75.0)  # hard fail for standard
-        result = self._run(checker_cm=cm, quality_level="standard", max_iterations=2)
+        result = self._run(
+            checker_cm=cm, quality_level="standard",
+            max_iterations=2, auto_retry="continue",
+        )
         # After 2 iterations both FAIL → success=False
+        assert result.success is False
+        assert result.iterations == 2
+
+    def test_auto_retry_off_single_iteration(self) -> None:
+        """auto_retry=off (v0.4 기본) → Hard FAIL 이어도 1 회만 시도."""
+        cm = _make_checkmesh_result(max_non_orthogonality=75.0)
+        result = self._run(
+            checker_cm=cm, quality_level="standard",
+            max_iterations=5, auto_retry="off",
+        )
+        assert result.success is False
+        assert result.iterations == 1, (
+            f"auto_retry=off 인데 {result.iterations} 회 반복됨"
+        )
+
+    def test_auto_retry_once_stops_after_two(self) -> None:
+        """auto_retry=once → FAIL 시 최대 2 회만 시도."""
+        cm = _make_checkmesh_result(max_non_orthogonality=75.0)
+        result = self._run(
+            checker_cm=cm, quality_level="standard",
+            max_iterations=10, auto_retry="once",
+        )
         assert result.success is False
         assert result.iterations == 2
 

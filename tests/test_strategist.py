@@ -538,7 +538,7 @@ class TestStrategyPlanner:
         dumped = strategy.model_dump_json()
         restored = MeshStrategy.model_validate_json(dumped)
         assert restored.selected_tier == strategy.selected_tier
-        assert restored.strategy_version == 2
+        assert restored.strategy_version == 3
 
     def test_strategy_from_sphere(self):
         """sphere.geometry_report.json으로 전략을 수립한다."""
@@ -818,11 +818,11 @@ class TestStrategyPlanner:
         assert strategy.selected_tier == "tier2_tetwild"
         assert strategy.surface_quality_level == SurfaceQualityLevel.L3_AI
 
-    def test_plan_strategy_version_is_2(self):
-        """strategy_version은 2이어야 한다."""
+    def test_plan_strategy_version_is_3(self):
+        """strategy_version 은 3 이어야 한다 (v0.4 — mesh_type 필드 도입)."""
         report = _make_geometry_report()
         strategy = self.planner.plan(report)
-        assert strategy.strategy_version == 2
+        assert strategy.strategy_version == 3
 
     def test_plan_quality_level_string(self):
         """quality_level을 문자열로 전달해도 동작해야 한다."""
@@ -1349,7 +1349,7 @@ class TestSchemas:
         )
         assert strategy.quality_level == QualityLevel.STANDARD
         assert strategy.surface_quality_level == SurfaceQualityLevel.L1_REPAIR
-        assert strategy.strategy_version == 2
+        assert strategy.strategy_version == 3
 
     def test_mesh_strategy_roundtrip_with_quality_level(self):
         """MeshStrategy 직렬화/역직렬화 시 quality_level 보존."""
@@ -1749,11 +1749,11 @@ class TestStrategyPlannerAdditional:
         assert strategy.quality_targets.target_y_plus is None
 
     def test_plan_strategy_version_invariant(self):
-        """어떤 quality_level이어도 strategy_version = 2여야 한다."""
+        """어떤 quality_level 이어도 strategy_version = 3 이어야 한다."""
         report = _make_geometry_report()
         for ql in QualityLevel:
             strategy = self.planner.plan(report, quality_level=ql)
-            assert strategy.strategy_version == 2
+            assert strategy.strategy_version == 3
 
     def test_plan_domain_min_max_ordered(self):
         """모든 축에서 domain.max > domain.min 이어야 한다."""
@@ -1920,9 +1920,9 @@ class TestMeshStrategyEdgeCases:
         return MeshStrategy(**base)
 
     def test_default_strategy_version(self):
-        """strategy_version 기본값은 2이어야 한다."""
+        """strategy_version 기본값은 3 이어야 한다 (v0.4)."""
         strategy = self._make_minimal_strategy()
-        assert strategy.strategy_version == 2
+        assert strategy.strategy_version == 3
 
     def test_default_iteration(self):
         """iteration 기본값은 1이어야 한다."""
@@ -1943,6 +1943,42 @@ class TestMeshStrategyEdgeCases:
         """previous_attempt 기본값은 None이어야 한다."""
         strategy = self._make_minimal_strategy()
         assert strategy.previous_attempt is None
+
+    def test_default_mesh_type_auto(self):
+        """mesh_type 기본값은 AUTO 이어야 한다 (v0.4)."""
+        from core.schemas import MeshType  # noqa: PLC0415
+
+        strategy = self._make_minimal_strategy()
+        assert strategy.mesh_type == MeshType.AUTO
+
+    def test_default_strict_tier_false(self):
+        """strict_tier 기본값은 False 이어야 한다."""
+        strategy = self._make_minimal_strategy()
+        assert strategy.strict_tier is False
+
+    def test_mesh_type_roundtrip(self):
+        """mesh_type 설정 후 JSON 직렬화/역직렬화 라운드트립 검증."""
+        from core.schemas import MeshType  # noqa: PLC0415
+
+        for mt in (MeshType.TET, MeshType.HEX_DOMINANT, MeshType.POLY, MeshType.AUTO):
+            strategy = self._make_minimal_strategy(mesh_type=mt)
+            restored = MeshStrategy.model_validate_json(strategy.model_dump_json())
+            assert restored.mesh_type == mt
+
+    def test_auto_retry_mode_enum_values(self):
+        """AutoRetryMode enum 값은 off/once/continue 이다."""
+        from core.schemas import AutoRetryMode  # noqa: PLC0415
+
+        assert AutoRetryMode.OFF == "off"
+        assert AutoRetryMode.ONCE == "once"
+        assert AutoRetryMode.CONTINUE == "continue"
+
+    def test_user_decision_enum_values(self):
+        """UserDecision enum 값은 retry/accept 이다."""
+        from core.schemas import UserDecision  # noqa: PLC0415
+
+        assert UserDecision.RETRY == "retry"
+        assert UserDecision.ACCEPT == "accept"
 
     def test_default_refinement_regions_empty(self):
         """refinement_regions 기본값은 빈 리스트여야 한다."""
