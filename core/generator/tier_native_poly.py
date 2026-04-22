@@ -19,12 +19,16 @@ log = get_logger(__name__)
 TIER_NAME = "tier_native_poly"
 
 
-def _runner(vertices, faces, case_dir, *, target_edge_length=None, **kwargs):
-    """harness 우선, 실패 시 scipy Voronoi fallback."""
+def _runner(vertices, faces, case_dir, *, target_edge_length=None,
+            seed_density=10, max_iter=3, **_unused):
+    """harness 우선, 실패 시 scipy Voronoi fallback.
+
+    quality-specific 파라미터는 run_native_tier 가 HARNESS_PARAMS 에서 주입.
+    """
     hres = run_native_poly_harness(
         vertices, faces, case_dir,
         target_edge_length=target_edge_length,
-        seed_density=10, max_iter=3,
+        seed_density=int(seed_density), max_iter=int(max_iter),
     )
     if hres.success:
         return hres
@@ -35,7 +39,7 @@ def _runner(vertices, faces, case_dir, *, target_edge_length=None, **kwargs):
     return generate_native_poly_voronoi(
         vertices, faces, case_dir,
         target_edge_length=target_edge_length,
-        seed_density=10,
+        seed_density=int(seed_density),
     )
 
 

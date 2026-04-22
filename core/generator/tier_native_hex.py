@@ -24,8 +24,9 @@ class TierNativeHexGenerator:
         preprocessed_path: Path,
         case_dir: Path,
     ) -> TierAttempt:
+        # seed_density 는 HARNESS_PARAMS 에서 quality-aware 로 주입 — caller
+        # override 필요 시 extra_kwargs 전달.
         return run_native_tier(
             generate_native_hex, self.TIER_NAME,
             strategy, preprocessed_path, case_dir,
-            extra_kwargs={"seed_density": 16},
         )

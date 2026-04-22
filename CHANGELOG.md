@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.4.0-beta17] - 2026-04-23 — "native tier harness params quality-specific"
+
+### Added
+
+- **`core/generator/_tier_native_common.py::HARNESS_PARAMS`**: tier × quality
+  (draft/standard/fine) × {seed_density, max_iter} 테이블 중앙화.
+- **`get_harness_params(tier, quality)`**: per-tier × per-quality 기본 파라미터
+  lookup. 알 수 없는 quality 는 standard 로 fallback, 알 수 없는 tier 는 빈 dict.
+- `run_native_tier()` 가 ``strategy.quality_level`` 을 기반으로 harness 파라미터
+  를 자동 주입. caller 가 넘긴 ``extra_kwargs`` 는 override 우선.
+- **`tests/test_harness_params.py`** (9 tests): 테이블 coverage / 단조성 /
+  enum 수용 / fallback / injection / override 검증.
+
+### Changed
+
+- `tier_native_tet.py` / `tier_native_poly.py` `_runner` 의 하드코딩된
+  seed_density/max_iter 제거. 대신 `run_native_tier` 가 quality 기반으로 주입.
+- `tier_native_hex.py` 의 ``extra_kwargs={"seed_density": 16}`` 제거 — HARNESS_PARAMS
+  의 standard(16) 로 자동 반영.
+
+---
+
 ## [0.4.0-beta16] - 2026-04-23 — "bench matrix time-series"
 
 ### Added

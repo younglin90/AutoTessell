@@ -16,16 +16,17 @@ log = get_logger(__name__)
 TIER_NAME = "tier_native_tet"
 
 
-def _runner(vertices, faces, case_dir, *, target_edge_length=None, **kwargs):
+def _runner(vertices, faces, case_dir, *, target_edge_length=None,
+            seed_density=12, max_iter=2, **_unused):
     """harness 우선, 완전 실패 시 기본 generate_native_tet 로 fallback.
 
-    반환값은 run_native_tier 가 요구하는 duck-type (success/n_cells/n_points/message)
-    를 만족한다.
+    quality-specific 파라미터 (seed_density / max_iter) 는 run_native_tier 가
+    HARNESS_PARAMS 테이블에서 주입. 직접 호출 시의 기본값은 standard 와 동일.
     """
     hres = run_native_tet_harness(
         vertices, faces, case_dir,
         target_edge_length=target_edge_length,
-        seed_density=12, max_iter=2,
+        seed_density=int(seed_density), max_iter=int(max_iter),
     )
     if hres.success or hres.n_cells > 0:
         return hres
@@ -33,7 +34,7 @@ def _runner(vertices, faces, case_dir, *, target_edge_length=None, **kwargs):
     return generate_native_tet(
         vertices, faces, case_dir,
         target_edge_length=target_edge_length,
-        seed_density=12,
+        seed_density=int(seed_density),
     )
 
 
