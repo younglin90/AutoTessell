@@ -5,10 +5,16 @@ Converts numpy mesh arrays into the five files that OpenFOAM expects under
     points, faces, owner, neighbour, boundary
 
 두 경로 제공:
-    - ``PolyMeshWriter``: 전용 tet writer (하위 호환; 내부적으로 generic writer 호출).
-    - ``write_generic_polymesh``: 임의 cell (tet/hex/poly 공용) writer. 호출 측이
-      각 cell 의 외향 face vertex list 를 넘기면 face dedup + owner/neighbour 정렬을
-      수행한다.
+    - ``write_generic_polymesh``: **primary** — 임의 cell (tet/hex/poly 공용) writer.
+      호출 측이 각 cell 의 외향 face vertex list 를 넘기면 face dedup + owner/
+      neighbour 정렬 + FoamFile 쓰기 (via native_bl helpers) 수행. beta12+.
+    - ``PolyMeshWriter``: tet 전용 thin wrapper (하위 호환). tet winding 정규화 +
+      tet solver 용 상세 system/ 파일 생성까지 포함.
+
+beta18 에서 PolyMeshWriter 내부의 file-writer staticmethod (``_write_points`` /
+``_write_faces`` / ``_write_owner`` / ``_write_neighbour`` / ``_write_boundary``)
+와 ``_FaceRecord`` / ``_canonical`` 헬퍼는 dead code 로 제거됨 — 모두 native_bl
+의 공용 writer 가 generic 경로에서 사용된다.
 
 No external tools (OpenFOAM, meshio) are required.
 """
@@ -17,7 +23,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from pathlib import Path
-from typing import NamedTuple, Sequence
+from typing import Sequence
 
 import numpy as np
 
@@ -70,19 +76,6 @@ _TET_FACES: tuple[tuple[int, int, int], ...] = (
     (0, 3, 2),
     (1, 2, 3),
 )
-
-
-class _FaceRecord(NamedTuple):
-    """Stores which cells own/neighbor a face (using global vertex indices)."""
-    verts: tuple[int, ...]   # sorted tuple — canonical key
-    owner: int               # cell with smaller index (or only cell)
-    neighbour: int           # cell with larger index, -1 for boundary
-
-
-def _canonical(v0: int, v1: int, v2: int) -> tuple[int, int, int]:
-    """Return sorted (min, mid, max) tuple as canonical face key."""
-    a, b, c = sorted((v0, v1, v2))
-    return (a, b, c)
 
 
 def _normalize_tet_winding(vertices: np.ndarray, tets: np.ndarray) -> np.ndarray:
@@ -269,25 +262,17 @@ def write_generic_polymesh(
 
 
 class PolyMeshWriter:
-    """Writes an OpenFOAM polyMesh directory from raw tet mesh data.
+    """Tet polyMesh writer — ``write_generic_polymesh`` 의 얇은 wrapper.
 
-    Algorithm
-    ---------
-    0.  Normalize tet winding so every cell has a positive (right-handed)
-        volume.  Negative tets produce inward face normals via ``_TET_FACES``
-        and cause OpenFOAM checkMesh face-orientation and negative-volume
-        errors.
-    1.  For every tet cell enumerate 4 triangular faces using the outward
-        normal convention encoded in ``_TET_FACES``.
-    2.  Track which cells share each face (canonical sorted-vertex key).
-    3.  Faces seen by 2 cells → internal; by 1 cell → boundary.
-    4.  For internal faces: the stored orientation is outward from the
-        *generating* cell (the first cell to register the face, which is
-        always the lower-ID cell = owner since we iterate in order).  If the
-        generator happens to be the neighbour instead, reverse the winding.
-    5.  Sort internal faces by (owner, neighbour).
-    6.  Append boundary faces sorted by owner.
-    7.  Write ``points``, ``faces``, ``owner``, ``neighbour``, ``boundary``.
+    v0.4.0-beta12 부터 실제 face dedup / owner-neighbour 정렬 / FoamFile 쓰기는
+    공용 ``write_generic_polymesh`` 로 위임. 이 wrapper 가 추가로 하는 것:
+
+    1. ``_normalize_tet_winding`` — 음수 부피 tet 을 swap 으로 right-handed 화.
+       외부 tool (pytetwild / Netgen 등) 출력의 inconsistent winding 을 보정.
+    2. ``_TET_FACES`` 외향 convention 에 맞춰 각 tet cell 의 4 개 triangle face
+       (cell → list of face vertex lists) 를 만들어 generic writer 에 전달.
+    3. ``_ensure_system_files`` — tet solver 용 `system/{controlDict, fvSchemes,
+       fvSolution}` (GAMG 등) 자동 생성. generic writer 의 "최소" 설정보다 상세.
     """
 
     # ------------------------------------------------------------------
@@ -420,108 +405,3 @@ class PolyMeshWriter:
                 + _FOOTER
             )
 
-    # ------------------------------------------------------------------
-    # File writers
-    # ------------------------------------------------------------------
-
-    def _write_points(self, poly_dir: Path, vertices: np.ndarray) -> None:
-        n = len(vertices)
-        lines = [_header("vectorField", "constant/polyMesh", "points")]
-        lines.append(f"{n}")
-        lines.append("(")
-        for v in vertices:
-            lines.append(f"({v[0]:.10g} {v[1]:.10g} {v[2]:.10g})")
-        lines.append(")")
-        lines.append(_FOOTER)
-        (poly_dir / "points").write_text("\n".join(lines))
-        logger.debug("wrote_points", path=str(poly_dir / "points"), n=n)
-
-    def _write_faces(
-        self,
-        poly_dir: Path,
-        face_verts: list[tuple[int, int, int]],
-    ) -> None:
-        n = len(face_verts)
-        lines = [_header("faceList", "constant/polyMesh", "faces")]
-        lines.append(f"{n}")
-        lines.append("(")
-        for f in face_verts:
-            lines.append(f"3({f[0]} {f[1]} {f[2]})")
-        lines.append(")")
-        lines.append(_FOOTER)
-        (poly_dir / "faces").write_text("\n".join(lines))
-        logger.debug("wrote_faces", path=str(poly_dir / "faces"), n=n)
-
-    def _write_owner(
-        self,
-        poly_dir: Path,
-        owner_list: list[int],
-        n_points: int,
-        n_faces: int,
-        n_cells: int,
-        n_internal_faces: int,
-    ) -> None:
-        n = len(owner_list)
-        # note field goes inside FoamFile header
-        note = (
-            f"nPoints:{n_points}  nCells:{n_cells}  "
-            f"nFaces:{n_faces}  nInternalFaces:{n_internal_faces}"
-        )
-        header = _FOAM_HEADER.format(
-            foam_class="labelList",
-            location="constant/polyMesh",
-            object_name="owner",
-        ).replace(
-            "    object      owner;",
-            f"    note        \"{note}\";\n    object      owner;",
-        )
-        lines = [header]
-        lines.append(f"{n}")
-        lines.append("(")
-        for o in owner_list:
-            lines.append(str(o))
-        lines.append(")")
-        lines.append(_FOOTER)
-        (poly_dir / "owner").write_text("\n".join(lines))
-        logger.debug("wrote_owner", path=str(poly_dir / "owner"), n=n)
-
-    def _write_neighbour(
-        self,
-        poly_dir: Path,
-        neighbour_list: list[int],
-        n_internal: int,
-    ) -> None:
-        lines = [_header("labelList", "constant/polyMesh", "neighbour")]
-        lines.append(f"{n_internal}")
-        lines.append("(")
-        for nb in neighbour_list:
-            lines.append(str(nb))
-        lines.append(")")
-        lines.append(_FOOTER)
-        (poly_dir / "neighbour").write_text("\n".join(lines))
-        logger.debug("wrote_neighbour", path=str(poly_dir / "neighbour"), n=n_internal)
-
-    def _write_boundary(
-        self,
-        poly_dir: Path,
-        n_boundary: int,
-        start_face: int,
-    ) -> None:
-        lines = [_header("polyBoundaryMesh", "constant/polyMesh", "boundary")]
-        lines.append("1")
-        lines.append("(")
-        lines.append("    defaultWall")
-        lines.append("    {")
-        lines.append("        type wall;")
-        lines.append(f"        nFaces {n_boundary};")
-        lines.append(f"        startFace {start_face};")
-        lines.append("    }")
-        lines.append(")")
-        lines.append(_FOOTER)
-        (poly_dir / "boundary").write_text("\n".join(lines))
-        logger.debug(
-            "wrote_boundary",
-            path=str(poly_dir / "boundary"),
-            n_boundary=n_boundary,
-            start_face=start_face,
-        )
