@@ -26,6 +26,10 @@ from core.generator.tier_hohqmesh import TierHOHQMeshGenerator
 from core.generator.tier_mmg3d import TierMMG3DGenerator
 from core.generator.tier_robust_hex import TierRobustHexGenerator
 from core.generator.tier_algohex import TierAlgoHexGenerator
+from core.generator.tier_meshkit import TierMeshKitGenerator
+from core.generator.tier_su2_hexpress import TierSU2HexpressGenerator
+from core.generator.tier_native_tet import TierNativeTetGenerator
+from core.generator.tier_salome_smesh import TierSalomeSmeshGenerator
 from core.schemas import ExecutionSummary, GeneratorLog, MeshStrategy, TierAttempt
 from core.utils.logging import get_logger
 from core.utils.openfoam_utils import get_openfoam_label_size
@@ -54,12 +58,18 @@ _TIER_REGISTRY: dict[str, type] = {
     "tier_mmg3d": TierMMG3DGenerator,
     "tier_robust_hex": TierRobustHexGenerator,
     "tier_algohex": TierAlgoHexGenerator,
+    "tier_meshkit": TierMeshKitGenerator,
+    "tier_su2_hexpress": TierSU2HexpressGenerator,
+    "tier_salome_smesh": TierSalomeSmeshGenerator,
+    "tier_native_tet": TierNativeTetGenerator,
 }
 
 # CLI --tier 별칭 → 정규 Tier 이름
 _TIER_ALIASES: dict[str, str] = {
     "2d": "tier0_2d_meshpy",
     "hex": "tier_hex_classy_blocks",
+    "hex_classy": "tier_hex_classy_blocks",
+    "hex_classy_blocks": "tier_hex_classy_blocks",
     "polyhedral": "tier_polyhedral",
     "core": "tier0_core",
     "netgen": "tier05_netgen",
@@ -100,10 +110,21 @@ _TIER_ALIASES: dict[str, str] = {
     "tier_mmg3d": "tier_mmg3d",
     "robust_hex": "tier_robust_hex",
     "robust_hex_mesh": "tier_robust_hex",
+    "native_tet": "tier_native_tet",
+    "tier_native_tet": "tier_native_tet",
     "tier_robust_hex": "tier_robust_hex",
     "algohex": "tier_algohex",
     "algo_hex": "tier_algohex",
     "tier_algohex": "tier_algohex",
+    "meshkit": "tier_meshkit",
+    "tier_meshkit": "tier_meshkit",
+    "su2_hexpress": "tier_su2_hexpress",
+    "hexpress": "tier_su2_hexpress",
+    "tier_su2_hexpress": "tier_su2_hexpress",
+    "salome": "tier_salome_smesh",
+    "salome_smesh": "tier_salome_smesh",
+    "smesh": "tier_salome_smesh",
+    "tier_salome_smesh": "tier_salome_smesh",
 }
 
 
@@ -129,6 +150,10 @@ def _clean_work_dir(case_dir: Path) -> None:
         case_dir / "constant" / "polyMesh",
         case_dir / "constant" / "triSurface",
         case_dir / "system",
+        # VTK/ 는 foamToVTK 출력 — 과거 tier의 잔재가 남으면 GUI Quality 탭이
+        # stale한 셀 구성을 보여주는 원인이 된다. 새 실행 시작 시 깨끗이 제거.
+        case_dir / "VTK",
+        case_dir / "postProcessing",
     ]
 
     for path in patterns_to_remove:
