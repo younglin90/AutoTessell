@@ -77,12 +77,28 @@ def run_native_poly_harness(
     target_edge_length: float | None = None,
     seed_density: int = 10,
     max_iter: int = 2,
+    max_tet_cells: int = 30000,
 ) -> PolyHarnessResult:
     """Generator (native_tet → dual) ↔ Evaluator 반복으로 poly mesh 생성.
 
     각 iteration 에서 FAIL 시 seed_density 를 증가 (더 조밀) 시도.
     """
     t0 = time.perf_counter()
+
+    # target_edge_length 하한: bbox_diag / 50 이하로 내려가면 (= seed 가 50+)
+    # tet mesh cell 수가 폭증하므로 clamp.
+    if target_edge_length is not None:
+        bmin = np.asarray(vertices).min(axis=0)
+        bmax = np.asarray(vertices).max(axis=0)
+        diag = float(np.linalg.norm(bmax - bmin))
+        floor = diag / 50.0
+        if target_edge_length < floor:
+            log.info(
+                "native_poly_harness_target_edge_clamp",
+                requested=target_edge_length, clamped_to=floor,
+                reason="tet cell explosion 방지",
+            )
+            target_edge_length = floor
 
     last_metrics: dict = {}
     best_result: PolyDualResult | None = None
@@ -109,6 +125,22 @@ def run_native_poly_harness(
                 )
                 current_seed = int(current_seed * 1.5)
                 continue
+
+            # tet cell 수 cap — dual 변환 비용이 O(V) 이므로 거대 mesh 피함.
+            n_tet_cells = int(tet_res.tets.shape[0])
+            if n_tet_cells > max_tet_cells:
+                log.warning(
+                    "native_poly_harness_tet_too_large",
+                    n_cells=n_tet_cells, cap=max_tet_cells,
+                    iteration=it,
+                )
+                # target_edge_length 를 늘려 tet mesh 를 더 성기게 + seed 도 감소
+                if target_edge_length is not None:
+                    target_edge_length = float(target_edge_length) * 1.6
+                current_seed = max(int(current_seed * 0.6), 3)
+                if it < max_iter:
+                    continue
+                # 마지막 iter 에서는 진행 (TIMEOUT 보다 나음)
 
             # 2) tet → dual
             tmp_dual = Path(tempfile.mkdtemp(prefix=f"nph_dual_{it}_"))

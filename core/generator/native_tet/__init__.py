@@ -19,10 +19,19 @@ watertight 표면 메쉬를 부피 tet mesh 로 변환한다.
 """
 from __future__ import annotations
 
+from core.generator.native_tet.harness import (
+    TetHarnessResult,
+    run_native_tet_harness,
+)
 from core.generator.native_tet.mesher import (
     NativeTetResult,
     generate_native_tet,
 )
 
 
-__all__ = ["NativeTetResult", "generate_native_tet"]
+__all__ = [
+    "NativeTetResult",
+    "generate_native_tet",
+    "TetHarnessResult",
+    "run_native_tet_harness",
+]
