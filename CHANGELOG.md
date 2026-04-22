@@ -1,5 +1,61 @@
 # Changelog
 
+## [0.4.0-beta22] - 2026-04-23 — "native_hex surface snap"
+
+### Added
+
+- **`core/generator/native_hex/snap.py`** (신규): hex vertex 를 STL surface 로
+  projection. Ericson RTCD barycentric clamp 구현 + cKDTree k=4 coarse NN +
+  cap (``max_snap_ratio × target_edge``) safety.
+- ``generate_native_hex(snap_boundary=False)`` kwarg 추가 (하위 호환).
+- ``HARNESS_PARAMS["tier_native_hex"]["fine"]["snap_boundary"]=True`` → Strategist
+  경로로 fine quality 에서 자동 활성화.
+- tests/test_native_hex_snap.py (9 tests).
+
+---
+
+## [0.4.0-beta21] - 2026-04-23 — "dependency_status + visualizer + partitioner 커버리지"
+
+### Added
+
+- `tests/test_dependency_status.py` (8 tests), `tests/test_visualizer.py` (6 tests),
+  `tests/test_partitioner.py` +4 엣지 케이스. 기존 블라인드 영역 제거.
+
+---
+
+## [0.4.0-beta20] - 2026-04-23 — "Strategist ↔ native tier params + CLI --tier-param"
+
+### Added
+
+- `run_native_tier` 파라미터 병합 우선순위:
+  ``extra_kwargs > strategy.tier_specific_params > HARNESS_PARAMS > default``.
+  whitelist: seed_density / max_iter / snap_boundary 만 native runner 로 전달.
+- CLI `--tier-param KEY=VALUE` (multiple=True) 반복 플래그. int/float/bool/str
+  자동 추론, 잘못된 형식은 WARN.
+
+---
+
+## [0.4.0-beta19] - 2026-04-23 — "preprocessor trimesh 분석성 호출 native 교체"
+
+### Changed
+
+- `core/preprocessor/{repair,remesh,pipeline}.py` 의 분석성 trimesh 호출
+  (is_watertight / area / edges_unique_length 등) 을 `core.analyzer.topology` +
+  numpy 로 교체. 분석성 호출 수 17 → 3 (MeshAnything AI fallback 제외).
+  결과 mesh 는 변경 없음.
+
+---
+
+## [0.4.0-beta18] - 2026-04-23 — "PolyMeshWriter dead code 제거"
+
+### Changed
+
+- `core/generator/polymesh_writer.py`: Ph12 이후 호출되지 않는 staticmethod 5 개
+  (_write_points / _write_faces / _write_owner / _write_neighbour / _write_boundary)
+  및 _FaceRecord / _canonical 삭제. 527 → 407 lines (-120).
+
+---
+
 ## [0.4.0-beta17] - 2026-04-23 — "native tier harness params quality-specific"
 
 ### Added
