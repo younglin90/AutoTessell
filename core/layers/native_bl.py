@@ -373,6 +373,37 @@ def generate_native_bl(
         log.warning("native_bl_thickness_scaled", factor=scale, new_total=total)
     cum = np.concatenate(([0.0], np.cumsum(thicknesses)))  # [0, t1, t1+t2, ..., total]
 
+    # 4b) Per-vertex local safety — 각 wall vertex 에서 인접 tet cell centroid 까지의
+    #     최소 거리 × 0.8 로 local 최대 허용 thickness. total 이 이 값을 초과하면
+    #     해당 vertex 는 scale 해서 이동 (thicknesses 는 전역 공유라 전체 축소).
+    #     이렇게 해야 극점 근처 sliver 가 줄어듦.
+    wall_idx_arr_tmp = np.array(sorted(vnorm.keys()), dtype=np.int64)
+    # vertex 별 인접 cell 중 "내부 tet" 까지의 거리
+    vert_to_cells: dict[int, list[int]] = {v: [] for v in wall_vert_indices}
+    for fi in wall_face_indices:
+        own = int(owner[fi])
+        for v in faces[fi]:
+            if int(v) in vert_to_cells:
+                vert_to_cells[int(v)].append(own)
+    vert_min_cell_dist: dict[int, float] = {}
+    for v, clist in vert_to_cells.items():
+        if not clist:
+            continue
+        dists = [float(np.linalg.norm(points[v] - cell_centres[c])) for c in clist]
+        vert_min_cell_dist[v] = min(dists)
+    if vert_min_cell_dist:
+        min_local = float(min(vert_min_cell_dist.values()))
+        local_cap = max(min_local * 0.8, cfg.first_thickness)
+        if total > local_cap:
+            scale = local_cap / total
+            thicknesses *= scale
+            total = float(thicknesses.sum())
+            log.info(
+                "native_bl_local_safety_scaled",
+                factor=scale, min_local=min_local, new_total=total,
+            )
+            cum = np.concatenate(([0.0], np.cumsum(thicknesses)))
+
     # 5) 새 point 배열 구성
     # - original points 배열에서 wall vertex 를 inward total 만큼 이동 (기존 cell 이 따라 축소)
     # - 각 layer 경계의 wall vertex copy 를 추가 (N+1 층)
