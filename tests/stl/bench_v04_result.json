@@ -6,11 +6,11 @@
     "quality": "draft",
     "returncode": 0,
     "polyMesh_created": true,
-    "elapsed_s": 167.86,
+    "elapsed_s": 173.97,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (591124 faces)",
-      "\u2713 PASS (1 iteration, 166.3s)"
+      "  defaultWall          \u2192 wall            (591066 faces)",
+      "\u2713 PASS (1 iteration, 172.3s)"
     ],
     "difficulty": "01_easy"
   },
@@ -21,10 +21,10 @@
     "quality": "standard",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 267.81,
+    "elapsed_s": 264.91,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (1030900 faces)",
+      "  defaultWall          \u2192 wall            (1030852 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "01_easy"
@@ -36,11 +36,11 @@
     "quality": "draft",
     "returncode": 0,
     "polyMesh_created": true,
-    "elapsed_s": 36.77,
+    "elapsed_s": 37.75,
     "last_lines": [
       "Boundary patches:",
       "  defaultWall          \u2192 wall            (22916 faces)",
-      "\u2713 PASS (1 iteration, 35.2s)"
+      "\u2713 PASS (1 iteration, 36.1s)"
     ],
     "difficulty": "01_easy"
   },
@@ -51,7 +51,7 @@
     "quality": "standard",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 35.66,
+    "elapsed_s": 35.76,
     "last_lines": [
       "Boundary patches:",
       "  defaultWall          \u2192 wall            (22916 faces)",
@@ -64,13 +64,11 @@
     "tier": "native_poly",
     "mesh_type": "poly",
     "quality": "draft",
-    "returncode": 1,
-    "polyMesh_created": true,
-    "elapsed_s": 49.62,
+    "returncode": -1,
+    "polyMesh_created": false,
+    "elapsed_s": 300.4,
     "last_lines": [
-      "Boundary patches:",
-      "  defaultWall          \u2192 wall            (18308 faces)",
-      "\u2717 FAIL \u2014 Failed after 1 iterations"
+      "TIMEOUT"
     ],
     "difficulty": "01_easy"
   },
@@ -79,13 +77,11 @@
     "tier": "native_poly",
     "mesh_type": "poly",
     "quality": "standard",
-    "returncode": 1,
-    "polyMesh_created": true,
-    "elapsed_s": 49.84,
+    "returncode": -1,
+    "polyMesh_created": false,
+    "elapsed_s": 300.53,
     "last_lines": [
-      "Boundary patches:",
-      "  defaultWall          \u2192 wall            (18328 faces)",
-      "\u2717 FAIL \u2014 Failed after 1 iterations"
+      "TIMEOUT"
     ],
     "difficulty": "01_easy"
   },
@@ -96,10 +92,10 @@
     "quality": "draft",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 35.38,
+    "elapsed_s": 35.69,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (130780 faces)",
+      "  defaultWall          \u2192 wall            (130170 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "02_medium"
@@ -111,10 +107,10 @@
     "quality": "standard",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 189.43,
+    "elapsed_s": 186.01,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (746778 faces)",
+      "  defaultWall          \u2192 wall            (741978 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "02_medium"
@@ -126,11 +122,11 @@
     "quality": "draft",
     "returncode": 0,
     "polyMesh_created": true,
-    "elapsed_s": 10.58,
+    "elapsed_s": 10.5,
     "last_lines": [
       "Boundary patches:",
       "  defaultWall          \u2192 wall            (7632 faces)",
-      "\u2713 PASS (1 iteration, 9.0s)"
+      "\u2713 PASS (1 iteration, 8.9s)"
     ],
     "difficulty": "02_medium"
   },
@@ -141,7 +137,7 @@
     "quality": "standard",
     "returncode": 0,
     "polyMesh_created": true,
-    "elapsed_s": 30.2,
+    "elapsed_s": 30.19,
     "last_lines": [
       "Boundary patches:",
       "  defaultWall          \u2192 wall            (16392 faces)",
@@ -156,10 +152,10 @@
     "quality": "draft",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 59.4,
+    "elapsed_s": 226.26,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (13796 faces)",
+      "  defaultWall          \u2192 wall            (780642 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "02_medium"
@@ -169,13 +165,11 @@
     "tier": "native_poly",
     "mesh_type": "poly",
     "quality": "standard",
-    "returncode": 1,
-    "polyMesh_created": true,
-    "elapsed_s": 58.86,
+    "returncode": -1,
+    "polyMesh_created": false,
+    "elapsed_s": 300.46,
     "last_lines": [
-      "Boundary patches:",
-      "  defaultWall          \u2192 wall            (14399 faces)",
-      "\u2717 FAIL \u2014 Failed after 1 iterations"
+      "TIMEOUT"
     ],
     "difficulty": "02_medium"
   },
@@ -184,13 +178,13 @@
     "tier": "native_tet",
     "mesh_type": "tet",
     "quality": "draft",
-    "returncode": 1,
+    "returncode": 0,
     "polyMesh_created": true,
-    "elapsed_s": 4.4,
+    "elapsed_s": 4.81,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (11582 faces)",
-      "\u2717 FAIL \u2014 Failed after 1 iterations"
+      "  defaultWall          \u2192 wall            (11490 faces)",
+      "\u2713 PASS (1 iteration, 3.2s)"
     ],
     "difficulty": "03_hard"
   },
@@ -201,10 +195,10 @@
     "quality": "standard",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 22.15,
+    "elapsed_s": 22.55,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (75236 faces)",
+      "  defaultWall          \u2192 wall            (75136 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "03_hard"
@@ -216,7 +210,7 @@
     "quality": "draft",
     "returncode": 0,
     "polyMesh_created": true,
-    "elapsed_s": 2.76,
+    "elapsed_s": 2.91,
     "last_lines": [
       "Boundary patches:",
       "  defaultWall          \u2192 wall            (2716 faces)",
@@ -231,11 +225,11 @@
     "quality": "standard",
     "returncode": 0,
     "polyMesh_created": true,
-    "elapsed_s": 6.73,
+    "elapsed_s": 6.93,
     "last_lines": [
       "Boundary patches:",
       "  defaultWall          \u2192 wall            (8584 faces)",
-      "\u2713 PASS (1 iteration, 5.2s)"
+      "\u2713 PASS (1 iteration, 5.3s)"
     ],
     "difficulty": "03_hard"
   },
@@ -246,10 +240,10 @@
     "quality": "draft",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 6.26,
+    "elapsed_s": 21.68,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (5157 faces)",
+      "  defaultWall          \u2192 wall            (70370 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "03_hard"
@@ -261,10 +255,10 @@
     "quality": "standard",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 15.4,
+    "elapsed_s": 137.05,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (12545 faces)",
+      "  defaultWall          \u2192 wall            (460779 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "03_hard"
@@ -276,10 +270,10 @@
     "quality": "draft",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 12.86,
+    "elapsed_s": 13.05,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (39848 faces)",
+      "  defaultWall          \u2192 wall            (39796 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "04_extreme"
@@ -291,10 +285,10 @@
     "quality": "standard",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 34.58,
+    "elapsed_s": 34.27,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (115540 faces)",
+      "  defaultWall          \u2192 wall            (115000 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "04_extreme"
@@ -306,11 +300,11 @@
     "quality": "draft",
     "returncode": 0,
     "polyMesh_created": true,
-    "elapsed_s": 5.05,
+    "elapsed_s": 5.04,
     "last_lines": [
       "Boundary patches:",
       "  defaultWall          \u2192 wall            (5712 faces)",
-      "\u2713 PASS (1 iteration, 3.5s)"
+      "\u2713 PASS (1 iteration, 3.4s)"
     ],
     "difficulty": "04_extreme"
   },
@@ -321,11 +315,11 @@
     "quality": "standard",
     "returncode": 0,
     "polyMesh_created": true,
-    "elapsed_s": 8.26,
+    "elapsed_s": 8.43,
     "last_lines": [
       "Boundary patches:",
       "  defaultWall          \u2192 wall            (8792 faces)",
-      "\u2713 PASS (1 iteration, 6.7s)"
+      "\u2713 PASS (1 iteration, 6.8s)"
     ],
     "difficulty": "04_extreme"
   },
@@ -336,10 +330,10 @@
     "quality": "draft",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 13.45,
+    "elapsed_s": 74.03,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (5829 faces)",
+      "  defaultWall          \u2192 wall            (260623 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "04_extreme"
@@ -351,10 +345,10 @@
     "quality": "standard",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 27.11,
+    "elapsed_s": 215.38,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (10665 faces)",
+      "  defaultWall          \u2192 wall            (731162 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "04_extreme"
@@ -366,10 +360,10 @@
     "quality": "draft",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 12.8,
+    "elapsed_s": 13.01,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (22500 faces)",
+      "  defaultWall          \u2192 wall            (23528 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "05_ultra"
@@ -381,10 +375,10 @@
     "quality": "standard",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 22.77,
+    "elapsed_s": 22.78,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (40362 faces)",
+      "  defaultWall          \u2192 wall            (42488 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "05_ultra"
@@ -396,7 +390,7 @@
     "quality": "draft",
     "returncode": 0,
     "polyMesh_created": true,
-    "elapsed_s": 4.59,
+    "elapsed_s": 4.64,
     "last_lines": [
       "Boundary patches:",
       "  defaultWall          \u2192 wall            (5288 faces)",
@@ -426,10 +420,10 @@
     "quality": "draft",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 223.99,
+    "elapsed_s": 94.35,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (14987 faces)",
+      "  defaultWall          \u2192 wall            (389439 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "05_ultra"
@@ -441,10 +435,10 @@
     "quality": "standard",
     "returncode": 1,
     "polyMesh_created": true,
-    "elapsed_s": 263.05,
+    "elapsed_s": 149.07,
     "last_lines": [
       "Boundary patches:",
-      "  defaultWall          \u2192 wall            (17103 faces)",
+      "  defaultWall          \u2192 wall            (585170 faces)",
       "\u2717 FAIL \u2014 Failed after 1 iterations"
     ],
     "difficulty": "05_ultra"

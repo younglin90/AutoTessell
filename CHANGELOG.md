@@ -32,6 +32,20 @@
 - 이전 `scipy Voronoi 기반 voronoi.py` 는 `open_cells=52/52` 였던 것과 비교해
   topology 품질이 크게 향상 (dual 경로는 input mesh 위상을 보존).
 
+### Bench v0.4.0-beta7 matrix (5 난이도 × 3 엔진 × draft+standard)
+```
+| STL             | native_tet (d/s)       | native_hex (d/s)            | native_poly (d/s)      |
+|-----------------|------------------------|-----------------------------|------------------------|
+| 01_easy_cube    | ✓ 174s PASS / ✓ 265s   | ✓ 37s PASS / ✓ 36s          | ✗ 300s TO / ✗ 300s TO  |
+| 02_cylinder     | ✓ 36s / ✓ 186s         | ✓ 10s PASS / ✓ 30s PASS     | ✓ 226s / ✗ 300s TO     |
+| 03_bracket      | ✓ 4s PASS / ✓ 22s      | ✓ 3s PASS / ✓ 7s PASS       | ✓ 22s / ✓ 137s         |
+| 04_gear         | ✓ 13s / ✓ 34s          | ✓ 5s PASS / ✓ 8s PASS       | ✓ 74s / ✓ 215s         |
+| 05_ultra_knot   | ✓ 13s / ✓ 23s          | ✓ 5s PASS / ✓ 7s PASS       | ✓ 94s / ✓ 149s         |
+```
+**30 중 27 polyMesh 생성 (90%)**. native_hex 는 10/10 Evaluator PASS. native_poly
+는 harness 가 dual 변환을 포함해 느림 — easy_cube 등 일부 timeout. 향후 dual
+변환 ConvexHull 최적화 또는 seed grid 캐싱으로 해결 가능.
+
 회귀: 1336 → **1341 passed** (+5 native_poly_dual 테스트).
 
 ---

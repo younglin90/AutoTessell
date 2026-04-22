@@ -75,8 +75,8 @@ def run_native_poly_harness(
     case_dir: Path,
     *,
     target_edge_length: float | None = None,
-    seed_density: int = 12,
-    max_iter: int = 3,
+    seed_density: int = 10,
+    max_iter: int = 2,
 ) -> PolyHarnessResult:
     """Generator (native_tet → dual) ↔ Evaluator 반복으로 poly mesh 생성.
 
@@ -163,8 +163,8 @@ def run_native_poly_harness(
                         f"skew={metrics['max_skewness']:.2f}"
                     ),
                 )
-            # 실패 → seed density 올려 재시도
-            current_seed = int(current_seed * 1.5)
+            # 실패 → seed density 올려 재시도 (완만하게 — 1.5→1.2)
+            current_seed = max(int(current_seed * 1.2), current_seed + 1)
         finally:
             shutil.rmtree(tmp_tet, ignore_errors=True)
 
