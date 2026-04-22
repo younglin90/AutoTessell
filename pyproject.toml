@@ -15,19 +15,26 @@ dependencies = [
     "rich>=13.0",
     "pydantic>=2.0",
     "structlog>=24.0",
-    # 메쉬 처리
-    "trimesh>=4.5",
-    "meshio>=5.3",
+    # 수치
     "numpy>=2.0",
     "scipy>=1.13",
-    # 표면 전처리
-    "pymeshfix>=0.16",
-    "pyacvd>=0.3",
+    # 메쉬 I/O 호환 (v0.4 에서 자체 reader 로 점진 전환 중이지만 legacy 경로
+    # 기본값과 file_reader.py 의 다양한 포맷 지원을 위해 아직 유지).
+    "trimesh>=4.5",
+    "meshio>=5.3",
     "pyvista>=0.44",
-    "pymeshlab>=2023.12",
 ]
 
+# v0.4 native-first: Preprocessor 의 legacy (trimesh/pymeshfix/pyacvd/pymeshlab)
+# 경로. `--prefer-native` 로 자체 native_repair / native_remesh 만으로 동작 가능.
+# legacy 경로가 필요하면 `pip install auto-tessell[legacy-preprocess]`.
+
 [project.optional-dependencies]
+legacy-preprocess = [
+    "pymeshfix>=0.16",
+    "pyacvd>=0.3",
+    "pymeshlab>=2023.12",
+]
 dev = [
     "pytest>=8.3",
     "pytest-asyncio>=0.24",

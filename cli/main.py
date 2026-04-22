@@ -580,6 +580,11 @@ def evaluate(
     help="메쉬 타입 (v0.4 신규): tet / hex_dominant / poly. auto=Strategist 가 quality/geometry 기반 자동 선택",
 )
 @click.option(
+    "--prefer-native", is_flag=True,
+    help="v0.4 native-first: Preprocessor 를 pymeshfix/trimesh 대신 자체 "
+         "native_repair 경로로 강제 실행 (L1 표면 수리).",
+)
+@click.option(
     "--auto-retry",
     type=click.Choice(["off", "once", "continue"]),
     default="off",
@@ -635,6 +640,7 @@ def run(
     snappy_snap_tolerance: float | None,
     snappy_snap_iterations: int | None,
     mesh_type: str,
+    prefer_native: bool,
     auto_retry: str,
     max_iterations: int,
     dry_run: bool,
@@ -660,7 +666,8 @@ def run(
     console.print(f"[bold magenta]Auto-Tessell[/bold magenta] {input_file} → {output}")
     console.print(
         f"  quality={quality}  mesh_type={mesh_type}  tier={effective_tier}  "
-        f"auto_retry={auto_retry}  max_iter={max_iterations}"
+        f"auto_retry={auto_retry}  max_iter={max_iterations}  "
+        f"prefer_native={prefer_native}"
     )
     _print_dep_summary()
     if any(e != "auto" for e in [repair_engine, remesh_engine, volume_engine, checker_engine, cad_engine, postprocess_engine]):
@@ -763,6 +770,7 @@ def run(
         allow_ai_fallback=allow_ai_fallback,
         strict_tier=strict_tier,
         validator_engine=checker_engine,
+        prefer_native=prefer_native,
     )
 
     # base_cell_num은 이미 element_size로 변환되어 orchestrator에 전달됨
@@ -870,6 +878,7 @@ def run(
                     allow_ai_fallback=allow_ai_fallback,
                     strict_tier=strict_tier,
                     validator_engine=checker_engine,
+                    prefer_native=prefer_native,
                 )
                 if result.quality_report:
                     from core.evaluator.report import render_terminal

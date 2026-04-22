@@ -95,6 +95,7 @@ class PipelineOrchestrator:
         write_of_case: bool = True,
         strict_tier: bool = False,
         validator_engine: str = "auto",
+        prefer_native: bool = False,
         progress_callback: Callable[[int, str], None] | None = None,
     ) -> PipelineResult:
         """전체 파이프라인을 실행한다.
@@ -204,6 +205,7 @@ class PipelineOrchestrator:
                 surface_remesh=surface_remesh,
                 remesh_engine=remesh_engine,
                 allow_ai_fallback=allow_ai_fallback,
+                prefer_native=prefer_native,
             )
             result.preprocessed_report = preprocessed_report
             self._save_json(output_dir / "preprocessed_report.json", preprocessed_report)

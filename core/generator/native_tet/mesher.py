@@ -153,7 +153,40 @@ def generate_native_tet(
     # 3) tet centroid 로 inside 판정
     centroids = all_pts[tets].mean(axis=1)
     inside_tet = _inside_winding_number(centroids, V, F)
-    kept = tets[inside_tet]
+
+    # 3b) sliver tet 제거 — shape quality:
+    #     q = 8.48 * volume / (sum of edge_len^3 / 6) ≈ aspect ratio 의 역수.
+    #     정사면체 q ≈ 1, sliver 는 0 근처. 임계값 ε 아래이면 탈락.
+    v = all_pts[tets]   # (T, 4, 3)
+    e01 = np.linalg.norm(v[:, 1] - v[:, 0], axis=1)
+    e02 = np.linalg.norm(v[:, 2] - v[:, 0], axis=1)
+    e03 = np.linalg.norm(v[:, 3] - v[:, 0], axis=1)
+    e12 = np.linalg.norm(v[:, 2] - v[:, 1], axis=1)
+    e13 = np.linalg.norm(v[:, 3] - v[:, 1], axis=1)
+    e23 = np.linalg.norm(v[:, 3] - v[:, 2], axis=1)
+    edge_max = np.maximum.reduce([e01, e02, e03, e12, e13, e23])
+    # tet signed volume (abs 이므로 winding 무관)
+    vol6 = np.abs(
+        np.einsum(
+            "ij,ij->i",
+            v[:, 1] - v[:, 0],
+            np.cross(v[:, 2] - v[:, 0], v[:, 3] - v[:, 0]),
+        )
+    )
+    # shape quality: 8.48 * V / edge_max^3 ∈ [0, 1]
+    safe = edge_max > 1e-30
+    q = np.zeros_like(edge_max)
+    q[safe] = (8.48 * (vol6[safe] / 6.0)) / (edge_max[safe] ** 3)
+    q_thresh = 0.02
+    keep_mask = inside_tet & (q >= q_thresh)
+    n_dropped_sliver = int(inside_tet.sum() - keep_mask.sum())
+    log.info(
+        "native_tet_sliver_filter",
+        kept=int(keep_mask.sum()),
+        dropped_sliver=n_dropped_sliver,
+        q_threshold=q_thresh,
+    )
+    kept = tets[keep_mask]
     if kept.shape[0] == 0:
         return NativeTetResult(
             False, time.perf_counter() - t0,

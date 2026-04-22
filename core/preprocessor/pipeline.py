@@ -51,6 +51,7 @@ class Preprocessor:
         remesh_target_faces: int | None = None,
         remesh_engine: str = "auto",
         allow_ai_fallback: bool = False,
+        prefer_native: bool = False,
     ) -> tuple[Path, PreprocessedReport]:
         """전처리 파이프라인 실행.
 
@@ -131,7 +132,9 @@ class Preprocessor:
         force_l2_for_open = is_open_boundary and not surface_remesh
 
         if not no_repair:
-            mesh, l1_passed, l1_record = self._l1_repair(mesh, geometry_report)
+            mesh, l1_passed, l1_record = self._l1_repair(
+                mesh, geometry_report, prefer_native=prefer_native,
+            )
             steps_performed.append(PreprocessStep(**l1_record))
 
             if l1_passed and not surface_remesh and not force_l2_for_open:
@@ -216,10 +219,45 @@ class Preprocessor:
     # L1 / L2 / L3 단계 메서드
     # ------------------------------------------------------------------
 
+    def _l1_repair_native(
+        self,
+        mesh: "trimesh.Trimesh",
+        issues: list,
+    ) -> tuple["trimesh.Trimesh", bool, dict]:
+        """v0.4: 자체 native_repair 기반 L1 (pymeshfix/trimesh 없이)."""
+        import numpy as np  # noqa: PLC0415
+        import trimesh as _tm  # noqa: PLC0415
+        from core.preprocessor.native_repair import run_native_repair  # noqa: PLC0415
+
+        t0 = time.perf_counter()
+        V = np.asarray(mesh.vertices, dtype=np.float64)
+        F = np.asarray(mesh.faces, dtype=np.int64)
+        res = run_native_repair(V, F)
+        elapsed = time.perf_counter() - t0
+        new_mesh = _tm.Trimesh(vertices=res.vertices, faces=res.faces, process=False)
+        passed = bool(res.watertight and res.manifold)
+        step_record = {
+            "step": "l1_repair",
+            "method": "native_repair",
+            "params": {"steps": [s["step"] for s in res.steps]},
+            "input_faces": int(F.shape[0]),
+            "output_faces": int(res.faces.shape[0]),
+            "time_seconds": round(elapsed, 4),
+            "gate_passed": passed,
+        }
+        log.info(
+            "l1_native_repair_done",
+            watertight=res.watertight, manifold=res.manifold,
+            input_faces=F.shape[0], output_faces=res.faces.shape[0],
+        )
+        return new_mesh, passed, step_record
+
     def _l1_repair(
         self,
         mesh: trimesh.Trimesh,
         geometry_report: GeometryReport,
+        *,
+        prefer_native: bool = False,
     ) -> tuple[trimesh.Trimesh, bool, dict[str, Any]]:
         """L1 표면 수리 수행.
 
@@ -252,6 +290,8 @@ class Preprocessor:
             }
             return mesh, passed, step_record
 
+        if prefer_native:
+            return self._l1_repair_native(mesh, issues)
         return self._repairer.repair_l1(mesh, issues)
 
     def _l2_remesh(
