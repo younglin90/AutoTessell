@@ -204,7 +204,9 @@ def generate_native_tet(
     safe = edge_max > 1e-30
     q = np.zeros_like(edge_max)
     q[safe] = (8.48 * (vol6[safe] / 6.0)) / (edge_max[safe] ** 3)
-    q_thresh = 0.02
+    # v0.4.0-beta5: sliver threshold 상향 (0.02 → 0.05). non-orthogonality
+    # 개선. degenerate tet 을 더 공격적으로 제거.
+    q_thresh = 0.05
     keep_mask = inside_tet & (q >= q_thresh)
     n_dropped_sliver = int(inside_tet.sum() - keep_mask.sum())
     log.info(
@@ -220,8 +222,13 @@ def generate_native_tet(
             message="inside tet 0 — target_edge_length 조정 필요",
         )
 
-    # 4) 사용된 vertex 만 추출 + 인덱스 압축
-    used = np.unique(kept.ravel())
+    # 4) 사용된 vertex 만 추출 + 인덱스 압축.
+    #    v0.4.0-beta5: Hausdorff 보존을 위해 모든 surface vertex (V) 는 사용
+    #    여부와 무관하게 최종 mesh 에 강제 포함.
+    used_set = set(np.unique(kept.ravel()).tolist())
+    surface_vert_ids = set(range(V.shape[0]))
+    used_set |= surface_vert_ids
+    used = np.array(sorted(used_set), dtype=np.int64)
     remap = -np.ones(all_pts.shape[0], dtype=np.int64)
     remap[used] = np.arange(used.shape[0])
     final_tets = remap[kept].astype(np.int64)
