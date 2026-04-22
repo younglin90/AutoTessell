@@ -75,6 +75,7 @@ class PipelineWorker:
         mesh_type: str = "auto",
         max_iterations: int = 3,
         auto_retry: str = "off",
+        prefer_native: bool = False,
         dry_run: bool = False,
         element_size: float | None = None,
         max_cells: int | None = None,
@@ -117,6 +118,7 @@ class PipelineWorker:
                 mesh_type: str = "auto",
                 max_iterations: int = 3,
                 auto_retry: str = "off",
+                prefer_native: bool = False,
                 dry_run: bool = False,
                 element_size: float | None = None,
                 max_cells: int | None = None,
@@ -136,6 +138,7 @@ class PipelineWorker:
                 self._mesh_type = mesh_type
                 self._max_iterations = max_iterations
                 self._auto_retry = auto_retry
+                self._prefer_native = bool(prefer_native)
                 self._dry_run = dry_run
                 self._element_size = element_size
                 self._max_cells = max_cells
@@ -195,6 +198,7 @@ class PipelineWorker:
                         tier_hint=self._tier_hint,
                         max_iterations=self._max_iterations,
                         auto_retry=self._auto_retry,
+                        prefer_native=self._prefer_native,
                         dry_run=self._dry_run,
                         element_size=self._element_size,
                         max_cells=self._max_cells,
@@ -268,6 +272,7 @@ class PipelineWorker:
             mesh_type=mesh_type,
             max_iterations=max_iterations,
             auto_retry=auto_retry,
+            prefer_native=prefer_native,
             dry_run=dry_run,
             element_size=element_size,
             max_cells=max_cells,

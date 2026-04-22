@@ -426,6 +426,7 @@ class AutoTessellWindow:  # type: ignore[misc]
 
         # 공통 전처리 체크박스
         self._no_repair_check: object | None = None
+        self._prefer_native_check: object | None = None
         self._surface_remesh_check: object | None = None
         self._allow_ai_fallback_check: object | None = None
         self._remesh_engine_combo: object | None = None
@@ -2126,15 +2127,18 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._no_repair_check = QCheckBox("표면 수리 스킵 (no-repair)")
         self._surface_remesh_check = QCheckBox("강제 L2 표면 리메쉬")
         self._allow_ai_fallback_check = QCheckBox("AI 표면 재생성 허용 (L3)")
-        # 기본값: 전부 해제 — WildMesh 단독 경로를 clean 하게 유지
+        # v0.4: 자체 native L1 repair (pymeshfix 없이)
+        self._prefer_native_check = QCheckBox("Native L1 수리 (자체 repair, v0.4)")
+        # 기본값: 전부 해제
         self._no_repair_check.setChecked(False)
         self._surface_remesh_check.setChecked(False)
         self._allow_ai_fallback_check.setChecked(False)
+        self._prefer_native_check.setChecked(False)
         for chk in (
-            self._no_repair_check, self._surface_remesh_check, self._allow_ai_fallback_check,
+            self._no_repair_check, self._surface_remesh_check,
+            self._allow_ai_fallback_check, self._prefer_native_check,
         ):
             v.addWidget(chk)
-            # 체크 변경 → Tier 0/1/2 엔진 라벨 갱신
             try:
                 chk.toggled.connect(lambda _v: self._refresh_tier_strip_engine_labels())
             except Exception:
@@ -2672,12 +2676,21 @@ class AutoTessellWindow:  # type: ignore[misc]
         try:
             from desktop.qt_app.pipeline_worker import PipelineWorker
             self._stopping = False
+            _prefer_native_flag = False
+            if self._prefer_native_check is not None:
+                try:
+                    _prefer_native_flag = bool(
+                        self._prefer_native_check.isChecked(),  # type: ignore[attr-defined]
+                    )
+                except Exception:
+                    _prefer_native_flag = False
             worker = PipelineWorker(
                 self._input_path, self._quality_level,
                 output_dir=self._output_dir,
                 tier_hint=tier_hint,
                 mesh_type=str(self._mesh_type or "auto"),
                 auto_retry=str(self._auto_retry or "off"),
+                prefer_native=_prefer_native_flag,
                 element_size=element_size,
                 tier_specific_params=tier_params or None,
                 no_repair=bool(self._no_repair_check.isChecked())
