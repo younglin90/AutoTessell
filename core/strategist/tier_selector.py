@@ -166,6 +166,8 @@ _TIER_ORDER = [
     "tier_hohqmesh",            # HOHQMesh structured
     "tier_classy_blocks",       # Classy Blocks
     "tier_native_tet",          # AutoTessell 자체 tet MVP (v0.4)
+    "tier_native_hex",          # AutoTessell 자체 hex MVP (v0.4)
+    "tier_native_poly",         # AutoTessell 자체 poly MVP (v0.4)
 ]
 
 def canonical_tier(tier_hint: str) -> str:
@@ -194,6 +196,10 @@ _HINT_MAP: dict[str, str] = {
     "robust_hex": "tier_robust_hex",
     "native_tet": "tier_native_tet",
     "tier_native_tet": "tier_native_tet",
+    "native_hex": "tier_native_hex",
+    "tier_native_hex": "tier_native_hex",
+    "native_poly": "tier_native_poly",
+    "tier_native_poly": "tier_native_poly",
     "tier_robust_hex": "tier_robust_hex",
     "algohex": "tier_algohex",
     "algo_hex": "tier_algohex",

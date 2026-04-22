@@ -508,7 +508,7 @@ def evaluate(
                   "meshpy", "hex_classy", "classy_blocks",
                   "gmsh_hex", "cinolib_hex", "voro_poly",
                   "polyhedral", "hohqmesh", "2d",
-                  "native_tet",
+                  "native_tet", "native_hex", "native_poly",
               ]),
               help="볼륨 메쉬 엔진 (auto=품질레벨에 따라 자동)")
 @click.option("--quality", default="standard", show_default=True,
@@ -529,7 +529,7 @@ def evaluate(
                   "meshpy", "hex_classy", "classy_blocks",
                   "gmsh_hex", "cinolib_hex", "voro_poly",
                   "polyhedral", "hohqmesh", "2d",
-                  "native_tet",
+                  "native_tet", "native_hex", "native_poly",
               ]),
               help="볼륨 메쉬 엔진 (--tier와 동일, 더 명시적 이름)")
 @click.option("--checker-engine", default="auto", show_default=True,
