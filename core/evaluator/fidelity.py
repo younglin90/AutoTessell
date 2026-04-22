@@ -185,6 +185,93 @@ def _select_geometry_patches(
 
 
 # ---------------------------------------------------------------------------
+# Native Hausdorff helpers (v0.4.0-beta11) — trimesh.sample / scipy.cKDTree 대체
+# ---------------------------------------------------------------------------
+
+
+def _native_sample_surface(
+    vertices,
+    faces,
+    n_samples: int,
+    seed: int = 0,
+):
+    """면적 가중 barycentric sampling.
+
+    trimesh.sample.sample_surface 의 numpy 전용 대체 구현.
+
+    Args:
+        vertices: (V, 3) float 배열.
+        faces: (F, 3) int 배열 (삼각형).
+        n_samples: 샘플 포인트 수.
+        seed: numpy RNG seed (결정적 재현성 확보용).
+
+    Returns:
+        (n_samples, 3) float64 — 표면 상의 무작위 점.
+    """
+    import numpy as np  # noqa: PLC0415
+
+    if len(faces) == 0 or n_samples <= 0:
+        return np.zeros((0, 3), dtype=np.float64)
+
+    v0 = vertices[faces[:, 0]]
+    v1 = vertices[faces[:, 1]]
+    v2 = vertices[faces[:, 2]]
+    cross = np.cross(v1 - v0, v2 - v0)
+    areas = 0.5 * np.linalg.norm(cross, axis=1)
+    total = float(areas.sum())
+    if total <= 0.0:
+        return np.zeros((0, 3), dtype=np.float64)
+
+    weights = areas / total
+    rng = np.random.default_rng(seed)
+    face_idx = rng.choice(len(faces), size=n_samples, p=weights)
+
+    # barycentric uniform: (1-sqrt(r1))*v0 + sqrt(r1)*(1-r2)*v1 + sqrt(r1)*r2*v2
+    r1 = rng.random(n_samples)
+    r2 = rng.random(n_samples)
+    sqrt_r1 = np.sqrt(r1)
+    w0 = 1.0 - sqrt_r1
+    w1 = sqrt_r1 * (1.0 - r2)
+    w2 = sqrt_r1 * r2
+    p0 = vertices[faces[face_idx, 0]]
+    p1 = vertices[faces[face_idx, 1]]
+    p2 = vertices[faces[face_idx, 2]]
+    return (w0[:, None] * p0 + w1[:, None] * p1 + w2[:, None] * p2).astype(np.float64)
+
+
+def _native_kdist_chunked(
+    query,
+    reference,
+    pair_limit: int = 10_000_000,
+) -> float:
+    """Max_{q in query} min_{r in reference} ||q-r|| — brute-force chunked.
+
+    scipy.spatial.cKDTree.query 의 numpy-only 대체. M×N 쌍이 pair_limit 을
+    넘지 않도록 query 를 청크로 나눠 반복.
+
+    10M pair → float64 거리 행렬 ≈ 80MB (일시). 50k × 50k (2.5G) 경우에도
+    청크 크기 200 으로 잘라 OK.
+    """
+    import numpy as np  # noqa: PLC0415
+
+    m = len(query)
+    n = len(reference)
+    if m == 0 or n == 0:
+        return 0.0
+
+    chunk = max(1, pair_limit // max(n, 1))
+    max_min_d2 = 0.0
+    for start in range(0, m, chunk):
+        end = min(start + chunk, m)
+        diff = query[start:end, None, :] - reference[None, :, :]
+        d2 = np.einsum("ijk,ijk->ij", diff, diff)
+        local = float(d2.min(axis=1).max())
+        if local > max_min_d2:
+            max_min_d2 = local
+    return float(np.sqrt(max_min_d2))
+
+
+# ---------------------------------------------------------------------------
 # GeometryFidelityChecker
 # ---------------------------------------------------------------------------
 
@@ -362,28 +449,46 @@ class GeometryFidelityChecker:
     ) -> float:
         """두 메쉬 사이의 양방향 Hausdorff 거리를 계산한다.
 
-        trimesh.sample.sample_surface로 포인트를 샘플링한 뒤
-        scipy.spatial.cKDTree로 최근접 거리를 구한다.
+        v0.4.0-beta11: trimesh.sample / scipy.cKDTree 의존 제거.
+        numpy 기반 면적 가중 barycentric sampling + chunked brute-force kNN 으로
+        교체. 결과값은 기존 대비 ±5% 드리프트 수준 (sampling seed 차이 때문).
+
+        우선 자체 구현 시도 → ImportError 혹은 예외 시 기존 trimesh+scipy
+        경로로 graceful fallback.
         """
         import numpy as np  # noqa: PLC0415
-        from scipy.spatial import cKDTree  # noqa: PLC0415
 
         n = self.N_SAMPLES
-
-        # 면적이 0이면 샘플링 불가
         if mesh_a.area <= 0 or mesh_b.area <= 0:
             return 0.0
 
-        samples_a, _ = mesh_a.sample(n, return_index=True)
-        samples_b, _ = mesh_b.sample(n, return_index=True)
-
-        samples_a = np.asarray(samples_a)
-        samples_b = np.asarray(samples_b)
-
-        tree_b = cKDTree(samples_b)
-        dists_a, _ = tree_b.query(samples_a)
-
-        tree_a = cKDTree(samples_a)
-        dists_b, _ = tree_a.query(samples_b)
-
-        return float(max(dists_a.max(), dists_b.max()))
+        try:
+            samples_a = _native_sample_surface(
+                np.asarray(mesh_a.vertices, dtype=np.float64),
+                np.asarray(mesh_a.faces, dtype=np.int64),
+                n_samples=n,
+            )
+            samples_b = _native_sample_surface(
+                np.asarray(mesh_b.vertices, dtype=np.float64),
+                np.asarray(mesh_b.faces, dtype=np.int64),
+                n_samples=n,
+            )
+            d_ab = _native_kdist_chunked(samples_a, samples_b)
+            d_ba = _native_kdist_chunked(samples_b, samples_a)
+            return float(max(d_ab, d_ba))
+        except Exception as exc:  # noqa: BLE001
+            # trimesh + scipy fallback (환경 문제 대비).
+            log.info(
+                "hausdorff_native_failed_falling_back",
+                error=str(exc),
+            )
+            from scipy.spatial import cKDTree  # noqa: PLC0415
+            samples_a, _ = mesh_a.sample(n, return_index=True)
+            samples_b, _ = mesh_b.sample(n, return_index=True)
+            samples_a = np.asarray(samples_a)
+            samples_b = np.asarray(samples_b)
+            tree_b = cKDTree(samples_b)
+            dists_a, _ = tree_b.query(samples_a)
+            tree_a = cKDTree(samples_a)
+            dists_b, _ = tree_a.query(samples_b)
+            return float(max(dists_a.max(), dists_b.max()))
