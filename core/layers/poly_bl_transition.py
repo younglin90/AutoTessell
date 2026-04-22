@@ -37,11 +37,50 @@ class PolyBLResult:
     message: str = ""
 
 
+def _classify_cells_by_vertex_count(
+    owner, neighbour, faces,
+) -> tuple[int, list[set[int]], list[int], list[int]]:
+    """polyMesh face/owner/neighbour 로부터 각 cell 의 unique vertex set 복원.
+
+    Returns:
+        (n_cells, cell_verts, tet_cell_ids, non_tet_cell_ids).
+        - cell_verts[ci] = cell ci 를 구성하는 vertex index set.
+        - tet_cell_ids: 4 unique vertex (= tet) cell 인덱스 목록.
+        - non_tet_cell_ids: 그 외 (prism 6, hex 8, polyhedron n) 인덱스 목록.
+    """
+    n_cells = int(owner.max()) + 1 if len(owner) else 0
+    if len(neighbour):
+        n_cells = max(n_cells, int(neighbour.max()) + 1)
+    cell_verts: list[set[int]] = [set() for _ in range(n_cells)]
+    for fi, f in enumerate(faces):
+        cell_verts[int(owner[fi])].update(int(v) for v in f)
+        if fi < len(neighbour):
+            cell_verts[int(neighbour[fi])].update(int(v) for v in f)
+    tet_ids: list[int] = []
+    non_tet_ids: list[int] = []
+    for ci, cv in enumerate(cell_verts):
+        if len(cv) == 4:
+            tet_ids.append(ci)
+        else:
+            non_tet_ids.append(ci)
+    return n_cells, cell_verts, tet_ids, non_tet_ids
+
+
 def _try_native_poly_dual(case_dir: Path) -> tuple[bool, str]:
     """v0.4 native: polyMesh 에서 tet array 를 복원해 tet_to_poly_dual 로 변환.
 
-    OpenFOAM polyDualMesh 호출 없이 순수 Python. case_dir 의 polyMesh 가 **전체
-    tet cell** 로 구성되어 있어야 함 (이 함수는 native_bl 후 bulk 부분만 대상).
+    OpenFOAM polyDualMesh 호출 없이 순수 Python.
+
+    지원 케이스:
+        - **전체 tet** polyMesh: 표준 dual 변환 → 완전 polyhedral mesh.
+        - **hybrid (tet + prism)** polyMesh: prism BL 층이 섞여 있는 경우 dual 변환
+          을 건너뛰고 원본 hybrid mesh 를 그대로 보존한다 (pass-through). 이때
+          ``(True, "…hybrid preserved")`` 가 아닌 ``(False, …)`` 를 반환해 호출측이
+          ``bulk_dual_applied=False`` 로 기록. mesh 자체는 여전히 valid polyMesh.
+
+    완전한 hybrid dual (tet 부분만 polyhedral 로 변환하면서 prism 과 interface
+    stitching 까지 수행) 은 beta15+ 로드맵. 현재는 prism 과 dual cell 사이 interface
+    face 토폴로지 불일치 (prism 삼각형 vs dual 폴리곤) 문제 때문에 dual 을 skip.
     """
     try:
         import numpy as np  # noqa: PLC0415
@@ -63,36 +102,37 @@ def _try_native_poly_dual(case_dir: Path) -> tuple[bool, str]:
     except Exception as exc:
         return False, f"polyMesh 읽기 실패: {exc}"
 
-    n_cells = (int(owner.max()) + 1) if len(owner) else 0
-    if len(neighbour):
-        n_cells = max(n_cells, int(neighbour.max()) + 1)
+    n_cells, cell_verts, tet_ids, non_tet_ids = _classify_cells_by_vertex_count(
+        owner, neighbour, faces,
+    )
     if n_cells == 0:
         return False, "cell 없음"
 
-    # 각 cell 에 속한 face vertex 들을 모아 unique vertex set 으로 tet 추출.
-    # 4 vertex cell 만 tet 으로 인정, 그 외 (prism 등) 은 제외 후 dual 변환 불가.
-    cell_verts: list[set[int]] = [set() for _ in range(n_cells)]
-    for fi, f in enumerate(faces):
-        cell_verts[int(owner[fi])].update(int(v) for v in f)
-        if fi < len(neighbour):
-            cell_verts[int(neighbour[fi])].update(int(v) for v in f)
-    tets: list[tuple[int, int, int, int]] = []
-    n_non_tet = 0
-    for cv in cell_verts:
-        if len(cv) == 4:
-            tets.append(tuple(sorted(cv)))    # type: ignore[arg-type]
-        else:
-            n_non_tet += 1
-    if not tets:
-        return False, (
-            f"tet cell 0 — 입력 mesh 는 순수 tet 이어야 함 (non-tet={n_non_tet})"
-        )
+    n_tets = len(tet_ids)
+    n_non_tet = len(non_tet_ids)
+
+    if n_tets == 0:
+        return False, f"tet cell 0 — dual 변환 불가 (non-tet={n_non_tet})"
+
     if n_non_tet > 0:
-        # prism 등 혼합 mesh 는 지원 안 함 → 실패
-        return False, (
-            f"혼합 mesh (non-tet={n_non_tet}) — native dual 은 순수 tet 만 지원"
+        # Hybrid (tet + prism) — dual 을 skip 하고 원본 mesh 보존.
+        # interface stitching (prism outer triangle ↔ dual polygon 정합) 은 beta15+.
+        log.info(
+            "poly_bl_hybrid_pass_through",
+            n_tets=n_tets,
+            n_non_tet=n_non_tet,
+            message="hybrid mesh preserved — full hybrid dual deferred",
         )
-    T = np.array(tets, dtype=np.int64)
+        return False, (
+            f"hybrid mesh preserved (tet={n_tets}, non-tet={n_non_tet}) — "
+            "full hybrid dual deferred to beta15+ roadmap"
+        )
+
+    # 순수 tet → 전체 dual 변환
+    tets_list: list[tuple[int, int, int, int]] = [
+        tuple(sorted(cell_verts[ci])) for ci in tet_ids  # type: ignore[misc]
+    ]
+    T = np.array(tets_list, dtype=np.int64)
     res = tet_to_poly_dual(pts, T, case_dir)
     if not res.success:
         return False, f"native tet_to_poly_dual 실패: {res.message}"

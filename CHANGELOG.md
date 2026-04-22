@@ -1,5 +1,108 @@
 # Changelog
 
+## [0.4.0-beta13] - 2026-04-22 — "poly_bl_transition hybrid pass-through"
+
+### Added
+
+- **`core/layers/poly_bl_transition._classify_cells_by_vertex_count`**: polyMesh
+  의 각 cell 을 unique vertex 개수로 분류 (tet=4, prism=6, hex=8, polyhedron=n).
+  내부 helper 지만 테스트 가능하도록 public-style.
+- **`tests/test_poly_bl_transition.py`** (5 tests): hybrid (prism+tet) 합성
+  polyMesh 에 대해 `_try_native_poly_dual` 이 graceful pass-through 하는지 +
+  순수 tet 경로가 여전히 dual 변환을 실행하는지 회귀.
+
+### Changed
+
+- `_try_native_poly_dual`: 혼합 mesh (non-tet cell 존재) 입력에서 "실패" 대신
+  **graceful pass-through** (원본 hybrid polyMesh 보존). 반환값은 여전히
+  `(False, "hybrid mesh preserved — full hybrid dual deferred …")` 로 호출측은
+  `bulk_dual_applied=False` 로 기록. 완전한 interface stitching (prism 삼각형
+  ↔ dual 폴리곤 정합) 은 beta15+ 로드맵.
+
+---
+
+## [0.4.0-beta14] - 2026-04-22 — "Qt e2e + README beta12 동기화"
+
+### Added
+
+- **`tests/test_qt_app.py::test_qt_pipeline_native_tet_e2e`**: AutoTessellWindow
+  (set_mesh_type=tet) + PipelineWorker(tier=native_tet, prefer_native=True) 가
+  PipelineOrchestrator.run() 을 올바른 인자로 호출하는지 headless 에서 검증.
+  orchestrator 는 monkeypatch stub.
+
+### Changed
+
+- README.md "자체 코드화 진행" 표를 beta12 기준으로 갱신 (Hausdorff / inside-
+  winding / tier wrapper / generic polyMesh writer 행 추가). bench matrix
+  30/30 으로 갱신. Harness 패턴 설명 블록 추가.
+
+---
+
+## [0.4.0-beta12] - 2026-04-22 — "PolyMeshGenericWriter 통합"
+
+### Added
+
+- **`core/generator/polymesh_writer.write_generic_polymesh`**: 임의 cell
+  (tet/hex/poly 공용) 의 외향 face vertex 리스트를 받아 face dedup +
+  owner/neighbour 정렬 + FoamFile 쓰기를 일원화하는 범용 writer.
+
+### Changed
+
+- `PolyMeshWriter.write()` (tet 전용) 는 normalize_tet_winding 후 cell_faces 를
+  만들어 generic writer 에 위임하는 얇은 wrapper 로 축소.
+- `native_hex/mesher._write_polymesh_hex` / `native_poly/voronoi._write_polymesh_poly`
+  도 각자 cell_faces 를 만들어 generic writer 위임. 약 150 라인 중복 제거.
+- `core/layers/native_bl._write_labels()` 에 optional `note` kwarg 추가 → owner
+  파일에 `nPoints/nCells/nFaces/nInternalFaces` 주석 복구. Ofpp 파서 호환 회복.
+- native_bl FoamFile 헤더에 OpenFOAM 표준 preamble(`/*---*/`) + footer separator
+  삽입 → 외부 도구 호환성 향상.
+
+---
+
+## [0.4.0-beta11] - 2026-04-22 — "Hausdorff 자체 구현"
+
+### Changed
+
+- `core/evaluator/fidelity._compute_hausdorff`: `trimesh.sample.sample_surface`
+  와 `scipy.spatial.cKDTree` 의존 제거. 자체 `_native_sample_surface` (면적 가중
+  barycentric sampling, numpy RNG seed 고정) + `_native_kdist_chunked` (brute-
+  force chunked kNN, pair_limit=1e7) 로 교체. 실패 시 기존 trimesh+scipy 경로
+  로 graceful fallback 유지.
+
+---
+
+## [0.4.0-beta10] - 2026-04-22 — "tier_native_* DRY"
+
+### Added
+
+- **`core/generator/_tier_native_common.run_native_tier`**: STL read +
+  target_edge 파싱 + TierAttempt 조립을 공통화한 공용 entry.
+
+### Changed
+
+- `tier_native_tet.py` / `tier_native_hex.py` / `tier_native_poly.py` 각 Generator
+  의 `run()` 메서드가 `run_native_tier(...)` 한 줄 호출로 축약. seed_density 등
+  엔진별 기본값은 runner_fn / extra_kwargs 로 전달.
+
+---
+
+## [0.4.0-beta9] - 2026-04-22 — "inside_winding_number 공용화"
+
+### Added
+
+- **`core/utils/geometry.inside_winding_number`**: Möller-Trumbore ray-triangle
+  intersection + y/z bbox prefilter 로 3D point-in-mesh 테스트. native_tet 의
+  검증된 구현을 추출해 3 엔진 공용 모듈로 승격.
+
+### Changed
+
+- `core/generator/native_tet/mesher.py` / `native_hex/mesher.py` /
+  `native_poly/voronoi.py` 의 로컬 `_inside_winding_number` / `_inside_ray_cast`
+  구현을 삭제하고 `core.utils.geometry.inside_winding_number` import 로 교체.
+  cell 수 drift 0 (tet=1196, hex=136, poly=26 on sphere baseline 불변).
+
+---
+
 ## [0.4.0-beta8] - 2026-04-22 — "harness 확장 + 성능 안정화"
 
 ### Added
