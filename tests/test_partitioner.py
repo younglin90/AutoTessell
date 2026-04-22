@@ -189,3 +189,49 @@ def _write_foam_label_list(path: Path, labels: list[int]) -> None:
         content += f"{label}\n"
     content += ")\n"
     path.write_text(content)
+
+
+# ---------------------------------------------------------------------------
+# v0.4.0-beta21 추가 — 엣지 케이스 커버리지
+# ---------------------------------------------------------------------------
+
+
+def test_partition_empty_adjacency_returns_empty_list(
+    partitioner: MeshPartitioner,
+) -> None:
+    """빈 그래프 입력 시 빈 리스트 반환."""
+    assert partitioner.partition([], n_parts=4) == []
+
+
+def test_partition_nparts_one_returns_all_zero(
+    partitioner: MeshPartitioner, simple_adjacency: list[list[int]],
+) -> None:
+    """n_parts=1 은 모든 노드를 partition 0 으로 묶어야 함."""
+    result = partitioner.partition(simple_adjacency, n_parts=1)
+    assert result == [0] * len(simple_adjacency)
+
+
+def test_partition_large_ring_graph_balanced(
+    partitioner: MeshPartitioner,
+) -> None:
+    """100-node ring 그래프를 4 파티션 — 각 파티션에 노드가 할당됨 (non-empty)."""
+    n = 100
+    adj = [[(i - 1) % n, (i + 1) % n] for i in range(n)]
+    result = partitioner.partition(adj, n_parts=4)
+    assert len(result) == n
+    sizes = [result.count(p) for p in range(4)]
+    assert all(s > 0 for s in sizes), f"파티션 비어있음: {sizes}"
+
+
+def test_simple_fallback_is_cyclic_assignment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """pymetis 없을 때 _simple_partition 이 i%n_parts cyclic 할당."""
+    import core.utils.partitioner as pt  # noqa: PLC0415
+
+    monkeypatch.setattr(pt, "_PYMETIS_AVAILABLE", False)
+    monkeypatch.setattr(pt, "_pymetis", None)
+
+    adj = [[1], [0, 2], [1, 3], [2, 4], [3]]
+    result = MeshPartitioner().partition(adj, n_parts=3)
+    assert result == [0, 1, 2, 0, 1]
