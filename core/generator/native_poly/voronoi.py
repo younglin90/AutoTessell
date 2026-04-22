@@ -38,30 +38,7 @@ class NativePolyResult:
     message: str = ""
 
 
-def _inside_ray_cast(query: np.ndarray, V: np.ndarray, F: np.ndarray) -> np.ndarray:
-    if query.size == 0 or F.size == 0:
-        return np.zeros(query.shape[0], dtype=bool)
-    v0 = V[F[:, 0]]; v1 = V[F[:, 1]]; v2 = V[F[:, 2]]
-    edge1 = v1 - v0; edge2 = v2 - v0
-    d = np.array([1.0, 0.0, 0.0])
-    pvec = np.cross(d, edge2)
-    det = (edge1 * pvec).sum(axis=1)
-    safe = np.abs(det) > 1e-12
-    inv_det = np.zeros_like(det)
-    np.divide(1.0, det, where=safe, out=inv_det)
-    inside = np.zeros(query.shape[0], dtype=bool)
-    batch = 64
-    for qi in range(0, query.shape[0], batch):
-        qs = query[qi:qi + batch]
-        tvec = qs[:, None, :] - v0[None, :, :]
-        u = (tvec * pvec[None, :, :]).sum(axis=2) * inv_det[None, :]
-        qvec = np.cross(tvec, edge1[None, :, :])
-        v = (qvec * d).sum(axis=2) * inv_det[None, :]
-        t = (edge2[None, :, :] * qvec).sum(axis=2) * inv_det[None, :]
-        hit = (u >= 0) & (v >= 0) & (u + v <= 1) & (t > 1e-9)
-        count = hit.sum(axis=1)
-        inside[qi:qi + batch] = (count % 2) == 1
-    return inside
+from core.utils.geometry import inside_winding_number as _inside_ray_cast
 
 
 def _write_polymesh_poly(
