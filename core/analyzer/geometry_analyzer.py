@@ -9,9 +9,12 @@ from __future__ import annotations
 import os
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
-import trimesh
+
+if TYPE_CHECKING:
+    import trimesh
 
 from core.analyzer.file_reader import (
     CAD_FORMATS,
@@ -191,39 +194,18 @@ class GeometryAnalyzer:
         num_vertices = len(mesh.vertices)
         num_faces = len(mesh.faces)
 
-        # v0.4: topology 지표는 자체 numpy 구현 (trimesh 속성 의존 제거).
-        # 어떤 이유로 실패 시 trimesh 로 graceful fallback.
+        # v0.4+: topology 지표는 자체 numpy 구현 (trimesh 속성 의존 완전 제거).
+        from core.analyzer import topology as _T  # noqa: PLC0415
         faces_np = np.asarray(mesh.faces, dtype=np.int64)
-        try:
-            from core.analyzer import topology as _T  # noqa: PLC0415
-            is_watertight = bool(_T.is_watertight(faces_np))
-            is_manifold = bool(_T.is_manifold(faces_np))
-            euler = int(_T.compute_euler(num_vertices, faces_np))
-            num_components = int(_T.num_connected_components(faces_np)) or 1
-            log.debug(
-                "geometry_topology_native",
-                watertight=is_watertight, manifold=is_manifold,
-                euler=euler, components=num_components,
-            )
-        except Exception as exc:
-            log.warning(
-                "geometry_topology_native_failed_fallback_trimesh",
-                error=str(exc),
-            )
-            is_watertight = bool(mesh.is_watertight)
-            is_manifold = self._is_surface_manifold(mesh, is_watertight)
-            try:
-                components = trimesh.graph.connected_components(mesh.face_adjacency)
-                num_components = len(components) if components is not None else 1
-            except Exception:
-                try:
-                    split_meshes = mesh.split(only_watertight=False)
-                    num_components = (
-                        len(split_meshes) if split_meshes is not None else 1
-                    )
-                except Exception:
-                    num_components = 1
-            euler = int(mesh.euler_number)
+        is_watertight = bool(_T.is_watertight(faces_np))
+        is_manifold = bool(_T.is_manifold(faces_np))
+        euler = int(_T.compute_euler(num_vertices, faces_np))
+        num_components = int(_T.num_connected_components(faces_np)) or 1
+        log.debug(
+            "geometry_topology_native",
+            watertight=is_watertight, manifold=is_manifold,
+            euler=euler, components=num_components,
+        )
 
         # genus = (2 - euler) / 2 for single closed surface (orientable)
         genus = max(0, (2 - euler) // 2)
@@ -264,30 +246,6 @@ class GeometryAnalyzer:
             max_edge_length=max_el,
             edge_length_ratio=el_ratio,
         )
-
-    @staticmethod
-    def _is_surface_manifold(mesh: trimesh.Trimesh, is_watertight: bool) -> bool:
-        """표면 manifold 여부를 판별한다.
-
-        trimesh.is_volume는 법선 방향/부피 부호에 영향을 받아
-        watertight 표면을 non-manifold로 오판정할 수 있으므로,
-        고유 엣지의 사용 횟수 기반으로 판정한다.
-        """
-        try:
-            counts = np.bincount(
-                mesh.edges_unique_inverse,
-                minlength=len(mesh.edges_unique),
-            )
-            if is_watertight:
-                # 폐곡면은 모든 고유 엣지가 정확히 2회 사용되어야 한다.
-                return bool(np.all(counts == 2))
-            # 열린 표면은 경계 엣지(1회)는 허용, 3회 이상 사용 엣지는 non-manifold.
-            return bool(np.all(counts <= 2))
-        except Exception:
-            # 최소 보수적 fallback
-            if not is_watertight:
-                return False
-            return bool(getattr(mesh, "is_winding_consistent", False))
 
     def _edge_length_stats(
         self, mesh: trimesh.Trimesh
@@ -363,45 +321,46 @@ class GeometryAnalyzer:
     def _count_sharp_edges(
         mesh: trimesh.Trimesh, threshold_deg: float
     ) -> tuple[int, bool]:
-        """이면각(dihedral angle)이 threshold 이하인 엣지 수를 반환."""
+        """이면각(dihedral angle)이 threshold 이하인 엣지 수.
+
+        trimesh.face_adjacency_angles 는 "법선 사이 각도" (0 = 평면) 이므로
+        `< threshold_rad` 면 sharp. 자체 구현 `topology.dihedral_angles` 도 같은
+        정의 (법선 사이 각도) 이므로 부등호 유지.
+        """
+        from core.analyzer import topology as _T  # noqa: PLC0415
+
         try:
-            # face_adjacency: (N, 2) 인접 면 쌍
-            fa = mesh.face_adjacency
-            if fa.shape[0] == 0:
+            faces = np.asarray(mesh.faces, dtype=np.int64)
+            verts = np.asarray(mesh.vertices, dtype=np.float64)
+            _, angles = _T.dihedral_angles(verts, faces)
+            if angles.size == 0:
                 return 0, False
-            fa_angles = mesh.face_adjacency_angles  # 라디안
-            threshold_rad = np.deg2rad(threshold_deg)
-            sharp_mask = fa_angles < threshold_rad
-            num_sharp = int(np.sum(sharp_mask))
+            threshold_rad = float(np.deg2rad(threshold_deg))
+            num_sharp = int(np.sum(angles < threshold_rad))
             return num_sharp, num_sharp > 0
         except Exception:
             return 0, False
 
     @staticmethod
     def _estimate_curvature(mesh: trimesh.Trimesh) -> tuple[float, float]:
-        """정점 법선 편차 기반 곡률 추정."""
+        """인접 face 법선 편차 / 공유 edge 길이 기반 곡률 proxy (native).
+
+        topology.dihedral_angles 가 internal edge 별 (a, b) + angle 을 돌려주므로
+        edge 길이 계산에 직접 사용 가능.
+        """
+        from core.analyzer import topology as _T  # noqa: PLC0415
+
         try:
-            # 각 면의 법선
-            fn = mesh.face_normals  # (F, 3)
-            fa = mesh.face_adjacency  # (N, 2)
-            if fa.shape[0] == 0:
+            faces = np.asarray(mesh.faces, dtype=np.int64)
+            verts = np.asarray(mesh.vertices, dtype=np.float64)
+            edges, angles = _T.dihedral_angles(verts, faces)
+            if angles.size == 0:
                 return 0.0, 0.0
-            # 인접 면 쌍의 법선 각도 = 곡률 proxy
-            n0 = fn[fa[:, 0]]
-            n1 = fn[fa[:, 1]]
-            cos_a = np.clip(np.einsum("ij,ij->i", n0, n1), -1.0, 1.0)
-            angles = np.arccos(cos_a)  # 라디안
-            # 엣지 길이로 나눠 곡률 근사
-            verts = mesh.vertices
-            fe = mesh.face_adjacency_edges  # (N, 2) vertex indices of shared edge
-            edge_len = np.linalg.norm(verts[fe[:, 1]] - verts[fe[:, 0]], axis=1)
+            a = verts[edges[:, 0]]
+            b = verts[edges[:, 1]]
+            edge_len = np.linalg.norm(b - a, axis=1)
             edge_len = np.where(edge_len < 1e-15, 1e-15, edge_len)
-            curvature = angles / edge_len
-
-            # 곡률 상한선 적용 (수치적 폭발 방지: 특성 길이의 역수에 비례하여 제한 가능하나
-            # 여기서는 실용적인 수준인 1e6 정도로 제한)
-            curvature = np.clip(curvature, 0, 1e6)
-
+            curvature = np.clip(angles / edge_len, 0.0, 1e6)
             return float(np.max(curvature)), float(np.mean(curvature))
         except Exception:
             return 0.0, 0.0
@@ -459,10 +418,14 @@ class GeometryAnalyzer:
         # 2. non-manifold edges
         if not surface.is_manifold:
             try:
-                nm_edges = trimesh.grouping.group_rows(  # type: ignore[no-untyped-call]
-                    mesh.edges_sorted, require_count=3
-                )
-                nm_count = int(len(nm_edges))
+                from core.analyzer import topology as _T  # noqa: PLC0415
+                nm_count = int(_T.count_non_manifold_edges(
+                    np.asarray(mesh.faces, dtype=np.int64),
+                ))
+                if nm_count == 0:
+                    # is_manifold=False 이지만 non-manifold edge 0 → vertex-fan
+                    # 불연속 가능. 최소 1 로 기록.
+                    nm_count = 1
             except Exception:
                 nm_count = 1
             issues.append(
