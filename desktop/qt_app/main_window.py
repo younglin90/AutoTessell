@@ -2979,8 +2979,72 @@ class AutoTessellWindow:  # type: ignore[misc]
                     pass
             # 에러 복구 다이얼로그 — 패턴 매칭해 구체 가이드 제시
             self._show_error_recovery(str(err))
+            # v0.4: Evaluator FAIL + auto_retry=off 에서 재시도 prompt
+            try:
+                self._maybe_show_retry_dialog(result)
+            except Exception:
+                pass
         # 성공·실패 모두 버튼 상태 복원
         self._set_pipeline_running(False)
+
+    def _maybe_show_retry_dialog(self, result: object) -> None:  # pragma: no cover
+        """v0.4: Evaluator FAIL 시 "재시도 / 수락" 다이얼로그 표시.
+
+        auto_retry="off" 기본 경로에서만 (already retried 는 skip). "예" 선택 시
+        현재 설정 그대로 파이프라인 재실행 (_on_run_clicked 호출).
+        """
+        if str(self._auto_retry).lower() != "off":
+            return
+        q_report = getattr(result, "quality_report", None)
+        if q_report is None:
+            return
+        verdict = getattr(
+            getattr(q_report, "evaluation_summary", None), "verdict", None,
+        )
+        verdict_val = getattr(verdict, "value", verdict)
+        if str(verdict_val).upper() != "FAIL":
+            return
+        try:
+            from PySide6.QtWidgets import QMessageBox
+        except Exception:
+            return
+        recs = getattr(q_report.evaluation_summary, "recommendations", []) or []
+        rec_text = "\n".join(
+            f"  • {getattr(r, 'action', str(r))}" for r in recs[:4]
+        )
+        msg = (
+            "Evaluator 가 품질 기준을 통과하지 못했습니다 (FAIL).\n\n"
+            + (f"권고:\n{rec_text}\n\n" if rec_text else "")
+            + "Strategist 권고 파라미터로 한 번 더 시도하시겠습니까?"
+        )
+        try:
+            choice = QMessageBox.question(
+                self,                         # type: ignore[arg-type]
+                "재시도 — AutoTessell",
+                msg,
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+        except Exception:
+            return
+        if choice == QMessageBox.StandardButton.Yes:
+            # user_decision 기록
+            try:
+                q_report.evaluation_summary.user_decision = "retry"
+            except Exception:
+                pass
+            # 동일 설정으로 재실행
+            try:
+                self._log("[INFO] 사용자 재시도 선택 — 파이프라인 재실행")
+                self._on_run_clicked()    # type: ignore[attr-defined]
+            except Exception as exc:
+                self._log(f"[ERR] 재실행 실패: {exc}")
+        else:
+            try:
+                q_report.evaluation_summary.user_decision = "accept"
+            except Exception:
+                pass
+            self._log("[INFO] 사용자가 현재 mesh 를 수락 (재시도 안 함)")
 
     def _ensure_fresh_foam_to_vtk(self, case_dir: Path) -> None:  # pragma: no cover
         """VTK/ 가 없거나 polyMesh보다 오래됐으면 foamToVTK를 실행한다.

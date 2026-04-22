@@ -24,6 +24,10 @@ TRIMESH_FORMATS: frozenset[str] = frozenset(
     {".stl", ".obj", ".ply", ".off", ".3mf", ".glb", ".gltf", ".dae"}
 )
 
+# v0.4 native-first: STL/OBJ/PLY/OFF 는 자체 reader 기본 경로로 사용.
+# trimesh 의존을 점진 제거. 실패 시 trimesh fallback 유지.
+NATIVE_READER_FORMATS: frozenset[str] = frozenset({".stl", ".obj", ".ply", ".off"})
+
 # meshio 로딩을 지원하는 확장자 목록 (trimesh fallback 포함)
 MESHIO_FORMATS: frozenset[str] = frozenset(
     {".msh", ".vtu", ".vtk", ".vtp", ".xdmf", ".xmf", ".nas", ".bdf", ".inp", ".cgns"}
@@ -83,10 +87,44 @@ def load_mesh(path: Path) -> trimesh.Trimesh:
     if fmt in MESHIO_FORMATS:
         return _load_via_meshio(path, fmt)
 
+    # v0.4: 자체 native reader 가 있는 포맷은 먼저 시도.
+    if fmt in NATIVE_READER_FORMATS:
+        try:
+            return _load_via_native_reader(path, fmt)
+        except Exception as exc:
+            log.warning(
+                "native_reader_failed_fallback_to_trimesh",
+                path=str(path), format=fmt, error=str(exc),
+            )
+
     if fmt in TRIMESH_FORMATS or fmt:
         return _load_via_trimesh(path, fmt)
 
     raise ValueError(f"지원하지 않는 파일 포맷입니다: {fmt} (파일: {path})")
+
+
+def _load_via_native_reader(path: Path, fmt: str) -> "trimesh.Trimesh":
+    """core/analyzer/readers/ 의 자체 reader 로 로드 후 trimesh.Trimesh 로 변환.
+
+    기존 호출자들이 trimesh.Trimesh 를 기대하므로 반환형은 유지하되 파싱은 자체.
+    """
+    from core.analyzer.readers import read_obj, read_off, read_ply, read_stl  # noqa: PLC0415
+
+    reader_map = {
+        ".stl": read_stl, ".obj": read_obj, ".ply": read_ply, ".off": read_off,
+    }
+    reader = reader_map.get(fmt)
+    if reader is None:
+        raise ValueError(f"native reader 미지원 포맷: {fmt}")
+    m = reader(path)
+    log.info(
+        "loaded_via_native_reader",
+        path=str(path), format=fmt,
+        n_vertices=m.n_vertices, n_faces=m.n_faces,
+    )
+    return trimesh.Trimesh(
+        vertices=m.vertices, faces=m.faces, process=False,
+    )
 
 
 def _load_via_cad(path: Path, fmt: str) -> trimesh.Trimesh:

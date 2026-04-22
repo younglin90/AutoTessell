@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.4.0-beta3] - 2026-04-22 — "Native-First" 후속 개선
+
+### Added
+- **poly_bl_transition** (`core/layers/poly_bl_transition.py`): mesh_type=poly
+  용 BL. native_bl 로 prism 삽입 후 (옵션) OpenFOAM polyDualMesh 로 bulk tet
+  을 polyhedral dual 로 변환. sphere 에서 2783 polyhedral cells, Skewness OK.
+- **L1 hole_fill ear-clipping** (`core/preprocessor/native_repair/hole_fill.py`):
+  fan triangulation 대신 boundary loop 의 평균 평면 basis + 2D ear-clipping.
+  max_boundary 64 → 128, 큰 hole / non-convex 영역도 처리.
+- **file_reader.py native-first**: STL/OBJ/PLY/OFF 는 자체 `core/analyzer/readers/`
+  로 기본 로드, trimesh 는 자동 fallback. `loaded_via_native_reader` 로그 기록.
+- **Qt GUI 재시도 다이얼로그**: Evaluator FAIL + auto_retry=off 시 QMessageBox
+  로 "재시도 / 수락" 묻고, 재시도 선택 시 동일 설정으로 파이프라인 재실행.
+- **tests/stl/bench_v04_matrix.py**: 5 난이도 × native_tet/hex/poly 매트릭스
+  실행 스크립트. 결과는 `bench_v04_result.json` 으로 저장.
+
+### v0.4 Bench Matrix 결과 (5 난이도 × 3 native 엔진, draft, --prefer-native)
+```
+| STL                      | native_tet | native_hex | native_poly |
+|--------------------------|------------|------------|-------------|
+| 01_easy_cube             | ✓ 132s     | ✓ 32s OK   | ✓ 47s       |
+| 02_medium_cylinder       | ✓ 35s      | ✓ 10s OK   | ✓ 50s       |
+| 03_hard_bracket          | ✓ 4s       | ✓ 3s OK    | ✓ 5s        |
+| 04_extreme_gear          | ✓ 16s      | ✓ 6s OK    | ✓ 10s       |
+| 05_ultra_knot            | ✗ 5min TO  | ✓ 172s OK  | ✓ 124s      |
+```
+총 15 조합 중 **14 polyMesh 생성 성공 (93.3%)**. native_hex 는 5/5 Evaluator PASS.
+
+### Fixed
+- native_tet 의 sliver tet 제거 (q = 8.48·V/edge_max³ < 0.02 탈락). sphere 에서
+  negative volume 5 → 0, Mesh OK.
+- native_bl per-vertex local collision safety: wall vertex 별 인접 cell 중심까지
+  거리 × 0.8 을 local cap 으로 사용. 극점 sliver prism 제거.
+
+### Changed
+- Preprocessor `--prefer-native` opt-in: pymeshfix 없이 자체 native_repair 경로
+  로 L1 수행. `pyproject.toml` 의 pymeshfix/pyacvd/pymeshlab 을
+  `legacy-preprocess` extras 로 격하.
+
+---
+
 ## [0.4.0-beta] - 2026-04-22 — "Native-First"
 
 핵심 철학 전환: 외부 라이브러리 의존 → 자체 코드 점진 전환. 라이브러리는

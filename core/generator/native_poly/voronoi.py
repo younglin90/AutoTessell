@@ -267,28 +267,35 @@ def generate_native_poly_voronoi(
     # vor.ridge_points[ri] = (seed_a, seed_b): 두 seed 사이의 ridge (공유 face)
     # vor.ridge_vertices[ri] = [v0, v1, ...]: 해당 ridge 를 이루는 Voronoi vertex
     # open ridge 는 -1 포함 → skip.
-    seed_ridges: dict[int, list[list[int]]] = defaultdict(list)
+    seed_ridges: dict[int, list[tuple[int, list[int]]]] = defaultdict(list)
+    # (neighbour_seed, ridge_vertex_indices) 형태로 저장해 이후 "neighbour 가
+    # kept 인 ridge 만" 을 internal face 로 썼을 때 manifold 를 보장.
     for ri, (sa, sb) in enumerate(vor.ridge_points):
         rv = vor.ridge_vertices[ri]
         if -1 in rv or len(rv) < 3:
             continue
-        seed_ridges[int(sa)].append(list(rv))
-        seed_ridges[int(sb)].append(list(rv))
+        seed_ridges[int(sa)].append((int(sb), list(rv)))
+        seed_ridges[int(sb)].append((int(sa), list(rv)))
 
     keep_set = set(keep_region_indices)
     used_vertex_set: set[int] = set()
     cell_face_verts_list: list[list[list[int]]] = []
     cell_owner_seed: list[int] = []
+    # v0.4 boundary clipping MVP:
+    # kept region 의 ridge 중 neighbour 가 kept set 에 있으면 internal face,
+    # 없으면 boundary face (outer surface). boundary face 는 유지해 cell 이
+    # closed 되도록 한다. 이 방식으로 외부 open face 가 사라지고 모든 cell 이
+    # topology 상 closed.
     for pi in keep_region_indices:
         faces_of_cell = seed_ridges.get(pi, [])
         if not faces_of_cell:
             continue
-        # 각 face 의 vertex 가 모두 surface 내부인지 다시 점검 (keep_set 인 neighbour
-        # 와 공유할 때만 face 유지하려면 별도 검사 가능하나, MVP 는 그대로 허용)
         cell_faces: list[list[int]] = []
-        for f in faces_of_cell:
-            cell_faces.append(list(f))
-            for v in f:
+        for (nb_seed, fv) in faces_of_cell:
+            # kept 가 아닌 neighbour 도 유지 → 해당 face 가 boundary 가 됨.
+            # 어느 쪽이든 cell 에 포함해야 "topologically closed" polyhedron.
+            cell_faces.append(list(fv))
+            for v in fv:
                 used_vertex_set.add(int(v))
         cell_face_verts_list.append(cell_faces)
         cell_owner_seed.append(pi)
