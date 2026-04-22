@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.4.0-beta16] - 2026-04-23 — "bench matrix time-series"
+
+### Added
+
+- **`tests/stl/bench_v04_matrix.py`** 에 time-series 저장 + diff 기능.
+  - `save_results_timestamped(results, dir, stamp=None)`: 결과를
+    `bench_v04_YYYYMMDDTHHMMSS.json` 과 `bench_v04_result.json` 양쪽에 쓴다.
+    snapshot 은 영구 보관 (git-commit 가능), latest pointer 는 tooling 호환용.
+  - `list_snapshots(dir)`: 타임스탬프 snapshot 을 최신순으로 나열.
+  - `compare_runs(prev, curr)`: combo 단위 PASS→FAIL / FAIL→PASS / 유지 분류.
+  - CLI `--diff` 옵션: 최근 2 snapshot 비교 결과 출력.
+- 실행 종료 시 이전 snapshot 이 있으면 자동으로 drift 요약 출력.
+- **`tests/test_bench_v04_timeseries.py`** (6 tests): 저장 / 나열 / 비교
+  로직 단위 테스트.
+
+---
+
+## [0.4.0-beta15] - 2026-04-23 — "geometry_analyzer native-only"
+
+### Changed
+
+- **`core/analyzer/geometry_analyzer.py`**: top-level `import trimesh` 제거,
+  모든 `trimesh.Trimesh` 타입 힌트는 `TYPE_CHECKING` 블록으로 이동. 런타임에는
+  trimesh 를 절대 import 하지 않는다.
+- topology 지표 (watertight / manifold / euler / connected components) 의 trimesh
+  fallback 분기를 삭제. 오직 `core.analyzer.topology` native 경로만 사용.
+- `_count_sharp_edges` / `_estimate_curvature` / `_detect_issues` 의 non-manifold
+  edge 계수 경로를 각각 `topology.dihedral_angles` / `count_non_manifold_edges`
+  로 교체. `_is_surface_manifold` dead code 삭제.
+
+---
+
 ## [0.4.0-beta13] - 2026-04-22 — "poly_bl_transition hybrid pass-through"
 
 ### Added
