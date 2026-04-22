@@ -172,17 +172,31 @@ Python 3.12+, C++23, OpenFOAM 2406, Node.js 24 (Phase 2)
 - 외부 라이브러리 신규 추가는 **반드시 "참고 → 자체 구현 계획"** 과 함께
 - CLI 파라미터 상세: `agents/specs/generator.md` 참조
 
-## 현재 구현 상태 (1045+ tests, v0.3.5)
+## 현재 구현 상태 (1328 tests, v0.4.0-beta "Native-First")
 
 ```bash
-auto-tessell run input.stl -o ./case --quality draft     # ~1초, TetWild
-auto-tessell run input.stl -o ./case --quality standard   # ~수분, Netgen/cfMesh
-auto-tessell run input.stl -o ./case --quality fine        # ~30분+, snappyHexMesh
-auto-tessell run input.step -o ./case --quality draft      # STEP CAD 지원
+auto-tessell run input.stl -o ./case --mesh-type tet --quality draft
+auto-tessell run input.stl -o ./case --mesh-type hex_dominant --quality fine    # + BL
+auto-tessell run input.stl -o ./case --mesh-type poly --quality standard
+auto-tessell run input.stl -o ./case --tier native_hex --auto-retry off         # 자체 엔진 강제
 ```
 
 - ✅ 전체 파이프라인: Analyzer → Preprocessor → Strategist → Generator → Evaluator
-- ⚠️ Generator↔Evaluator **자동** 재시도 루프 **제거 예정** (FAIL 시 사용자 확인 방식으로 전환)
+- ✅ Generator↔Evaluator **자동** 재시도 루프 제거 완료 (`--auto-retry off` 기본). FAIL 시 `y/N` prompt.
+- ✅ **mesh_type 3 카테고리** (tet / hex_dominant / poly) 사용자 선택 (CLI + Qt GUI)
+
+### 자체 구현 (v0.4 Native-First)
+
+- ✅ **자체 파일 reader** (`core/analyzer/readers/`): STL binary+ASCII, OBJ, PLY, OFF — trimesh 와 parity 검증
+- ✅ **자체 topology** (`core/analyzer/topology.py`): watertight / manifold / genus / dihedral / sharp edges
+- ✅ **자체 L1 repair** (`core/preprocessor/native_repair/`): dedup / degenerate / non-manifold / hole / winding
+- ✅ **자체 L2 remesh** (`core/preprocessor/native_remesh/`): isotropic (Botsch 2004), Lloyd CVT
+- ✅ **자체 BL 생성** (`core/layers/native_bl.py`): Phase 2 완성 — polyMesh 위상 직접 재구성, OpenFOAM checkMesh pass
+- ✅ **tet 전용 BL** (`core/layers/tet_bl_subdivide.py`): prism wedge → 3 tet 분할, 순수 tet 메쉬 유지
+- ✅ **NativeMeshChecker 기본화**: `--checker-engine auto` 기본이 native. OpenFOAM parity 테스트 통과
+- ✅ **native_tet MVP** (`core/generator/native_tet/`): scipy Delaunay + envelope, sphere 0.6s
+- ✅ **native_hex MVP** (`core/generator/native_hex/`): uniform grid + inside filter, checkMesh OK
+- ✅ **native_poly MVP** (`core/generator/native_poly/`): scipy Voronoi + ridge polygon
 - ✅ **17-Tier Volume Mesh 전부 동작 (v0.3.4)**:
   - ✅ tier2_tetwild (TetWild, Draft)
   - ✅ tier05_netgen (Netgen, Standard)
@@ -211,7 +225,7 @@ auto-tessell run input.step -o ./case --quality draft      # STEP CAD 지원
 - ✅ STEP/IGES CAD 파일 지원 (cadquery + gmsh fallback)
 - ✅ Geometry Fidelity (Hausdorff 거리 기반 표면 충실도 검증)
 - ✅ 불량 STL 수리 (L1 pymeshfix → L2 pyACVD+pymeshlab → L3 AI fallback)
-- ✅ 회귀 테스트: 1108 passed, 15 skipped (qt_app 67 passed + 4 skipped 포함)
+- ✅ 회귀 테스트: **1328 passed, 19 skipped** (v0.3.5 1108 → +220 신규, 0 failed)
 - ✅ E2E 검증: 88% 달성 (Phase D-E 기준)
 - ✅ **Windows 클릭 설치 인스톨러** (NSIS .exe, v0.3.5): `installer/dist/AutoTessell-0.3.5-Setup.exe`
   - Miniconda3 자동 다운로드/설치, pip으로 전체 라이브러리 설치
@@ -245,8 +259,12 @@ auto-tessell run input.step -o ./case --quality draft      # STEP CAD 지원
 | jigsaw | ✅ | ~0.6s (ctypes API) |
 | jigsaw_fallback | ✅ | ~0.0s (ctypes API) |
 | hohqmesh | ✅ | ~1.9s (ISM 가변길이 파서) |
+| **native_tet** | ✅ | ~0.6s (scipy Delaunay MVP, v0.4) |
+| **native_hex** | ✅ | ~0.1s (uniform grid, checkMesh OK, v0.4) |
+| **native_poly** | ✅ | ~0.3s (scipy Voronoi MVP, v0.4) |
 
 > 상세: `agents/specs/open_source_roadmap.md` → "설치 현황" 섹션
+> v0.4 "Native-First" 변경 이력: `CHANGELOG.md`
 ## Skill routing
 
 When the user's request matches an available skill, ALWAYS invoke it using the Skill
