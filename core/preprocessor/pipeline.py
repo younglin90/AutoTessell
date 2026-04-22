@@ -116,12 +116,17 @@ class Preprocessor:
         from core.analyzer.file_reader import load_mesh
 
         mesh = load_mesh(current_path)
-        is_open_boundary = not mesh.is_watertight and not is_cad
+        # v0.4.0-beta19: watertight 판정을 native topology 로 통일
+        import numpy as np  # noqa: PLC0415
+        from core.analyzer import topology as _T  # noqa: PLC0415
+        _faces_np = np.asarray(mesh.faces, dtype=np.int64)
+        _is_watertight = bool(_T.is_watertight(_faces_np))
+        is_open_boundary = (not _is_watertight) and not is_cad
         log.info(
             "mesh_loaded",
             path=str(current_path),
             num_faces=len(mesh.faces),
-            is_watertight=mesh.is_watertight,
+            is_watertight=_is_watertight,
             is_open_boundary=is_open_boundary,
         )
 
@@ -564,18 +569,24 @@ class Preprocessor:
         """최종 검증 및 최소 정리.
 
         trimesh 4.x 기준:
-        - is_manifold 속성 없음 → is_watertight + is_winding_consistent 사용
+        - is_manifold 속성 없음 → native topology.is_manifold 사용 (beta19)
         - remove_degenerate_faces() 없음 → nondegenerate_faces() mask 사용
         - remove_duplicate_faces() 없음 → unique_faces() index 사용
         """
+        import numpy as np  # noqa: PLC0415
+        from core.analyzer import topology as _T  # noqa: PLC0415
+
+        def _native_watertight(m: "trimesh.Trimesh") -> bool:
+            return bool(_T.is_watertight(np.asarray(m.faces, dtype=np.int64)))
+
         # watertight이 아닌 경우 재수리 시도 (최대 2회)
         for attempt in range(2):
-            if mesh.is_watertight:
+            if _native_watertight(mesh):
                 break
             log.info(
                 "final_validate_repair",
                 attempt=attempt + 1,
-                is_watertight=mesh.is_watertight,
+                is_watertight=_native_watertight(mesh),
                 is_winding_consistent=mesh.is_winding_consistent,
             )
             mesh.merge_vertices()
@@ -608,7 +619,7 @@ class Preprocessor:
         log.info(
             "final_validation",
             num_faces=len(mesh.faces),
-            is_watertight=mesh.is_watertight,
+            is_watertight=_native_watertight(mesh),
             is_winding_consistent=mesh.is_winding_consistent,
         )
         return mesh
@@ -627,24 +638,39 @@ class Preprocessor:
         """PreprocessedReport 생성."""
         if mesh is not None:
             import numpy as np
+            from core.analyzer import topology as _T  # noqa: PLC0415
 
-            face_areas = mesh.area_faces
+            V = np.asarray(mesh.vertices, dtype=np.float64)
+            F = np.asarray(mesh.faces, dtype=np.int64)
+
+            # face 면적 — numpy cross product
+            tri = V[F]
+            face_areas = 0.5 * np.linalg.norm(
+                np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0]), axis=1,
+            )
             min_face_area = float(np.min(face_areas)) if len(face_areas) > 0 else 0.0
 
-            edge_lengths = mesh.edges_unique_length
+            # edge 길이 — 각 삼각형의 3 edge 수집 후 unique
+            if len(F) > 0:
+                e0 = np.linalg.norm(V[F[:, 1]] - V[F[:, 0]], axis=1)
+                e1 = np.linalg.norm(V[F[:, 2]] - V[F[:, 1]], axis=1)
+                e2 = np.linalg.norm(V[F[:, 0]] - V[F[:, 2]], axis=1)
+                edge_lengths = np.concatenate([e0, e1, e2])
+                edge_lengths = edge_lengths[edge_lengths > 0]
+            else:
+                edge_lengths = np.zeros(0)
             if len(edge_lengths) > 1:
                 max_edge_ratio = float(np.max(edge_lengths) / max(np.min(edge_lengths), 1e-12))
             else:
                 max_edge_ratio = 1.0
 
-            # trimesh 4.x: is_manifold 없음 → is_winding_consistent 사용
-            is_manifold = getattr(mesh, "is_manifold", None)
-            if is_manifold is None:
-                is_manifold = mesh.is_winding_consistent
+            # v0.4.0-beta19: native topology 로 is_watertight / is_manifold 판정 통일.
+            is_watertight = bool(_T.is_watertight(F))
+            is_manifold = bool(_T.is_manifold(F))
 
             final_validation = FinalValidation(
-                is_watertight=mesh.is_watertight,
-                is_manifold=bool(is_manifold),
+                is_watertight=is_watertight,
+                is_manifold=is_manifold,
                 num_faces=len(mesh.faces),
                 min_face_area=min_face_area,
                 max_edge_length_ratio=max_edge_ratio,

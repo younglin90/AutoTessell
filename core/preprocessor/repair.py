@@ -58,21 +58,14 @@ def gate_check(mesh: trimesh.Trimesh) -> bool:
     Returns:
         watertight이고 manifold이면 True.
     """
-    if not mesh.is_watertight:
-        return False
-    # trimesh.is_volume는 법선 방향/부피 부호에 좌우되므로
-    # manifold 판정에는 고유 엣지 사용 횟수 기반 체크를 우선 사용한다.
-    try:
-        import numpy as np
+    import numpy as np  # noqa: PLC0415
 
-        counts = np.bincount(
-            mesh.edges_unique_inverse,
-            minlength=len(mesh.edges_unique),
-        )
-        return bool(np.all(counts == 2))
-    except Exception:
-        # 최소 fallback: winding 일관성
-        return bool(getattr(mesh, "is_winding_consistent", False))
+    from core.analyzer import topology as _T  # noqa: PLC0415
+
+    faces_np = np.asarray(mesh.faces, dtype=np.int64)
+    # v0.4.0-beta19: native topology 로 watertight + manifold 판정 통일.
+    # trimesh.is_volume / edges_unique_inverse 경로 제거.
+    return bool(_T.is_watertight(faces_np)) and bool(_T.is_manifold(faces_np))
 
 
 def detect_self_intersections(mesh: trimesh.Trimesh) -> int:
@@ -234,11 +227,15 @@ class SurfaceRepairer:
         else:
             mesh, actions = self._repair_with_trimesh(mesh, issues, actions)
 
+        import numpy as np  # noqa: PLC0415
+
+        from core.analyzer import topology as _T  # noqa: PLC0415
+
         log.info(
             "repair_done",
             actions=actions,
             num_faces=len(mesh.faces),
-            is_watertight=mesh.is_watertight,
+            is_watertight=bool(_T.is_watertight(np.asarray(mesh.faces, dtype=np.int64))),
         )
         return mesh, actions
 

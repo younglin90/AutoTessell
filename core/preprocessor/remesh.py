@@ -552,11 +552,22 @@ class SurfaceRemesher:
     # ------------------------------------------------------------------
 
     def _compute_target_faces(self, mesh: trimesh.Trimesh) -> int:
-        """BBox 기반 목표 삼각형 수 자동 계산."""
-        surface_area = float(mesh.area)
-        # characteristic element size: bbox 대각선 / 50
-        bbox_extents = mesh.bounding_box.extents
-        diagonal = float((bbox_extents ** 2).sum() ** 0.5)
+        """BBox 기반 목표 삼각형 수 자동 계산.
+
+        surface_area 는 numpy cross product 로 계산 — trimesh.area 의존 제거.
+        bbox extents 는 vertices.min/max 로 직접 계산.
+        """
+        import numpy as np  # noqa: PLC0415
+
+        V = np.asarray(mesh.vertices, dtype=np.float64)
+        F = np.asarray(mesh.faces, dtype=np.int64)
+        tri = V[F]
+        cross = np.cross(tri[:, 1] - tri[:, 0], tri[:, 2] - tri[:, 0])
+        surface_area = float(0.5 * np.linalg.norm(cross, axis=1).sum())
+
+        bmin = V.min(axis=0); bmax = V.max(axis=0)
+        bbox_extents = bmax - bmin
+        diagonal = float(np.linalg.norm(bbox_extents))
         element_size = max(diagonal / 50.0, 1e-9)
 
         target = int(surface_area / (element_size ** 2) * 2)
