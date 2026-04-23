@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.0-beta49] - 2026-04-23 — "CheckMeshParser 단위 회귀"
+
+### Added
+
+- `tests/test_quality_checker.py` (10 tests): clean / failed checkMesh stdout
+  패턴 파싱, mesh_ok override, negative_volumes / severely_non_ortho /
+  min_cell_volume default, 대체 정규식 패턴.
+
+---
+
+## [0.4.0-beta48] - 2026-04-23 — "AdditionalMetricsComputer 단위 회귀"
+
+### Added
+
+- `tests/test_metrics_computer.py` (8 tests): compute graceful fallback
+  (polyMesh 없음 / ImportError / 일반 예외), valid polyMesh 처리,
+  _check_bl_enabled / _find_vtk_file 유틸.
+
+---
+
 ## [0.4.0-beta47] - 2026-04-23 — "core/utils/logging.py 단위 회귀"
 
 ### Added
