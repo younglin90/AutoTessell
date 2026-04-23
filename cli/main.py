@@ -601,6 +601,11 @@ def evaluate(
          "primary 로 선택 (기존 tier 는 fallback). mesh_type 명시 필요.",
 )
 @click.option(
+    "--cross-engine-fallback", is_flag=True,
+    help="v0.4.0-beta68+ poly mesh_type 이 완전 실패하면 hex_dominant 로 1회 "
+         "자동 재시도. 실패 시 결과 error 필드에 [cross_engine_fallback poly→hex] 프리픽스.",
+)
+@click.option(
     "--auto-retry",
     type=click.Choice(["off", "once", "continue"]),
     default="off",
@@ -659,6 +664,7 @@ def run(
     mesh_type: str,
     prefer_native: bool,
     prefer_native_tier: bool,
+    cross_engine_fallback: bool,
     auto_retry: str,
     max_iterations: int,
     dry_run: bool,
@@ -818,6 +824,7 @@ def run(
         validator_engine=checker_engine,
         prefer_native=prefer_native,
         prefer_native_tier=prefer_native_tier,
+        cross_engine_fallback=cross_engine_fallback,
     )
 
     # base_cell_num은 이미 element_size로 변환되어 orchestrator에 전달됨
@@ -927,6 +934,7 @@ def run(
                     validator_engine=checker_engine,
                     prefer_native=prefer_native,
                     prefer_native_tier=prefer_native_tier,
+                    cross_engine_fallback=cross_engine_fallback,
                 )
                 if result.quality_report:
                     from core.evaluator.report import render_terminal

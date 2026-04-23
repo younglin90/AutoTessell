@@ -1,5 +1,71 @@
 # Changelog
 
+## [0.4.0-beta74] - 2026-04-23 — "STEP 파이프라인 E2E 검증"
+
+### Added
+
+- `tests/test_step_e2e.py` (4 tests, 1 slow): STEP fixture 존재, `_load_via_cad`
+  .step 허용 + trimesh 반환, `load_cad_native` (OCP) tuple 반환, box.step
+  → native_tet 전체 파이프라인 (slow).
+
+### Verified
+
+- beta53 OCP native reader 가 `tests/benchmarks/box.step` (8 vertex, 12 tri)
+  로 정상 로드. cadquery/gmsh fallback 경로 보존.
+
+---
+
+## [0.4.0-beta73] - 2026-04-23 — "bench baseline snapshot"
+
+### Added
+
+- `tests/stl/bench_v04_baseline.json` — 15 조합 (5 난이도 × 3 엔진 × draft)
+  baseline. 모두 polyMesh 생성 성공 (100%).
+- CI 에서 `python3 tests/stl/bench_v04_matrix.py --limit 15 --drift-check
+  tests/stl/bench_v04_baseline.json` 로 회귀 자동 감지 가능.
+
+### Milestone
+
+- 15/15 PASS — native 3 엔진 전부 5 STL (cube/cylinder/bracket/gear/knot)
+  draft 에서 100% 성공률. 이전 xfail (ultra_knot) 포함 전부 동작.
+
+---
+
+## [0.4.0-beta72] - 2026-04-23 — "GUI BL Phase 2 config 필드 노출"
+
+### Added
+
+- `AutoTessellWindow.TIER_PARAM_SPECS` 에 native_bl Phase 2 (beta63-65) 의 7
+  신규 필드 등록:
+  - `bl_collision_safety` (bool, true)
+  - `bl_collision_safety_factor` (float, 0.5)
+  - `bl_feature_lock` (bool, true)
+  - `bl_feature_angle_deg` (float, 45.0)
+  - `bl_feature_reduction_ratio` (float, 0.5)
+  - `bl_quality_check_enabled` (bool, true)
+  - `bl_aspect_ratio_threshold` (float, 50.0)
+- `tests/test_gui_bl_phase2_config.py` 5 tests: 전부 등록 / bool type /
+  float default / Phase 1 필드 보존.
+
+---
+
+## [0.4.0-beta71] - 2026-04-23 — "CLI --cross-engine-fallback 배선"
+
+### Added
+
+- `cli/main.py` 에 `--cross-engine-fallback` click 플래그 추가 (beta68
+  orchestrator kwarg 사용자 노출).
+- 양쪽 orchestrator.run 호출 경로 (기본 + auto-retry continue) 에 kwarg 전달.
+- `tests/test_cli_cross_engine_fallback.py` 4 tests: --help 출력 확인, dry-run
+  parsing, callback signature, orchestrator 일관성.
+
+### Fixed
+
+- beta68 에서 orchestrator 에만 추가되고 CLI 미배선이었던 gap 해소. 이제
+  `auto-tessell run ... --mesh-type poly --cross-engine-fallback` 실사용 가능.
+
+---
+
 ## [0.4.0-beta70.1] - 2026-04-23 — "collision detection memory hotfix"
 
 ### Fixed
