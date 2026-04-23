@@ -10,10 +10,13 @@
     4) Relocate — 각 vertex 를 1-ring neighbour 의 centroid 로 이동 (tangential
        smoothing). 본 구현은 원 표면으로 사영 없이 단순 평균만 수행 (MVP).
 
-Phase 2 확장:
-    - surface 사영 (원본 KDTree 기반)
-    - Feature edge (sharp) 잠금
-    - valence constraint (boundary vertex 는 valence 4, interior 6 목표)
+Phase 2 (beta87 완성):
+    - surface projection (원본 KDTree nearest-point 사영, Hausdorff drift 방지)
+    - feature edge locking (dihedral > angle_thresh 의 vertex 는 smoothing 제외)
+
+Phase 3 예정 (v0.5+):
+    - valence constraint (boundary vertex valence 4, interior 6 목표)
+    - vertex snapping to surface triangles (not just nearest vertex)
 
 제한 사항:
     - 현재 구현은 closed manifold 를 가정 (boundary edge 는 split/collapse 건너뜀)

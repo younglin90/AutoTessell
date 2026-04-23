@@ -20,6 +20,10 @@ class NativeHexResult:
     n_points: int = 0
     n_faces: int = 0
     message: str = ""
+    # beta88: 볼륨 커버리지 통계
+    fill_ratio: float = 0.0   # kept_cells / total_grid_cells (stair-step 품질 지표)
+    grid_shape: tuple[int, int, int] = (0, 0, 0)
+    n_grid_total: int = 0      # inside filter 이전 전체 grid cell 수
 
 
 # OpenFOAM hex cell 의 6 face 정의 — 각 face 는 4 vertex (CCW from outside).
@@ -154,6 +158,7 @@ def generate_native_hex(
         )
 
     hexes = np.array(cells, dtype=np.int64)
+    n_grid_total = hexes.shape[0]
     # centroid 로 inside 판정
     centroids = grid_pts[hexes].mean(axis=1)
     inside = _inside_winding_number(centroids, V, F)
@@ -202,15 +207,26 @@ def generate_native_hex(
             message=f"polyMesh 쓰기 실패: {exc}",
         )
 
+    _n_kept = int(stats["num_cells"])
+    _fill = _n_kept / max(1, n_grid_total)
+    if _fill < 0.3:
+        log.info(
+            "native_hex_low_fill_ratio",
+            fill_ratio=_fill, n_kept=_n_kept, n_grid_total=n_grid_total,
+            hint="target_edge_length 를 줄이거나 seed_density 를 높이면 fill 개선",
+        )
     return NativeHexResult(
         success=True,
         elapsed=time.perf_counter() - t0,
-        n_cells=int(stats["num_cells"]),
+        n_cells=_n_kept,
         n_points=int(stats["num_points"]),
         n_faces=int(stats["num_faces"]),
+        fill_ratio=_fill,
+        grid_shape=(nx, ny, nz),
+        n_grid_total=n_grid_total,
         message=(
-            f"native_hex OK — cells={stats['num_cells']}, "
+            f"native_hex OK — cells={_n_kept}, "
             f"points={stats['num_points']}, grid=({nx},{ny},{nz}), "
-            f"target_edge={h:.4g}"
+            f"fill={_fill:.1%}, target_edge={h:.4g}"
         ),
     )

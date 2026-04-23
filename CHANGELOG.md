@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.0-beta88] - 2026-04-23 — "native_hex fill ratio + isotropic remesh docstring"
+
+### Added
+
+- `NativeHexResult.fill_ratio` / `grid_shape` / `n_grid_total` 필드.
+- `fill_ratio < 0.3` 시 `native_hex_low_fill_ratio` info 로그 + 조정 힌트.
+- message 에 `fill=XX%` 포함.
+- `isotropic.py` docstring Phase 2 완료 + Phase 3 예정 명시.
+
+---
+
 ## [0.4.0-beta87] - 2026-04-23 — "isotropic remesh Phase 2 (surface projection + feature lock)"
 
 ### Added
