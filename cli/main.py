@@ -590,9 +590,10 @@ def evaluate(
     help="메쉬 타입 (v0.4 신규): tet / hex_dominant / poly. auto=Strategist 가 quality/geometry 기반 자동 선택",
 )
 @click.option(
-    "--prefer-native", is_flag=True,
-    help="v0.4 native-first: Preprocessor 를 pymeshfix/trimesh 대신 자체 "
-         "native_repair 경로로 강제 실행 (L1 표면 수리).",
+    "--prefer-native/--legacy-repair", "prefer_native", default=True,
+    show_default=True,
+    help="v0.4.0-beta26+ 기본 True. Preprocessor L1 을 자체 native_repair 로 수행. "
+         "--legacy-repair 명시 시에만 pymeshfix/trimesh 경로로 강제 전환 (opt-out).",
 )
 @click.option(
     "--prefer-native-tier", is_flag=True,

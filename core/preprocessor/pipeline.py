@@ -297,8 +297,11 @@ class Preprocessor:
             }
             return mesh, passed, step_record
 
+        # v0.4.0-beta26+: native 가 기본 경로. `prefer_native=False` 로 explicit opt-out
+        # (pymeshfix/trimesh 강제) 시에만 legacy 경로.
         if prefer_native:
             return self._l1_repair_native(mesh, issues)
+        # prefer_native=False 는 명시적 opt-out → legacy pymeshfix/trimesh 경로
         return self._repairer.repair_l1(mesh, issues)
 
     def _l2_remesh(
