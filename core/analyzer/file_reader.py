@@ -128,11 +128,25 @@ def _load_via_native_reader(path: Path, fmt: str) -> "trimesh.Trimesh":
 
 
 def _load_via_cad(path: Path, fmt: str) -> trimesh.Trimesh:
-    """CAD B-Rep 파일을 cadquery로 로딩 후 trimesh로 테셀레이션.
+    """CAD B-Rep 파일 로딩 + 테셀레이션.
 
-    cadquery 실패 시 gmsh로 폴백한다.
+    v0.4.0-beta53 경로 순서:
+        1. OCP 직접 호출 (cadquery wrapper 우회, 최소 의존) — `_load_via_ocp_native`.
+        2. cadquery fallback.
+        3. gmsh fallback.
     """
-    # --- cadquery 시도 ---
+    # --- (1) OCP native 시도 (beta53+) ---
+    ocp_error: str = ""
+    try:
+        return _load_via_ocp_native(path, fmt)
+    except ImportError as exc:
+        ocp_error = f"OCP unavailable: {exc}"
+        log.debug("ocp_native_unavailable", path=str(path), error=str(exc))
+    except Exception as exc:
+        ocp_error = str(exc)
+        log.warning("ocp_native_load_failed", path=str(path), fmt=fmt, error=ocp_error)
+
+    # --- (2) cadquery 시도 ---
     cq_error: str = ""
     try:
         return _load_via_cadquery(path, fmt)
@@ -140,15 +154,37 @@ def _load_via_cad(path: Path, fmt: str) -> trimesh.Trimesh:
         cq_error = str(cq_exc)
         log.warning("cadquery_load_failed", path=str(path), fmt=fmt, error=cq_error)
 
-    # --- gmsh 폴백 ---
+    # --- (3) gmsh 폴백 ---
     try:
         return _load_via_gmsh(path, fmt)
     except Exception as gmsh_exc:
         raise ValueError(
             f"CAD 파일 로딩 실패 [{fmt}]: {path}\n"
+            f"OCP 오류: {ocp_error}\n"
             f"cadquery 오류: {cq_error}\n"
             f"gmsh 오류: {gmsh_exc}"
         ) from gmsh_exc
+
+
+def _load_via_ocp_native(path: Path, fmt: str) -> trimesh.Trimesh:
+    """OCP 직접 호출로 CAD 파일을 native 로 tessellate (beta53).
+
+    cadquery wrapper 를 건너뛰어 python 의존을 축소. trimesh.Trimesh 로 래핑해
+    기존 pipeline 과 호환 유지.
+    """
+    from core.analyzer.readers.step import load_cad_native  # noqa: PLC0415
+
+    V, F = load_cad_native(path, fmt)
+    mesh = trimesh.Trimesh(vertices=V, faces=F, process=True)
+    if len(mesh.faces) == 0:
+        raise ValueError(f"OCP native 테셀레이션 후 유효한 면이 없음: {path}")
+    log.info(
+        "mesh_loaded_via_ocp_native",
+        path=str(path),
+        num_vertices=len(mesh.vertices),
+        num_faces=len(mesh.faces),
+    )
+    return mesh
 
 
 def _load_via_cadquery(path: Path, fmt: str) -> trimesh.Trimesh:
