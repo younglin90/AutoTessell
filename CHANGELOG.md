@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.4.0-beta36] - 2026-04-23 — "fidelity native helpers 단위 회귀"
+
+### Added
+
+- `tests/test_fidelity_native_helpers.py` (13 tests): beta11 의
+  `_native_sample_surface` / `_native_kdist_chunked` dedicated 회귀. 면적 가중
+  분포 / 결정성 / pair_limit 불변 / known offset 거리 검증.
+
+---
+
+## [0.4.0-beta35] - 2026-04-23 — "geometry.inside_winding_number 단위 회귀"
+
+### Added
+
+- `tests/test_geometry_inside.py` (12 tests): beta9 공용 유틸 dedicated 회귀.
+  cube/sphere inside-outside, 빈 query/mesh, translation/scale 불변.
+
+---
+
+## [0.4.0-beta34] - 2026-04-23 — "LayersPostGenerator auto-engine 라우팅 회귀"
+
+### Added
+
+- `tests/test_tier_layers_post_routing.py` (5 tests): engine="auto" + mesh_type
+  → BL 엔진 매핑 (tet→tet_bl_subdivide, hex→native_bl, poly→poly_bl_transition).
+
+---
+
+## [0.4.0-beta33] - 2026-04-23 — "Preprocessor L2 native 기본화"
+
+### Changed
+
+- `core/preprocessor/pipeline.py::_l2_remesh` docstring 업데이트. CLI
+  `--prefer-native` default=True (@beta26) 가 L1 뿐 아니라 L2 경로에도 자동
+  적용되고 있음을 명문화. 3 dedicated tests.
+
+---
+
 ## [0.4.0-beta32] - 2026-04-23 — "bench snapshot + drift archival"
 
 ### Added
