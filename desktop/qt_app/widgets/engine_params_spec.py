@@ -631,6 +631,33 @@ ENGINE_PARAM_REGISTRY: dict[str, list[EngineParamSpec]] = {
             min_val=15.0, max_val=90.0, step=5.0,
             doc="인접 triangle dihedral > 이 각도면 feature edge 로 간주.",
         ),
+        # beta92: N-level octree adaptive refinement
+        EngineParamSpec(
+            "adaptive", "adaptive (octree)", "bool", False,
+            doc="True: N-level octree adaptive refinement 사용 (표면 근방 세밀).",
+        ),
+        EngineParamSpec(
+            "n_levels", "n_levels (octree)", "int", 2,
+            min_val=1, max_val=4,
+            doc=(
+                "octree 최대 레벨 수 (1=coarse only, 2=2배, 3=4배 해상도).\n"
+                "fine quality 기본 3. 메모리: 2^n_levels 배 fine grid."
+            ),
+        ),
+        EngineParamSpec(
+            "refinement_distance_factor", "refine_dist_factor", "float", 2.0,
+            min_val=0.5, max_val=10.0, step=0.5,
+            doc="표면까지 거리 < factor×h 인 cell 을 세분화. 작을수록 표면 근방만 세밀.",
+        ),
+        # beta94: iterative snap
+        EngineParamSpec(
+            "snap_iterations", "snap_iterations", "int", 0,
+            min_val=0, max_val=20,
+            doc=(
+                "snappyHexMesh snap step 근사 반복 횟수.\n"
+                "0=비활성, fine quality 기본 3."
+            ),
+        ),
     ],
     "native_poly": [
         EngineParamSpec(
@@ -647,6 +674,20 @@ ENGINE_PARAM_REGISTRY: dict[str, list[EngineParamSpec]] = {
             "max_tet_cells", "max_tet_cells", "int", 30000,
             min_val=1000, max_val=200000,
             doc="tet base 의 cell 수 상한 (dual 변환 비용 방지).",
+        ),
+        # beta97: Laplacian smoothing
+        EngineParamSpec(
+            "smooth_iters", "smooth_iters", "int", 0,
+            min_val=0, max_val=20,
+            doc=(
+                "dual 변환 후 Laplacian smoothing 횟수.\n"
+                "경계 근방 stretched cell 개선. standard=3, fine=5."
+            ),
+        ),
+        EngineParamSpec(
+            "smooth_relax", "smooth_relax", "float", 0.3,
+            min_val=0.05, max_val=0.8, step=0.05,
+            doc="smoothing 이동 강도 (0=움직임 없음, 1=완전 centroid 이동).",
         ),
     ],
 }

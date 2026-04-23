@@ -303,9 +303,16 @@ class AutoTessellWindow:  # type: ignore[misc]
         ("bl_feature_reduction_ratio", "BL Feature Reduction Ratio", "float", "0.5"),
         ("bl_quality_check_enabled", "BL Quality Check (native)", "bool", "true"),
         ("bl_aspect_ratio_threshold", "BL Aspect Ratio Threshold", "float", "50.0"),
+        # beta93 — BL shrinkage iteration
+        ("bl_shrink_iterations", "BL Shrink Iterations", "int", "1"),
+        ("bl_shrink_factor", "BL Shrink Factor", "float", "0.7"),
+        ("bl_shrink_aspect_threshold", "BL Shrink Aspect Threshold", "float", "30.0"),
         # beta83 — CFD 시뮬레이션 파라미터 (beta78 CLI 와 동기화)
         ("flow_velocity", "Flow Velocity (m/s)", "float", "1.0"),
         ("turbulence_model", "Turbulence Model", "str", "kEpsilon"),
+        # beta96 — y⁺ 자동 BL 두께
+        ("target_yplus", "Target y⁺", "float", "1.0"),
+        ("fluid", "Fluid", "str", "air"),
         ("domain_min_x", "Domain Min X", "float", "-1.0"),
         ("domain_min_y", "Domain Min Y", "float", "-1.0"),
         ("domain_min_z", "Domain Min Z", "float", "-1.0"),
