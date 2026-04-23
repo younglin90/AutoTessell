@@ -56,7 +56,8 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
         # beta66: fine quality 는 preserve_features=True 로 sharp corner snap 개선.
         "draft":    {"seed_density": 12, "snap_boundary": False},
         "standard": {"seed_density": 16, "snap_boundary": False},
-        "fine":     {"seed_density": 24, "snap_boundary": True, "preserve_features": True},
+        "fine":     {"seed_density": 24, "snap_boundary": True, "preserve_features": True,
+                     "adaptive": True},
     },
     "tier_native_poly": {
         "draft":    {"seed_density": 8,  "max_iter": 2},
@@ -184,6 +185,7 @@ def run_native_tier(
         "sliver_quality_threshold",  # beta62: native_tet sliver filter
         "preserve_features",   # beta66: native_hex feature-aware snap
         "feature_angle_deg",   # beta66
+        "adaptive",            # beta91: native_hex octree adaptive refinement
         "max_input_vertices",  # beta77: native_tet large input guardrail
     }
     tsp = getattr(strategy, "tier_specific_params", None) or {}

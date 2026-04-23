@@ -80,6 +80,7 @@ def generate_native_hex(
     max_cells_per_axis: int = 50,
     preserve_features: bool = False,
     feature_angle_deg: float = 45.0,
+    adaptive: bool = False,
 ) -> NativeHexResult:
     """uniform hex grid 생성 + inside filter.
 
@@ -104,6 +105,52 @@ def generate_native_hex(
     F = np.asarray(faces, dtype=np.int64)
     if V.size == 0 or F.size == 0:
         return NativeHexResult(False, 0.0, message="빈 입력 mesh")
+
+    bmin_pre = V.min(axis=0); bmax_pre = V.max(axis=0)
+    diag_pre = float(np.linalg.norm(bmax_pre - bmin_pre))
+    h_pre = float(target_edge_length) if (
+        target_edge_length is not None and target_edge_length > 0
+    ) else diag_pre / max(1, int(seed_density))
+
+    # beta91: adaptive octree refinement (2-level, surface near → fine, interior → coarse)
+    if adaptive:
+        try:
+            from core.generator.native_hex.octree import build_octree_hex_cells  # noqa: PLC0415
+            oct_pts, oct_cells, oct_stats = build_octree_hex_cells(
+                V, F, bmin_pre, bmax_pre, h_pre, max_cells_per_axis=max_cells_per_axis,
+            )
+            if oct_cells:
+                from core.generator.polymesh_writer import write_generic_polymesh  # noqa: PLC0415
+                from core.generator.tier_layers_post import (  # noqa: PLC0415
+                    _ensure_minimal_controldict, _write_minimal_fv_dicts,
+                )
+                _ensure_minimal_controldict(case_dir)
+                _write_minimal_fv_dicts(case_dir)
+                stats = write_generic_polymesh(oct_pts, oct_cells, case_dir)
+                n_t = int(stats["num_cells"])
+                fill = n_t / max(1, oct_stats["n_coarse"] + oct_stats["n_fine"] +
+                                 (oct_stats["fine_grid"][0] * oct_stats["fine_grid"][1] *
+                                  oct_stats["fine_grid"][2] - oct_stats["n_fine"]))
+                return NativeHexResult(
+                    success=True,
+                    elapsed=time.perf_counter() - t0,
+                    n_cells=n_t,
+                    n_points=int(stats["num_points"]),
+                    n_faces=int(stats["num_faces"]),
+                    fill_ratio=float(oct_stats["n_total"]) / max(
+                        1, oct_stats["fine_grid"][0] *
+                        oct_stats["fine_grid"][1] * oct_stats["fine_grid"][2],
+                    ),
+                    grid_shape=tuple(oct_stats["grid_shape"]),
+                    n_grid_total=oct_stats["n_coarse"] + oct_stats["n_fine"],
+                    message=(
+                        f"native_hex octree OK — cells={n_t} "
+                        f"(coarse={oct_stats['n_coarse']}, fine={oct_stats['n_fine']})"
+                    ),
+                )
+            log.warning("native_hex_octree_empty_fallback", msg="no cells produced, falling back")
+        except Exception as exc:
+            log.warning("native_hex_octree_failed", error=str(exc), fallback="uniform grid")
 
     bmin = V.min(axis=0); bmax = V.max(axis=0)
     diag = float(np.linalg.norm(bmax - bmin))

@@ -659,12 +659,39 @@ def generate_native_bl(
             message="wall patch 없음 (boundary 파일 확인)",
         )
 
-    # Wall face 가 모두 triangle 인지 체크 (MVP 제약)
+    # beta89: Poly 전용 prism BL — polygon wall face 를 fan-triangulation 으로 분해.
+    # 이전: non-tri wall face 는 skip (MVP 제약).
+    # 이후: polygon face 를 합성 tri 로 분해 → poly mesh 에도 BL 생성 가능.
     non_tri = [fi for fi in wall_face_indices if len(faces[fi]) != 3]
     if non_tri:
-        log.warning("native_bl_non_triangle_wall", component="native_bl", count=len(non_tri))
-        # triangle 만 처리, non-tri 는 skip
-        wall_face_indices = [fi for fi in wall_face_indices if len(faces[fi]) == 3]
+        log.info(
+            "native_bl_polygon_wall_fan_triangulate", component="native_bl",
+            n_polygon=len(non_tri), phase="beta89",
+        )
+        # 합성 tri face 를 faces 리스트 끝에 추가 (원본 faces 는 보존)
+        synth_start = len(faces)
+        for fi in non_tri:
+            f = faces[fi]
+            patch_info = face_to_patch.get(fi)
+            own = int(owner[fi])
+            # fan triangulation from vertex 0
+            for k in range(1, len(f) - 1):
+                tri = [int(f[0]), int(f[k]), int(f[k + 1])]
+                new_fi = len(faces)
+                faces.append(tri)
+                # owner 배열 확장 (numpy → list 로 처리)
+                owner = np.concatenate([owner, [own]])
+                if patch_info is not None:
+                    face_to_patch[new_fi] = patch_info
+                wall_face_indices.append(new_fi)
+        # 원래 polygon face 들은 wall 처리에서 제외 (tri 로 대체됨)
+        wall_face_indices = [
+            fi for fi in wall_face_indices
+            if fi >= synth_start or len(faces[fi]) == 3
+        ]
+    else:
+        # 이미 전부 triangle — no-op (기존 경로)
+        pass
 
     # 3) Cell centres + vertex normals
     cell_centres = _cell_centres_from_faces(
@@ -733,22 +760,23 @@ def generate_native_bl(
                 angle_deg=cfg.feature_angle_deg,
                 reduction=cfg.feature_reduction_ratio,
             )
-    # per-vertex thickness scale (feature vertex 만 < 1.0)
-    vertex_scale: dict[int, float] = {}
-    for v in wall_vert_indices:
-        vertex_scale[v] = (
-            float(cfg.feature_reduction_ratio) if v in feature_verts else 1.0
-        )
+    # beta90: 완전 비균일 prism BL — collision distance 기반 per-vertex scale.
+    # 기존 vertex_scale 는 feature vertex 에만 0.5×. 이제 collision distance 기반으로
+    # 각 vertex 의 허용 최대 두께를 계산해 개별 scale 적용.
+    # vertex_scale_extra: collision_dist[v] × safety / total
+    # 1.0 초과 시 클램프 (기존 total 이상 늘릴 수 없음).
 
-    # 4c) beta63 collision detection — inward ray 가 반대편 wall triangle 과
-    #     만나는 거리. 최소값에 collision_safety_factor 를 곱해 전역 thickness cap.
+    # 4c) beta63 collision detection — per-vertex 비균일 thickness (beta90 확장).
+    collision_dist: dict[int, float] = {}
     if cfg.collision_safety:
         collision_dist = _compute_collision_distance(
             points, faces, wall_face_indices, wall_vert_indices, vnorm,
         )
         if collision_dist:
-            min_collision = float(min(collision_dist.values()))
             safety = float(cfg.collision_safety_factor)
+            # beta90: 전역 cap (기존) + per-vertex cap (신규).
+            # 전역 cap: global min collision distance → global thickness 축소.
+            min_collision = float(min(collision_dist.values()))
             collision_cap = max(min_collision * safety, cfg.first_thickness)
             if total > collision_cap:
                 scale = collision_cap / total
@@ -760,6 +788,27 @@ def generate_native_bl(
                     safety=safety, new_total=total,
                 )
                 cum = np.concatenate(([0.0], np.cumsum(thicknesses)))
+
+    # per-vertex thickness scale: feature lock (beta64) + collision per-vertex (beta90).
+    # vertex_scale[v] ∈ (0.0, 1.0]: 1.0 = global total, <1.0 = 해당 vertex 는 더 얇게.
+    vertex_scale: dict[int, float] = {}
+    for v in wall_vert_indices:
+        # Feature lock 기반 scale (beta64)
+        s = float(cfg.feature_reduction_ratio) if v in feature_verts else 1.0
+        # Collision 기반 per-vertex cap (beta90)
+        if collision_dist and v in collision_dist and total > 1e-30:
+            v_cap = collision_dist[v] * float(cfg.collision_safety_factor)
+            v_cap = max(v_cap, cfg.first_thickness)
+            v_scale_coll = min(v_cap / total, 1.0)
+            s = min(s, v_scale_coll)  # 두 제약 중 더 엄격한 쪽
+        vertex_scale[v] = s
+    if any(s < 1.0 for s in vertex_scale.values()):
+        n_limited = sum(1 for s in vertex_scale.values() if s < 1.0)
+        log.info(
+            "native_bl_per_vertex_scale", component="native_bl", phase="beta90",
+            n_limited_verts=n_limited,
+            min_scale=float(min(vertex_scale.values())),
+        )
 
     # 5) 새 point 배열 구성
     # - original points 배열에서 wall vertex 를 inward total 만큼 이동 (기존 cell 이 따라 축소)

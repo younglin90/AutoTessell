@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.4.0-beta91] - 2026-04-23 — "native_hex 2-level octree adaptive refinement"
+
+### Added
+
+- `core/generator/native_hex/octree.py` — `build_octree_hex_cells`:
+  - Fine grid (2× resolution) → inside test → 2×2×2 block 병합 판정.
+  - 블록 내 8개 sub-cell 모두 inside → single coarse hex.
+  - 경계 블록 → 8개 fine hex (표면 근방 정밀).
+  - Coarse↔Fine 전환 면: `_coarse_face_sub_quads` 로 4개 sub-quad 분할 → conformal (hanging node 없음).
+- `generate_native_hex(adaptive=True)` kwarg 추가 → octree 경로 사용.
+- `HARNESS_PARAMS["tier_native_hex"]["fine"]` 에 `adaptive=True` 자동.
+- `tests/test_native_hex_octree.py` 6 tests.
+
+### Result
+
+- icosphere seed_density=10: uniform 136 cells → octree 352 cells (coarse=80, fine=272).
+- 표면 근방은 h/2 해상도, 내부는 h 해상도. 균일 grid 대비 surface coverage 개선.
+
+---
+
+## [0.4.0-beta90] - 2026-04-23 — "완전 비균일 prism BL (per-vertex collision cap)"
+
+### Added
+
+- `generate_native_bl` 의 `vertex_scale` 계산 로직 확장 (beta90):
+  - Feature lock scale (beta64) + **collision per-vertex cap** 동시 적용.
+  - `collision_dist[v] × safety / total` 로 각 vertex 의 허용 두께 상한 계산.
+  - 두 제약 중 더 엄격한 값 선택 → U자 형상에서 vertex마다 최적 두께.
+- `native_bl_per_vertex_scale` info 로그 (제약 vertex 수 / min_scale).
+
+### Impact
+
+- 기존: global min collision distance → 전체 두께 축소 (얇은 부분 과도 영향).
+- 이제: 각 vertex 개별 cap → narrow throat 에서 더 두꺼운 BL 허용, 가까운 wall 에서만 얇게.
+
+---
+
+## [0.4.0-beta89] - 2026-04-23 — "Poly 전용 prism BL (polygon wall face 지원)"
+
+### Added
+
+- `generate_native_bl` 에서 비삼각형 wall face 처리 변경 (beta89):
+  - 기존: skip → skip + warning
+  - 이제: **fan-triangulation** → 합성 tri face 생성 → 기존 BL 파이프라인 활용.
+- 합성 face 는 원래 polygon 의 patch/owner 정보 그대로 상속.
+- `native_bl_polygon_wall_fan_triangulate` info 로그.
+
+### Impact
+
+- poly mesh type 의 native_bl 경로에서 polyhedral bulk → non-tri wall face → BL 생성 가능.
+- `poly_bl_transition` 의 hybrid (prism+poly dual) 품질 개선.
+
+---
+
 ## [0.4.0-beta88] - 2026-04-23 — "native_hex fill ratio + isotropic remesh docstring"
 
 ### Added
