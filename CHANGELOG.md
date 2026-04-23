@@ -1,5 +1,56 @@
 # Changelog
 
+## [0.4.0-beta32] - 2026-04-23 — "bench snapshot + drift archival"
+
+### Added
+
+- `tests/stl/bench_v04_<stamp>.json` snapshot 아카이빙 (30/30 matrix, 28 PASS).
+- `docs/bench_v04_beta27_drift.md`: beta23~31 구조 변경의 bench 영향 요약.
+  구조 변경이 matrix 성공률에 부정적 영향 없음을 기록.
+
+---
+
+## [0.4.0-beta31] - 2026-04-23 — "E2E mesh_type × quality × BL matrix (slow)"
+
+### Added
+
+- `tests/test_e2e_native_pipeline.py` (9 tests, slow marker): in-process
+  PipelineOrchestrator.run() 으로 3 mesh_type × 3 quality 전체 조합 run.
+  prefer_native_tier=True 고정. 현재 결과: 3 passed, 6 xfailed (hard fail 0).
+
+---
+
+## [0.4.0-beta30] - 2026-04-23 — "README beta29 동기화"
+
+### Changed
+
+- README "자체 코드화 진행" 표 beta12 → beta29 기준 갱신. L1 native default /
+  hybrid dual / --prefer-native-tier / fine BL 자동 / NumpyKDTree 행 추가.
+- 신규 "mesh_type × BL 파이프라인" 표 + "scipy 잔존" 섹션.
+
+---
+
+## [0.4.0-beta29] - 2026-04-23 — "Qt GUI native-first UX"
+
+### Added
+
+- `_prefer_native_tier_check` QCheckBox (main_window).
+- `PipelineWorker.prefer_native_tier` kwarg (orchestrator.run 경유).
+- `_prefer_native_check` 기본값 True (beta26 철학 반영).
+
+---
+
+## [0.4.0-beta28] - 2026-04-23 — "NumpyKDTree (scipy.cKDTree 대체)"
+
+### Added
+
+- `core/utils/kdtree.py::NumpyKDTree` — scipy.spatial.cKDTree API subset 호환.
+  소형 brute-force + 대형 3D grid bucket. scipy parity 검증 테스트.
+- 3 파일의 cKDTree → NumpyKDTree 교체 (native_hex/snap, native_poly/voronoi,
+  native_remesh/cvt). fidelity.py 의 cKDTree 는 fallback 전용 interop 유지.
+
+---
+
 ## [0.4.0-beta27] - 2026-04-23 — "BL 수치 품질 회귀"
 
 ### Added
