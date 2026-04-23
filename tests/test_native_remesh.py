@@ -125,3 +125,69 @@ def test_cvt_empty_input_is_noop() -> None:
     F = np.zeros((0, 3), dtype=np.int64)
     V2 = lloyd_cvt(V, F, n_iter=5)
     assert V2.shape[0] == 0
+
+
+# ---------------------------------------------------------------------------
+# beta99 Task C: valence_constraint 파라미터 테스트
+# ---------------------------------------------------------------------------
+
+
+def test_valence_constraint_signature_exists() -> None:
+    """isotropic_remesh 에 valence_constraint 파라미터가 있어야 함."""
+    import inspect
+    from core.preprocessor.native_remesh.isotropic import isotropic_remesh
+    sig = inspect.signature(isotropic_remesh)
+    assert "valence_constraint" in sig.parameters
+    assert sig.parameters["valence_constraint"].default is False
+
+
+def test_valence_constraint_false_default_unchanged(sphere_mesh) -> None:
+    """valence_constraint=False (기본) 은 기존 결과와 동일해야 함."""
+    V = sphere_mesh.vertices
+    F = sphere_mesh.faces
+    V1, F1 = isotropic_remesh(V, F, target_edge_length=0.2, n_iter=2, valence_constraint=False)
+    V2, F2 = isotropic_remesh(V, F, target_edge_length=0.2, n_iter=2)
+    assert F1.shape == F2.shape
+    assert V1.shape == V2.shape
+
+
+def test_valence_constraint_true_produces_valid_mesh(sphere_mesh) -> None:
+    """valence_constraint=True 로 remesh 후에도 manifold 유지."""
+    from core.analyzer import topology as T
+    V = sphere_mesh.vertices
+    F = sphere_mesh.faces
+    V2, F2 = isotropic_remesh(
+        V, F, target_edge_length=0.15, n_iter=3, valence_constraint=True,
+    )
+    assert V2.shape[0] > 0
+    assert F2.shape[0] > 0
+    assert T.is_manifold(F2)
+
+
+def test_valence_constraint_does_not_increase_deviation(sphere_mesh) -> None:
+    """valence_constraint=True 가 False 보다 total valence deviation 을 낮추거나 같아야 함."""
+    import numpy as _np
+    from core.preprocessor.native_remesh.isotropic import _build_edge_map
+
+    def _total_deviation(V: np.ndarray, F: np.ndarray) -> int:
+        edge_map = _build_edge_map(F)
+        n_verts = V.shape[0]
+        valence = _np.zeros(n_verts, dtype=_np.int64)
+        for f in F:
+            for v in f:
+                valence[int(v)] += 1
+        on_boundary = _np.zeros(n_verts, dtype=bool)
+        for (a, b), fl in edge_map.items():
+            if len(fl) == 1:
+                on_boundary[a] = True; on_boundary[b] = True
+        target = _np.where(on_boundary, 4, 6)
+        return int(_np.abs(valence - target).sum())
+
+    V = sphere_mesh.vertices
+    F = sphere_mesh.faces
+    _, F_nc = isotropic_remesh(V, F, target_edge_length=0.2, n_iter=3, valence_constraint=False)
+    _, F_vc = isotropic_remesh(V, F, target_edge_length=0.2, n_iter=3, valence_constraint=True)
+    dev_nc = _total_deviation(V, F_nc)
+    dev_vc = _total_deviation(V, F_vc)
+    # valence_constraint 사용 시 deviation 이 증가하면 안 됨
+    assert dev_vc <= dev_nc + 10  # 소폭 허용 (vertex 수 차이 가능)

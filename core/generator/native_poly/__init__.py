@@ -10,7 +10,7 @@ MVP 전략 (두 경로):
     2) :func:`generate_native_poly_voronoi`: bbox 내부 균일 seed point 로
        scipy.spatial.Voronoi 구동, bbox 로 clip 해 polyhedral cell 생성.
 
-본 MVP 는 (2) 경로만 구현한다. (1) 은 향후 확장.
+두 경로 모두 구현됨.
 """
 from __future__ import annotations
 

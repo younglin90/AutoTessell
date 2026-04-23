@@ -22,7 +22,7 @@ Phase 2 (beta63-65 완성):
   - beta64 feature edge locking: dihedral > threshold vertex 는 per-vertex scale 축소.
   - beta65 degenerate prism quality check: aspect ratio > threshold 카운트 + log.
 
-Phase 3 예정 (v0.5+): shrinkage iteration (반복 수렴), 완전 비균일 prism.
+Phase 3 (beta93 완성): shrinkage iteration + per-vertex scale (beta95). 반복 수렴으로 aspect ratio 개선.
 
 라이선스: 모든 알고리즘 clean-room 구현 (numpy + 공개 문서 기반).
 """

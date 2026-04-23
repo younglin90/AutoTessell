@@ -75,6 +75,64 @@ def _ccw_sort_face_vertices(
     return [int(verts_idx[k]) for k in order]
 
 
+def _lloyd_3d_iteration(
+    seeds: np.ndarray,
+    V: np.ndarray,
+    F: np.ndarray,
+    n_lloyd: int,
+) -> np.ndarray:
+    """3D Lloyd CVT 반복 — Voronoi region centroid 를 새 seed 로 갱신.
+
+    각 반복에서 scipy.spatial.Voronoi 를 재구성하고 각 seed 의 region
+    centroid 를 계산한다. open region (infinite cell, -1 포함) 은 원본
+    seed 를 유지한다. 반복 후 inside 재필터링해 표면 밖 seed 제거.
+
+    Args:
+        seeds: (N, 3) 초기 seed 점 (surface inside).
+        V: 표면 vertex.
+        F: 표면 face.
+        n_lloyd: Lloyd 반복 횟수. 0 이면 즉시 반환.
+
+    Returns:
+        정제된 seed 배열 (M, 3), M <= N.
+    """
+    if n_lloyd <= 0 or seeds.shape[0] < 5:
+        return seeds
+    try:
+        from scipy.spatial import Voronoi  # noqa: PLC0415
+    except Exception:
+        return seeds
+
+    seeds_inside = seeds.copy()
+    for _ in range(n_lloyd):
+        if seeds_inside.shape[0] < 5:
+            break
+        try:
+            vor = Voronoi(seeds_inside)
+        except Exception:
+            break
+        new_seeds: list[np.ndarray] = []
+        for si, region_idx in enumerate(vor.point_region):
+            if region_idx < 0 or region_idx >= len(vor.regions):
+                new_seeds.append(seeds_inside[si])
+                continue
+            region = vor.regions[region_idx]
+            if -1 in region or len(region) == 0:
+                # open cell → 원본 유지
+                new_seeds.append(seeds_inside[si])
+            else:
+                centroid = vor.vertices[region].mean(axis=0)
+                new_seeds.append(centroid)
+        seeds_inside = np.array(new_seeds, dtype=np.float64)
+        # inside 재필터
+        inside_mask = _inside_ray_cast(seeds_inside, V, F)
+        seeds_inside = seeds_inside[inside_mask]
+        if seeds_inside.shape[0] < 5:
+            # 너무 많이 잘려나가면 직전 seeds 반환
+            break
+    return seeds_inside
+
+
 def generate_native_poly_voronoi(
     vertices: np.ndarray,
     faces: np.ndarray,
@@ -82,8 +140,13 @@ def generate_native_poly_voronoi(
     *,
     target_edge_length: float | None = None,
     seed_density: int = 8,
+    n_lloyd: int = 2,
 ) -> NativePolyResult:
-    """bbox 내부 균일 seed + scipy Voronoi → polyhedral cell."""
+    """bbox 내부 균일 seed + 3D Lloyd CVT 정제 + scipy Voronoi → polyhedral cell.
+
+    Args:
+        n_lloyd: Lloyd CVT 반복 횟수 (기본 2). 0 이면 기존 균일 grid 동작과 동일.
+    """
     t0 = time.perf_counter()
     try:
         from scipy.spatial import Voronoi
@@ -120,6 +183,18 @@ def generate_native_poly_voronoi(
             False, time.perf_counter() - t0,
             message=f"inside seed 부족 ({seeds.shape[0]})",
         )
+
+    # 3D Lloyd CVT 정제: seed 분포 균일화
+    if n_lloyd > 0:
+        seeds_refined = _lloyd_3d_iteration(seeds, V, F, n_lloyd)
+        if seeds_refined.shape[0] >= 5:
+            seeds = seeds_refined
+            log.info(
+                "native_poly_lloyd_done",
+                n_lloyd=n_lloyd,
+                n_seeds_before=int(inside.sum()),
+                n_seeds_after=seeds.shape[0],
+            )
 
     # boundary padding: 입력 표면 vertex 를 outer seed 로 사용하면 Voronoi 가
     # 내부 seed region 을 surface 근처에서 절단한다. → inside region 유지율 ↑.

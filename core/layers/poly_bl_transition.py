@@ -66,7 +66,12 @@ def _classify_cells_by_vertex_count(
     return n_cells, cell_verts, tet_ids, non_tet_ids
 
 
-def _try_native_poly_dual(case_dir: Path) -> tuple[bool, str]:
+def _try_native_poly_dual(
+    case_dir: Path,
+    *,
+    interface_smoothing: bool = True,
+    interface_smooth_iters: int = 2,
+) -> tuple[bool, str]:
     """v0.4 native: polyMesh 에서 tet array 를 복원해 tet_to_poly_dual 로 변환.
 
     OpenFOAM polyDualMesh 호출 없이 순수 Python.
@@ -121,6 +126,8 @@ def _try_native_poly_dual(case_dir: Path) -> tuple[bool, str]:
         ok, msg = _try_hybrid_dual(
             pts, faces, owner, neighbour, cell_verts, tet_ids, non_tet_ids,
             case_dir,
+            interface_smoothing=interface_smoothing,
+            interface_smooth_iters=interface_smooth_iters,
         )
         if ok:
             return True, msg
@@ -146,9 +153,78 @@ def _try_native_poly_dual(case_dir: Path) -> tuple[bool, str]:
     return True, f"native tet→poly dual OK ({res.message})"
 
 
+def _smooth_interface_vertices(
+    pts,
+    faces,
+    owner,
+    neighbour,
+    prism_cell_ids: set[int],
+    tet_cell_ids: list[int],
+    n_iter: int = 2,
+    relax: float = 0.2,
+):
+    """prism-tet interface 근방 tet vertex 를 prism face centroid 방향으로 이동.
+
+    전략:
+        1. prism cell 의 모든 face 에서 prism 과 tet 양쪽이 owner/neighbour 인
+           "interface face" 를 찾는다.
+        2. interface face 에 속하는 tet vertex 들을 식별한다.
+        3. 각 해당 vertex 를 인접 interface face centroid 방향으로 살짝 이동.
+        4. n_iter 번 반복.
+
+    Args:
+        pts: (N, 3) float64 vertex 좌표.
+        faces: list of face vertex index lists.
+        owner: (F,) int64 owner cell.
+        neighbour: (F,) int64 neighbour cell (-1 이면 boundary).
+        prism_cell_ids: prism/non-tet cell 인덱스 집합.
+        tet_cell_ids: tet cell 인덱스 목록.
+        n_iter: smoothing 반복 횟수.
+        relax: 이동 비율 (0=고정, 1=centroid 로 완전 이동).
+
+    Returns:
+        새로운 pts array (원본 pts 는 수정하지 않음).
+    """
+    import numpy as np  # noqa: PLC0415
+
+    new_pts = pts.copy()
+    tet_set = set(tet_cell_ids)
+    n_nbr = len(neighbour)
+
+    for _ in range(n_iter):
+        # interface face: prism 과 tet 가 공유하는 face
+        # owner=prism, neighbour=tet  or  owner=tet, neighbour=prism
+        vert_centroids: dict[int, list] = {}  # vertex idx → list of centroid positions
+
+        for fi, fv in enumerate(faces):
+            o = int(owner[fi])
+            n = int(neighbour[fi]) if fi < n_nbr else -1
+            is_interface = (
+                (o in prism_cell_ids and n in tet_set) or
+                (o in tet_set and n in prism_cell_ids)
+            )
+            if not is_interface:
+                continue
+            centroid = new_pts[list(fv)].mean(axis=0)
+            # tet 쪽 vertex 만 이동 대상
+            for v in fv:
+                vert_centroids.setdefault(int(v), []).append(centroid)
+
+        # tet vertex 만 이동
+        for vi, centroids in vert_centroids.items():
+            avg_c = np.mean(centroids, axis=0)
+            new_pts[vi] = new_pts[vi] + relax * (avg_c - new_pts[vi])
+
+    return new_pts
+
+
 def _try_hybrid_dual(
     pts, faces, owner, neighbour, cell_verts, tet_ids, non_tet_ids,
     case_dir: Path,
+    *,
+    interface_smoothing: bool = True,
+    interface_smooth_iters: int = 2,
+    interface_smooth_relax: float = 0.2,
 ) -> tuple[bool, str]:
     """v0.4.0-beta25 best-effort hybrid dual.
 
@@ -181,6 +257,24 @@ def _try_hybrid_dual(
         return False, "no_tet_cells"
 
     try:
+        # 0. interface smoothing — prism-tet 경계 vertex 를 centroid 방향으로
+        # 살짝 이동해 face topology 불일치 감소 → dual 성공률 향상.
+        working_pts = pts
+        if interface_smoothing and interface_smooth_iters > 0:
+            prism_set = set(non_tet_ids)
+            working_pts = _smooth_interface_vertices(
+                pts, faces, owner, neighbour,
+                prism_cell_ids=prism_set,
+                tet_cell_ids=tet_ids,
+                n_iter=interface_smooth_iters,
+                relax=interface_smooth_relax,
+            )
+            log.info(
+                "poly_bl_hybrid_interface_smoothed",
+                n_iter=interface_smooth_iters,
+                relax=interface_smooth_relax,
+            )
+
         # 1. tet 서브셋 — 원본 vertex indexing 그대로 유지 (boundary 정점이
         # prism 과 공유되므로 별도 remap 금지).
         tets_arr = np.array(
@@ -188,10 +282,10 @@ def _try_hybrid_dual(
             dtype=np.int64,
         )
 
-        # 2. 임시 디렉터리에서 dual 수행
+        # 2. 임시 디렉터리에서 dual 수행 (smoothed vertex 좌표 사용)
         with tempfile.TemporaryDirectory(prefix="hybrid_dual_") as tmp:
             tmp_case = Path(tmp) / "dual_case"
-            res = tet_to_poly_dual(pts, tets_arr, tmp_case)
+            res = tet_to_poly_dual(working_pts, tets_arr, tmp_case)
             if not res.success:
                 return False, f"tet_to_poly_dual_failed: {res.message}"
 
@@ -239,11 +333,11 @@ def _try_hybrid_dual(
                         list(reversed(fv)),
                     )
 
-        # 6. 두 point 집합 합치기 (원본 pts 는 dual 의 boundary 정점과 교집합).
+        # 6. 두 point 집합 합치기 (working_pts 는 dual 의 boundary 정점과 교집합).
         # dual_pts 에 이미 원본 boundary 정점이 포함되어 있을 수 있으므로 좌표
-        # 기반 dedup (scale quantization) 사용.
+        # 기반 dedup (scale quantization) 사용. smoothing 적용 후 좌표 사용.
         combined_V, vertex_remap_orig, vertex_remap_dual = _merge_vertices(
-            pts, dual_pts,
+            working_pts, dual_pts,
         )
 
         # 7. cell_faces 재인덱싱
@@ -324,6 +418,7 @@ def run_poly_bl_transition(
     max_total_ratio: float = 0.3,
     apply_bulk_dual: bool = True,
     dual_feature_angle: float = 30.0,
+    interface_smooth_iters: int = 2,
 ) -> PolyBLResult:
     """poly 메쉬용 BL 삽입 + (옵션) bulk dual 변환.
 
@@ -358,7 +453,11 @@ def run_poly_bl_transition(
     if apply_bulk_dual:
         # v0.4: OpenFOAM polyDualMesh 대신 자체 구현 tet→poly dual 사용.
         # dual_feature_angle 은 현재 native 경로에서 사용 안 함 (호환용으로 유지).
-        ok, dual_msg = _try_native_poly_dual(case_dir)
+        ok, dual_msg = _try_native_poly_dual(
+            case_dir,
+            interface_smoothing=True,
+            interface_smooth_iters=interface_smooth_iters,
+        )
         bulk_dual_applied = ok
         if not ok:
             log.info("poly_bl_bulk_dual_skipped", reason=dual_msg)

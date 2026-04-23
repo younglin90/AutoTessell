@@ -14,9 +14,10 @@ Phase 2 (beta87 완성):
     - surface projection (원본 KDTree nearest-point 사영, Hausdorff drift 방지)
     - feature edge locking (dihedral > angle_thresh 의 vertex 는 smoothing 제외)
 
-Phase 3 예정 (v0.5+):
-    - valence constraint (boundary vertex valence 4, interior 6 목표)
-    - vertex snapping to surface triangles (not just nearest vertex)
+Phase 3 (beta99 완성):
+    - valence constraint flip: interior vertex valence 6, boundary vertex valence 4 목표.
+      ``isotropic_remesh(..., valence_constraint=True)`` 로 활성화.
+    - vertex snapping to surface triangles (not just nearest vertex, 향후 확장)
 
 제한 사항:
     - 현재 구현은 closed manifold 를 가정 (boundary edge 는 split/collapse 건너뜀)
@@ -178,64 +179,92 @@ def _collapse_edges_below(
     return V_out, F_out, int(n_collapse)
 
 
+def _is_boundary_vertex(v: int, edge_map: dict[tuple[int, int], list[int]]) -> bool:
+    """vertex v 가 boundary (manifold 아닌 edge) 에 속하면 True.
+
+    boundary edge = 오직 1개의 face 만 공유하는 edge.
+    """
+    for (a, b), fl in edge_map.items():
+        if (a == v or b == v) and len(fl) == 1:
+            return True
+    return False
+
+
 def _flip_edges_to_improve_valence(
     V: np.ndarray, F: np.ndarray,
+    valence_constraint: bool = False,
 ) -> tuple[np.ndarray, int]:
     """각 internal edge 에 대해 flip 전후 valence 편차가 줄어들면 flip.
 
     valence deviation = Σ |valence(v) − target(v)|, target = 6 (interior) or 4 (boundary).
+
+    Args:
+        valence_constraint: True (Phase 3, beta99) 면 목표 valence (interior=6,
+            boundary=4) 기준 편차가 줄어드는 edge 를 최대한 flip 하는 다중 패스
+            적용. False 면 단일 패스 (기존 동작).
     """
+    # valence_constraint=True 면 수렴할 때까지 최대 3 패스 반복
+    n_passes = 3 if valence_constraint else 1
+    total_flipped = 0
+
     F_list = [list(f) for f in F.tolist()]
     n_verts = int(V.shape[0])
-    edge_map = _build_edge_map(np.asarray(F_list, dtype=np.int64))
 
-    # valence map
-    valence = np.zeros(n_verts, dtype=np.int64)
-    for f in F_list:
-        for v in f:
-            valence[int(v)] += 1
-    # interior vs boundary — boundary 는 edge 가 1 face 만 공유
-    on_boundary = np.zeros(n_verts, dtype=bool)
-    for (a, b), fl in edge_map.items():
-        if len(fl) == 1:
-            on_boundary[a] = True; on_boundary[b] = True
-    target = np.where(on_boundary, 4, 6)
+    for _pass in range(n_passes):
+        edge_map = _build_edge_map(np.asarray(F_list, dtype=np.int64))
 
-    def _dev(v: int) -> int:
-        return int(abs(int(valence[v]) - int(target[v])))
+        # valence map
+        valence = np.zeros(n_verts, dtype=np.int64)
+        for f in F_list:
+            for v in f:
+                valence[int(v)] += 1
+        # interior vs boundary — boundary edge = 1 face 만 공유
+        on_boundary = np.zeros(n_verts, dtype=bool)
+        for (a, b), fl in edge_map.items():
+            if len(fl) == 1:
+                on_boundary[a] = True; on_boundary[b] = True
+        target = np.where(on_boundary, 4, 6)
 
-    n_flipped = 0
-    visited_edges: set[tuple[int, int]] = set()
-    for (a, b), fl in edge_map.items():
-        if len(fl) != 2 or (a, b) in visited_edges:
-            continue
-        f1_idx, f2_idx = fl[0], fl[1]
-        f1 = F_list[f1_idx]; f2 = F_list[f2_idx]
-        # opposite vertex 찾기 (삼각형의 세 vertex 중 a,b 아닌 것)
-        def _opp(tri: list[int], a: int, b: int) -> int:
-            for v in tri:
-                if v != a and v != b:
-                    return int(v)
-            return -1
-        c = _opp(f1, a, b); d = _opp(f2, a, b)
-        if c < 0 or d < 0:
-            continue
-        # 현재 deviation
-        cur_dev = _dev(a) + _dev(b) + _dev(c) + _dev(d)
-        # flip 후 valence: a, b 는 -1 / c, d 는 +1
-        valence[a] -= 1; valence[b] -= 1; valence[c] += 1; valence[d] += 1
-        new_dev = _dev(a) + _dev(b) + _dev(c) + _dev(d)
-        if new_dev >= cur_dev:
-            # rollback valence change
-            valence[a] += 1; valence[b] += 1; valence[c] -= 1; valence[d] -= 1
-            continue
-        # flip 확정 — 두 face 를 (a,c,d) (b,d,c) 로 교체
-        F_list[f1_idx] = [a, c, d]
-        F_list[f2_idx] = [b, d, c]
-        n_flipped += 1
-        visited_edges.add((a, b))
+        def _dev(v: int) -> int:
+            return int(abs(int(valence[v]) - int(target[v])))
 
-    return np.array(F_list, dtype=np.int64), int(n_flipped)
+        n_flipped_pass = 0
+        visited_edges: set[tuple[int, int]] = set()
+        for (a, b), fl in edge_map.items():
+            if len(fl) != 2 or (a, b) in visited_edges:
+                continue
+            f1_idx, f2_idx = fl[0], fl[1]
+            f1 = F_list[f1_idx]; f2 = F_list[f2_idx]
+            # opposite vertex 찾기 (삼각형의 세 vertex 중 a,b 아닌 것)
+            def _opp(tri: list[int], _a: int, _b: int) -> int:
+                for v in tri:
+                    if v != _a and v != _b:
+                        return int(v)
+                return -1
+            c = _opp(f1, a, b); d = _opp(f2, a, b)
+            if c < 0 or d < 0:
+                continue
+            # 현재 deviation
+            cur_dev = _dev(a) + _dev(b) + _dev(c) + _dev(d)
+            # flip 후 valence: a, b 는 -1 / c, d 는 +1
+            valence[a] -= 1; valence[b] -= 1; valence[c] += 1; valence[d] += 1
+            new_dev = _dev(a) + _dev(b) + _dev(c) + _dev(d)
+            if new_dev >= cur_dev:
+                # rollback valence change
+                valence[a] += 1; valence[b] += 1; valence[c] -= 1; valence[d] -= 1
+                continue
+            # flip 확정 — 두 face 를 (a,c,d) (b,d,c) 로 교체
+            F_list[f1_idx] = [a, c, d]
+            F_list[f2_idx] = [b, d, c]
+            n_flipped_pass += 1
+            visited_edges.add((a, b))
+
+        total_flipped += n_flipped_pass
+        # 더 이상 flip 없으면 조기 종료
+        if n_flipped_pass == 0:
+            break
+
+    return np.array(F_list, dtype=np.int64), int(total_flipped)
 
 
 def _tangential_relocate(
@@ -326,6 +355,7 @@ def isotropic_remesh(
     project_to_surface: bool = False,
     feature_angle_deg: float = 45.0,
     lock_features: bool = False,
+    valence_constraint: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     """isotropic remesh 알고리즘 — split / collapse / flip / relocate 반복.
 
@@ -333,8 +363,12 @@ def isotropic_remesh(
         project_to_surface: True 면 relocate 후 원본 vertex 로 nearest-point 사영.
         feature_angle_deg: feature edge 판정 dihedral 기준.
         lock_features: True 면 sharp edge vertex 를 relocate 에서 제외 (feature lock).
+        valence_constraint: True (Phase 3, beta99) 면 flip 시 interior vertex valence 6,
+            boundary vertex valence 4 목표 편차 감소를 강제 적용.
+            False (기본) = 기존 동작 (deviation 감소 시에만 flip).
 
     beta87 Phase 2: surface projection + feature locking 추가.
+    beta99 Phase 3 (valence_constraint=True): valence constraint flip 강화.
     """
     V = np.asarray(vertices, dtype=np.float64).copy()
     F = np.asarray(faces, dtype=np.int64).copy()
@@ -352,7 +386,7 @@ def isotropic_remesh(
     for _ in range(max(1, int(n_iter))):
         V, F, _ = _split_edges_above(V, F, h_hi)
         V, F, _ = _collapse_edges_below(V, F, h_lo)
-        F, _ = _flip_edges_to_improve_valence(V, F)
+        F, _ = _flip_edges_to_improve_valence(V, F, valence_constraint=valence_constraint)
         V = _tangential_relocate(
             V, F, lam=relocation_lambda,
             feature_verts=feature_verts if feature_verts else None,

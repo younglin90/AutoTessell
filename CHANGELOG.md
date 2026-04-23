@@ -1,6 +1,44 @@
 # Changelog
 
-## [0.4.0-beta97] - 2026-04-24 — "native_poly Laplacian smoothing"
+## [0.4.0-beta99] - 2026-04-24 — "항목 2,3,4,5,8 구현"
+
+### Added
+
+**항목 2 — y⁺ GUI 계산 패널**
+- `desktop/qt_app/widgets/yplus_panel.py::YPlusPanel`:
+  - 유체 선택(air/water/oil) + 유입속도 + 특성길이 + 목표 y⁺ 입력.
+  - "계산하기" 버튼 → `estimate_first_layer_thickness` 호출 + 결과 라벨.
+  - `bl_thickness_computed = Signal(float)` — 메인 윈도우 BL 파라미터 자동 주입.
+  - `set_characteristic_length(l)` API — bbox 대각선 자동 주입 지원.
+  - PySide6 없는 headless 환경에서 ImportError 만 발생 (crash 없음).
+
+**항목 3 — native_poly Voronoi 직접 경로 개선**
+- `generate_native_poly_voronoi(n_lloyd=2)` — Lloyd 3D 정제 추가.
+  - uniform grid seed → scipy Voronoi region centroid 로 n_lloyd 회 이동 → inside 필터.
+  - 경계 근방 seed 분포 개선 → degenerate cell 감소.
+- `__init__.py` "(1) 향후 확장" 주석 제거.
+
+**항목 4 — isotropic remesh Phase 3 valence constraint**
+- `_is_boundary_vertex(v, edge_map)` 헬퍼 추가.
+- `_flip_edges_to_improve_valence(valence_constraint=False)` — True 면 interior=6, boundary=4 타깃 다중 패스 flip.
+- `isotropic_remesh(valence_constraint=False)` — Phase 3 활성화 kwarg.
+
+**항목 5 — native_bl Phase 3 docstring 갱신**
+- "Phase 3 예정 (v0.5+)" → "Phase 3 (beta93 완성): shrinkage iteration + per-vertex scale (beta95)".
+
+**항목 8 — poly_bl_transition Phase 2 interface smoothing**
+- `_smooth_interface_vertices(pts, faces, owner, neighbour, prism_cell_ids, tet_cell_ids, n_iter, relax)` — prism-tet interface 근방 tet vertex를 prism face centroid 방향으로 이동.
+- `_try_hybrid_dual(interface_smoothing=True, interface_smooth_iters=2, interface_smooth_relax=0.2)`.
+- `run_poly_bl_transition(interface_smooth_iters=2)`.
+- 테스트 2개 추가.
+
+### Tests
+
+55/55 PASS.
+
+---
+
+## [0.4.0-beta98] - 2026-04-24 — "GUI beta92~97 신규 파라미터 전체 노출"
 
 ### Added
 
