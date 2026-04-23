@@ -1,11 +1,20 @@
-"""표면 리메쉬 모듈 (L2 단계).
+"""표면 리메쉬 모듈 (L2 단계) — legacy path.
 
-vorpalite(geogram) → pyACVD → pymeshlab 순서로 시도한다.
-vorpalite가 PATH에 있으면 최우선으로 사용 (특징 보존 고품질 리메쉬).
-없을 경우 pyACVD Voronoi 기반 균일 리메쉬를 수행한다.
-추가로 pymeshlab isotropic remeshing을 선택적으로 적용한다.
-어떤 도구도 없으면 trimesh 패스스루.
-L2 리메쉬 완료 후 gate 검사(watertight + manifold)를 수행한다.
+**v0.4 native-first 맥락 (beta51 정리):**
+이 모듈은 **legacy opt-out 경로 전용**. CLI `--prefer-native` default=True
+(@beta26), `--legacy-repair` 명시 시에만 진입. Primary L2 경로는
+``core/preprocessor/native_remesh/`` (isotropic_remesh / CVT) 이다.
+
+Legacy 체인:
+    vorpalite(geogram) → pyACVD → pymeshlab 순서로 시도한다.
+    vorpalite 가 PATH 에 있으면 최우선 (특징 보존 고품질 리메쉬).
+    없을 경우 pyACVD Voronoi 기반 균일 리메쉬.
+    추가로 pymeshlab isotropic remeshing 선택적 적용.
+    어떤 도구도 없으면 trimesh 패스스루.
+L2 리메쉬 완료 후 gate 검사 (watertight + manifold) 수행.
+
+이 모듈의 trimesh 의존은 interop-critical (Trimesh 객체 교환용). 분석성
+호출은 beta19 에서 이미 native 로 교체됨.
 """
 
 from __future__ import annotations

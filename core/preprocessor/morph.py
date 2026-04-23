@@ -1,8 +1,17 @@
 """메쉬 모핑 모듈 (선택적 형상 최적화 기능).
 
-PyGeM RBF 기반 메쉬 변형을 수행한다.
-주로 형상 최적화 루프에서 제어점 기반 메쉬 변형에 사용.
-PyGeM이 미설치되면 NotImplementedError를 발생시킨다.
+PyGeM RBF 기반 메쉬 변형을 수행한다. 주로 형상 최적화 루프에서 제어점 기반
+메쉬 변형에 사용.
+
+**v0.4 native-first 맥락 (beta51 정리):**
+PyGeM 은 RBF interpolation kernel 을 자체 내장한 특수 목적 라이브러리라 native
+로 대체하지 않는다. 모핑은 main pipeline 경로 (Analyzer → Preprocessor →
+Strategist → Generator → Evaluator) 에서 호출되지 않으며, 사용자가 형상 최적화
+API 를 명시적으로 호출할 때만 활성화된다. PyGeM 미설치 환경에서는
+NotImplementedError 로 조용히 비활성화.
+
+v0.5+ 로드맵: numpy 기반 RBF (scipy.interpolate.Rbf 또는 자체 kernel) 로
+선택적 네이티브 fallback 추가 검토. 현재 v0.4 에서는 interop-only 유지.
 """
 
 from __future__ import annotations
