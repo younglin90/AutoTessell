@@ -210,6 +210,35 @@ def test_mesh_type_default_and_set() -> None:
     assert win._mesh_type == "poly"
 
 
+def test_prefer_native_tier_check_attribute_exists() -> None:
+    """beta29: AutoTessellWindow 가 _prefer_native_tier_check 속성을 갖는다.
+
+    UI builder 가 실제 실행되기 전까지는 None 이지만 속성 자체는 선언되어야 함
+    (기존 _prefer_native_check 와 동일 패턴).
+    """
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    assert hasattr(win, "_prefer_native_tier_check")
+
+
+def test_pipeline_worker_accepts_prefer_native_tier() -> None:
+    """beta29: PipelineWorker 가 prefer_native_tier kwarg 를 수용."""
+    from pathlib import Path
+
+    from core.schemas import QualityLevel as _QL
+    from desktop.qt_app.pipeline_worker import PipelineWorker
+
+    w = PipelineWorker(
+        Path("/tmp/does_not_exist.stl"),
+        _QL.FINE,
+        tier_hint="auto",
+        mesh_type="hex_dominant",
+        prefer_native_tier=True,
+    )
+    assert getattr(w, "_prefer_native_tier", None) is True
+
+
 def test_pipeline_worker_accepts_mesh_type_and_auto_retry() -> None:
     """PipelineWorker 가 mesh_type / auto_retry kwargs 를 받아들인다."""
     from pathlib import Path

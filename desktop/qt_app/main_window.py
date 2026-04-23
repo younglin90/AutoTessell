@@ -427,6 +427,7 @@ class AutoTessellWindow:  # type: ignore[misc]
         # 공통 전처리 체크박스
         self._no_repair_check: object | None = None
         self._prefer_native_check: object | None = None
+        self._prefer_native_tier_check: object | None = None  # beta29
         self._surface_remesh_check: object | None = None
         self._allow_ai_fallback_check: object | None = None
         self._remesh_engine_combo: object | None = None
@@ -2127,16 +2128,27 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._no_repair_check = QCheckBox("표면 수리 스킵 (no-repair)")
         self._surface_remesh_check = QCheckBox("강제 L2 표면 리메쉬")
         self._allow_ai_fallback_check = QCheckBox("AI 표면 재생성 허용 (L3)")
-        # v0.4: 자체 native L1 repair (pymeshfix 없이)
+        # v0.4: 자체 native L1 repair (pymeshfix 없이) — beta26 기본 On
         self._prefer_native_check = QCheckBox("Native L1 수리 (자체 repair, v0.4)")
-        # 기본값: 전부 해제
+        # v0.4.0-beta29: Strategist 가 native_* tier 를 primary 로 선택
+        self._prefer_native_tier_check = QCheckBox(
+            "Native Tier 우선 (native_tet/hex/poly)"
+        )
+        self._prefer_native_tier_check.setToolTip(
+            "체크 시 Strategist 가 tet/hex_dominant/poly 각각에 대해 native_*\n"
+            "엔진을 primary 로 선택. mesh_type 명시 필요.\n"
+            "legacy tier (wildmesh/snappy/cfmesh 등) 는 fallback 으로 유지."
+        )
+        # 기본값: native L1 은 기본 On (beta26 철학), native tier 는 opt-in
         self._no_repair_check.setChecked(False)
         self._surface_remesh_check.setChecked(False)
         self._allow_ai_fallback_check.setChecked(False)
-        self._prefer_native_check.setChecked(False)
+        self._prefer_native_check.setChecked(True)  # beta26 default
+        self._prefer_native_tier_check.setChecked(False)
         for chk in (
             self._no_repair_check, self._surface_remesh_check,
             self._allow_ai_fallback_check, self._prefer_native_check,
+            self._prefer_native_tier_check,
         ):
             v.addWidget(chk)
             try:
@@ -2676,14 +2688,23 @@ class AutoTessellWindow:  # type: ignore[misc]
         try:
             from desktop.qt_app.pipeline_worker import PipelineWorker
             self._stopping = False
-            _prefer_native_flag = False
+            _prefer_native_flag = True  # beta26 default
             if self._prefer_native_check is not None:
                 try:
                     _prefer_native_flag = bool(
                         self._prefer_native_check.isChecked(),  # type: ignore[attr-defined]
                     )
                 except Exception:
-                    _prefer_native_flag = False
+                    _prefer_native_flag = True
+            # beta29: native tier 선택
+            _prefer_native_tier_flag = False
+            if self._prefer_native_tier_check is not None:
+                try:
+                    _prefer_native_tier_flag = bool(
+                        self._prefer_native_tier_check.isChecked(),  # type: ignore[attr-defined]
+                    )
+                except Exception:
+                    _prefer_native_tier_flag = False
             worker = PipelineWorker(
                 self._input_path, self._quality_level,
                 output_dir=self._output_dir,
@@ -2691,6 +2712,7 @@ class AutoTessellWindow:  # type: ignore[misc]
                 mesh_type=str(self._mesh_type or "auto"),
                 auto_retry=str(self._auto_retry or "off"),
                 prefer_native=_prefer_native_flag,
+                prefer_native_tier=_prefer_native_tier_flag,
                 element_size=element_size,
                 tier_specific_params=tier_params or None,
                 no_repair=bool(self._no_repair_check.isChecked())

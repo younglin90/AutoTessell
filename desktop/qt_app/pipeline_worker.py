@@ -76,6 +76,7 @@ class PipelineWorker:
         max_iterations: int = 3,
         auto_retry: str = "off",
         prefer_native: bool = False,
+        prefer_native_tier: bool = False,
         dry_run: bool = False,
         element_size: float | None = None,
         max_cells: int | None = None,
@@ -119,6 +120,7 @@ class PipelineWorker:
                 max_iterations: int = 3,
                 auto_retry: str = "off",
                 prefer_native: bool = False,
+                prefer_native_tier: bool = False,
                 dry_run: bool = False,
                 element_size: float | None = None,
                 max_cells: int | None = None,
@@ -139,6 +141,7 @@ class PipelineWorker:
                 self._max_iterations = max_iterations
                 self._auto_retry = auto_retry
                 self._prefer_native = bool(prefer_native)
+                self._prefer_native_tier = bool(prefer_native_tier)
                 self._dry_run = dry_run
                 self._element_size = element_size
                 self._max_cells = max_cells
@@ -199,6 +202,7 @@ class PipelineWorker:
                         max_iterations=self._max_iterations,
                         auto_retry=self._auto_retry,
                         prefer_native=self._prefer_native,
+                        prefer_native_tier=self._prefer_native_tier,
                         dry_run=self._dry_run,
                         element_size=self._element_size,
                         max_cells=self._max_cells,
@@ -273,6 +277,7 @@ class PipelineWorker:
             max_iterations=max_iterations,
             auto_retry=auto_retry,
             prefer_native=prefer_native,
+            prefer_native_tier=prefer_native_tier,
             dry_run=dry_run,
             element_size=element_size,
             max_cells=max_cells,
