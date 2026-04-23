@@ -81,6 +81,10 @@ class BLConfig:
     # (max edge / min thickness) 를 계산해 threshold 초과 수를 보고. 기본 on.
     quality_check_enabled: bool = True
     aspect_ratio_threshold: float = 50.0
+    # beta93: shrinkage iteration — 품질 불량 prism vertex 두께를 반복적으로 줄여 수렴.
+    shrink_iterations: int = 1      # 반복 최대 횟수 (1=기존 단일 pass)
+    shrink_factor: float = 0.7      # 각 iteration 에서 불량 vertex scale 감소율
+    shrink_aspect_threshold: float = 30.0  # 이 값 초과 prism → 해당 vertex 두께 감소
 
 
 @dataclass
@@ -810,66 +814,15 @@ def generate_native_bl(
             min_scale=float(min(vertex_scale.values())),
         )
 
-    # 5) 새 point 배열 구성
-    # - original points 배열에서 wall vertex 를 inward total 만큼 이동 (기존 cell 이 따라 축소)
-    # - 각 layer 경계의 wall vertex copy 를 추가 (N+1 층)
-    # - layer[0] = 원래 wall 위치 (boundary 최외곽)
-    # - layer[N] = shrunk 위치 (기존 cell 과 공유)
-    # 기존 cells 의 wall vertex 들은 shrunk points 사용 → 원래 위치는 layer 0 에서만
-    new_points_list: list[np.ndarray] = [points.copy()]
-    # 원래 points 의 wall vertex 들을 shrunk 위치로 변경 (in-place)
-    # beta64: feature vertex 는 더 짧게 들어가도록 per-vertex scale 적용.
-    inward = np.array([-vnorm[v] for v in wall_vert_indices])
-    scales = np.array(
-        [vertex_scale.get(v, 1.0) for v in wall_vert_indices], dtype=np.float64,
-    )[:, None]  # (N, 1) 브로드캐스트용
-    wall_idx_arr = np.array(wall_vert_indices, dtype=np.int64)
-    new_points_list[0][wall_idx_arr] = points[wall_idx_arr] + inward * (total * scales)
-
-    # 각 layer 의 wall vertex copy — global id 매핑
-    # layer_point_ids[i][v] = layer i 에 해당하는 wall vertex v 의 new global id
-    # layer 0 = 원래 wall 위치 (추가 point 로)
-    # layer 1 = 원래 - t1*normal
-    # ...
-    # layer N = shrunk (== new_points[wall_idx] — 이미 있음)
-    layer_point_ids: list[dict[int, int]] = [{} for _ in range(cfg.num_layers + 1)]
-    extra_points_list: list[np.ndarray] = []
-    cursor = len(points)  # next new point id
-    for layer_i in range(cfg.num_layers + 1):
-        if layer_i == cfg.num_layers:
-            # 최내곽: shrunk wall == 이미 new_points 에 있음 (원 index 재사용)
-            for v in wall_vert_indices:
-                layer_point_ids[layer_i][v] = int(v)
-        else:
-            offset = cum[layer_i]  # 0 for layer 0, t1 for layer 1, ...
-            for v in wall_vert_indices:
-                # beta64: feature vertex 는 offset 을 scale 로 축소
-                v_scale = vertex_scale.get(v, 1.0)
-                p_new = points[v] - vnorm[v] * (offset * v_scale)
-                extra_points_list.append(p_new)
-                layer_point_ids[layer_i][v] = cursor
-                cursor += 1
-
-    # 최종 points 배열
-    if extra_points_list:
-        final_points = np.vstack([new_points_list[0], np.array(extra_points_list)])
-    else:
-        final_points = new_points_list[0]
-    n_new_points = len(final_points) - len(points)
-
-    # 6) Prism cell 위상 구성 — Phase 2 완성 구현
+    # 공유 캐시: wall_face_indices 기반 topology (loop 밖에서 한 번만 계산)
     n_wall_faces = len(wall_face_indices)
     n_prism_per_face = cfg.num_layers
     n_prism_total = n_wall_faces * n_prism_per_face
     prism_cell_id_start = n_cells  # prism cell IDs: [n_cells, n_cells + n_prism_total)
 
-    # wall triangle 의 edge → 이웃 wall triangle 매핑
     edge_to_walls = _build_edge_to_wall_faces(wall_face_indices, faces)
-
-    # wall_face_indices 를 순회하며 (wi) 값 = prism block index
     wall_fi_to_wi: dict[int, int] = {fi: wi for wi, fi in enumerate(wall_face_indices)}
 
-    # 각 wall face 당 orig_owner / patch_idx / triangle vertices 캐시
     wall_tri_verts: dict[int, tuple[int, int, int]] = {}
     wall_orig_owner: dict[int, int] = {}
     wall_orig_patch: dict[int, int] = {}
@@ -879,188 +832,271 @@ def generate_native_bl(
         wall_orig_owner[fi] = int(owner[fi])
         wall_orig_patch[fi] = face_to_patch[fi][0]
 
-    # 결과 face 컨테이너
-    # internal faces (순서 유지)
-    out_int_faces: list[list[int]] = []
-    out_int_owner: list[int] = []
-    out_int_nbr: list[int] = []
-    # boundary faces — patch 별 리스트 (vertices only, owner 는 별도)
-    out_bnd_faces_by_patch: dict[int, list[list[int]]] = {pi: [] for pi in range(len(boundary))}
-    out_bnd_owner_by_patch: dict[int, list[int]] = {pi: [] for pi in range(len(boundary))}
-    # bl_side 신규 patch (wall 의 edge-of-wall 부분만, manifold 내부는 internal)
-    bl_side_faces: list[list[int]] = []
-    bl_side_owner: list[int] = []
-
-    # 6a) 기존 internal face 유지 (wall 아닌 것만; wall 은 internal 이 아니므로 실제론 전부 유지됨)
     wall_set = set(wall_face_indices)
-    for fi in range(n_internal_orig):
-        if fi in wall_set:
-            # 이론상 wall 은 boundary 이므로 internal 에 올 수 없지만 안전장치
-            continue
-        out_int_faces.append(list(faces[fi]))
-        out_int_owner.append(int(owner[fi]))
-        out_int_nbr.append(int(neighbour[fi]))
 
-    # 6b) 기존 boundary faces 중 wall 이 아닌 것들 유지 (patch 순서)
-    for pi, patch in enumerate(boundary):
-        start = int(patch["startFace"])
-        nf = int(patch["nFaces"])
-        for k in range(nf):
-            fi = start + k
-            if fi in wall_set:
-                continue
-            out_bnd_faces_by_patch[pi].append(list(faces[fi]))
-            out_bnd_owner_by_patch[pi].append(int(owner[fi]))
+    # 5-7) Prism 생성 내부 함수 (beta93: shrink iteration 에서 반복 호출 가능)
+    def _run_prism_pass(
+        vertex_scale_pass: dict[int, float],
+        cum_pass: np.ndarray,
+    ) -> tuple[
+        np.ndarray,              # final_points
+        list[list[int]],         # final_faces
+        list[int],               # final_owner
+        list[int],               # final_nbr
+        list[dict[str, Any]],    # final_boundary_entries (bl_side 포함)
+        list[dict[int, int]],    # layer_point_ids (quality check 용)
+    ]:
+        """단일 prism insertion pass. vertex_scale_pass / cum_pass 로 layer 생성."""
+        # 5) 새 point 배열 구성
+        new_pts = points.copy()
+        inward_v = np.array([-vnorm[v] for v in wall_vert_indices])
+        scales_v = np.array(
+            [vertex_scale_pass.get(v, 1.0) for v in wall_vert_indices], dtype=np.float64,
+        )[:, None]
+        wall_idx_arr_p = np.array(wall_vert_indices, dtype=np.int64)
+        new_pts[wall_idx_arr_p] = points[wall_idx_arr_p] + inward_v * (total * scales_v)
 
-    # 6c) Prism block 처리
-    # 중복 생성을 막기 위한 set:
-    #   - layer k (outer) triangle 을 이웃 prism 과 공유할 때 한 쪽에서만 생성
-    #   - side quad 는 edge 쌍에서 한 쪽에서만 생성
-    # 여기선 모든 내부 face 에 대해 "owner cell ID 가 더 작은 쪽" 이 생성 책임.
-
-    def _layer_triangle(fi: int, layer: int) -> tuple[int, int, int]:
-        v0, v1, v2 = wall_tri_verts[fi]
-        m = layer_point_ids[layer]
-        return (m[v0], m[v1], m[v2])
-
-    def _prism_cell_id(wi_: int, k_: int) -> int:
-        return prism_cell_id_start + wi_ * cfg.num_layers + k_
-
-    for wi, fi in enumerate(wall_face_indices):
-        patch_idx = wall_orig_patch[fi]
-        orig_own = wall_orig_owner[fi]
-        v0, v1, v2 = wall_tri_verts[fi]
-
-        for k in range(cfg.num_layers):
-            prism_cell = _prism_cell_id(wi, k)
-            outer_tri = _layer_triangle(fi, k)
-            inner_tri = _layer_triangle(fi, k + 1)
-
-            # --- triangle face (outer / inner) ---
-            if k == 0:
-                # layer 0 outer = 새 wall boundary. winding = 원본 wall face 와 동일
-                # (원래 tet owner 바깥 방향이었으므로, prism_cell 바깥 방향과 일치).
-                out_bnd_faces_by_patch[patch_idx].append(list(outer_tri))
-                out_bnd_owner_by_patch[patch_idx].append(prism_cell)
-            # layer k (>=1) outer = 이전 prism (k-1) 과 공유. "outer" side 는 이미
-            # prism(k-1) 입장에서 inner_tri 로서 생성되므로 여기선 skip.
-
-            if k == cfg.num_layers - 1:
-                # 최내곽 → 원래 tet cell 과 internal
-                # OpenFOAM: owner < neighbour, normal points owner → neighbour.
-                # prism_cell > orig_own (prism 이 나중에 추가되므로). owner = orig_own,
-                # neighbour = prism_cell. normal 은 orig_own → prism_cell 방향.
-                # inner_tri winding 은 원본 wall 과 같은 방향 (prism 바깥 = shrunk 외부 =
-                # 원본 tet 안쪽). 원본 tet 기준으로는 inner_tri 가 "outward from
-                # orig_own" 이 되려면 → prism 의 inner_tri 그대로 사용 시 tet→prism 방향.
-                #
-                # 원본 wall face 는 owner=orig_own 에서 바깥 (+normal) 방향이었고,
-                # inner_tri 는 원본 wall 에서 inward (-normal) 로 이동한 위치. 원본
-                # winding 유지 시 normal 여전히 +normal 방향 → orig_own 외부 → prism 방향.
-                # 이는 orig_own(owner) → prism(neighbour) 로 정확히 일치.
-                out_int_faces.append(list(inner_tri))
-                out_int_owner.append(orig_own)
-                out_int_nbr.append(prism_cell)
+        lp_ids: list[dict[int, int]] = [{} for _ in range(cfg.num_layers + 1)]
+        extra_pts: list[np.ndarray] = []
+        cursor_p = len(points)
+        for layer_i in range(cfg.num_layers + 1):
+            if layer_i == cfg.num_layers:
+                for v in wall_vert_indices:
+                    lp_ids[layer_i][v] = int(v)
             else:
-                # layer k 와 layer k+1 사이 prism↔prism internal.
-                # owner = prism_cell (k, outer), neighbour = prism_next (k+1, inner).
-                # owner → neighbour 방향은 outer → inner = -normal (안쪽).
-                # inner_tri 의 원본 winding 은 +normal (wall 바깥 방향) 이므로 반전
-                # 해야 -normal 방향 = owner→neighbour 이 된다.
-                prism_next = _prism_cell_id(wi, k + 1)
-                owner_cell = prism_cell   # prism_cell < prism_next 이므로
-                nbr_cell = prism_next
-                out_int_faces.append(list(reversed(inner_tri)))
-                out_int_owner.append(owner_cell)
-                out_int_nbr.append(nbr_cell)
+                offset = float(cum_pass[layer_i])
+                for v in wall_vert_indices:
+                    v_scale = vertex_scale_pass.get(v, 1.0)
+                    p_new = points[v] - vnorm[v] * (offset * v_scale)
+                    extra_pts.append(p_new)
+                    lp_ids[layer_i][v] = cursor_p
+                    cursor_p += 1
 
-            # --- side quad face (3 edges) ---
-            tri_idx = [(0, 1), (1, 2), (2, 0)]
-            for ei, (a, b) in enumerate(tri_idx):
-                va, vb = wall_tri_verts[fi][a], wall_tri_verts[fi][b]
-                edge_key = (va, vb) if va < vb else (vb, va)
-                neighbours = edge_to_walls.get(edge_key, [fi])
-                # 이웃 wall face (fi 자신 포함). manifold 이면 길이 2, boundary of
-                # wall 이면 1.
-                other = [g for g in neighbours if g != fi]
-                ov_a = layer_point_ids[k][va]
-                ov_b = layer_point_ids[k][vb]
-                iv_a = layer_point_ids[k + 1][va]
-                iv_b = layer_point_ids[k + 1][vb]
-                # quad winding 분석:
-                #   [ov_a, ov_b, iv_b, iv_a] 순서 시 n = (edge × -normal) = triangle
-                #   내부 방향 → prism_cell "inward" → owner outward 반대 → 부호 틀림.
-                #   [ov_a, iv_a, iv_b, ov_b] 로 반전하면 n = (-normal × edge_backward)
-                #   = edge × normal = triangle 바깥 방향 → prism_cell outward ✓.
-                quad = [ov_a, iv_a, iv_b, ov_b]
+        if extra_pts:
+            fp = np.vstack([new_pts, np.array(extra_pts)])
+        else:
+            fp = new_pts
 
-                if not other:
-                    # wall 의 경계 edge — bl_side 신규 boundary patch
-                    bl_side_faces.append(quad)
-                    bl_side_owner.append(prism_cell)
+        # 6) Prism cell 위상 구성
+        p_int_faces: list[list[int]] = []
+        p_int_owner: list[int] = []
+        p_int_nbr: list[int] = []
+        p_bnd_faces_by_patch: dict[int, list[list[int]]] = {
+            pi: [] for pi in range(len(boundary))
+        }
+        p_bnd_owner_by_patch: dict[int, list[int]] = {
+            pi: [] for pi in range(len(boundary))
+        }
+        p_bl_side_faces: list[list[int]] = []
+        p_bl_side_owner: list[int] = []
+
+        for fi_p in range(n_internal_orig):
+            if fi_p in wall_set:
+                continue
+            p_int_faces.append(list(faces[fi_p]))
+            p_int_owner.append(int(owner[fi_p]))
+            p_int_nbr.append(int(neighbour[fi_p]))
+
+        for pi_p, patch_p in enumerate(boundary):
+            start_p = int(patch_p["startFace"])
+            nf_p = int(patch_p["nFaces"])
+            for k_p in range(nf_p):
+                fi_p = start_p + k_p
+                if fi_p in wall_set:
+                    continue
+                p_bnd_faces_by_patch[pi_p].append(list(faces[fi_p]))
+                p_bnd_owner_by_patch[pi_p].append(int(owner[fi_p]))
+
+        def _ltri(fi_: int, layer_: int) -> tuple[int, int, int]:
+            v0_, v1_, v2_ = wall_tri_verts[fi_]
+            m_ = lp_ids[layer_]
+            return (m_[v0_], m_[v1_], m_[v2_])
+
+        def _pcid(wi_: int, k_: int) -> int:
+            return prism_cell_id_start + wi_ * cfg.num_layers + k_
+
+        for wi_p, fi_p in enumerate(wall_face_indices):
+            patch_idx_p = wall_orig_patch[fi_p]
+            orig_own_p = wall_orig_owner[fi_p]
+
+            for k_p in range(cfg.num_layers):
+                prism_cell_p = _pcid(wi_p, k_p)
+                outer_tri_p = _ltri(fi_p, k_p)
+                inner_tri_p = _ltri(fi_p, k_p + 1)
+
+                if k_p == 0:
+                    p_bnd_faces_by_patch[patch_idx_p].append(list(outer_tri_p))
+                    p_bnd_owner_by_patch[patch_idx_p].append(prism_cell_p)
+
+                if k_p == cfg.num_layers - 1:
+                    p_int_faces.append(list(inner_tri_p))
+                    p_int_owner.append(orig_own_p)
+                    p_int_nbr.append(prism_cell_p)
                 else:
-                    # 이웃 prism 과 internal (두 prism 이 같은 quad 를 공유)
-                    other_fi = other[0]
-                    other_wi = wall_fi_to_wi.get(other_fi, -1)
-                    if other_wi < 0:
-                        bl_side_faces.append(quad)
-                        bl_side_owner.append(prism_cell)
-                        continue
-                    neighbour_prism = _prism_cell_id(other_wi, k)
-                    if prism_cell < neighbour_prism:
-                        # 내가 owner — 이 quad 를 internal 로 추가
-                        owner_cell = prism_cell
-                        nbr_cell = neighbour_prism
-                        # 현재 winding 기준으로 normal 방향이 prism_cell 외부
-                        # = neighbour_prism 쪽이 됨 → owner→neighbour ✓
-                        out_int_faces.append(quad)
-                        out_int_owner.append(owner_cell)
-                        out_int_nbr.append(nbr_cell)
-                    # else: 반대쪽 prism 이 owner — 그쪽이 나중에 생성할 것이므로 skip
+                    prism_next_p = _pcid(wi_p, k_p + 1)
+                    p_int_faces.append(list(reversed(inner_tri_p)))
+                    p_int_owner.append(prism_cell_p)
+                    p_int_nbr.append(prism_next_p)
 
-    # 7) polyMesh 쓰기
-    # 기존 boundary 의 patch 정의 유지 + 새 face 들로 nFaces/startFace 재구성.
-    # 최종 face 순서 = [internal...] + [boundary patch 0 faces...] + [patch 1...] + ... + [bl_side...]
-    # 각 patch 에 대한 face 수: out_bnd_faces_by_patch[pi] + wall patch 의 경우 새 wall faces 포함
+                tri_idx_p = [(0, 1), (1, 2), (2, 0)]
+                for _ei, (a_p, b_p) in enumerate(tri_idx_p):
+                    va_p, vb_p = wall_tri_verts[fi_p][a_p], wall_tri_verts[fi_p][b_p]
+                    edge_key_p = (va_p, vb_p) if va_p < vb_p else (vb_p, va_p)
+                    nbrs_p = edge_to_walls.get(edge_key_p, [fi_p])
+                    other_p = [g for g in nbrs_p if g != fi_p]
+                    ov_a_p = lp_ids[k_p][va_p]
+                    ov_b_p = lp_ids[k_p][vb_p]
+                    iv_a_p = lp_ids[k_p + 1][va_p]
+                    iv_b_p = lp_ids[k_p + 1][vb_p]
+                    quad_p = [ov_a_p, iv_a_p, iv_b_p, ov_b_p]
+
+                    if not other_p:
+                        p_bl_side_faces.append(quad_p)
+                        p_bl_side_owner.append(prism_cell_p)
+                    else:
+                        other_fi_p = other_p[0]
+                        other_wi_p = wall_fi_to_wi.get(other_fi_p, -1)
+                        if other_wi_p < 0:
+                            p_bl_side_faces.append(quad_p)
+                            p_bl_side_owner.append(prism_cell_p)
+                            continue
+                        nbr_prism_p = _pcid(other_wi_p, k_p)
+                        if prism_cell_p < nbr_prism_p:
+                            p_int_faces.append(quad_p)
+                            p_int_owner.append(prism_cell_p)
+                            p_int_nbr.append(nbr_prism_p)
+
+        # 7) 최종 face 조립
+        out_faces: list[list[int]] = []
+        out_owner: list[int] = []
+        out_nbr: list[int] = []
+        out_faces.extend(p_int_faces)
+        out_owner.extend(p_int_owner)
+        out_nbr.extend(p_int_nbr)
+
+        out_bnd_entries: list[dict[str, Any]] = []
+        fc_p = len(out_faces)
+        for pi_p, patch_p in enumerate(boundary):
+            pf_p = p_bnd_faces_by_patch.get(pi_p, [])
+            po_p = p_bnd_owner_by_patch.get(pi_p, [])
+            sf_p = fc_p
+            for f_p, o_p in zip(pf_p, po_p, strict=False):
+                out_faces.append(f_p)
+                out_owner.append(o_p)
+            fc_p += len(pf_p)
+            out_bnd_entries.append({
+                "name": patch_p.get("name", f"patch_{pi_p}"),
+                "type": patch_p.get("type", "patch"),
+                "nFaces": len(pf_p),
+                "startFace": sf_p,
+            })
+
+        if p_bl_side_faces:
+            sf_bl = fc_p
+            for f_p, o_p in zip(p_bl_side_faces, p_bl_side_owner, strict=False):
+                out_faces.append(f_p)
+                out_owner.append(o_p)
+            fc_p += len(p_bl_side_faces)
+            out_bnd_entries.append({
+                "name": "bl_side",
+                "type": "wall",
+                "nFaces": len(p_bl_side_faces),
+                "startFace": sf_bl,
+            })
+
+        return fp, out_faces, out_owner, out_nbr, out_bnd_entries, lp_ids
+
+    # --------------------------------------------------------------------------
+    # beta93: shrink iteration 루프
+    # --------------------------------------------------------------------------
+    n_iterations = max(1, cfg.shrink_iterations)
+    current_vertex_scale = dict(vertex_scale)  # 복사본
+    current_cum = cum.copy()
+
+    final_points: np.ndarray | None = None
     final_faces: list[list[int]] = []
     final_owner: list[int] = []
     final_nbr: list[int] = []
-    # 7a) internal faces
-    final_faces.extend(out_int_faces)
-    final_owner.extend(out_int_owner)
-    final_nbr.extend(out_int_nbr)
-
-    # 7b) boundary faces — patch 순서 유지
     final_boundary_entries: list[dict[str, Any]] = []
-    face_cursor = len(final_faces)
-    for pi, patch in enumerate(boundary):
-        p_faces = out_bnd_faces_by_patch.get(pi, [])
-        p_owner = out_bnd_owner_by_patch.get(pi, [])
-        start_face = face_cursor
-        for f, o in zip(p_faces, p_owner, strict=False):
-            final_faces.append(f)
-            final_owner.append(o)
-        face_cursor += len(p_faces)
-        final_boundary_entries.append({
-            "name": patch.get("name", f"patch_{pi}"),
-            "type": patch.get("type", "patch"),
-            "nFaces": len(p_faces),
-            "startFace": start_face,
-        })
+    layer_point_ids: list[dict[int, int]] = []
+    n_new_points = 0
+    bl_side_count = 0
 
-    # 7c) bl_side patch (있는 경우에만)
-    if bl_side_faces:
-        start_face = face_cursor
-        for f, o in zip(bl_side_faces, bl_side_owner, strict=False):
-            final_faces.append(f)
-            final_owner.append(o)
-        face_cursor += len(bl_side_faces)
-        final_boundary_entries.append({
-            "name": "bl_side",
-            "type": "wall",
-            "nFaces": len(bl_side_faces),
-            "startFace": start_face,
-        })
+    for iteration in range(n_iterations):
+        fp, out_faces, out_owner, out_nbr, out_bnd_entries, lp_ids = _run_prism_pass(
+            current_vertex_scale, current_cum,
+        )
+        final_points = fp
+        final_faces = out_faces
+        final_owner = out_owner
+        final_nbr = out_nbr
+        final_boundary_entries = out_bnd_entries
+        layer_point_ids = lp_ids
+        n_new_points = len(fp) - len(points)
+        # bl_side face 수 추적
+        bl_side_count = sum(
+            e["nFaces"] for e in out_bnd_entries if e.get("name") == "bl_side"
+        )
+
+        # 수렴 판단: n_iterations == 1 이면 바로 종료
+        if n_iterations <= 1:
+            break
+
+        # 품질 체크
+        n_degen_it, max_ar_it = _prism_aspect_ratio_stats(
+            fp, wall_tri_verts, wall_face_indices, lp_ids,
+            cfg.num_layers, threshold=cfg.shrink_aspect_threshold,
+        )
+        log.info(
+            "native_bl_shrink_iter", component="native_bl", phase="beta93",
+            iteration=iteration, n_degen=n_degen_it, max_ar=max_ar_it,
+            threshold=cfg.shrink_aspect_threshold,
+        )
+        if n_degen_it == 0:
+            log.info("native_bl_shrink_converged", iteration=iteration)
+            break
+
+        # 불량 prism vertex scale 줄이기
+        for fi_it in wall_face_indices:
+            if fi_it not in wall_tri_verts:
+                continue
+            v0_it, v1_it, v2_it = wall_tri_verts[fi_it]
+            for k_it in range(cfg.num_layers):
+                # 이 prism 의 aspect ratio
+                o0_it = fp[lp_ids[k_it][v0_it]]
+                o1_it = fp[lp_ids[k_it][v1_it]]
+                o2_it = fp[lp_ids[k_it][v2_it]]
+                i0_it = fp[lp_ids[k_it + 1][v0_it]]
+                i1_it = fp[lp_ids[k_it + 1][v1_it]]
+                i2_it = fp[lp_ids[k_it + 1][v2_it]]
+                e_outer_it = max(
+                    float(np.linalg.norm(o1_it - o0_it)),
+                    float(np.linalg.norm(o2_it - o1_it)),
+                    float(np.linalg.norm(o0_it - o2_it)),
+                )
+                h_it = min(
+                    float(np.linalg.norm(i0_it - o0_it)),
+                    float(np.linalg.norm(i1_it - o1_it)),
+                    float(np.linalg.norm(i2_it - o2_it)),
+                )
+                if h_it < 1e-30:
+                    ar_it = 1e9
+                else:
+                    ar_it = e_outer_it / h_it
+
+                if ar_it > cfg.shrink_aspect_threshold:
+                    for v_it in (v0_it, v1_it, v2_it):
+                        min_scale_it = cfg.first_thickness / max(total, 1e-30)
+                        current_vertex_scale[v_it] = max(
+                            current_vertex_scale.get(v_it, 1.0) * cfg.shrink_factor,
+                            min_scale_it,
+                        )
+
+        # cum 재계산 (vertex_scale 는 per-vertex, cum/thicknesses 는 global — 변경 없음)
+        # vertex_scale 만 줄어드므로 cum 재계산은 불필요 (총 두께 = total × vertex_scale[v])
+        # 다만 vertex_scale 이 변경되면 다음 pass 에서 per-vertex 두께가 달라짐.
+
+    assert final_points is not None
 
     # backup
     if cfg.backup_original:
@@ -1113,7 +1149,7 @@ def generate_native_bl(
             f"native_bl Phase 2 OK — {n_prism_total} prism cells inserted "
             f"({cfg.num_layers} layers × {n_wall_faces} wall triangles). "
             f"total_thickness={total:.4g}, bbox={bbox_diag:.3g}, "
-            f"bl_side_faces={len(bl_side_faces)}, "
+            f"bl_side_faces={bl_side_count}, "
             f"degenerate={n_degen}/{n_prism_total}, max_ar={max_ar:.1f}."
         ),
     )

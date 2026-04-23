@@ -57,7 +57,7 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
         "draft":    {"seed_density": 12, "snap_boundary": False},
         "standard": {"seed_density": 16, "snap_boundary": False},
         "fine":     {"seed_density": 24, "snap_boundary": True, "preserve_features": True,
-                     "adaptive": True},
+                     "adaptive": True, "n_levels": 3},
     },
     "tier_native_poly": {
         "draft":    {"seed_density": 8,  "max_iter": 2},
@@ -186,6 +186,8 @@ def run_native_tier(
         "preserve_features",   # beta66: native_hex feature-aware snap
         "feature_angle_deg",   # beta66
         "adaptive",            # beta91: native_hex octree adaptive refinement
+        "n_levels",            # beta92: N-level octree refinement depth
+        "refinement_distance_factor",  # beta92: surface distance threshold factor
         "max_input_vertices",  # beta77: native_tet large input guardrail
     }
     tsp = getattr(strategy, "tier_specific_params", None) or {}

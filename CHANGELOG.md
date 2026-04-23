@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.4.0-beta93] - 2026-04-24 — "BL shrinkage iteration (반복 수렴)"
+
+### Added
+
+- `BLConfig.shrink_iterations: int = 1` / `shrink_factor: float = 0.7` / `shrink_aspect_threshold: float = 30.0`.
+- prism 생성 코어를 `_run_prism_pass(vertex_scale, cum)` 클로저로 추출.
+- shrinkage iteration 루프:
+  1. prism pass 실행
+  2. aspect ratio 검사 (`_prism_aspect_ratio_stats`)
+  3. 불량 prism vertex의 scale을 `shrink_factor`만큼 감소
+  4. 수렴 또는 max_iter 도달 시 종료
+- `shrink_iterations=1` (기본값) 은 기존 단일 pass와 완전 동일.
+- Phase 3 docstring ("shrinkage iteration 반복 수렴") 완성 표시.
+
+---
+
+## [0.4.0-beta92] - 2026-04-24 — "native_hex N-level octree adaptive refinement"
+
+### Added
+
+- `core/generator/native_hex/octree.py` — N-level 지원 (`n_levels: int = 2`):
+  - `_compute_surface_distances`: scipy.cKDTree 기반 표면 거리 계산.
+  - `_apply_2to1_balance`: 2:1 균형 조건 (인접 레벨 차이 ≤ 1) 벡터화 알고리즘.
+  - `_build_nlevel_cells`: 레벨별 blck 병합 + conformal transition faces.
+  - `_sub_quads_on_face(step)`: 임의 coarse 크기 → 4 sub-quad 분할.
+  - 메모리 제한: fine grid ≤ 500,000 셀, 초과 시 n_levels 자동 감소.
+- `generate_native_hex(n_levels=2, refinement_distance_factor=2.0)`.
+- `HARNESS_PARAMS["tier_native_hex"]["fine"]`: `n_levels=3` 자동.
+- `_TIER_PARAM_KEYS`: `n_levels`, `refinement_distance_factor` 추가.
+
+### Result
+
+- n_levels=3 → 3단계 해상도 (h, h/2, h/4). 표면 근방 h/4 정밀.
+
+---
+
 ## [0.4.0-beta91] - 2026-04-23 — "native_hex 2-level octree adaptive refinement"
 
 ### Added

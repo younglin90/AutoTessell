@@ -81,6 +81,8 @@ def generate_native_hex(
     preserve_features: bool = False,
     feature_angle_deg: float = 45.0,
     adaptive: bool = False,
+    n_levels: int = 2,
+    refinement_distance_factor: float = 2.0,
 ) -> NativeHexResult:
     """uniform hex grid 생성 + inside filter.
 
@@ -117,7 +119,10 @@ def generate_native_hex(
         try:
             from core.generator.native_hex.octree import build_octree_hex_cells  # noqa: PLC0415
             oct_pts, oct_cells, oct_stats = build_octree_hex_cells(
-                V, F, bmin_pre, bmax_pre, h_pre, max_cells_per_axis=max_cells_per_axis,
+                V, F, bmin_pre, bmax_pre, h_pre,
+                max_cells_per_axis=max_cells_per_axis,
+                n_levels=n_levels,
+                refinement_distance_factor=refinement_distance_factor,
             )
             if oct_cells:
                 from core.generator.polymesh_writer import write_generic_polymesh  # noqa: PLC0415
