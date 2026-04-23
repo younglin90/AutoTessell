@@ -1,5 +1,62 @@
 # Changelog
 
+## [0.4.0-beta27] - 2026-04-23 — "BL 수치 품질 회귀"
+
+### Added
+
+- `tests/test_bl_numerical_quality.py` (6 tests): 각 mesh_type 의 BL 파이프라인
+  수치 지표 (first_layer_thickness, growth_ratio, n_prism_cells, negative_volumes,
+  tet_bl_subdivide pure-tet 유지, poly_bl_transition hybrid 보존).
+
+---
+
+## [0.4.0-beta26] - 2026-04-23 — "Preprocessor L1 native 기본화"
+
+### Changed
+
+- CLI 옵션 `--prefer-native` → `--prefer-native/--legacy-repair` 양방향,
+  default=True. v0.4 Native-First 철학 완성: 라이브러리 미설치 환경에서도 L1 이
+  동작하도록 native_repair 가 기본 경로.
+- `--legacy-repair` 명시 시에만 pymeshfix/trimesh 경로 강제 (opt-out).
+
+---
+
+## [0.4.0-beta25] - 2026-04-23 — "poly_bl best-effort hybrid dual"
+
+### Added
+
+- `core/layers/poly_bl_transition._try_hybrid_dual`: tet subset → dual 후 prism
+  cell 과 통합한 hybrid polyMesh 생성. 원본 vertex indexing 유지로 boundary
+  정점 공유, `write_generic_polymesh` 의 canonical face key 로 interface 자동
+  stitching. 예외 발생 시 원본 pass-through 로 graceful fallback.
+- `_merge_vertices` helper: 두 vertex 집합 양자화 dedup + 인덱스 remap.
+
+---
+
+## [0.4.0-beta24] - 2026-04-23 — "fine quality 기본 BL 자동 활성화"
+
+### Changed
+
+- `core/pipeline/orchestrator.py::run()`: strategy.boundary_layers.enabled=True +
+  num_layers>0 이고 post_layers_engine 미지정 시 "auto" 자동 주입.
+  LayersPostGenerator 가 mesh_type (tet/hex_dominant/poly) 에 맞는 BL 엔진을
+  자동 선택 — tet_bl_subdivide / native_bl / poly_bl_transition.
+
+---
+
+## [0.4.0-beta23] - 2026-04-23 — "Strategist native-first tier + --prefer-native-tier"
+
+### Added
+
+- `core/strategist/tier_selector._MESH_TYPE_TIER_MAP_NATIVE`: native_* tier 를
+  각 mesh_type × quality 조합의 primary 로 올리는 테이블.
+- `resolve_mesh_type_tier(..., prefer_native=False)` kwarg: True 면 native tier
+  를 primary 로 승격, 기존 legacy primary 는 fallback 맨 앞.
+- CLI `--prefer-native-tier` (is_flag). Strategist / Orchestrator / Pipeline
+  전 경로에 전파.
+
+---
+
 ## [0.4.0-beta22] - 2026-04-23 — "native_hex surface snap"
 
 ### Added
