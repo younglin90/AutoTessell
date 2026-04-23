@@ -145,8 +145,8 @@ def generate_native_poly_voronoi(
     # surface vertex 로 snap. 완전한 polygon clipping 은 아니지만 boundary 근처
     # open cell 감소 효과.
     try:
-        from scipy.spatial import cKDTree  # noqa: PLC0415
-        tree = cKDTree(V)
+        from core.utils.kdtree import NumpyKDTree  # noqa: PLC0415
+        tree = NumpyKDTree(V)
         vv_inside = _inside_ray_cast(vor_vertices, V, F)
         outside_idx = np.where(~vv_inside)[0]
         if outside_idx.size > 0:

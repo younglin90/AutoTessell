@@ -59,9 +59,9 @@ def lloyd_cvt(
     orig_V = None
     if original_surface is not None:
         try:
-            from scipy.spatial import cKDTree  # noqa: PLC0415
+            from core.utils.kdtree import NumpyKDTree  # noqa: PLC0415
             orig_V, _ = original_surface
-            tree = cKDTree(orig_V)
+            tree = NumpyKDTree(orig_V)
         except Exception:
             tree = None
 

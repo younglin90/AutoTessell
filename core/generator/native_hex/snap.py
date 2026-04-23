@@ -120,10 +120,10 @@ def snap_hex_boundary_to_surface(
     tri_C = sV[sF[:, 2]]
     tri_centroids = (tri_A + tri_B + tri_C) / 3.0
 
-    # coarse NN via cKDTree (interop-fine)
+    # coarse NN via NumpyKDTree (beta28 — scipy 의존 제거)
     try:
-        from scipy.spatial import cKDTree  # noqa: PLC0415
-        tree = cKDTree(tri_centroids)
+        from core.utils.kdtree import NumpyKDTree  # noqa: PLC0415
+        tree = NumpyKDTree(tri_centroids)
     except Exception as exc:
         log.warning("native_hex_snap_kdtree_failed", error=str(exc))
         return hex_V, stats
