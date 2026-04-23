@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.4.0-beta45] - 2026-04-23 — "ParamOptimizer 단위 회귀"
+
+### Added
+
+- `tests/test_param_optimizer.py` (16 tests): compute_domain (external/internal),
+  compute_cell_sizes (base/surface/min 관계), compute_quality_targets (fine
+  target_y_plus=1), _base_cell_size 스케일, _estimate_reynolds 공식.
+
+---
+
+## [0.4.0-beta44] - 2026-04-23 — "ComplexityAnalyzer 단위 회귀"
+
+### Added
+
+- `tests/test_complexity_analyzer.py` (18 tests): analyze (feature_density /
+  topology / aspect / surface quality) + classify 4 분기 (simple/moderate/
+  complex/extreme) + overall [0, 100] bounded invariant.
+
+---
+
+## [0.4.0-beta43] - 2026-04-23 — "polymesh_reader + boundary_classifier 회귀"
+
+### Added
+
+- `tests/test_polymesh_reader_and_boundary_classifier.py` (16 tests):
+  parse_foam_{points, faces, labels, boundary} + classify_boundaries 의 단위
+  격리. 이전엔 integration 경유로만 cover.
+
+---
+
 ## [0.4.0-beta42] - 2026-04-23 — "core/utils/bc_writer.py 단위 회귀"
 
 ### Added
