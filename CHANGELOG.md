@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.0-beta87] - 2026-04-23 — "isotropic remesh Phase 2 (surface projection + feature lock)"
+
+### Added
+
+- `core/preprocessor/native_remesh/isotropic.py`:
+  - `isotropic_remesh(project_to_surface=False, feature_angle_deg=45.0, lock_features=False)`.
+  - `_tangential_relocate(feature_verts, origin_V)` — feature vertex 이동 차단 + 원본 표면 nearest-point 사영.
+  - `_detect_feature_verts(V, F, angle_thresh_deg)` — dihedral > threshold edge 의 vertex 집합.
+
+### Impact
+
+- `project_to_surface=True`: relocate 후 원본 표면 사영 → Hausdorff drift 방지.
+- `lock_features=True`: sharp edge vertex 가 smoothing 에서 제외 → corner 보존.
+- icosphere 642 → 3009 verts, 1280 → 4004 faces remesh: 0.61s.
+
+---
+
 ## [0.4.0-beta86] - 2026-04-23 — "orchestrator progress breakdown"
 
 ### Added

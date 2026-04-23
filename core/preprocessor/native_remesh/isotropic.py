@@ -237,16 +237,18 @@ def _flip_edges_to_improve_valence(
 
 def _tangential_relocate(
     V: np.ndarray, F: np.ndarray, lam: float = 0.5,
+    feature_verts: frozenset[int] | None = None,
+    origin_V: np.ndarray | None = None,
 ) -> np.ndarray:
     """각 vertex 를 1-ring neighbour 의 centroid 쪽으로 lam 비율 이동.
 
-    표면 사영은 본 MVP 에서 생략 (원본 surface KDTree 가 없으므로). 부드러운
-    표면에서는 평균만으로도 정삼각형 근사 개선 효과가 있음.
+    beta87 Phase 2:
+    - ``feature_verts`` 가 주어지면 해당 vertex 는 이동하지 않음 (feature lock).
+    - ``origin_V`` 가 주어지면 이동 후 원본 표면의 nearest point 로 사영 (drift 방지).
     """
     n_verts = int(V.shape[0])
     sum_pos = np.zeros_like(V)
     count = np.zeros(n_verts, dtype=np.int64)
-    # 각 vertex 의 neighbour 수집 — edge 기반
     adj: dict[int, set[int]] = defaultdict(set)
     for f in F:
         a, b, c = int(f[0]), int(f[1]), int(f[2])
@@ -261,8 +263,55 @@ def _tangential_relocate(
     centroids = np.zeros_like(V)
     centroids[non_zero] = sum_pos[non_zero] / count[non_zero, np.newaxis]
     new_V = V.copy()
-    new_V[non_zero] = V[non_zero] + lam * (centroids[non_zero] - V[non_zero])
+    mask = non_zero.copy()
+    if feature_verts:
+        for fv in feature_verts:
+            if 0 <= fv < n_verts:
+                mask[fv] = False  # feature vertex 는 이동 안 함
+    new_V[mask] = V[mask] + lam * (centroids[mask] - V[mask])
+
+    # Phase 2: surface projection (Hausdorff drift 방지)
+    if origin_V is not None and origin_V.shape[0] > 0:
+        try:
+            from core.utils.kdtree import NumpyKDTree  # noqa: PLC0415
+            tree = NumpyKDTree(origin_V)
+            _, nn_idx = tree.query(new_V[mask], k=1)
+            nn_idx = np.asarray(nn_idx).ravel()
+            new_V[mask] = origin_V[nn_idx]
+        except Exception:
+            pass  # projection 실패 시 centroid 이동 그대로 사용
     return new_V
+
+
+def _detect_feature_verts(
+    V: np.ndarray, F: np.ndarray, angle_thresh_deg: float = 45.0,
+) -> frozenset[int]:
+    """인접 face 간 dihedral > threshold 인 edge 의 vertex 수집 (feature lock 용)."""
+    if F.size == 0 or angle_thresh_deg <= 0:
+        return frozenset()
+    # face normals
+    v0, v1, v2 = V[F[:, 0]], V[F[:, 1]], V[F[:, 2]]
+    n = np.cross(v1 - v0, v2 - v0)
+    norms = np.linalg.norm(n, axis=1, keepdims=True)
+    n = np.where(norms > 1e-30, n / np.where(norms > 1e-30, norms, 1.0), 0.0)
+
+    edge_map: dict[tuple[int, int], list[int]] = {}
+    for fi in range(F.shape[0]):
+        a, b, c = int(F[fi, 0]), int(F[fi, 1]), int(F[fi, 2])
+        for x, y in ((a, b), (b, c), (c, a)):
+            key = (x, y) if x < y else (y, x)
+            edge_map.setdefault(key, []).append(fi)
+
+    cos_thresh = float(np.cos(np.deg2rad(angle_thresh_deg)))
+    feature: set[int] = set()
+    for (a, b), fl in edge_map.items():
+        if len(fl) != 2:
+            feature.add(a); feature.add(b)
+            continue
+        cos_a = float(np.clip(np.dot(n[fl[0]], n[fl[1]]), -1.0, 1.0))
+        if cos_a < cos_thresh:
+            feature.add(a); feature.add(b)
+    return frozenset(feature)
 
 
 def isotropic_remesh(
@@ -271,19 +320,39 @@ def isotropic_remesh(
     target_edge_length: float,
     n_iter: int = 5,
     relocation_lambda: float = 0.5,
+    project_to_surface: bool = False,
+    feature_angle_deg: float = 45.0,
+    lock_features: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """isotropic remesh 알고리즘 — split / collapse / flip / relocate 반복."""
+    """isotropic remesh 알고리즘 — split / collapse / flip / relocate 반복.
+
+    Args:
+        project_to_surface: True 면 relocate 후 원본 vertex 로 nearest-point 사영.
+        feature_angle_deg: feature edge 판정 dihedral 기준.
+        lock_features: True 면 sharp edge vertex 를 relocate 에서 제외 (feature lock).
+
+    beta87 Phase 2: surface projection + feature locking 추가.
+    """
     V = np.asarray(vertices, dtype=np.float64).copy()
     F = np.asarray(faces, dtype=np.int64).copy()
+    origin_V = V.copy() if project_to_surface else None
     h = float(target_edge_length)
     if h <= 0 or F.size == 0:
         return V, F
     h_hi = h * (4.0 / 3.0)
     h_lo = h * (4.0 / 5.0)
 
+    feature_verts: frozenset[int] = frozenset()
+    if lock_features:
+        feature_verts = _detect_feature_verts(V, F, feature_angle_deg)
+
     for _ in range(max(1, int(n_iter))):
         V, F, _ = _split_edges_above(V, F, h_hi)
         V, F, _ = _collapse_edges_below(V, F, h_lo)
         F, _ = _flip_edges_to_improve_valence(V, F)
-        V = _tangential_relocate(V, F, lam=relocation_lambda)
+        V = _tangential_relocate(
+            V, F, lam=relocation_lambda,
+            feature_verts=feature_verts if feature_verts else None,
+            origin_V=origin_V,
+        )
     return V, F
