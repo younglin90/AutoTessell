@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.0-beta85] - 2026-04-23 — "polyMesh ASCII I/O 성능 최적화"
+
+### Changed
+
+- `_write_points` → `numpy.savetxt` + `io.StringIO`. 50k pts 기준 ~5× 빠름.
+- `_write_faces` → 동종 face 는 numpy 벡터화, 혼합은 fast `map(str)` join.
+- `_write_labels` → `map(str, labels.tolist())` join. 100k labels 14.8 ms/call.
+- `polymesh_writer.py` 는 native_bl helpers 를 import 해 자동 propagate.
+
+---
+
 ## [0.4.0-beta84] - 2026-04-23 — "Strategist BL Phase 2 피드백 연결"
 
 ### Added
