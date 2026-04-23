@@ -384,10 +384,31 @@ class PipelineOrchestrator:
                 # ── Tier 4 (BL post-processing) 선택적 실행 ──
                 # 주 엔진이 snappy/cfmesh 가 아니어도 tier_specific_params 로
                 # post_layers_engine 이 지정되면 layer 엔진 독립 실행.
-                _post_engine = (
-                    (strategy.tier_specific_params or {}).get("post_layers_engine", "disabled")
-                    if strategy else "disabled"
-                )
+                # v0.4.0-beta24+: strategy.boundary_layers.enabled=True 이고
+                # post_layers_engine 이 명시되지 않으면 "auto" 로 기본 주입.
+                # mesh_type 별 BL 엔진 (tet_bl_subdivide / native_bl /
+                # poly_bl_transition) 이 LayersPostGenerator 내부에서 자동 선택.
+                _tsp = (strategy.tier_specific_params or {}) if strategy else {}
+                _post_engine = _tsp.get("post_layers_engine", None)
+                if _post_engine is None:
+                    if (
+                        strategy is not None
+                        and strategy.boundary_layers is not None
+                        and bool(strategy.boundary_layers.enabled)
+                        and int(strategy.boundary_layers.num_layers) > 0
+                    ):
+                        _post_engine = "auto"
+                        # strategy 에도 기록 (downstream gen 이 읽을 수 있도록)
+                        if strategy.tier_specific_params is None:
+                            strategy.tier_specific_params = {}
+                        strategy.tier_specific_params["post_layers_engine"] = "auto"
+                        log.info(
+                            "post_layers_engine_auto_populated",
+                            reason="boundary_layers_enabled",
+                            num_layers=strategy.boundary_layers.num_layers,
+                        )
+                    else:
+                        _post_engine = "disabled"
                 if str(_post_engine).lower() not in ("disabled", "none", "off", ""):
                     try:
                         from core.generator.tier_layers_post import LayersPostGenerator
