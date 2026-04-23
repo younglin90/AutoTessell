@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.0-beta38] - 2026-04-23 — "run_native_tet_harness 단위 회귀"
+
+### Added
+
+- `tests/test_native_tet_harness.py` (7 tests): TetHarnessResult 타입 / 빈 input /
+  max_iter cap / target_edge clamp / max_cells safety / 결정성 / cube 기본 동작.
+  기존 tier_native_tet 통합 경로에서만 cover 되던 harness 단위 격리.
+
+---
+
+## [0.4.0-beta37] - 2026-04-23 — "write_generic_polymesh 단위 회귀"
+
+### Added
+
+- `tests/test_write_generic_polymesh.py` (10 tests): beta12 공용 writer 의
+  dedicated 회귀. single/double tet, owner<nbr, owner note 필드, 5 파일 +
+  system/ 생성, patch 설정, 정렬, edge cases (empty, short face).
+
+---
+
 ## [0.4.0-beta36] - 2026-04-23 — "fidelity native helpers 단위 회귀"
 
 ### Added
