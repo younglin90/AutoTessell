@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.4.0-beta56] - 2026-04-23 — "run_native_poly_harness edge case 회귀"
+
+### Added
+
+- `tests/test_native_poly_harness_edge.py` (6 tests): 빈 input graceful,
+  max_iter / max_tet_cells safety cap, elapsed non-negative, sphere cell 생성.
+
+---
+
+## [0.4.0-beta55] - 2026-04-23 — "_parse_target_edge + run_native_tier edge cases"
+
+### Added
+
+- `tests/test_tier_native_common_edge_cases.py` (9 tests): 0/음수/non-numeric
+  target_cell_size → None, missing STL → failed, runner 예외 → failed,
+  best-effort success (n_cells>0) 기록.
+
+---
+
+## [0.4.0-beta54] - 2026-04-23 — "CoreSurfaceMesh dedicated 회귀"
+
+### Added
+
+- `tests/test_core_surface_mesh.py` (15 tests): dataclass coercion, invalid
+  shape 검증, compute_face_normals / face_areas / bounding_box, metadata,
+  __repr__.
+
+---
+
 ## [0.4.0-beta53] - 2026-04-23 — "Native STEP/IGES reader (OCP 직접 호출)"
 
 ### Added
