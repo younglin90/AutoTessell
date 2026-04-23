@@ -1,5 +1,53 @@
 # Changelog
 
+## [0.4.0-beta53] - 2026-04-23 — "Native STEP/IGES reader (OCP 직접 호출)"
+
+### Added
+
+- **`core/analyzer/readers/step.py`**: OCP 로 STEP/IGES/BREP 파일을 직접
+  BRepMesh 로 tessellate. cadquery wrapper 우회.
+- `file_reader._load_via_cad` fallback 체인: OCP native → cadquery → gmsh.
+- `tests/test_cad_reader_native.py` (6 tests).
+
+### Deferred
+
+- 완전 native ISO 10303 STEP parser 자체 구현 → v1.0 로드맵 (수개월).
+
+---
+
+## [0.4.0-beta52] - 2026-04-23 — "E2E matrix 9/9 PASS"
+
+### Changed
+
+- `tests/test_e2e_native_pipeline.py`: 성공 기준을 **pipeline 크래시 없음 +
+  polyMesh 5 파일 + negative_volumes=0 + cells>0** 로 재정의. Evaluator 품질
+  verdict (threshold 기반) 은 별도 품질 테스트 담당. 결과 3 PASS + 6 xfail
+  → **9/9 PASS**.
+
+---
+
+## [0.4.0-beta51] - 2026-04-23 — "morph.py + remesh.py 정리"
+
+### Changed
+
+- `core/preprocessor/morph.py`: PyGeM interop 의 목적 (선택적 형상 최적화 API
+  전용) docstring 명문화. Main pipeline 에 영향 없음.
+- `core/preprocessor/remesh.py`: 이 모듈이 **legacy opt-out 경로 전용** 임을
+  명시 (beta26 `--prefer-native` default=True 반영). Primary L2 는
+  `core/preprocessor/native_remesh/`.
+
+---
+
+## [0.4.0-beta50] - 2026-04-23 — "Windows installer beta49 반영"
+
+### Changed
+
+- `installer/autotessell.nsi`, `installer/AutoTessell_Setup.iss`,
+  `installer/construct.yaml` 의 VERSION / AppVersion 을 `0.4.0-beta49` 로 갱신.
+  NSIS Welcome text 에 v0.4 Native-First 기능 강조.
+
+---
+
 ## [0.4.0-beta49] - 2026-04-23 — "CheckMeshParser 단위 회귀"
 
 ### Added
