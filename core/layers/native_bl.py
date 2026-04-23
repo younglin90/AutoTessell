@@ -85,6 +85,11 @@ class BLConfig:
     shrink_iterations: int = 1      # 반복 최대 횟수 (1=기존 단일 pass)
     shrink_factor: float = 0.7      # 각 iteration 에서 불량 vertex scale 감소율
     shrink_aspect_threshold: float = 30.0  # 이 값 초과 prism → 해당 vertex 두께 감소
+    # beta95: 완전 비균일 prism BL — per-vertex first layer 두께 개별 설정.
+    # None → 모든 vertex 에 cfg.first_thickness 사용 (기존 동작).
+    # dict → {vertex_id: float} → 해당 vertex 의 first layer 두께 개별 설정.
+    # growth_ratio 는 global 유지, vertex v 의 thicknesses[k] = per_ft[v] * growth_ratio^k.
+    per_vertex_first_thickness: dict | None = None
 
 
 @dataclass
@@ -834,10 +839,33 @@ def generate_native_bl(
 
     wall_set = set(wall_face_indices)
 
+    # beta95: per-vertex cumulative thickness 계산
+    # per_vertex_first_thickness 가 주어지면 각 vertex 별 자체 두께 성장 곡선 사용.
+    vertex_cum_map: dict[int, np.ndarray] = {}
+    use_per_vertex_cum = False
+    if cfg.per_vertex_first_thickness:
+        use_per_vertex_cum = True
+        for v in wall_vert_indices:
+            ft = cfg.per_vertex_first_thickness.get(v, cfg.first_thickness)
+            # vertex 자신의 두께 배열 (growth_ratio 는 global 유지)
+            v_thick = np.array(
+                [ft * (cfg.growth_ratio ** i) for i in range(cfg.num_layers)],
+                dtype=np.float64,
+            )
+            # vertex_scale[v] 적용 (feature lock + collision)
+            v_thick *= vertex_scale.get(v, 1.0)
+            vertex_cum_map[v] = np.concatenate(([0.0], np.cumsum(v_thick)))
+        log.info(
+            "native_bl_per_vertex_cum_activated", component="native_bl", phase="beta95",
+            n_vertices=len(vertex_cum_map),
+        )
+
     # 5-7) Prism 생성 내부 함수 (beta93: shrink iteration 에서 반복 호출 가능)
     def _run_prism_pass(
         vertex_scale_pass: dict[int, float],
         cum_pass: np.ndarray,
+        vertex_cum_map_pass: dict[int, np.ndarray] | None = None,
+        use_per_v_cum_pass: bool = False,
     ) -> tuple[
         np.ndarray,              # final_points
         list[list[int]],         # final_faces
@@ -846,15 +874,29 @@ def generate_native_bl(
         list[dict[str, Any]],    # final_boundary_entries (bl_side 포함)
         list[dict[int, int]],    # layer_point_ids (quality check 용)
     ]:
-        """단일 prism insertion pass. vertex_scale_pass / cum_pass 로 layer 생성."""
+        """단일 prism insertion pass. vertex_scale_pass / cum_pass 로 layer 생성.
+
+        beta95: use_per_v_cum_pass=True 이면 vertex_cum_map_pass[v][layer_i] 를
+        offset 으로 직접 사용 (per-vertex 두께 성장 곡선). 이미 vertex_scale 이
+        적용된 값이므로 추가 scale 없음.
+        """
         # 5) 새 point 배열 구성
         new_pts = points.copy()
-        inward_v = np.array([-vnorm[v] for v in wall_vert_indices])
-        scales_v = np.array(
-            [vertex_scale_pass.get(v, 1.0) for v in wall_vert_indices], dtype=np.float64,
-        )[:, None]
         wall_idx_arr_p = np.array(wall_vert_indices, dtype=np.int64)
-        new_pts[wall_idx_arr_p] = points[wall_idx_arr_p] + inward_v * (total * scales_v)
+
+        if use_per_v_cum_pass and vertex_cum_map_pass:
+            # per-vertex total thickness = vertex_cum_map_pass[v][-1]
+            for vi_idx, v in enumerate(wall_vert_indices):
+                v_total = float(vertex_cum_map_pass[v][-1]) if v in vertex_cum_map_pass else (
+                    total * vertex_scale_pass.get(v, 1.0)
+                )
+                new_pts[v] = points[v] + (-vnorm[v]) * v_total
+        else:
+            inward_v = np.array([-vnorm[v] for v in wall_vert_indices])
+            scales_v = np.array(
+                [vertex_scale_pass.get(v, 1.0) for v in wall_vert_indices], dtype=np.float64,
+            )[:, None]
+            new_pts[wall_idx_arr_p] = points[wall_idx_arr_p] + inward_v * (total * scales_v)
 
         lp_ids: list[dict[int, int]] = [{} for _ in range(cfg.num_layers + 1)]
         extra_pts: list[np.ndarray] = []
@@ -864,10 +906,14 @@ def generate_native_bl(
                 for v in wall_vert_indices:
                     lp_ids[layer_i][v] = int(v)
             else:
-                offset = float(cum_pass[layer_i])
                 for v in wall_vert_indices:
-                    v_scale = vertex_scale_pass.get(v, 1.0)
-                    p_new = points[v] - vnorm[v] * (offset * v_scale)
+                    # beta95: per-vertex cum 있으면 그걸 사용, 없으면 기존 방식
+                    if use_per_v_cum_pass and vertex_cum_map_pass and v in vertex_cum_map_pass:
+                        offset_v = float(vertex_cum_map_pass[v][layer_i])
+                        # 이미 scale 포함됨 → 추가 v_scale 불필요
+                    else:
+                        offset_v = float(cum_pass[layer_i]) * vertex_scale_pass.get(v, 1.0)
+                    p_new = points[v] - vnorm[v] * offset_v
                     extra_pts.append(p_new)
                     lp_ids[layer_i][v] = cursor_p
                     cursor_p += 1
@@ -1025,6 +1071,8 @@ def generate_native_bl(
     for iteration in range(n_iterations):
         fp, out_faces, out_owner, out_nbr, out_bnd_entries, lp_ids = _run_prism_pass(
             current_vertex_scale, current_cum,
+            vertex_cum_map_pass=vertex_cum_map if use_per_vertex_cum else None,
+            use_per_v_cum_pass=use_per_vertex_cum,
         )
         final_points = fp
         final_faces = out_faces
@@ -1095,6 +1143,16 @@ def generate_native_bl(
         # cum 재계산 (vertex_scale 는 per-vertex, cum/thicknesses 는 global — 변경 없음)
         # vertex_scale 만 줄어드므로 cum 재계산은 불필요 (총 두께 = total × vertex_scale[v])
         # 다만 vertex_scale 이 변경되면 다음 pass 에서 per-vertex 두께가 달라짐.
+        # beta95: per-vertex cum 도 vertex_scale 변경 시 재계산.
+        if use_per_vertex_cum and cfg.per_vertex_first_thickness:
+            for v in wall_vert_indices:
+                ft = cfg.per_vertex_first_thickness.get(v, cfg.first_thickness)
+                v_thick = np.array(
+                    [ft * (cfg.growth_ratio ** i) for i in range(cfg.num_layers)],
+                    dtype=np.float64,
+                )
+                v_thick *= current_vertex_scale.get(v, 1.0)
+                vertex_cum_map[v] = np.concatenate(([0.0], np.cumsum(v_thick)))
 
     assert final_points is not None
 

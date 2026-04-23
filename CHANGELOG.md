@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.4.0-beta95] - 2026-04-24 — "완전 비균일 prism BL (per-layer per-vertex)"
+
+### Added
+
+- `BLConfig.per_vertex_first_thickness: dict | None = None`.
+  - None (기본) → 전체 vertex에 `cfg.first_thickness` 균일 사용.
+  - `{vertex_id: float}` 제공 시 → 각 vertex마다 자체 성장 곡선:
+    `thicknesses[v][k] = first_thickness[v] * growth_ratio^k`
+- `_run_prism_pass(vertex_cum_map_pass, use_per_v_cum_pass)` 파라미터 추가.
+- layer offset 계산 시 per-vertex cum 우선: `vertex_cum_map_pass[v][layer_i]`.
+- shrink iteration 루프에 vertex_cum_map 재계산 로직.
+- tests: BLConfig 기본값 None, dict 설정, None=uniform, 다른 레이어 위치 등 6 tests.
+
+---
+
+## [0.4.0-beta94] - 2026-04-24 — "Octree snap step (snappyHexMesh 근사)"
+
+### Added
+
+- `core/generator/native_hex/snap.py::snap_to_surface_iterative`:
+  - snappyHexMesh snap step 근사.
+  - 알고리즘: surface nearest-point 탐색 → `relax` 비율 이동 → Laplacian smoothing.
+  - `n_iter=5`, `relax=0.5`, `smooth_after_snap=True`, `feature_angle_deg=45.0`.
+  - stats: `n_snapped_per_iter`, `final_n_snapped`, `max_displacement`.
+- `generate_native_hex(snap_iterations: int = 0)`:
+  - `adaptive=True` 경로에서 octree 이후 iterative snap 적용.
+  - `snap_iterations=0` (기본) → 기존 동작 유지.
+- `HARNESS_PARAMS["tier_native_hex"]["fine"]`: `snap_iterations=3` 자동.
+- `_TIER_PARAM_KEYS`: `snap_iterations` 추가.
+- tests: noop / stats keys / 수렴 / cap 초과 / Hausdorff 비교 / smoothing 등 9 tests.
+
+---
+
 ## [0.4.0-beta93] - 2026-04-24 — "BL shrinkage iteration (반복 수렴)"
 
 ### Added

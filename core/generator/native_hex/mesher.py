@@ -83,6 +83,7 @@ def generate_native_hex(
     adaptive: bool = False,
     n_levels: int = 2,
     refinement_distance_factor: float = 2.0,
+    snap_iterations: int = 0,
 ) -> NativeHexResult:
     """uniform hex grid 생성 + inside filter.
 
@@ -125,6 +126,25 @@ def generate_native_hex(
                 refinement_distance_factor=refinement_distance_factor,
             )
             if oct_cells:
+                # beta94: iterative snap step (adaptive 경로)
+                if snap_iterations > 0:
+                    try:
+                        from core.generator.native_hex.snap import (  # noqa: PLC0415
+                            snap_to_surface_iterative,
+                        )
+                        oct_pts, snap_stats_it = snap_to_surface_iterative(
+                            oct_pts, V, F, h_pre,
+                            n_iter=snap_iterations, relax=0.5,
+                        )
+                        log.info(
+                            "native_hex_iterative_snap_applied",
+                            n_iter=snap_iterations,
+                            **{k: v for k, v in snap_stats_it.items()
+                               if k != "n_snapped_per_iter"},
+                        )
+                    except Exception as exc:
+                        log.warning("native_hex_iterative_snap_failed", error=str(exc))
+
                 from core.generator.polymesh_writer import write_generic_polymesh  # noqa: PLC0415
                 from core.generator.tier_layers_post import (  # noqa: PLC0415
                     _ensure_minimal_controldict, _write_minimal_fv_dicts,

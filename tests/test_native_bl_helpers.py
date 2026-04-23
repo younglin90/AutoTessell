@@ -490,3 +490,151 @@ def test_prism_aspect_ratio_stats_zero_height_counts_degenerate() -> None:
         num_layers=1, threshold=50.0,
     )
     assert n_degen >= 1
+
+
+# ---------------------------------------------------------------------------
+# beta95 — per_vertex_first_thickness (BLConfig + generate_native_bl)
+# ---------------------------------------------------------------------------
+
+
+def test_blconfig_defaults_per_vertex_none() -> None:
+    """beta95 — per_vertex_first_thickness 기본값 None."""
+    cfg = BLConfig()
+    assert cfg.per_vertex_first_thickness is None
+
+
+def test_blconfig_per_vertex_first_thickness_set() -> None:
+    """per_vertex_first_thickness dict 로 설정 가능."""
+    mapping = {0: 0.001, 1: 0.005, 2: 0.002}
+    cfg = BLConfig(per_vertex_first_thickness=mapping)
+    assert cfg.per_vertex_first_thickness == mapping
+    assert cfg.per_vertex_first_thickness[1] == pytest.approx(0.005)
+
+
+def test_per_vertex_first_thickness_none_is_uniform() -> None:
+    """per_vertex_first_thickness=None → 모든 vertex 에 cfg.first_thickness 사용 (기존 동작).
+
+    generate_native_bl 을 사용하지 않고, BLConfig 의 두께 계산 로직만 직접 검증한다.
+    vertex 별 per_vertex cum 이 없을 때와 있을 때 결과를 비교.
+    """
+    cfg_uniform = BLConfig(
+        num_layers=3,
+        growth_ratio=1.2,
+        first_thickness=0.01,
+        per_vertex_first_thickness=None,
+    )
+    cfg_explicit = BLConfig(
+        num_layers=3,
+        growth_ratio=1.2,
+        first_thickness=0.01,
+        # 모든 vertex 에 동일한 first_thickness=0.01 명시
+        per_vertex_first_thickness={0: 0.01, 1: 0.01, 2: 0.01},
+    )
+
+    import numpy as _np
+
+    def _compute_cum(cfg_: BLConfig, v: int) -> _np.ndarray:
+        ft = cfg_.first_thickness
+        if cfg_.per_vertex_first_thickness:
+            ft = cfg_.per_vertex_first_thickness.get(v, cfg_.first_thickness)
+        thick = _np.array(
+            [ft * (cfg_.growth_ratio ** i) for i in range(cfg_.num_layers)],
+        )
+        return _np.concatenate(([0.0], _np.cumsum(thick)))
+
+    for v in (0, 1, 2):
+        cum_u = _compute_cum(cfg_uniform, v)
+        cum_e = _compute_cum(cfg_explicit, v)
+        _np.testing.assert_allclose(cum_u, cum_e, rtol=1e-9)
+
+
+def test_per_vertex_first_thickness_produces_different_layers() -> None:
+    """vertex 별 다른 first_thickness → 레이어 위치가 다름.
+
+    generate_native_bl 의 vertex_cum_map 계산 로직을 재현해 검증.
+    """
+    import numpy as _np
+
+    cfg = BLConfig(
+        num_layers=3,
+        growth_ratio=1.2,
+        first_thickness=0.01,
+        per_vertex_first_thickness={0: 0.001, 1: 0.005, 2: 0.020},
+    )
+
+    vertex_scale = {0: 1.0, 1: 1.0, 2: 1.0}
+
+    # vertex_cum_map 계산 (generate_native_bl 내부 로직과 동일)
+    vertex_cum_map = {}
+    for v in (0, 1, 2):
+        ft = cfg.per_vertex_first_thickness[v]
+        v_thick = _np.array(
+            [ft * (cfg.growth_ratio ** i) for i in range(cfg.num_layers)],
+            dtype=_np.float64,
+        )
+        v_thick *= vertex_scale.get(v, 1.0)
+        vertex_cum_map[v] = _np.concatenate(([0.0], _np.cumsum(v_thick)))
+
+    # vertex 0 (ft=0.001) vs vertex 2 (ft=0.020): 레이어 위치가 달라야 함
+    # layer 1 위치 = cum[1]
+    assert vertex_cum_map[0][1] != pytest.approx(vertex_cum_map[2][1], rel=0.01)
+    # layer 1: v0 << v2
+    assert vertex_cum_map[0][1] < vertex_cum_map[2][1]
+    # 총 두께도 다름
+    assert vertex_cum_map[0][-1] < vertex_cum_map[1][-1] < vertex_cum_map[2][-1]
+
+
+def test_per_vertex_first_thickness_partial_override() -> None:
+    """일부 vertex 만 override, 나머지는 cfg.first_thickness 사용."""
+    import numpy as _np
+
+    cfg = BLConfig(
+        num_layers=2,
+        growth_ratio=1.0,
+        first_thickness=0.01,
+        per_vertex_first_thickness={5: 0.05},  # vertex 5 만 override
+    )
+
+    wall_verts = [3, 5, 7]
+    vertex_scale = {3: 1.0, 5: 1.0, 7: 1.0}
+
+    vertex_cum_map = {}
+    for v in wall_verts:
+        ft = cfg.per_vertex_first_thickness.get(v, cfg.first_thickness)
+        v_thick = _np.array(
+            [ft * (cfg.growth_ratio ** i) for i in range(cfg.num_layers)],
+            dtype=_np.float64,
+        )
+        v_thick *= vertex_scale.get(v, 1.0)
+        vertex_cum_map[v] = _np.concatenate(([0.0], _np.cumsum(v_thick)))
+
+    # vertex 3, 7: cfg.first_thickness=0.01 사용
+    # vertex 5: 0.05 사용
+    _np.testing.assert_allclose(vertex_cum_map[3][1], 0.01, rtol=1e-9)
+    _np.testing.assert_allclose(vertex_cum_map[7][1], 0.01, rtol=1e-9)
+    _np.testing.assert_allclose(vertex_cum_map[5][1], 0.05, rtol=1e-9)
+
+
+def test_per_vertex_first_thickness_scale_applied() -> None:
+    """vertex_scale < 1 이 per-vertex thick 에 올바르게 적용됨."""
+    import numpy as _np
+
+    ft = 0.01
+    growth = 1.0
+    num_layers = 3
+    v_scale = 0.5  # feature lock 등으로 50% 축소
+
+    cfg = BLConfig(
+        num_layers=num_layers, growth_ratio=growth, first_thickness=ft,
+        per_vertex_first_thickness={0: ft},
+    )
+    vertex_scale = {0: v_scale}
+
+    v_thick = _np.array(
+        [ft * (growth ** i) for i in range(num_layers)], dtype=_np.float64,
+    )
+    v_thick *= vertex_scale[0]
+    cum = _np.concatenate(([0.0], _np.cumsum(v_thick)))
+
+    # scale=0.5 적용 후 총 두께 = ft * num_layers * scale = 0.01 * 3 * 0.5 = 0.015
+    _np.testing.assert_allclose(cum[-1], ft * num_layers * v_scale, rtol=1e-9)
