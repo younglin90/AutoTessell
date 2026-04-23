@@ -492,6 +492,35 @@ class StrategyPlanner:
             )
 
         # ----------------------------------------------------------
+        # beta84: native_bl Phase 2 — degenerate prisms 과다 시 BL 완화
+        # ----------------------------------------------------------
+        p2 = getattr(summary.additional_metrics, "native_bl_phase2", None)
+        if p2 is not None and p2.n_prism_cells > 0:
+            ratio = p2.n_degenerate_prisms / max(1, p2.n_prism_cells)
+            if ratio > 0.1:  # degenerate > 10%
+                adj.failure_reasons.append(
+                    f"native_bl_degenerate_prisms={p2.n_degenerate_prisms}"
+                    f"/{p2.n_prism_cells} ({100*ratio:.0f}%)"
+                )
+                adj.evaluator_recs.append(
+                    "BL layer 수 감소 또는 collision_safety_factor 축소"
+                )
+                # BL 층 1개 감소 + growth_ratio 완화
+                adj.bl_layers_add = min(adj.bl_layers_add, -1)
+                adj.bl_growth_ratio_factor = min(adj.bl_growth_ratio_factor, 0.9)
+                adj.modifications.append(
+                    f"boundary_layers.num_layers: -1 "
+                    f"(degenerate_prisms={ratio*100:.0f}%)"
+                )
+                log.info(
+                    "retry_adjust_degenerate_prisms",
+                    n_degenerate=p2.n_degenerate_prisms,
+                    n_prism_cells=p2.n_prism_cells,
+                    ratio=ratio,
+                    bl_layers_add=-1,
+                )
+
+        # ----------------------------------------------------------
         # hausdorff_high (geometry fidelity)
         # ----------------------------------------------------------
         if summary.geometry_fidelity is not None:

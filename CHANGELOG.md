@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.4.0-beta84] - 2026-04-23 — "Strategist BL Phase 2 피드백 연결"
+
+### Added
+
+- `core/strategist/strategy_planner.py::_compute_adjustments` 에
+  degenerate prisms 비율 > 10% 일 때 자동 조정 로직:
+  - `bl_layers_add = -1` (BL 층 1개 감소)
+  - `bl_growth_ratio_factor = 0.9` (성장비 완화)
+  - `retry_adjust_degenerate_prisms` 로그 이벤트.
+- `additional_metrics.native_bl_phase2` (beta76) 가 이제 Strategist 재시도
+  판단에 실제 반영됨 — G4 gap 완전 해소.
+
+### Impact
+
+- beta76 에서 계산 + 리포트만 하던 `n_degenerate_prisms` 가 이제 다음 iteration
+  파라미터 조정에 직접 활용. Phase 2 BL → Evaluator → Strategist 피드백 루프
+  완성.
+
+---
+
 ## [0.4.0-beta83] - 2026-04-23 — "harness gap 3종 수정"
 
 ### Fixed
