@@ -78,10 +78,16 @@ def run_native_poly_harness(
     seed_density: int = 10,
     max_iter: int = 2,
     max_tet_cells: int = 30000,
+    smooth_iters: int = 0,
+    smooth_relax: float = 0.3,
 ) -> PolyHarnessResult:
     """Generator (native_tet → dual) ↔ Evaluator 반복으로 poly mesh 생성.
 
     각 iteration 에서 FAIL 시 seed_density 를 증가 (더 조밀) 시도.
+
+    beta97:
+        smooth_iters > 0 이면 dual 변환 후 Laplacian smoothing 으로 경계 근방
+        stretched cell 개선.
     """
     t0 = time.perf_counter()
 
@@ -156,6 +162,22 @@ def run_native_poly_harness(
                 current_seed = int(current_seed * 1.5)
                 shutil.rmtree(tmp_dual, ignore_errors=True)
                 continue
+
+            # 2b) beta97: dual 이후 Laplacian smoothing — boundary cell 품질↑
+            if smooth_iters > 0:
+                try:
+                    from core.generator.native_poly.smooth import smooth_poly_mesh  # noqa: PLC0415
+                    s_res = smooth_poly_mesh(
+                        tmp_dual, n_iter=smooth_iters, relax=smooth_relax,
+                    )
+                    log.info(
+                        "native_poly_harness_smooth",
+                        iteration=it,
+                        n_iter=s_res.n_iter_done,
+                        max_disp=s_res.max_displacement,
+                    )
+                except Exception as exc:
+                    log.warning("native_poly_harness_smooth_fail", error=str(exc))
 
             # 3) Evaluate
             passed, metrics = _evaluate_poly_mesh(tmp_dual)

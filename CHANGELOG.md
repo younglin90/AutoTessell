@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.4.0-beta97] - 2026-04-24 — "native_poly Laplacian smoothing"
+
+### Added
+
+- `core/generator/native_poly/smooth.py::smooth_poly_mesh(case_dir, n_iter, relax, lock_boundary)`:
+  - polyhedral mesh 내부 vertex를 face centroid area-weighted avg로 relax 이동.
+  - boundary vertex 고정 (표면 형상 보존).
+  - SmoothResult: n_iter_done, max_displacement.
+- `run_native_poly_harness(smooth_iters=0, smooth_relax=0.3)`:
+  - dual 변환 직후 smoothing 적용.
+  - smooth_iters=0 기본 → 기존 동작 유지.
+- HARNESS_PARAMS poly: draft=0, standard=3, fine=5 자동.
+- `tests/test_poly_smooth.py` 6 tests.
+
+### Impact
+
+- tet→poly dual 경계 근방 stretched cell → smoothing으로 aspect ratio 개선.
+- standard/fine quality poly mesh에서 자동 적용.
+
+---
+
+## [0.4.0-beta96] - 2026-04-24 — "y⁺ 자동 BL 두께 계산"
+
+### Added
+
+- `core/utils/yplus.py`:
+  - `estimate_first_layer_thickness(U, L, fluid, y_plus_target)` → `YPlusResult`.
+  - Schlichting 평판 Cf + 낮은 Re Blasius + 높은 Re ITTC 분기.
+  - FLUID_PROPERTIES: air / water / oil 동점성 계수 내장.
+- CLI: `--fluid {air|water|oil|custom}`, `--target-yplus FLOAT`,
+  `--kinematic-viscosity FLOAT`.
+- `bl_first_height` 미지정 + `target_yplus` 있으면 자동 계산 후 주입.
+- `tests/test_yplus.py` 11 tests.
+
+### Usage
+
+```bash
+auto-tessell run wing.stl -o case --mesh-type hex_dominant --quality fine \
+    --flow-velocity 50 --fluid air --target-yplus 1.0
+# → y⁺=1 달성을 위한 bl_first_height 자동 계산 (Re 기반)
+```
+
+---
+
 ## [0.4.0-beta95] - 2026-04-24 — "완전 비균일 prism BL (per-layer per-vertex)"
 
 ### Added

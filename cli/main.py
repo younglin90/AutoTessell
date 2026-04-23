@@ -556,7 +556,25 @@ def evaluate(
 @click.option("--max-cells", type=click.IntRange(min=1), default=None, help="최대 셀 수 제한 (초과 시 셀 크기 자동 확대)")
 # --- Boundary Layer ---
 @click.option("--bl-layers", type=int, default=None, help="BL 레이어 수 (0=비활성)")
-@click.option("--bl-first-height", type=float, default=None, help="첫 번째 BL 높이 [m]")
+@click.option("--bl-first-height", type=float, default=None, help="첫 번째 BL 높이 [m]. --target-yplus 와 함께 쓰면 자동 계산값 override.")
+@click.option(
+    "--fluid",
+    type=click.Choice(["air", "water", "oil", "custom"]),
+    default="air", show_default=True,
+    help="유체 종류 — y⁺ 자동 계산 시 동점성 계수 조회 기준.",
+)
+@click.option(
+    "--target-yplus", type=float, default=None,
+    help=(
+        "목표 y⁺ 값 (예: 1.0 = low-Re, 30 = 벽함수). "
+        "지정 시 --flow-velocity + geometry bbox 로 첫 BL 층 두께를 자동 계산. "
+        "--bl-first-height 미지정 시에만 유효."
+    ),
+)
+@click.option(
+    "--kinematic-viscosity", type=float, default=None,
+    help="직접 동점성 계수 지정 [m²/s]. --fluid 무시됨.",
+)
 @click.option("--bl-growth-ratio", type=float, default=None, help="BL 성장비 (기본: 1.2)")
 # --- Preprocessor ---
 @click.option("--no-repair", is_flag=True, help="표면 수리 건너뛰기")
@@ -660,6 +678,9 @@ def run(
     max_cells: int | None,
     bl_layers: int | None,
     bl_first_height: float | None,
+    fluid: str,
+    target_yplus: float | None,
+    kinematic_viscosity: float | None,
     bl_growth_ratio: float | None,
     no_repair: bool,
     force_remesh: bool,
@@ -807,6 +828,41 @@ def run(
     # BL, domain 파라미터들을 tier_specific_params에 추가 (orchestrator 내부 처리용)
     if bl_layers is not None:
         tier_params["bl_layers"] = bl_layers
+    # beta96: y⁺ 자동 계산 — bl_first_height 미지정 시 target_yplus 로 역산.
+    if bl_first_height is None and target_yplus is not None:
+        try:
+            from core.utils.yplus import estimate_first_layer_thickness  # noqa: PLC0415
+            _ug = getattr(ctx, "geometry_report", None)
+            _diag = None
+            if _ug is not None:
+                try:
+                    _diag = float(_ug.geometry.bounding_box.diagonal)
+                except Exception:
+                    pass
+            if _diag is None or _diag <= 0:
+                # geometry 아직 분석 전 → input STL에서 bbox 추정
+                try:
+                    import trimesh as _tm  # noqa: PLC0415
+                    _m = _tm.load_mesh(str(input_file))
+                    _ext = _m.extents
+                    _diag = float(
+                        (_ext[0]**2 + _ext[1]**2 + _ext[2]**2) ** 0.5
+                    )
+                except Exception:
+                    _diag = 1.0  # fallback: 1m
+            yr = estimate_first_layer_thickness(
+                flow_velocity=flow_velocity,
+                characteristic_length=_diag,
+                fluid=fluid,
+                kinematic_viscosity=kinematic_viscosity,
+                y_plus_target=target_yplus,
+            )
+            bl_first_height = yr.y_first
+            console.print(
+                f"[cyan]y⁺ 자동 계산:[/cyan] {yr.message}"
+            )
+        except Exception as exc:
+            console.print(f"[yellow]y⁺ 계산 실패 (수동 --bl-first-height 사용): {exc}[/yellow]")
     if bl_first_height is not None:
         tier_params["bl_first_height"] = bl_first_height
     if bl_growth_ratio is not None:

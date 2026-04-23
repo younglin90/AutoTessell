@@ -60,9 +60,11 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
                      "adaptive": True, "n_levels": 3, "snap_iterations": 3},
     },
     "tier_native_poly": {
-        "draft":    {"seed_density": 8,  "max_iter": 2},
-        "standard": {"seed_density": 10, "max_iter": 3},
-        "fine":     {"seed_density": 14, "max_iter": 4},
+        # beta97: smooth_iters — dual 이후 Laplacian smoothing 횟수.
+        # draft: 0 (빠름), standard: 3 (균형), fine: 5 (품질 우선).
+        "draft":    {"seed_density": 8,  "max_iter": 2, "smooth_iters": 0},
+        "standard": {"seed_density": 10, "max_iter": 3, "smooth_iters": 3},
+        "fine":     {"seed_density": 14, "max_iter": 4, "smooth_iters": 5},
     },
 }
 
@@ -190,6 +192,8 @@ def run_native_tier(
         "refinement_distance_factor",  # beta92: surface distance threshold factor
         "max_input_vertices",  # beta77: native_tet large input guardrail
         "snap_iterations",     # beta94: iterative snap step (snappyHexMesh snap 근사)
+        "smooth_iters",        # beta97: native_poly Laplacian smoothing
+        "smooth_relax",        # beta97
     }
     tsp = getattr(strategy, "tier_specific_params", None) or {}
     for k in _TIER_PARAM_KEYS:
