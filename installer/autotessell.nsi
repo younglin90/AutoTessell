@@ -13,7 +13,7 @@ Unicode True
 
 ; ── 기본 설정 ────────────────────────────────────────────────────────────────
 !ifndef VERSION
-  !define VERSION "0.3.5"
+  !define VERSION "0.4.0-beta49"
 !endif
 !ifndef SRCROOT
   !define SRCROOT ".."
@@ -35,7 +35,7 @@ ShowInstDetails show
 !define MUI_ABORTWARNING
 !define MUI_ABORTWARNING_TEXT "설치를 중단하시겠습니까?"
 !define MUI_WELCOMEPAGE_TITLE "AutoTessell ${VERSION} 설치 마법사"
-!define MUI_WELCOMEPAGE_TEXT "CAD/메쉬 파일을 OpenFOAM polyMesh로 자동 변환하는 AutoTessell을 설치합니다.$\r$\n$\r$\n포함 내용:$\r$\n  • Python 3.12 + 전체 메쉬 라이브러리$\r$\n  • WildMesh, TetWild, Netgen, GMSH 등 17개 메쉬 엔진$\r$\n  • Qt GUI (드래그앤드롭, 실시간 3D 뷰어)$\r$\n  • mmg3d, HOHQMesh, JIGSAW 도구$\r$\n$\r$\n선택 컴포넌트:$\r$\n  • OpenFOAM for Windows (snappy/cfMesh, ~2GB)$\r$\n  • 고급 Hex 메셔 (cinolib/RobustHex, GitHub Releases)$\r$\n$\r$\n인터넷 연결이 필요합니다 (기본 약 3-5 GB 다운로드)."
+!define MUI_WELCOMEPAGE_TEXT "CAD/메쉬 파일을 OpenFOAM polyMesh로 자동 변환하는 AutoTessell을 설치합니다.$\r$\n$\r$\n v0.4 Native-First:$\r$\n  • 3 native 볼륨 엔진 (tet / hex_dominant / poly)$\r$\n  • mesh_type × BL 자동 라우팅 (fine quality 기본 활성화)$\r$\n  • Strategist native-first tier 매핑 (--prefer-native-tier)$\r$\n  • L1/L2 native repair/remesh 기본화 (pymeshfix opt-out)$\r$\n  • NumpyKDTree 자체 구현 (scipy 의존 축소)$\r$\n$\r$\n포함 내용:$\r$\n  • Python 3.12 + 전체 메쉬 라이브러리$\r$\n  • 19개 메쉬 엔진 (native_tet/hex/poly + 16 legacy)$\r$\n  • Qt GUI (드래그앤드롭, 실시간 3D 뷰어, native-first UX)$\r$\n  • mmg3d, HOHQMesh, JIGSAW 도구$\r$\n$\r$\n선택 컴포넌트:$\r$\n  • OpenFOAM for Windows (snappy/cfMesh, ~2GB)$\r$\n  • 고급 Hex 메셔 (cinolib/RobustHex, GitHub Releases)$\r$\n$\r$\n인터넷 연결이 필요합니다 (기본 약 3-5 GB 다운로드)."
 !define MUI_FINISHPAGE_RUN "$INSTDIR\AutoTessell.bat"
 !define MUI_FINISHPAGE_RUN_TEXT "AutoTessell 지금 실행"
 !define MUI_FINISHPAGE_SHOWREADME ""

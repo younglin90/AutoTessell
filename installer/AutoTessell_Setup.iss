@@ -8,7 +8,7 @@
 ;   - AutoTessell 소스 코드 (상위 디렉터리)
 
 #define AppName "AutoTessell"
-#define AppVersion "0.3.4"
+#define AppVersion "0.4.0-beta49"
 #define AppPublisher "AutoTessell"
 #define AppURL "https://github.com/autotessell/autotessell"
 #define AppExeName "AutoTessell.bat"

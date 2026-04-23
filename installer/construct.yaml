@@ -1,9 +1,9 @@
 # conda constructor 설정 파일
 # 빌드: conda install constructor && constructor installer/
-# 결과: AutoTessell-0.3.4-Windows-x86_64.exe
+# 결과: AutoTessell-0.4.0-beta49-Windows-x86_64.exe
 
 name: AutoTessell
-version: "0.3.4"
+version: "0.4.0-beta49"
 company: AutoTessell
 
 # 번들할 Python 인터프리터 버전
