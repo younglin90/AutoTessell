@@ -38,16 +38,22 @@ log = get_logger(__name__)
 
 HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
     "tier_native_tet": {
-        "draft":    {"seed_density": 10, "max_iter": 1},
-        "standard": {"seed_density": 12, "max_iter": 2},
-        "fine":     {"seed_density": 16, "max_iter": 3},
+        # beta62: sliver_quality_threshold 를 quality 별로. 낮은 threshold 는
+        # 관대 (cell 보존↑, 수렴↑), 높은 threshold 는 엄격 (non_ortho↓ 품질↑).
+        #   draft  0.02 → 복잡 형상에서도 cell 이 남아 harness 수렴
+        #   standard 0.05 → 기존 기본값
+        #   fine   0.10 → sliver 공격적 제거 → 최고 품질
+        "draft":    {"seed_density": 10, "max_iter": 1, "sliver_quality_threshold": 0.02},
+        "standard": {"seed_density": 12, "max_iter": 2, "sliver_quality_threshold": 0.05},
+        "fine":     {"seed_density": 16, "max_iter": 3, "sliver_quality_threshold": 0.10},
     },
     "tier_native_hex": {
         # native_hex 는 uniform grid (harness 미사용). seed_density / snap_boundary 만 의미.
         # beta22: fine quality 는 기본적으로 surface snap 활성화.
+        # beta66: fine quality 는 preserve_features=True 로 sharp corner snap 개선.
         "draft":    {"seed_density": 12, "snap_boundary": False},
         "standard": {"seed_density": 16, "snap_boundary": False},
-        "fine":     {"seed_density": 24, "snap_boundary": True},
+        "fine":     {"seed_density": 24, "snap_boundary": True, "preserve_features": True},
     },
     "tier_native_poly": {
         "draft":    {"seed_density": 8,  "max_iter": 2},
@@ -168,7 +174,14 @@ def run_native_tier(
     # beta20: strategy.tier_specific_params 의 runner-호환 키를 merge (HARNESS_PARAMS
     # 위, extra_kwargs 아래 우선순위). runner_fn 이 인식하지 못하는 키는 **_unused
     # 로 흡수되거나 dropped.
-    _TIER_PARAM_KEYS = {"seed_density", "max_iter", "snap_boundary"}
+    _TIER_PARAM_KEYS = {
+        "seed_density", "max_iter", "snap_boundary",
+        "max_cells_per_axis",  # beta61: native_hex grid cap override
+        "max_tet_cells",       # beta56: native_poly harness cap
+        "sliver_quality_threshold",  # beta62: native_tet sliver filter
+        "preserve_features",   # beta66: native_hex feature-aware snap
+        "feature_angle_deg",   # beta66
+    }
     tsp = getattr(strategy, "tier_specific_params", None) or {}
     for k in _TIER_PARAM_KEYS:
         if k in tsp:

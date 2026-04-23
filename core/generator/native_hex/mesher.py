@@ -73,6 +73,9 @@ def generate_native_hex(
     target_edge_length: float | None = None,
     seed_density: int = 16,
     snap_boundary: bool = False,
+    max_cells_per_axis: int = 50,
+    preserve_features: bool = False,
+    feature_angle_deg: float = 45.0,
 ) -> NativeHexResult:
     """uniform hex grid 생성 + inside filter.
 
@@ -85,6 +88,9 @@ def generate_native_hex(
         snap_boundary: True 면 boundary 근처 hex vertex 를 STL surface 로
             projection (Hausdorff 개선). skewness 저하 방지용 safety cap 내장.
             기본 False (backwards compat).
+        max_cells_per_axis: 각 축당 최대 cell 수 (총 cell <= N^3). 기본 50 → 125k
+            cell. 과도한 grid 폭주 방지. target_edge_length 가 너무 작아 cap 이
+            걸리면 log 에 ``native_hex_grid_capped`` warning 을 남긴다.
 
     Returns:
         NativeHexResult.
@@ -101,11 +107,19 @@ def generate_native_hex(
         target_edge_length = diag / max(1, int(seed_density))
     h = float(target_edge_length)
 
-    # 각 축별 grid size — 최대 50 로 제한 (과도한 셀 방지)
-    nxyz = np.maximum(
+    # 각 축별 grid size — max_cells_per_axis 로 제한 (과도한 셀 방지)
+    cap = max(1, int(max_cells_per_axis))
+    nxyz_req = np.maximum(
         np.ceil((bmax - bmin) / h).astype(int), 1,
     )
-    nxyz = np.minimum(nxyz, 50)
+    nxyz = np.minimum(nxyz_req, cap)
+    if np.any(nxyz_req > cap):
+        log.warning(
+            "native_hex_grid_capped",
+            requested=nxyz_req.tolist(), capped=nxyz.tolist(), cap=cap,
+            target_edge=h,
+            hint="max_cells_per_axis 늘리거나 target_edge_length 증가 권장",
+        )
     nx, ny, nz = int(nxyz[0]), int(nxyz[1]), int(nxyz[2])
 
     # vertex coords
@@ -158,6 +172,7 @@ def generate_native_hex(
     final_pts = grid_pts[used]
 
     # v0.4.0-beta22: optional boundary snap — hex vertex 를 STL surface 로 projection.
+    # beta66: preserve_features 로 sharp corner 는 feature vertex 에 직접 snap.
     if snap_boundary:
         try:
             from core.generator.native_hex.snap import (  # noqa: PLC0415
@@ -165,6 +180,8 @@ def generate_native_hex(
             )
             final_pts, snap_stats = snap_hex_boundary_to_surface(
                 final_pts, V, F, target_edge=h,
+                preserve_features=preserve_features,
+                feature_angle_deg=feature_angle_deg,
             )
             log.info("native_hex_boundary_snap_applied", **snap_stats)
         except Exception as exc:

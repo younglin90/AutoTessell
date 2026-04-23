@@ -55,6 +55,7 @@ def generate_native_tet(
     *,
     target_edge_length: float | None = None,
     seed_density: int = 12,
+    sliver_quality_threshold: float = 0.05,
 ) -> NativeTetResult:
     """입력 표면 메쉬 → tet polyMesh (MVP).
 
@@ -64,6 +65,9 @@ def generate_native_tet(
         case_dir: OpenFOAM case 디렉터리 (constant/polyMesh 생성됨).
         target_edge_length: 내부 grid spacing. None 이면 bbox_diag / seed_density.
         seed_density: target_edge_length 가 None 일 때 bbox_diag 분할 수.
+        sliver_quality_threshold: shape quality (정사면체≈1, sliver≈0) 하한. 이
+            값 미만 tet 은 제거. beta62: 0.05 기본이었으나 복잡 형상에서 모든 tet
+            이 탈락해 harness 수렴 실패 → 기본값을 quality 별로 조정 가능하게 노출.
 
     Returns:
         NativeTetResult.
@@ -147,9 +151,8 @@ def generate_native_tet(
     safe = edge_max > 1e-30
     q = np.zeros_like(edge_max)
     q[safe] = (8.48 * (vol6[safe] / 6.0)) / (edge_max[safe] ** 3)
-    # v0.4.0-beta5: sliver threshold 상향 (0.02 → 0.05). non-orthogonality
-    # 개선. degenerate tet 을 더 공격적으로 제거.
-    q_thresh = 0.05
+    # beta5: sliver threshold 상향 (0.02 → 0.05). beta62: 파라미터화.
+    q_thresh = max(0.0, float(sliver_quality_threshold))
     keep_mask = inside_tet & (q >= q_thresh)
     n_dropped_sliver = int(inside_tet.sum() - keep_mask.sum())
     log.info(

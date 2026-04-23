@@ -65,6 +65,22 @@ class BLConfig:
     backup_original: bool = True
     # Collision 방지용 최대 total thickness 비율 (bbox 대각선 대비)
     max_total_ratio: float = 0.3
+    # beta63: collision detection — 각 wall vertex 의 inward ray 가 반대편 wall
+    # triangle 과 만나는 거리 기반으로 global thickness cap 추가. True 면 U 자
+    # 형상 / 좁은 채널 / 틈새에서 prism 이 반대편 wall 과 겹치는 것을 방지.
+    collision_safety: bool = True
+    # collision 감지 시 허용 여유 (0.5 = 거리의 절반까지만 extrude)
+    collision_safety_factor: float = 0.5
+    # beta64: feature edge locking — 인접 wall face 간 dihedral angle 이
+    # feature_angle_deg 초과 edge 의 vertex 는 layer thickness 를
+    # feature_reduction_ratio 만큼 축소 (sharp corner self-intersect 방지).
+    feature_lock: bool = True
+    feature_angle_deg: float = 45.0
+    feature_reduction_ratio: float = 0.5
+    # beta65: degenerate prism quality check — 생성된 prism 의 aspect ratio
+    # (max edge / min thickness) 를 계산해 threshold 초과 수를 보고. 기본 on.
+    quality_check_enabled: bool = True
+    aspect_ratio_threshold: float = 50.0
 
 
 @dataclass
@@ -78,6 +94,9 @@ class NativeBLResult:
     n_new_points: int = 0
     total_thickness: float = 0.0
     message: str = ""
+    # beta65: quality metrics
+    n_degenerate_prisms: int = 0
+    max_aspect_ratio: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -144,6 +163,247 @@ def compute_vertex_normals(
         else:
             result[v] = np.zeros(3)
     return result
+
+
+# ---------------------------------------------------------------------------
+# beta63 — collision detection via vectorized Möller-Trumbore
+# ---------------------------------------------------------------------------
+
+
+def _ray_triangle_min_distance(
+    origins: np.ndarray,
+    directions: np.ndarray,
+    tri_verts: np.ndarray,
+    exclude_mask: np.ndarray | None = None,
+    *,
+    chunk_size: int = 512,
+) -> np.ndarray:
+    """Vectorized ray-triangle intersection (chunked). 각 ray 에 대해 ``t > 0``
+    인 최소 intersection 거리 반환. hit 없으면 +inf.
+
+    Args:
+        origins: (R, 3) 각 ray 시작점.
+        directions: (R, 3) 각 ray 방향 (정규화됨).
+        tri_verts: (T, 3, 3) 각 triangle 의 3 vertex.
+        exclude_mask: (R, T) bool — True 면 해당 (ray, tri) 조합 제외.
+        chunk_size: 한 번에 처리할 ray 수 (메모리 제어). R×T 크기 (R,T,3)
+            중간 배열이 메모리 폭증 주범이므로 R 축으로 chunk.
+
+    Returns:
+        (R,) 각 ray 의 최소 t. 없으면 np.inf.
+
+    beta63 → beta70 hotfix: (R, T, 3) 브로드캐스트 메모리 폭증 방지 (R=T=100k 에서
+    240 GB 요구하던 문제). chunk_size=512 는 512×T×3×8 bytes 메모리 상한.
+    """
+    eps = 1e-12
+    R = int(origins.shape[0])
+    T = int(tri_verts.shape[0])
+    if R == 0 or T == 0:
+        return np.full((R,), np.inf, dtype=np.float64)
+
+    v0 = tri_verts[:, 0]
+    v1 = tri_verts[:, 1]
+    v2 = tri_verts[:, 2]
+    e1 = v1 - v0          # (T, 3)
+    e2 = v2 - v0          # (T, 3)
+
+    out = np.full((R,), np.inf, dtype=np.float64)
+    for start in range(0, R, chunk_size):
+        end = min(start + chunk_size, R)
+        R_ = end - start
+        ori_c = origins[start:end]         # (R_, 3)
+        dir_c = directions[start:end]      # (R_, 3)
+
+        D = dir_c[:, None, :]              # (R_, 1, 3) → broadcast
+        # Cross product broadcasting
+        P = np.cross(D, e2[None, :, :])    # (R_, T, 3)
+        det = np.sum(P * e1[None, :, :], axis=-1)  # (R_, T)
+
+        ok = np.abs(det) > eps
+        inv_det = np.where(ok, 1.0 / np.where(ok, det, 1.0), 0.0)
+
+        T_vec = ori_c[:, None, :] - v0[None, :, :]  # (R_, T, 3)
+        u = np.sum(T_vec * P, axis=-1) * inv_det     # (R_, T)
+
+        Q = np.cross(T_vec, e1[None, :, :])          # (R_, T, 3)
+        v = np.sum(D * Q, axis=-1) * inv_det         # (R_, T)
+        t = np.sum(e2[None, :, :] * Q, axis=-1) * inv_det  # (R_, T)
+
+        valid = (
+            ok & (u >= -eps) & (v >= -eps)
+            & (u + v <= 1.0 + eps) & (t > eps)
+        )
+        if exclude_mask is not None:
+            valid &= ~exclude_mask[start:end]
+
+        t_masked = np.where(valid, t, np.inf)
+        out[start:end] = t_masked.min(axis=1)
+    return out
+
+
+def _prism_aspect_ratio_stats(
+    points: np.ndarray,
+    wall_tri_verts: dict[int, tuple[int, int, int]],
+    wall_face_indices: list[int],
+    layer_point_ids: list[dict[int, int]],
+    num_layers: int,
+    threshold: float = 50.0,
+) -> tuple[int, float]:
+    """각 prism 의 aspect ratio 계산. ratio = max(outer_edge) / min(height).
+
+    Returns:
+        (n_degenerate, max_ratio) — degenerate 는 ratio > threshold.
+    """
+    n_degenerate = 0
+    max_ratio = 0.0
+    for fi in wall_face_indices:
+        if fi not in wall_tri_verts:
+            continue
+        v0, v1, v2 = wall_tri_verts[fi]
+        for k in range(num_layers):
+            o0 = points[layer_point_ids[k][v0]]
+            o1 = points[layer_point_ids[k][v1]]
+            o2 = points[layer_point_ids[k][v2]]
+            i0 = points[layer_point_ids[k + 1][v0]]
+            i1 = points[layer_point_ids[k + 1][v1]]
+            i2 = points[layer_point_ids[k + 1][v2]]
+            # outer edge 길이
+            e_outer = max(
+                float(np.linalg.norm(o1 - o0)),
+                float(np.linalg.norm(o2 - o1)),
+                float(np.linalg.norm(o0 - o2)),
+            )
+            # 각 vertex 의 height (outer ↔ inner)
+            h = min(
+                float(np.linalg.norm(i0 - o0)),
+                float(np.linalg.norm(i1 - o1)),
+                float(np.linalg.norm(i2 - o2)),
+            )
+            if h < 1e-30:
+                # height 0 → degenerate
+                n_degenerate += 1
+                max_ratio = max(max_ratio, 1e9)
+                continue
+            ratio = e_outer / h
+            if ratio > max_ratio:
+                max_ratio = ratio
+            if ratio > threshold:
+                n_degenerate += 1
+    return n_degenerate, float(max_ratio)
+
+
+def _detect_feature_vertices(
+    points: np.ndarray,
+    faces: list[list[int]],
+    wall_face_indices: list[int],
+    feature_angle_deg: float = 45.0,
+) -> set[int]:
+    """wall triangle 간 dihedral angle 이 threshold 초과인 edge 의 vertex 수집.
+
+    Returns:
+        feature vertex id 집합.
+    """
+    if feature_angle_deg <= 0 or not wall_face_indices:
+        return set()
+    # 먼저 wall triangle 의 unit normal 배열
+    face_normal: dict[int, np.ndarray] = {}
+    for fi in wall_face_indices:
+        f = faces[fi]
+        if len(f) != 3:
+            continue
+        n, a = _face_normal_area(points, f)
+        if a > 1e-30:
+            face_normal[fi] = n
+
+    # edge → 공유 face pair
+    edge_to_face: dict[tuple[int, int], list[int]] = {}
+    for fi in wall_face_indices:
+        f = faces[fi]
+        if len(f) != 3:
+            continue
+        for a, b in ((f[0], f[1]), (f[1], f[2]), (f[2], f[0])):
+            key = (a, b) if a < b else (b, a)
+            edge_to_face.setdefault(key, []).append(fi)
+
+    cos_thresh = float(np.cos(np.deg2rad(feature_angle_deg)))
+    feature_verts: set[int] = set()
+    for (a, b), fl in edge_to_face.items():
+        if len(fl) != 2:
+            continue
+        n1 = face_normal.get(fl[0])
+        n2 = face_normal.get(fl[1])
+        if n1 is None or n2 is None:
+            continue
+        cos_a = float(np.clip(np.dot(n1, n2), -1.0, 1.0))
+        # feature = bending > threshold → cos < cos_thresh
+        if cos_a < cos_thresh:
+            feature_verts.add(int(a))
+            feature_verts.add(int(b))
+    return feature_verts
+
+
+def _compute_collision_distance(
+    points: np.ndarray,
+    faces: list[list[int]],
+    wall_face_indices: list[int],
+    wall_vert_indices: list[int],
+    vnorm: dict[int, np.ndarray],
+    *,
+    max_tris: int = 20000,
+) -> dict[int, float]:
+    """각 wall vertex 에서 inward normal 방향으로 가장 가까운 "다른 wall face"
+    까지의 거리. 자기 자신이 포함된 face 는 skip.
+
+    Args:
+        max_tris: wall triangle 수가 이 값을 초과하면 collision check 를 skip
+            (메모리/시간 폭증 방지). 기본 20000 → R=T=2만 기준 메모리 ~9.6 GB.
+
+    Returns:
+        dict[vertex_id, distance]. 충돌 없거나 skip 시 빈 dict.
+
+    beta70 hotfix: exclude mask 를 vectorized 로 구성 + max_tris cap.
+    """
+    tri_indices = [fi for fi in wall_face_indices if len(faces[fi]) == 3]
+    if not tri_indices or not wall_vert_indices:
+        return {}
+    T = len(tri_indices)
+    R = len(wall_vert_indices)
+    if T > max_tris:
+        log.info(
+            "native_bl_collision_skipped_large",
+            n_tris=T, cap=max_tris,
+            hint="너무 큰 wall mesh → collision check 생략 (local cell-dist cap 사용)",
+        )
+        return {}
+
+    # tri_verts: (T, 3, 3)
+    tri_arr = np.array(tri_indices, dtype=np.int64)
+    tri_face_ids = np.array(
+        [[faces[fi][0], faces[fi][1], faces[fi][2]] for fi in tri_indices],
+        dtype=np.int64,
+    )  # (T, 3)
+    tri_verts = points[tri_face_ids]  # (T, 3, 3)
+
+    wall_v_arr = np.array(wall_vert_indices, dtype=np.int64)
+    origins = points[wall_v_arr]                                       # (R, 3)
+    dirs = np.array([-vnorm[v] for v in wall_vert_indices], dtype=np.float64)  # (R, 3)
+
+    # exclude: vertex v 가 tri 에 포함되면 True. broadcasting 으로 O(R+T).
+    # (R, 1) == (1, T, 3) → (R, T, 3) — too big? No: R, T up to 2만 → R*T=4e8 bools = 400MB.
+    # 대신 (R,1) 와 각 tri column 3 번 OR 로 메모리 3× 절약.
+    wall_col = wall_v_arr[:, None]  # (R, 1)
+    exclude = (
+        (wall_col == tri_face_ids[None, :, 0])
+        | (wall_col == tri_face_ids[None, :, 1])
+        | (wall_col == tri_face_ids[None, :, 2])
+    )  # (R, T)
+
+    t_min = _ray_triangle_min_distance(origins, dirs, tri_verts, exclude)
+    out: dict[int, float] = {}
+    for ri, v in enumerate(wall_vert_indices):
+        if np.isfinite(t_min[ri]):
+            out[v] = float(t_min[ri])
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -438,6 +698,47 @@ def generate_native_bl(
             )
             cum = np.concatenate(([0.0], np.cumsum(thicknesses)))
 
+    # 4d) beta64 feature lock — sharp edge vertex 는 layer thickness 를 축소.
+    feature_verts: set[int] = set()
+    if cfg.feature_lock:
+        feature_verts = _detect_feature_vertices(
+            points, faces, wall_face_indices, cfg.feature_angle_deg,
+        )
+        if feature_verts:
+            log.info(
+                "native_bl_feature_lock",
+                n_feature_verts=len(feature_verts),
+                angle_deg=cfg.feature_angle_deg,
+                reduction=cfg.feature_reduction_ratio,
+            )
+    # per-vertex thickness scale (feature vertex 만 < 1.0)
+    vertex_scale: dict[int, float] = {}
+    for v in wall_vert_indices:
+        vertex_scale[v] = (
+            float(cfg.feature_reduction_ratio) if v in feature_verts else 1.0
+        )
+
+    # 4c) beta63 collision detection — inward ray 가 반대편 wall triangle 과
+    #     만나는 거리. 최소값에 collision_safety_factor 를 곱해 전역 thickness cap.
+    if cfg.collision_safety:
+        collision_dist = _compute_collision_distance(
+            points, faces, wall_face_indices, wall_vert_indices, vnorm,
+        )
+        if collision_dist:
+            min_collision = float(min(collision_dist.values()))
+            safety = float(cfg.collision_safety_factor)
+            collision_cap = max(min_collision * safety, cfg.first_thickness)
+            if total > collision_cap:
+                scale = collision_cap / total
+                thicknesses *= scale
+                total = float(thicknesses.sum())
+                log.warning(
+                    "native_bl_collision_safety_scaled",
+                    factor=scale, min_collision=min_collision,
+                    safety=safety, new_total=total,
+                )
+                cum = np.concatenate(([0.0], np.cumsum(thicknesses)))
+
     # 5) 새 point 배열 구성
     # - original points 배열에서 wall vertex 를 inward total 만큼 이동 (기존 cell 이 따라 축소)
     # - 각 layer 경계의 wall vertex copy 를 추가 (N+1 층)
@@ -446,9 +747,13 @@ def generate_native_bl(
     # 기존 cells 의 wall vertex 들은 shrunk points 사용 → 원래 위치는 layer 0 에서만
     new_points_list: list[np.ndarray] = [points.copy()]
     # 원래 points 의 wall vertex 들을 shrunk 위치로 변경 (in-place)
+    # beta64: feature vertex 는 더 짧게 들어가도록 per-vertex scale 적용.
     inward = np.array([-vnorm[v] for v in wall_vert_indices])
+    scales = np.array(
+        [vertex_scale.get(v, 1.0) for v in wall_vert_indices], dtype=np.float64,
+    )[:, None]  # (N, 1) 브로드캐스트용
     wall_idx_arr = np.array(wall_vert_indices, dtype=np.int64)
-    new_points_list[0][wall_idx_arr] = points[wall_idx_arr] + inward * total
+    new_points_list[0][wall_idx_arr] = points[wall_idx_arr] + inward * (total * scales)
 
     # 각 layer 의 wall vertex copy — global id 매핑
     # layer_point_ids[i][v] = layer i 에 해당하는 wall vertex v 의 new global id
@@ -467,7 +772,9 @@ def generate_native_bl(
         else:
             offset = cum[layer_i]  # 0 for layer 0, t1 for layer 1, ...
             for v in wall_vert_indices:
-                p_new = points[v] - vnorm[v] * offset
+                # beta64: feature vertex 는 offset 을 scale 로 축소
+                v_scale = vertex_scale.get(v, 1.0)
+                p_new = points[v] - vnorm[v] * (offset * v_scale)
                 extra_points_list.append(p_new)
                 layer_point_ids[layer_i][v] = cursor
                 cursor += 1
@@ -705,6 +1012,21 @@ def generate_native_bl(
     )
     _write_boundary(poly_dir / "boundary", final_boundary_entries)
 
+    # beta65: prism quality check — aspect ratio 기반.
+    n_degen = 0
+    max_ar = 0.0
+    if cfg.quality_check_enabled and n_prism_total > 0:
+        n_degen, max_ar = _prism_aspect_ratio_stats(
+            final_points, wall_tri_verts, wall_face_indices, layer_point_ids,
+            cfg.num_layers, threshold=cfg.aspect_ratio_threshold,
+        )
+        if n_degen > 0:
+            log.warning(
+                "native_bl_quality_check",
+                n_degenerate_prisms=n_degen, max_aspect_ratio=max_ar,
+                threshold=cfg.aspect_ratio_threshold,
+            )
+
     elapsed = time.perf_counter() - t_start
     return NativeBLResult(
         success=True,
@@ -714,10 +1036,13 @@ def generate_native_bl(
         n_prism_cells=n_prism_total,
         n_new_points=n_new_points,
         total_thickness=total,
+        n_degenerate_prisms=n_degen,
+        max_aspect_ratio=max_ar,
         message=(
             f"native_bl Phase 2 OK — {n_prism_total} prism cells inserted "
             f"({cfg.num_layers} layers × {n_wall_faces} wall triangles). "
             f"total_thickness={total:.4g}, bbox={bbox_diag:.3g}, "
-            f"bl_side_faces={len(bl_side_faces)}."
+            f"bl_side_faces={len(bl_side_faces)}, "
+            f"degenerate={n_degen}/{n_prism_total}, max_ar={max_ar:.1f}."
         ),
     )

@@ -162,3 +162,75 @@ def test_generate_native_hex_snap_default_off_backwards_compat(
     assert r.success
     # 로그에 "native_hex_boundary_snap_applied" 가 나오면 안 됨 — 확인은 간접적이므로
     # 여기서는 단순히 성공만 검증 (snap off 기본값 확인은 signature 검사로 이미 보장).
+
+
+# ---------------------------------------------------------------------------
+# beta66 — feature preservation
+# ---------------------------------------------------------------------------
+
+
+def test_detect_surface_feature_vertices_cube_all_corners() -> None:
+    """beta66 — cube 의 8 corner + edge 에 있는 vertex 는 feature 로 식별."""
+    from core.generator.native_hex.snap import _detect_surface_feature_vertices
+    # 단위 cube (trimesh 의존 없이 8 vertex, 12 tri).
+    import numpy as _np
+    V = _np.array([
+        [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+        [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+    ], dtype=_np.float64)
+    F = _np.array([
+        [0, 1, 2], [0, 2, 3],  # bottom
+        [4, 6, 5], [4, 7, 6],  # top
+        [0, 4, 5], [0, 5, 1],  # front
+        [3, 2, 6], [3, 6, 7],  # back
+        [0, 3, 7], [0, 7, 4],  # left
+        [1, 5, 6], [1, 6, 2],  # right
+    ], dtype=_np.int64)
+    feat = _detect_surface_feature_vertices(V, F, feature_angle_deg=45.0)
+    # cube 의 모든 8 vertex 는 corner (90° bend) 이므로 feature.
+    assert set(feat.tolist()) == set(range(8))
+
+
+def test_detect_surface_feature_vertices_sphere_few_features() -> None:
+    """beta66 — 부드러운 sphere 는 feature vertex 거의 없음."""
+    from core.generator.native_hex.snap import _detect_surface_feature_vertices
+    import numpy as _np
+    import trimesh as _tm
+    sp = _tm.creation.icosphere(subdivisions=2, radius=1.0)
+    V = _np.asarray(sp.vertices, dtype=_np.float64)
+    F = _np.asarray(sp.faces, dtype=_np.int64)
+    feat = _detect_surface_feature_vertices(V, F, feature_angle_deg=45.0)
+    # icosphere 는 모든 face 가 가까운 각도 → feature 없음 (또는 매우 적음)
+    assert feat.size <= V.shape[0] // 10
+
+
+def test_snap_with_preserve_features_reports_feature_snap_count(
+    tmp_path,
+) -> None:
+    """beta66 — preserve_features=True 에서 feature 근처 hex vertex 가 있으면
+    stats 에 n_feature_snapped > 0 보고.
+    """
+    from core.generator.native_hex.snap import snap_hex_boundary_to_surface
+    import numpy as _np
+    # 단위 cube 를 surface 로. corner 근처에 hex vertex 하나 배치.
+    V = _np.array([
+        [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+        [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+    ], dtype=_np.float64)
+    F = _np.array([
+        [0, 1, 2], [0, 2, 3], [4, 6, 5], [4, 7, 6],
+        [0, 4, 5], [0, 5, 1], [3, 2, 6], [3, 6, 7],
+        [0, 3, 7], [0, 7, 4], [1, 5, 6], [1, 6, 2],
+    ], dtype=_np.int64)
+    # hex vertex 가 corner (1, 0, 0) 근처 + 먼 곳 섞어서
+    hex_V = _np.array([
+        [0.95, 0.05, 0.05],  # corner (1,0,0) 근처 → feature snap 예상
+        [0.5, 0.5, 2.0],     # 너무 멀음 → far skip
+    ], dtype=_np.float64)
+    _, stats = snap_hex_boundary_to_surface(
+        hex_V, V, F, target_edge=0.3,
+        preserve_features=True, feature_angle_deg=45.0,
+    )
+    # stats 에 n_feature_snapped 키 존재
+    assert "n_feature_snapped" in stats
+    assert stats["n_feature_snapped"] >= 1

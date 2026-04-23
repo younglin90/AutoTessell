@@ -199,6 +199,55 @@ def compare_runs(prev: list[dict], curr: list[dict]) -> dict:
     }
 
 
+def compute_success_rate(results: list[dict]) -> float:
+    """polyMesh_created=True 비율 (0.0 ~ 1.0). 빈 리스트 → 0."""
+    total = len(results)
+    if total == 0:
+        return 0.0
+    ok = sum(1 for r in results if r.get("polyMesh_created"))
+    return ok / total
+
+
+def check_drift_against_baseline(
+    baseline_path: Path,
+    current_results: list[dict],
+    min_success_rate_delta: float = -0.10,
+) -> tuple[bool, dict]:
+    """baseline snapshot 대비 현재 결과의 drift 가 허용 범위인지 판정.
+
+    Args:
+        baseline_path: 기준 JSON 파일 (list[dict]).
+        current_results: 현재 run 결과.
+        min_success_rate_delta: 허용되는 성공률 하락폭 (default -0.10 = 10%).
+
+    Returns:
+        (is_ok, report) — is_ok=False 면 drift 가 허용치 초과. report 에
+        {baseline_rate, current_rate, delta, newly_failing, threshold} 포함.
+
+    beta70 — CI 에서 drift 자동 감지용.
+    """
+    if not baseline_path.exists():
+        return False, {"error": f"baseline 없음: {baseline_path}"}
+    try:
+        baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return False, {"error": f"baseline 파싱 실패: {exc}"}
+    base_rate = compute_success_rate(baseline)
+    curr_rate = compute_success_rate(current_results)
+    delta = curr_rate - base_rate
+    diff = compare_runs(baseline, current_results)
+    report = {
+        "baseline_rate": base_rate,
+        "current_rate": curr_rate,
+        "delta": delta,
+        "threshold": min_success_rate_delta,
+        "n_newly_failing": len(diff["newly_failing"]),
+        "n_newly_passing": len(diff["newly_passing"]),
+    }
+    is_ok = delta >= min_success_rate_delta
+    return is_ok, report
+
+
 def _print_diff(diff: dict) -> None:
     np_ = diff["newly_passing"]
     nf = diff["newly_failing"]
@@ -220,6 +269,12 @@ def main() -> int:
                     help="매트릭스 행 제한 (0 = 전부)")
     ap.add_argument("--diff", action="store_true",
                     help="실행 대신 최근 2 snapshot 의 drift 출력")
+    ap.add_argument("--drift-check", type=str, default=None,
+                    help="run 후 지정 baseline.json 대비 drift 허용치 초과 시 exit 1")
+    ap.add_argument("--min-success-rate-delta", type=float, default=-0.10,
+                    help="drift-check 허용 성공률 하락 (default -0.10 = 10%)")
+    ap.add_argument("--regenerate-baseline", type=str, default=None,
+                    help="run 후 결과를 지정 경로에 baseline 으로 저장")
     args = ap.parse_args()
 
     if args.diff:
@@ -275,6 +330,22 @@ def main() -> int:
     ok = sum(1 for r in results if r["polyMesh_created"])
     print(f"\n총 {total} 개 중 {ok} 개 polyMesh 생성 성공 "
           f"({100 * ok / max(total, 1):.1f}%)")
+
+    # beta70: --regenerate-baseline / --drift-check
+    if args.regenerate_baseline:
+        baseline_path = Path(args.regenerate_baseline)
+        baseline_path.parent.mkdir(parents=True, exist_ok=True)
+        baseline_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
+        print(f"\n[BASELINE] 저장됨: {baseline_path}")
+    if args.drift_check:
+        is_ok, report = check_drift_against_baseline(
+            Path(args.drift_check), results,
+            min_success_rate_delta=args.min_success_rate_delta,
+        )
+        print(f"\n[DRIFT CHECK] {report}")
+        if not is_ok:
+            print("DRIFT 허용치 초과 → exit 1")
+            return 1
     return 0
 
 

@@ -1,5 +1,278 @@
 # Changelog
 
+## [0.4.0-beta70.1] - 2026-04-23 — "collision detection memory hotfix"
+
+### Fixed
+
+- **메모리 폭증 버그**: `_ray_triangle_min_distance` 가 (R, T, 3) 중간 배열을
+  전체 한 번에 할당 → wall vertex 수와 wall triangle 수가 각각 수만인 복잡 mesh
+  에서 RSS 161 GB 까지 치솟던 문제. 이제 `chunk_size=512` 로 ray 축 chunk 처리.
+- `_compute_collision_distance` 의 exclude-mask 구성을 O(R·T) Python nested
+  loop → vectorized `wall_col == tri_face_ids[...,k]` 3 번 OR 로 교체.
+- `max_tris=20000` cap 추가 → 극단적으로 큰 wall mesh 는 collision check 생략
+  (기존 cell-centroid 기반 local safety 로 fallback). `native_bl_collision_skipped_large`
+  info 로그.
+
+### Verified
+
+- E2E native pipeline matrix (slow): **9/9 PASS** (5m 51s, 이전 buggy 버전은
+  10+ min 후 OOM 으로 kill 되던 상태).
+
+---
+
+## [0.4.0-beta70] - 2026-04-23 — "bench drift auto-detect"
+
+### Added
+
+- `tests/stl/bench_v04_matrix.py` 에:
+  - `compute_success_rate(results)` — polyMesh_created 비율 계산.
+  - `check_drift_against_baseline(baseline_path, current, min_delta=-0.10)`
+    — 성공률 하락이 허용치 초과면 False + drift report.
+  - CLI flags:
+    - `--drift-check <baseline.json>` — run 후 drift 검증, 초과 시 exit 1.
+    - `--regenerate-baseline <path>` — run 결과를 baseline 으로 저장.
+    - `--min-success-rate-delta FLOAT` — drift 허용치 override.
+- `tests/test_bench_drift.py` 11 tests: success rate 계산, identical/improvement/
+  small/large regression, custom threshold, missing/corrupt baseline.
+
+### Impact
+
+- CI 에서 `bench_v04_matrix --drift-check baseline.json` 으로 native 엔진 회귀
+  자동 감지. 성공률이 baseline 대비 10% 이상 떨어지면 CI-red.
+
+---
+
+## [0.4.0-beta69] - 2026-04-23 — "README beta68 동기화"
+
+### Changed
+
+- `README.md` 의 "자체 코드화 진행" 섹션을 v0.4.0-beta29 → beta68 로 갱신.
+  - STEP/IGES native reader (beta53)
+  - native_bl Phase 2 complete (beta63-65)
+  - native_hex feature preservation (beta66)
+  - Cross-engine fallback (beta68)
+  - scipy 유지 정책 명시
+- "v0.4 신규 tier 파라미터" 섹션 추가 — CLI / GUI 노출된 파라미터 한눈에.
+- "native_bl Phase 2 config" 섹션 — BLConfig 신규 필드 6 개.
+
+---
+
+## [0.4.0-beta68] - 2026-04-23 — "orchestrator cross-engine fallback (poly→hex)"
+
+### Added
+
+- `PipelineOrchestrator.run(cross_engine_fallback=False)` kwarg — True 면 poly
+  mesh_type 이 완전 실패할 때 hex_dominant 로 1 회 재시도.
+- 내부 sentinel `_cross_engine_retried` 로 무한 재귀 차단.
+- fallback 발생 시 `cross_engine_fallback_triggered` warning 로그 + 결과
+  `error` 필드에 `[cross_engine_fallback poly→hex_dominant]` prefix.
+- `tests/test_cross_engine_fallback.py` 5 tests: kwarg 수용, sentinel 존재,
+  fallback 동작 (poly 실패 → hex_dominant 재호출), off 플래그 미동작,
+  tet 타입 제외 확인.
+
+### Impact
+
+- 이전에는 poly 실패 시 사용자에게 "실패" 메시지만 표시. 이제 옵트인 플래그로
+  hex_dominant 자동 전환 가능. orchestrator 레벨 escalation.
+
+---
+
+## [0.4.0-beta67] - 2026-04-23 — "Qt GUI native_* 엔진 param spec 등록"
+
+### Added
+
+- `desktop/qt_app/widgets/engine_params_spec.py` 의 `ENGINE_PARAM_REGISTRY` 에
+  native_tet / native_hex / native_poly 3 엔진 spec 추가:
+  - native_tet: seed_density, max_iter, sliver_quality_threshold (beta62).
+  - native_hex: seed_density, max_cells_per_axis (beta61), snap_boundary,
+    preserve_features (beta66), feature_angle_deg (beta66).
+  - native_poly: seed_density, max_iter, max_tet_cells (beta56).
+- `ENGINE_KEY_ALIASES` 에 `tier_native_tet/hex/poly` → `native_*` 매핑 추가.
+- `tests/test_engine_params_spec_native.py` 12 tests: registry 등록 확인,
+  alias 매핑, resolve_engine_key / get_specs_for_engine 동작, 타입 sanity.
+
+### Impact
+
+- 이제 GUI 에서 native 엔진 선택 시 `GenericEngineParamPanel` 이 자동으로
+  해당 파라미터 편집 UI 를 그린다. CLI `--tier-param` 전용이던 beta56~66
+  신규 파라미터 전부 노출.
+
+---
+
+## [0.4.0-beta66] - 2026-04-23 — "native_hex feature preservation"
+
+### Added
+
+- `_detect_surface_feature_vertices` — STL surface 에서 sharp feature vertex
+  (인접 triangle dihedral > 45°) 식별. open edge 도 feature 로 간주.
+- `snap_hex_boundary_to_surface(preserve_features=False, feature_angle_deg=45.0)`
+  — True 면 snap 시 feature vertex 근처 (cap × 0.7 이내) hex vertex 를 해당
+  feature vertex 로 직접 snap → sharp corner 보존.
+- `generate_native_hex(preserve_features, feature_angle_deg)` 노출.
+- `HARNESS_PARAMS["tier_native_hex"]["fine"]` 에 `preserve_features=True` 자동.
+- `_TIER_PARAM_KEYS` 에 `preserve_features`, `feature_angle_deg` 추가 → CLI
+  `--tier-param preserve_features=1` 주입 가능.
+- `tests/test_native_hex_snap.py` 3 tests: cube 8 corner 식별, sphere 는 feature
+  거의 없음, preserve_features=True 에서 n_feature_snapped 통계 보고.
+
+### Fixed
+
+- 기존 nearest-triangle projection 만으로는 cube corner 가 closest-point-on-
+  triangle 때문에 라운드로 snap 되어 sharp feature 가 뭉개지던 문제 해결.
+
+---
+
+## [0.4.0-beta65] - 2026-04-23 — "native_bl Phase 2 complete — quality check"
+
+### Added
+
+- `BLConfig.quality_check_enabled: bool = True` + `aspect_ratio_threshold: float = 50.0`.
+- `NativeBLResult.n_degenerate_prisms: int = 0` + `max_aspect_ratio: float = 0.0`
+  필드.
+- `_prism_aspect_ratio_stats` — 생성된 prism 의 aspect ratio
+  (max_outer_edge / min_height) 계산, threshold 초과 degenerate 수 집계.
+- `generate_native_bl` message 에 degenerate / max_ar 포함 + 로그 warning.
+- `tests/test_native_bl_helpers.py` 5 tests: config defaults, result 필드,
+  unit prism ratio, squashed prism → degenerate, zero height → degenerate.
+
+### Milestone
+
+- **Phase 2 완성** (beta63 collision + beta64 feature lock + beta65 quality
+  check). Phase 1 docstring 에 명시된 3 제약 모두 해소. native_bl 이 이제 U 자
+  형상 / sharp corner / degenerate 경우를 방어적으로 처리.
+
+---
+
+## [0.4.0-beta64] - 2026-04-23 — "native_bl Phase 2 feature edge locking"
+
+### Added
+
+- `BLConfig.feature_lock: bool = True`, `feature_angle_deg: float = 45.0`,
+  `feature_reduction_ratio: float = 0.5`.
+- `_detect_feature_vertices` — wall triangle 간 dihedral angle 이 threshold
+  초과 edge 의 vertex 수집 (face 간 unit normal dot 기반, edge_to_face map 활용).
+- `generate_native_bl` 이 feature_lock=True 일 때 feature vertex 의 layer
+  thickness 를 per-vertex scale 로 축소 (shrink + intermediate layer 둘 다 적용).
+- `tests/test_native_bl_helpers.py` 6 tests: defaults, 평면 empty, 90° L-shape
+  capture, 높은 threshold 로 blocked, 빈 wall, angle=0 shortcut.
+
+### Fixed
+
+- Sharp edge 근처 vertex 에서 layer extrusion 시 self-intersect 우려 → feature
+  vertex 의 thickness 를 절반으로 축소해 방지.
+- Phase 1 제약 "Feature edge 보존 없음" 해소.
+
+---
+
+## [0.4.0-beta63] - 2026-04-23 — "native_bl Phase 2 collision detection"
+
+### Added
+
+- `BLConfig.collision_safety: bool = True` + `collision_safety_factor: float = 0.5`.
+- `_ray_triangle_min_distance` (Möller-Trumbore, vectorized) — 각 ray 에 대해
+  최단 교차 거리. 자기 자신 face 는 exclude_mask 로 제외.
+- `_compute_collision_distance` — 각 wall vertex 에서 inward normal 로 반대편
+  wall triangle 까지 거리 계산.
+- `generate_native_bl` 이 collision_safety=True 일 때 해당 거리의
+  `collision_safety_factor` 배로 global thickness cap 적용
+  (`native_bl_collision_safety_scaled` warning 로그).
+- `tests/test_native_bl_helpers.py` 7 tests: ray-tri hit / miss / multi-tri
+  min / exclude mask / parallel walls collision / no opposite wall.
+
+### Fixed
+
+- U 자 형상 / 좁은 채널에서 prism layer 가 반대편 wall 과 겹쳐 negative
+  volume 발생하던 경우 → collision-aware thickness cap 으로 방지.
+- Phase 1 제약 "Wall 모든 vertex 에 동일 total thickness (collision check 없음)"
+  해소.
+
+---
+
+## [0.4.0-beta62] - 2026-04-23 — "native_tet q_thresh 파라미터화 + adaptive"
+
+### Added
+
+- `generate_native_tet(sliver_quality_threshold=0.05)` kwarg — 기존 하드코딩
+  0.05 를 tunable 로 노출.
+- `run_native_tet_harness` 가 `sliver_quality_threshold` kwarg 수용 + 생성 실패
+  시 0.8× adaptive 완화 (복잡 형상에서 "inside tet 0" 수렴 실패 완화).
+- `HARNESS_PARAMS["tier_native_tet"]` 에 quality 별 기본값:
+  - draft 0.02 (관대, cell 보존 최우선)
+  - standard 0.05 (기존)
+  - fine 0.10 (엄격, sliver 공격적 제거 → non_ortho↑)
+- `_TIER_PARAM_KEYS` 에 `sliver_quality_threshold` 추가 → CLI `--tier-param
+  sliver_quality_threshold=0.08` 동작.
+- `tests/test_native_tet.py` 2 tests: loose threshold 가 strict 보다 cell 수
+  많음, HARNESS_PARAMS 테이블 순서 (draft<standard<fine).
+- `tests/test_native_tet_harness.py` 1 test: harness 가 kwarg 수용 + 극단 값에서
+  best-effort 반환.
+
+### Fixed
+
+- 복잡 STL (05_ultra_knot 등) 에서 모든 tet 이 sliver 로 분류되어 harness 가
+  seed_density 만 올리며 timeout → q_thresh adaptive 로 해결.
+
+---
+
+## [0.4.0-beta61] - 2026-04-23 — "native_hex grid cap 노출 + tier param 확장"
+
+### Added
+
+- `generate_native_hex` `max_cells_per_axis` 파라미터 추가 (기본 50). cap 걸릴
+  때 `native_hex_grid_capped` warning 로그.
+- `_TIER_PARAM_KEYS` 에 `max_cells_per_axis` + `max_tet_cells` 추가 →
+  `--tier-param max_cells_per_axis=80` CLI 주입 가능.
+- `tests/test_native_hex.py` 2 tests: cap=5 honored, 더 큰 cap → 더 많은 cell.
+
+### Fixed
+
+- 기존 하드코딩 50 grid cap 이 silent → 이제 log warning + tunable.
+
+---
+
+## [0.4.0-beta60] - 2026-04-23 — "native_poly harness best-tracking fix"
+
+### Fixed
+
+- `run_native_poly_harness` 의 best candidate 비교가 `metrics < metrics` 로
+  자기 자신과 비교 → 항상 False → 첫 iter 이후 best_case 가 고정되던 버그 수정.
+  이제 `best_metrics` 별도 저장, cur_neg < best_neg 또는 (동률 시 cells 많은 쪽)
+  으로 올바르게 선택.
+- `tests/test_native_poly_harness_edge.py` 에 regression 1 test 추가.
+
+---
+
+## [0.4.0-beta59] - 2026-04-23 — "poly_bl_transition _merge_vertices 회귀"
+
+### Added
+
+- `tests/test_poly_bl_transition_helpers.py` (11 tests): PolyBLResult 기본값,
+  `_merge_vertices` 의 tol / 공유 좌표 / 빈 입력 / dtype / 좌표 보존 검증.
+
+---
+
+## [0.4.0-beta58] - 2026-04-23 — "tet_bl_subdivide helper 회귀"
+
+### Added
+
+- `tests/test_tet_bl_subdivide_helpers.py` (12 tests): TetSubdivResult 기본값,
+  `_identify_prism_cells` prism/tet/mismatch 구분, `_prism_vertex_pairs` 표준
+  wedge + shuffled outer + 실패 케이스 (shared vertex, bad quad).
+
+---
+
+## [0.4.0-beta57] - 2026-04-23 — "native_bl helper 단위 회귀"
+
+### Added
+
+- `tests/test_native_bl_helpers.py` (20 tests): BLConfig/NativeBLResult 기본값,
+  `_face_centroid`, `_face_normal_area` (quad / degenerate / too few),
+  `compute_vertex_normals` (sign flip by cell_centres, 빈 wall, degenerate skip),
+  `_collect_wall_faces` (type / name / explicit list / none),
+  `_build_edge_to_wall_faces` (shared / non-triangle skip / sorted key).
+
+---
+
 ## [0.4.0-beta56] - 2026-04-23 — "run_native_poly_harness edge case 회귀"
 
 ### Added

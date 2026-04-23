@@ -9,9 +9,10 @@ harness 패턴의 native_tet 전용 변형:
      최소 우선, 그다음 non_ortho 최소) 를 case_dir 로 복사.
 
 제약:
-    - native_tet 의 q_thresh 는 공용 상수라 harness 에서 변경 불가. 대신
-      seed_density 만 조정.
     - Hausdorff 측정은 core/evaluator/fidelity 경유 (예외 시 skip).
+
+beta62: q_thresh 를 kwarg 로 노출. 생성 실패 시 adaptive 로 threshold 를 0.8×
+완화 → 복잡 형상에서도 수렴하도록.
 """
 from __future__ import annotations
 
@@ -81,15 +82,18 @@ def run_native_tet_harness(
     seed_density: int = 12,
     max_iter: int = 2,
     max_cells: int = 50000,
+    sliver_quality_threshold: float = 0.05,
 ) -> TetHarnessResult:
     """native_tet Generator ↔ Evaluator 반복.
 
-    FAIL 시 seed_density 를 1.3× 늘려 mesh 를 더 조밀하게. 이는 surface 근처
-    tet 이 많아져 Hausdorff 개선 + boundary sliver 감소 → non-ortho 도 개선.
+    FAIL 시 seed_density 를 1.3× 늘리고 sliver_quality_threshold 를 0.8× 완화 →
+    더 많은 tet 유지 → surface 보존 + non-ortho 개선. Hausdorff 도 같이 개선.
 
     Safety cap:
       - target_edge_length < bbox_diag/40 이면 clamp (tet 폭증 방지).
       - tet 생성 결과 cells > max_cells 이면 target_edge 1.6×, seed 0.7× 재시도.
+
+    beta62: sliver_quality_threshold adaptive 완화.
     """
     t0 = time.perf_counter()
 
@@ -110,11 +114,13 @@ def run_native_tet_harness(
     best_case: Path | None = None
     best_non_ortho = float("inf")
     current_seed = int(seed_density)
+    current_q_thresh = float(sliver_quality_threshold)
 
     for it in range(1, int(max_iter) + 1):
         log.info(
             "native_tet_harness_iter",
             iteration=it, seed_density=current_seed,
+            q_thresh=current_q_thresh,
         )
         tmp = Path(tempfile.mkdtemp(prefix=f"nth_{it}_"))
         try:
@@ -122,6 +128,7 @@ def run_native_tet_harness(
                 vertices, faces, tmp,
                 target_edge_length=target_edge_length,
                 seed_density=current_seed,
+                sliver_quality_threshold=current_q_thresh,
             )
             if not res.success:
                 log.warning(
@@ -129,6 +136,9 @@ def run_native_tet_harness(
                     iteration=it, message=res.message,
                 )
                 current_seed = int(current_seed * 1.3)
+                # gen 실패 시 q_thresh 도 완화 — "inside tet 0" 메시지면 특히
+                # sliver 필터가 너무 공격적인 경우 많다.
+                current_q_thresh *= 0.8
                 shutil.rmtree(tmp, ignore_errors=True)
                 continue
 

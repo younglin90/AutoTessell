@@ -95,3 +95,17 @@ def test_harness_returns_positive_cells_on_valid_input(tmp_path: Path) -> None:
     result = run_native_tet_harness(V, F, tmp_path, max_iter=1, seed_density=8)
     assert result.n_cells > 0
     assert result.n_points > 0
+
+
+def test_harness_sliver_quality_threshold_kwarg(tmp_path: Path) -> None:
+    """beta62 — harness 가 sliver_quality_threshold 를 생성기로 전달."""
+    V, F = _unit_cube()
+    # 매우 엄격한 threshold 로 호출 → 많은 tet 제거되지만 harness 는 adaptive
+    # 완화로 최소 cell 을 확보해 success/best-effort 를 반환해야 한다.
+    result = run_native_tet_harness(
+        V, F, tmp_path, max_iter=2, seed_density=8,
+        sliver_quality_threshold=0.5,
+    )
+    # 구현 계약: 예외 없이 TetHarnessResult 반환.
+    assert hasattr(result, "iterations")
+    assert result.iterations >= 1

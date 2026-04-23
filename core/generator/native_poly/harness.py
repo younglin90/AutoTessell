@@ -103,6 +103,7 @@ def run_native_poly_harness(
     last_metrics: dict = {}
     best_result: PolyDualResult | None = None
     best_case_bytes: Path | None = None
+    best_metrics: dict = {}
     current_seed = int(seed_density)
 
     for it in range(1, int(max_iter) + 1):
@@ -164,11 +165,18 @@ def run_native_poly_harness(
                 iteration=it, passed=passed, **metrics,
             )
 
-            # 최고 후보 추적 — open_cells 대신 negative_volumes + cells 수로 판단
-            if best_result is None or metrics.get(
-                "negative_volumes", 999,
-            ) < metrics.get("negative_volumes", 0):
+            # 최고 후보 추적 — negative_volumes 가 더 적거나, 같으면 cells 가 더 많은 쪽.
+            cur_neg = int(metrics.get("negative_volumes", 10**9))
+            cur_cells = int(metrics.get("cells", 0))
+            best_neg = int(best_metrics.get("negative_volumes", 10**9))
+            best_cells = int(best_metrics.get("cells", 0))
+            is_better = best_result is None or (
+                cur_neg < best_neg
+                or (cur_neg == best_neg and cur_cells > best_cells)
+            )
+            if is_better:
                 best_result = dual_res
+                best_metrics = dict(metrics)
                 if best_case_bytes is not None:
                     shutil.rmtree(best_case_bytes, ignore_errors=True)
                 best_case_bytes = tmp_dual

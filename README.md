@@ -27,19 +27,23 @@ auto-tessell run input.stl -o ./case --prefer-native
 auto-tessell run input.stl -o ./case --checker-engine native
 ```
 
-## 자체 코드화 진행 (v0.4.0-beta29)
+## 자체 코드화 진행 (v0.4.0-beta68)
 
 | 영역 | 기본 경로 | legacy fallback |
 |------|-----------|-----------------|
 | STL/OBJ/PLY/OFF reader | `core/analyzer/readers/` native | trimesh |
+| STEP/IGES/BREP reader | `core/analyzer/readers/step.py` OCP direct @beta53 | cadquery / gmsh |
 | Topology | `core/analyzer/topology.py` native (trimesh 완전 제거 @beta15) | — |
 | MeshChecker | `NativeMeshChecker` 기본 | OpenFOAM checkMesh (명시 시) |
 | L1 repair | **기본 native** (`--legacy-repair` 로 opt-out @beta26) | pymeshfix/trimesh |
 | L2 remesh | `--prefer-native` → isotropic + CVT | pyACVD/pymeshlab |
-| BL 생성 (hex) | `native_bl` Phase 2 polyMesh 직접 | cfMesh/snappy |
+| BL 생성 (hex) | `native_bl` **Phase 2 complete** (collision + feature + quality @beta63-65) | cfMesh/snappy |
 | BL 생성 (tet) | `tet_bl_subdivide` prism → 3 tet 분할, 순수 tet | - |
 | BL 생성 (poly) | `poly_bl_transition` + best-effort hybrid dual @beta25 | - |
 | Volume 엔진 | `native_tet/hex/poly` (+harness) | 17 legacy Tier |
+| Cross-engine fallback | `--cross-engine-fallback` poly 실패 → hex @beta68 | 없음 |
+| native_hex feature snap | `preserve_features` @beta66 (fine 자동) | - |
+| native_tet sliver | `sliver_quality_threshold` adaptive @beta62 | 하드코딩 0.05 |
 | Strategist tier 매핑 | `--prefer-native-tier` 로 native_* primary @beta23 | legacy primary |
 | BL 기본 활성화 | fine quality → mesh_type 별 BL 자동 @beta24 | `--bl-layers N` 명시 |
 | Hausdorff 거리 | `fidelity._native_sample_surface` + chunked kNN | trimesh.sample/scipy.cKDTree |
@@ -47,7 +51,30 @@ auto-tessell run input.stl -o ./case --checker-engine native
 | Tier wrapper | `core/generator/_tier_native_common.run_native_tier` 공용 | — |
 | polyMesh writer | `polymesh_writer.write_generic_polymesh` 공용 | — |
 | KDTree | `core/utils/kdtree.NumpyKDTree` @beta28 | scipy.cKDTree (fidelity fallback 만) |
-| HARNESS_PARAMS | tier × quality × {seed_density, max_iter, snap_boundary} @beta17 | — |
+| HARNESS_PARAMS | tier × quality × {seed_density, max_iter, snap_boundary, `sliver_quality_threshold`, `preserve_features`} @beta17/62/66 | — |
+| Qt GUI param spec | `native_tet/hex/poly` 3 엔진 등록 @beta67 | 필요시 `--tier-param` |
+
+### v0.4 신규 tier 파라미터 (CLI `--tier-param KEY=VAL` 및 GUI 파라미터 패널)
+
+- `sliver_quality_threshold` (native_tet, @beta62) — draft 0.02 / standard 0.05 / fine 0.10.
+- `max_cells_per_axis` (native_hex, @beta61) — 기본 50. grid cap.
+- `max_tet_cells` (native_poly, @beta56) — 기본 30000. tet base cap.
+- `preserve_features` / `feature_angle_deg` (native_hex, @beta66) — sharp corner snap.
+
+### native_bl Phase 2 config (BLConfig)
+
+- `collision_safety=True` / `collision_safety_factor=0.5` @beta63 — 반대편 wall
+  ray-cast 거리 기반 thickness cap.
+- `feature_lock=True` / `feature_angle_deg=45.0` / `feature_reduction_ratio=0.5`
+  @beta64 — sharp edge vertex thickness 축소.
+- `quality_check_enabled=True` / `aspect_ratio_threshold=50.0` @beta65 —
+  degenerate prism aspect ratio 리포트.
+
+### scipy 유지 정책
+
+`scipy.spatial.{Voronoi, Delaunay, ConvexHull}` 는 **의도적 유지** (사용자 정책:
+"pip 로 설치 쉬운 python 라이브러리는 OK"). 완전 자체 Voronoi/Delaunay 는 v0.5+
+로드맵 (QuickHull / Bowyer-Watson 자체 구현).
 
 ### mesh_type × BL 파이프라인 (v0.4.0-beta27)
 

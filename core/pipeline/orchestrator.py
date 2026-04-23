@@ -97,6 +97,8 @@ class PipelineOrchestrator:
         validator_engine: str = "auto",
         prefer_native: bool = False,
         prefer_native_tier: bool = False,
+        cross_engine_fallback: bool = False,
+        _cross_engine_retried: bool = False,
         progress_callback: Callable[[int, str], None] | None = None,
     ) -> PipelineResult:
         """전체 파이프라인을 실행한다.
@@ -568,6 +570,54 @@ class PipelineOrchestrator:
             emit_progress(100, "오류로 중단")
 
         result.total_time_seconds = time.perf_counter() - start
+
+        # beta68: cross-engine fallback — poly 실패 시 hex_dominant 로 1 회 재시도.
+        # _cross_engine_retried 는 recursive flag (무한 루프 방지).
+        if (
+            not result.success
+            and cross_engine_fallback
+            and not _cross_engine_retried
+            and str(mesh_type or "").lower() == "poly"
+        ):
+            log.warning(
+                "cross_engine_fallback_triggered",
+                from_mesh_type="poly", to_mesh_type="hex_dominant",
+                original_error=result.error,
+            )
+            retried = self.run(
+                input_path=input_path,
+                output_dir=output_dir,
+                quality_level=quality_level,
+                mesh_type="hex_dominant",
+                tier_hint=tier_hint,
+                max_iterations=max_iterations,
+                auto_retry=auto_retry,
+                dry_run=dry_run,
+                element_size=element_size,
+                max_cells=max_cells,
+                tier_specific_params=tier_specific_params,
+                no_repair=no_repair,
+                surface_remesh=surface_remesh,
+                remesh_engine=remesh_engine,
+                allow_ai_fallback=allow_ai_fallback,
+                write_of_case=write_of_case,
+                strict_tier=strict_tier,
+                validator_engine=validator_engine,
+                prefer_native=prefer_native,
+                prefer_native_tier=prefer_native_tier,
+                cross_engine_fallback=False,
+                _cross_engine_retried=True,
+                progress_callback=progress_callback,
+            )
+            # annotate: 재시도 성공이라도 originally poly 였음을 표시.
+            if retried.error:
+                retried.error = (
+                    f"[cross_engine_fallback poly→hex_dominant] {retried.error}"
+                )
+            else:
+                retried.error = None
+            return retried
+
         return result
 
     def _evaluate(

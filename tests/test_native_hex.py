@@ -90,3 +90,40 @@ def test_native_hex_empty_input_fails(tmp_case_dir: Path) -> None:
     F = np.zeros((0, 3), dtype=np.int64)
     res = generate_native_hex(V, F, tmp_case_dir)
     assert res.success is False
+
+
+def test_native_hex_max_cells_per_axis_honored(tmp_case_dir: Path) -> None:
+    """beta61 — max_cells_per_axis 파라미터가 grid 를 제한한다.
+
+    cap=5 로 지정하면 각 축 최대 5 cell → 총 <= 125 cell.
+    """
+    if not SPHERE_STL.exists():
+        pytest.skip("sphere.stl 없음")
+    m = read_stl(SPHERE_STL)
+    V, F = m.vertices, m.faces
+    res = generate_native_hex(
+        V, F, tmp_case_dir,
+        target_edge_length=0.001,  # 매우 작은 값 → cap 에 반드시 걸림
+        max_cells_per_axis=5,
+    )
+    assert res.success is True
+    # 최대 5^3 = 125 cell. inside filter 후 실제로는 더 적음.
+    assert res.n_cells <= 125
+
+
+def test_native_hex_larger_cap_allows_more_cells(tmp_case_dir: Path) -> None:
+    """beta61 — cap 을 늘리면 더 많은 cell 허용."""
+    if not SPHERE_STL.exists():
+        pytest.skip("sphere.stl 없음")
+    m = read_stl(SPHERE_STL)
+    V, F = m.vertices, m.faces
+    r_small = generate_native_hex(
+        V, F, tmp_case_dir / "a",
+        target_edge_length=0.01, max_cells_per_axis=8,
+    )
+    r_large = generate_native_hex(
+        V, F, tmp_case_dir / "b",
+        target_edge_length=0.01, max_cells_per_axis=30,
+    )
+    assert r_small.success and r_large.success
+    assert r_large.n_cells > r_small.n_cells

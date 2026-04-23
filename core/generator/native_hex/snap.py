@@ -72,6 +72,46 @@ def _closest_point_on_triangle(
     return A + ab * v + ac * w  # interior
 
 
+def _detect_surface_feature_vertices(
+    surface_V: np.ndarray,
+    surface_F: np.ndarray,
+    feature_angle_deg: float = 45.0,
+) -> np.ndarray:
+    """surface STL 에서 sharp feature vertex id 목록 (corner / edge).
+
+    인접 triangle 간 dihedral angle > threshold 인 edge 의 vertex 수집.
+    """
+    if surface_F.size == 0 or feature_angle_deg <= 0:
+        return np.zeros(0, dtype=np.int64)
+    # face unit normals
+    v0 = surface_V[surface_F[:, 0]]
+    v1 = surface_V[surface_F[:, 1]]
+    v2 = surface_V[surface_F[:, 2]]
+    n = np.cross(v1 - v0, v2 - v0)
+    norms = np.linalg.norm(n, axis=1, keepdims=True)
+    n = np.where(norms > 1e-30, n / np.where(norms > 1e-30, norms, 1.0), 0.0)
+
+    # edge → face pair
+    edge_map: dict[tuple[int, int], list[int]] = {}
+    for fi in range(surface_F.shape[0]):
+        a, b, c = int(surface_F[fi, 0]), int(surface_F[fi, 1]), int(surface_F[fi, 2])
+        for x, y in ((a, b), (b, c), (c, a)):
+            key = (x, y) if x < y else (y, x)
+            edge_map.setdefault(key, []).append(fi)
+
+    cos_thresh = float(np.cos(np.deg2rad(feature_angle_deg)))
+    feature_set: set[int] = set()
+    for (a, b), fl in edge_map.items():
+        if len(fl) != 2:
+            # boundary edge 도 feature 로 간주 (open mesh 에서 유용)
+            feature_set.add(a); feature_set.add(b)
+            continue
+        cos_a = float(np.clip(np.dot(n[fl[0]], n[fl[1]]), -1.0, 1.0))
+        if cos_a < cos_thresh:
+            feature_set.add(a); feature_set.add(b)
+    return np.array(sorted(feature_set), dtype=np.int64)
+
+
 def snap_hex_boundary_to_surface(
     hex_vertices: np.ndarray,
     surface_V: np.ndarray,
@@ -80,6 +120,8 @@ def snap_hex_boundary_to_surface(
     *,
     max_snap_ratio: float = 0.5,
     search_radius_ratio: float = 1.5,
+    preserve_features: bool = False,
+    feature_angle_deg: float = 45.0,
 ) -> tuple[np.ndarray, dict[str, int]]:
     """hex 메쉬 vertex 를 STL surface 로 projection (beta22).
 
@@ -109,10 +151,24 @@ def snap_hex_boundary_to_surface(
         "n_skipped_far": 0,
         "n_skipped_beyond_cap": 0,
         "n_candidates": int(len(hex_V)),
+        "n_feature_snapped": 0,
     }
 
     if len(sF) == 0 or len(hex_V) == 0:
         return hex_V, stats
+
+    # beta66: feature vertex list + KDTree — snap 시 hex vertex 가 feature 근처
+    # 에 있으면 closest-point-on-triangle 대신 nearest feature vertex 로 snap.
+    feature_ids = np.zeros(0, dtype=np.int64)
+    feature_tree = None
+    if preserve_features:
+        feature_ids = _detect_surface_feature_vertices(sV, sF, feature_angle_deg)
+        if feature_ids.size > 0:
+            try:
+                from core.utils.kdtree import NumpyKDTree as _KT  # noqa: PLC0415
+                feature_tree = _KT(sV[feature_ids])
+            except Exception as exc:
+                log.warning("native_hex_feature_kdtree_failed", error=str(exc))
 
     # Triangle centroids for coarse-nearest filter
     tri_A = sV[sF[:, 0]]
@@ -166,6 +222,23 @@ def snap_hex_boundary_to_surface(
         if dist > cap:
             stats["n_skipped_beyond_cap"] += 1
             continue
+
+        # beta66: feature preservation — 현재 best_pt 가 feature vertex 근처
+        # (cap 의 70% 이내) 라면 직접 feature vertex 로 snap.
+        if feature_tree is not None:
+            fd, fidx = feature_tree.query(
+                np.asarray(best_pt).reshape(1, 3), k=1,
+            )
+            fd = float(np.asarray(fd).ravel()[0])
+            fidx_i = int(np.asarray(fidx).ravel()[0])
+            if fd <= 0.7 * cap and fidx_i < feature_ids.size:
+                # feature vertex 좌표
+                fv_coord = sV[feature_ids[fidx_i]]
+                if float(np.linalg.norm(fv_coord - P)) <= cap:
+                    hex_V[i] = fv_coord
+                    stats["n_snapped"] += 1
+                    stats["n_feature_snapped"] += 1
+                    continue
 
         hex_V[i] = best_pt
         stats["n_snapped"] += 1
