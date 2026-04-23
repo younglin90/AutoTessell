@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.4.0-beta42] - 2026-04-23 — "core/utils/bc_writer.py 단위 회귀"
+
+### Added
+
+- `tests/test_bc_writer.py` (15 tests): write_boundary_conditions 전체 흐름 +
+  각 _build_*_bc (p/U/k/omega/nut) 패치 타입별 (inlet/outlet/wall/symmetryPlane)
+  BC 타입 문자열 검증. turbulence_model 반영.
+
+---
+
+## [0.4.0-beta41] - 2026-04-23 — "core/utils/mesh_exporter.py 단위 회귀"
+
+### Added
+
+- `tests/test_mesh_exporter.py` (7 tests): SU2/Fluent/CGNS export 매핑 +
+  graceful fallback (polyMesh 없음 / meshio 미설치 / 파싱 실패) + 정상 export
+  경로.
+
+---
+
+## [0.4.0-beta40] - 2026-04-23 — "core/utils/errors.py 단위 회귀"
+
+### Added
+
+- `tests/test_errors.py` (14 tests): AutoTessellError + rich_message,
+  format_missing_dependency_message, diagnose_error 의 8 개 패턴 매칭 확인.
+
+---
+
+## [0.4.0-beta39] - 2026-04-23 — "CLI --tier-param + --prefer-native-tier 회귀"
+
+### Added
+
+- `tests/test_cli_flags_beta20_beta23.py` (12 tests): CLI 파싱 + Strategist
+  전파 + dry-run 출력 검증.
+
+---
+
 ## [0.4.0-beta38] - 2026-04-23 — "run_native_tet_harness 단위 회귀"
 
 ### Added
