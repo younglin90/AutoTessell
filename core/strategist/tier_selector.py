@@ -125,11 +125,40 @@ _MESH_TYPE_TIER_MAP: dict[str, dict[str, list[str]]] = {
     },
 }
 
+# v0.4.0-beta23: native tier 만 primary 로 삼는 우선순위 맵.
+# --prefer-native-tier=on 이면 이 맵을 사용. native tier 실패 시 기존
+# _MESH_TYPE_TIER_MAP 의 fallback 순서로 이어간다.
+_MESH_TYPE_TIER_MAP_NATIVE: dict[str, dict[str, list[str]]] = {
+    "tet": {
+        "draft":    ["tier_native_tet"],
+        "standard": ["tier_native_tet"],
+        "fine":     ["tier_native_tet"],
+    },
+    "hex_dominant": {
+        "draft":    ["tier_native_hex"],
+        "standard": ["tier_native_hex"],
+        "fine":     ["tier_native_hex"],
+    },
+    "poly": {
+        "draft":    ["tier_native_poly"],
+        "standard": ["tier_native_poly"],
+        "fine":     ["tier_native_poly"],
+    },
+}
+
 
 def resolve_mesh_type_tier(
     mesh_type: str, quality_level: str,
+    *,
+    prefer_native: bool = False,
 ) -> tuple[str, list[str]] | None:
     """mesh_type(auto/tet/hex_dominant/poly) × quality_level → (primary, fallbacks).
+
+    Args:
+        mesh_type: 메쉬 타입 (auto/tet/hex_dominant/poly).
+        quality_level: draft/standard/fine.
+        prefer_native: True 면 native_* tier 를 primary 로 승격. 실패 시 기존
+            legacy tier 로 fallback 이어감. v0.4.0-beta23+.
 
     반환값 None 이면 mesh_type=auto 또는 매핑 없음 (기존 auto_select 로직 사용).
     """
@@ -143,7 +172,21 @@ def resolve_mesh_type_tier(
     lst = table.get(ql) or table.get("standard") or []
     if not lst:
         return None
-    return lst[0], list(lst[1:])
+    primary = lst[0]
+    fallback = list(lst[1:])
+    if prefer_native:
+        native_table = _MESH_TYPE_TIER_MAP_NATIVE.get(mt)
+        if native_table is not None:
+            native_lst = native_table.get(ql) or native_table.get("standard") or []
+            if native_lst:
+                # native 를 primary 로 승격, 기존 primary 는 fallback 맨 앞으로.
+                native_primary = native_lst[0]
+                # native_primary 가 이미 legacy lst 에 포함되어 있으면 중복 제거
+                full = [native_primary, primary] + [
+                    t for t in fallback if t != native_primary
+                ]
+                return full[0], full[1:]
+    return primary, fallback
 
 
 # Tier 우선순위 (품질/안정성 순)
@@ -256,6 +299,8 @@ class TierSelector:
         quality_level: QualityLevel | str = QualityLevel.STANDARD,
         surface_quality_level: SurfaceQualityLevel | str = SurfaceQualityLevel.L1_REPAIR,
         mesh_type: MeshType | str = MeshType.AUTO,
+        *,
+        prefer_native_tier: bool = False,
     ) -> tuple[str, list[str]]:
         """Tier를 선택하고 fallback 순서를 반환한다.
 
@@ -345,7 +390,7 @@ class TierSelector:
             return selected, fallbacks
 
         # mesh_type 기반 매핑 (v0.4) — tier_hint=auto + 비-critical + 비-L3
-        mt_resolved = resolve_mesh_type_tier(mt, ql)
+        mt_resolved = resolve_mesh_type_tier(mt, ql, prefer_native=prefer_native_tier)
         if mt_resolved is not None:
             mt_primary, mt_fallbacks = mt_resolved
             # 카테고리 외 나머지 tier 를 마지막 fallback 으로 추가 (last-resort)

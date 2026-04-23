@@ -96,6 +96,7 @@ class PipelineOrchestrator:
         strict_tier: bool = False,
         validator_engine: str = "auto",
         prefer_native: bool = False,
+        prefer_native_tier: bool = False,
         progress_callback: Callable[[int, str], None] | None = None,
     ) -> PipelineResult:
         """전체 파이프라인을 실행한다.
@@ -225,6 +226,7 @@ class PipelineOrchestrator:
                 tier_hint=tier_hint,
                 quality_level=quality_level,
                 mesh_type=mesh_type,
+                prefer_native_tier=prefer_native_tier,
             )
 
             self._apply_strategy_overrides(
@@ -312,6 +314,7 @@ class PipelineOrchestrator:
                         iteration=iteration,
                         quality_level=quality_level,
                         mesh_type=mesh_type,
+                        prefer_native_tier=prefer_native_tier,
                     )
                     self._apply_strategy_overrides(
                         strategy,

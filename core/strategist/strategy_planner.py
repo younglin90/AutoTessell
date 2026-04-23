@@ -139,6 +139,7 @@ class StrategyPlanner:
         iteration: int = 1,
         quality_level: QualityLevel | str = QualityLevel.STANDARD,
         mesh_type: "MeshType | str" = "auto",
+        prefer_native_tier: bool = False,
     ) -> MeshStrategy:
         """MeshStrategy를 수립한다.
 
@@ -214,6 +215,7 @@ class StrategyPlanner:
             geometry_report, tier_hint,
             quality_level=ql, surface_quality_level=sql,
             mesh_type=mt,
+            prefer_native_tier=prefer_native_tier,
         )
         selection_context = dict(self._selector.last_selection_context)
 

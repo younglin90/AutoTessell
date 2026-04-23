@@ -595,6 +595,11 @@ def evaluate(
          "native_repair 경로로 강제 실행 (L1 표면 수리).",
 )
 @click.option(
+    "--prefer-native-tier", is_flag=True,
+    help="v0.4.0-beta23+ native-first tier: Strategist 가 native_tet/hex/poly 를 "
+         "primary 로 선택 (기존 tier 는 fallback). mesh_type 명시 필요.",
+)
+@click.option(
     "--auto-retry",
     type=click.Choice(["off", "once", "continue"]),
     default="off",
@@ -652,6 +657,7 @@ def run(
     tier_param: tuple[str, ...],
     mesh_type: str,
     prefer_native: bool,
+    prefer_native_tier: bool,
     auto_retry: str,
     max_iterations: int,
     dry_run: bool,
@@ -810,6 +816,7 @@ def run(
         strict_tier=strict_tier,
         validator_engine=checker_engine,
         prefer_native=prefer_native,
+        prefer_native_tier=prefer_native_tier,
     )
 
     # base_cell_num은 이미 element_size로 변환되어 orchestrator에 전달됨
@@ -918,6 +925,7 @@ def run(
                     strict_tier=strict_tier,
                     validator_engine=checker_engine,
                     prefer_native=prefer_native,
+                    prefer_native_tier=prefer_native_tier,
                 )
                 if result.quality_report:
                     from core.evaluator.report import render_terminal
