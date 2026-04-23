@@ -109,6 +109,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "requires_display: marks tests that require a display (skip in headless CI with '-k \"not requires_display\"')",
     "visual: marks GUI screenshot regression tests (skip with --skip-visual)",
+    "openfoam: marks tests that require OpenFOAM installation (skip with '-m \"not openfoam\"')",
 ]
 
 [tool.black]

@@ -4,6 +4,51 @@ CAD/메쉬 파일 → OpenFOAM polyMesh 자동 생성 도구.
 **v0.4 "Native-First"**: 외부 라이브러리 의존 → 자체 코드 점진 전환. 라이브러리는
 참고·카피 대상이지 의존 대상이 아님.
 
+---
+
+## 30 초 Quickstart — 외부 유동 CFD
+
+```bash
+# 1. 메쉬 생성 (hex_dominant + BL + 유입 속도 지정)
+auto-tessell run sphere.stl -o ./sphere_case \
+    --mesh-type hex_dominant --quality standard \
+    --flow-velocity 10.0
+
+# 2. 생성물 확인
+ls sphere_case/
+#   constant/polyMesh/   ← points/faces/owner/neighbour/boundary
+#   0/                   ← U / p / k / epsilon (자동 생성)
+#   system/              ← controlDict / fvSchemes / fvSolution
+
+# 3. (OpenFOAM 설치 시) solver 실행
+cd sphere_case
+simpleFoam > log.simpleFoam
+paraFoam          # 결과 시각화
+```
+
+### BL Phase 2 config 예시
+
+```bash
+# collision safety + feature lock 끄기 (convex 형상 + 빠른 생성)
+auto-tessell run input.stl -o ./case --mesh-type hex_dominant \
+    --tier-param bl_collision_safety=false \
+    --tier-param bl_feature_lock=false
+
+# kOmegaSST 모델 + 고속 입구
+auto-tessell run airfoil.stl -o ./case --mesh-type tet --quality fine \
+    --flow-velocity 50.0 --turbulence-model kOmegaSST
+```
+
+### poly mesh_type 실패 시 자동 hex fallback
+
+```bash
+auto-tessell run complex.stl -o ./case --mesh-type poly --quality standard \
+    --cross-engine-fallback
+# poly 엔진이 완전 실패하면 hex_dominant 로 자동 재시도.
+```
+
+---
+
 ## v0.4 신규 사용법
 
 ```bash

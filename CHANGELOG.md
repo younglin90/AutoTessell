@@ -1,5 +1,59 @@
 # Changelog
 
+## [0.4.0-beta82] - 2026-04-23 — "README 30초 Quickstart"
+
+### Changed
+
+- `README.md` 상단에 "30 초 Quickstart — 외부 유동 CFD" 섹션 추가:
+  - box.stl → hex_dominant + BL → simpleFoam 전체 흐름.
+  - 생성물 (`constant/polyMesh/`, `0/`, `system/`) 명시.
+  - BL Phase 2 config 예시 (`bl_collision_safety=false`, `bl_feature_lock=false`).
+  - `--turbulence-model kOmegaSST` 예시.
+  - `--cross-engine-fallback` 예시.
+
+---
+
+## [0.4.0-beta81] - 2026-04-23 — "bench baseline 재생성 스크립트"
+
+### Added
+
+- `tests/stl/regenerate_baseline.sh` — baseline 재생성 셸 스크립트.
+  사용법: `bash tests/stl/regenerate_baseline.sh --limit 30`.
+- `pyproject.toml` 에 `openfoam` pytest 마커 등록.
+
+---
+
+## [0.4.0-beta80] - 2026-04-23 — "OpenFOAM solver smoke test"
+
+### Added
+
+- `tests/test_openfoam_solver_smoke.py`:
+  - `@pytest.mark.openfoam @pytest.mark.slow` — OpenFOAM 설치 필요, 미설치 시
+    자동 skip.
+  - `test_simpleFoam_runs_without_crash`: cube.stl → native_tet pipeline →
+    simpleFoam 5 iter — crash 없음 검증.
+  - `test_openfoam_detected`: OpenFOAM 설치 여부 1 test.
+- `pyproject.toml` 에 `openfoam` 마커 등록.
+
+---
+
+## [0.4.0-beta79] - 2026-04-23 — "native_bl structlog 이벤트 표준화"
+
+### Changed
+
+- `core/layers/native_bl.py` 의 모든 structlog 이벤트에 `component="native_bl"`
+  공통 필드 추가 (grep 검색 가능).
+- Phase 2 이벤트 (`native_bl_collision_safety_scaled`, `native_bl_feature_lock`,
+  `native_bl_quality_check`, `native_bl_collision_skipped_large`) 에
+  `phase="Phase2"` 추가.
+- 표준화된 이벤트 키 목록 (8 개):
+  - `native_bl_read`, `native_bl_non_triangle_wall`
+  - `native_bl_thickness_scaled`, `native_bl_local_safety_scaled`
+  - `native_bl_feature_lock`, `native_bl_collision_safety_scaled`
+  - `native_bl_quality_check`, `native_bl_collision_skipped_large`
+
+---
+
 ## [0.4.0-beta78] - 2026-04-23 — "CLI --flow-velocity + --turbulence-model"
 
 ### Added

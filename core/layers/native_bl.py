@@ -370,7 +370,7 @@ def _compute_collision_distance(
     R = len(wall_vert_indices)
     if T > max_tris:
         log.info(
-            "native_bl_collision_skipped_large",
+            "native_bl_collision_skipped_large", component="native_bl", phase="Phase2",
             n_tris=T, cap=max_tris,
             hint="너무 큰 wall mesh → collision check 생략 (local cell-dist cap 사용)",
         )
@@ -624,7 +624,8 @@ def generate_native_bl(
         n_cells = max(n_cells, int(neighbour.max()) + 1)
     n_faces_orig = len(faces)
     n_internal_orig = len(neighbour)
-    log.info("native_bl_read", n_cells=n_cells, n_faces=n_faces_orig,
+    log.info("native_bl_read", component="native_bl",
+             n_cells=n_cells, n_faces=n_faces_orig,
              n_internal=n_internal_orig, n_points=len(points))
 
     # 2) Wall face 식별
@@ -640,7 +641,7 @@ def generate_native_bl(
     # Wall face 가 모두 triangle 인지 체크 (MVP 제약)
     non_tri = [fi for fi in wall_face_indices if len(faces[fi]) != 3]
     if non_tri:
-        log.warning("native_bl_non_triangle_wall", count=len(non_tri))
+        log.warning("native_bl_non_triangle_wall", component="native_bl", count=len(non_tri))
         # triangle 만 처리, non-tri 는 skip
         wall_face_indices = [fi for fi in wall_face_indices if len(faces[fi]) == 3]
 
@@ -664,7 +665,7 @@ def generate_native_bl(
         scale = (cfg.max_total_ratio * bbox_diag) / total
         thicknesses *= scale
         total = float(thicknesses.sum())
-        log.warning("native_bl_thickness_scaled", factor=scale, new_total=total)
+        log.warning("native_bl_thickness_scaled", component="native_bl", factor=scale, new_total=total)
     cum = np.concatenate(([0.0], np.cumsum(thicknesses)))  # [0, t1, t1+t2, ..., total]
 
     # 4b) Per-vertex local safety — 각 wall vertex 에서 인접 tet cell centroid 까지의
@@ -693,7 +694,7 @@ def generate_native_bl(
             thicknesses *= scale
             total = float(thicknesses.sum())
             log.info(
-                "native_bl_local_safety_scaled",
+                "native_bl_local_safety_scaled", component="native_bl",
                 factor=scale, min_local=min_local, new_total=total,
             )
             cum = np.concatenate(([0.0], np.cumsum(thicknesses)))
@@ -706,7 +707,7 @@ def generate_native_bl(
         )
         if feature_verts:
             log.info(
-                "native_bl_feature_lock",
+                "native_bl_feature_lock", component="native_bl", phase="Phase2",
                 n_feature_verts=len(feature_verts),
                 angle_deg=cfg.feature_angle_deg,
                 reduction=cfg.feature_reduction_ratio,
@@ -733,7 +734,7 @@ def generate_native_bl(
                 thicknesses *= scale
                 total = float(thicknesses.sum())
                 log.warning(
-                    "native_bl_collision_safety_scaled",
+                    "native_bl_collision_safety_scaled", component="native_bl", phase="Phase2",
                     factor=scale, min_collision=min_collision,
                     safety=safety, new_total=total,
                 )
@@ -1022,7 +1023,7 @@ def generate_native_bl(
         )
         if n_degen > 0:
             log.warning(
-                "native_bl_quality_check",
+                "native_bl_quality_check", component="native_bl", phase="Phase2",
                 n_degenerate_prisms=n_degen, max_aspect_ratio=max_ar,
                 threshold=cfg.aspect_ratio_threshold,
             )
