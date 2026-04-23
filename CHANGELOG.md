@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.4.0-beta86] - 2026-04-23 — "orchestrator progress breakdown"
+
+### Added
+
+- `orchestrator.py::run` 에 progress 세분화:
+  - `f"Generate ({selected_tier}) N/M"` — tier 이름 포함 (기존: 단순 %).
+  - `f"Generate 완료 — tier={t}, cells={n}"` — 완료 시 cell 수 표시.
+  - `f"BL 생성 중 ({engine})…"` — BL 단계 별도 progress.
+- native_bl docstring Phase 2 완료 반영 (Phase 3 예정 명시).
+
+---
+
 ## [0.4.0-beta85] - 2026-04-23 — "polyMesh ASCII I/O 성능 최적화"
 
 ### Changed

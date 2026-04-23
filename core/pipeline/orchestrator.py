@@ -369,6 +369,10 @@ class PipelineOrchestrator:
                         shutil.rmtree(polymesh)
 
                 # Generate
+                emit_progress(
+                    loop_start + 2,
+                    f"Generate ({strategy.selected_tier}) {iteration}/{effective_iters}",
+                )
                 generator_log = self._generator.run(
                     strategy=strategy,
                     preprocessed_path=preprocessed_path,
@@ -384,6 +388,14 @@ class PipelineOrchestrator:
                     log.warning("All tiers failed", iteration=iteration)
                     result.error = "All mesh generation tiers failed"
                     break
+
+                # beta86: tier 완료 progress (tier name + cells)
+                _last_try = (generator_log.execution_summary.tiers_attempted or [None])[-1]
+                _cells_done = getattr(getattr(_last_try, "mesh_stats", None), "num_cells", "?")
+                emit_progress(
+                    loop_generate_done,
+                    f"Generate 완료 — tier={successful_tier}, cells={_cells_done}",
+                )
 
                 # ── Tier 4 (BL post-processing) 선택적 실행 ──
                 # 주 엔진이 snappy/cfmesh 가 아니어도 tier_specific_params 로
@@ -415,6 +427,10 @@ class PipelineOrchestrator:
                         _post_engine = "disabled"
                 _post_result_for_bl: Any = None
                 if str(_post_engine).lower() not in ("disabled", "none", "off", ""):
+                    emit_progress(
+                        loop_generate_done + 3,
+                        f"BL 생성 중 ({_post_engine})…",
+                    )
                     try:
                         from core.generator.tier_layers_post import LayersPostGenerator
                         post_gen = LayersPostGenerator()

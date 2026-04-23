@@ -17,12 +17,12 @@
      - 각 (i, i+1) 사이에 prism cell 1개 × face 수
   7. polyMesh 재쓰기 (points + faces + owner + neighbour + boundary)
 
-Phase 1 한계:
-  - Wall 모든 vertex 에 동일 total thickness (collision check 없음 — convex wall 가정)
-  - Feature edge 보존 없음
-  - Quality check 없음 (degenerate prism 가능성 있음)
+Phase 2 (beta63-65 완성):
+  - beta63 collision detection: inward ray → 반대편 wall triangle 거리 → thickness cap.
+  - beta64 feature edge locking: dihedral > threshold vertex 는 per-vertex scale 축소.
+  - beta65 degenerate prism quality check: aspect ratio > threshold 카운트 + log.
 
-Phase 2 예정: collision, shrinkage, feature lock.
+Phase 3 예정 (v0.5+): shrinkage iteration (반복 수렴), 완전 비균일 prism.
 
 라이선스: 모든 알고리즘 clean-room 구현 (numpy + 공개 문서 기반).
 """
