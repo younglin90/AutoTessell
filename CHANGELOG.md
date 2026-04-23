@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.0-beta47] - 2026-04-23 — "core/utils/logging.py 단위 회귀"
+
+### Added
+
+- `tests/test_logging.py` (7 tests): configure_logging verbose/json 모드, 핸들러
+  교체, 멱등성, get_logger 이름 보존 smoke.
+
+---
+
+## [0.4.0-beta46] - 2026-04-23 — "OpenFOAMWriter 단위 회귀"
+
+### Added
+
+- `tests/test_openfoam_writer.py` (17 tests): ensure_case_structure,
+  write_control_dict / fv_schemes / fv_solution, write_foam_dict (중첩 /
+  리스트), _format_foam_value 각 타입 처리.
+
+---
+
 ## [0.4.0-beta45] - 2026-04-23 — "ParamOptimizer 단위 회귀"
 
 ### Added
