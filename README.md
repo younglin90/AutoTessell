@@ -27,30 +27,56 @@ auto-tessell run input.stl -o ./case --prefer-native
 auto-tessell run input.stl -o ./case --checker-engine native
 ```
 
-## 자체 코드화 진행 (v0.4.0-beta12)
+## 자체 코드화 진행 (v0.4.0-beta29)
 
 | 영역 | 기본 경로 | legacy fallback |
 |------|-----------|-----------------|
 | STL/OBJ/PLY/OFF reader | `core/analyzer/readers/` native | trimesh |
-| Topology | `core/analyzer/topology.py` native | trimesh 속성 |
+| Topology | `core/analyzer/topology.py` native (trimesh 완전 제거 @beta15) | — |
 | MeshChecker | `NativeMeshChecker` 기본 | OpenFOAM checkMesh (명시 시) |
-| L1 repair | `--prefer-native` → native | pymeshfix (기본) |
+| L1 repair | **기본 native** (`--legacy-repair` 로 opt-out @beta26) | pymeshfix/trimesh |
 | L2 remesh | `--prefer-native` → isotropic + CVT | pyACVD/pymeshlab |
 | BL 생성 (hex) | `native_bl` Phase 2 polyMesh 직접 | cfMesh/snappy |
-| BL 생성 (tet) | `tet_bl_subdivide` 순수 tet | - |
-| BL 생성 (poly) | `poly_bl_transition` + polyDualMesh | - |
+| BL 생성 (tet) | `tet_bl_subdivide` prism → 3 tet 분할, 순수 tet | - |
+| BL 생성 (poly) | `poly_bl_transition` + best-effort hybrid dual @beta25 | - |
 | Volume 엔진 | `native_tet/hex/poly` (+harness) | 17 legacy Tier |
+| Strategist tier 매핑 | `--prefer-native-tier` 로 native_* primary @beta23 | legacy primary |
+| BL 기본 활성화 | fine quality → mesh_type 별 BL 자동 @beta24 | `--bl-layers N` 명시 |
 | Hausdorff 거리 | `fidelity._native_sample_surface` + chunked kNN | trimesh.sample/scipy.cKDTree |
 | inside-test | `core/utils/geometry.inside_winding_number` 공용 | — |
 | Tier wrapper | `core/generator/_tier_native_common.run_native_tier` 공용 | — |
 | polyMesh writer | `polymesh_writer.write_generic_polymesh` 공용 | — |
+| KDTree | `core/utils/kdtree.NumpyKDTree` @beta28 | scipy.cKDTree (fidelity fallback 만) |
+| HARNESS_PARAMS | tier × quality × {seed_density, max_iter, snap_boundary} @beta17 | — |
+
+### mesh_type × BL 파이프라인 (v0.4.0-beta27)
+
+| mesh_type | 볼륨 엔진 (native) | BL 엔진 | 특징 |
+|-----------|---------------------|---------|------|
+| `tet` | `native_tet` (harness) | `tet_bl_subdivide` | 순수 tet 유지 (wedge → 3 tet) |
+| `hex_dominant` | `native_hex` (+ surface snap @ fine) | `native_bl` | prism wedge, OpenFOAM checkMesh OK |
+| `poly` | `native_poly` (tet→poly dual) | `poly_bl_transition` | hybrid (prism+tet) best-effort dual |
 
 **Bench matrix (5 난이도 × 3 native 엔진 × 2 quality = 30 조합):** 30/30 polyMesh 생성.
-세부는 `tests/stl/bench_v04_result.json`, 진화 이력은 `CHANGELOG.md`.
+세부는 `tests/stl/bench_v04_result.json` + timestamped snapshots. 진화 이력은
+`CHANGELOG.md`.
 
 **Harness 패턴 (v0.4.0-beta6~)**: Generator ⇄ Evaluator (NativeMeshChecker) 반복.
 safety cap (`max_tet_cells`, target_edge clamp) 로 cell 폭증 방지. 자세한 내용은
 `core/generator/native_{tet,poly}/harness.py` 참조.
+
+### scipy 잔존 (v0.5+ 로드맵)
+
+v0.4 에서 의도적으로 유지하는 scipy 의존:
+- `scipy.spatial.Delaunay` (native_tet 코어) — incremental Bowyer-Watson 자체
+  구현은 v0.5.
+- `scipy.spatial.Voronoi` (native_poly voronoi fallback) — dual of Delaunay.
+- `scipy.spatial.ConvexHull` (native_poly dual cell polyhedron) — QuickHull 이식.
+- `scipy.spatial.cKDTree` (evaluator/fidelity.py legacy fallback 경로만) — 기본
+  경로는 `NumpyKDTree` @beta28.
+
+scipy 는 "수치 toolkit" 범주로 허용 (trimesh/pymeshfix 같은 mesh-specific
+라이브러리와 구분). 자체 구현은 beta32+ 연구 phase.
 
 ## 외부 라이브러리 정리
 
