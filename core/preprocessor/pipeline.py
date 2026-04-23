@@ -314,16 +314,19 @@ class Preprocessor:
     ) -> tuple[trimesh.Trimesh, bool, dict[str, Any]]:
         """L2 표면 리메쉬 수행.
 
-        기본: pyACVD + 선택적 pymeshlab isotropic remeshing (SurfaceRemesher).
-        prefer_native=True: 자체 native_remesh.isotropic_remesh (pyACVD 없이).
+        v0.4.0-beta33+: prefer_native=True 가 **기본** (CLI `--prefer-native`
+        default=True @beta26 의 L2 버전). 자체 native_remesh.isotropic_remesh /
+        CVT 가 primary.
 
-        리메쉬 후 gate 검사를 실행한다.
+        prefer_native=False (`--legacy-repair` 혹은 명시적 opt-out) 시에만 pyACVD/
+        pymeshlab 계열 SurfaceRemesher 호출.
 
         Returns:
             (리메쉬된 메쉬, gate_passed, step_record) 튜플.
         """
         if prefer_native:
             return self._l2_remesh_native(mesh, target_faces)
+        # legacy 경로 — pyACVD/pymeshlab/vorpalite 체인
         return self._remesher.remesh_l2(
             mesh,
             target_faces=target_faces,
