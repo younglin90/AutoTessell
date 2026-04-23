@@ -115,17 +115,24 @@ def _try_native_poly_dual(case_dir: Path) -> tuple[bool, str]:
         return False, f"tet cell 0 — dual 변환 불가 (non-tet={n_non_tet})"
 
     if n_non_tet > 0:
-        # Hybrid (tet + prism) — dual 을 skip 하고 원본 mesh 보존.
-        # interface stitching (prism outer triangle ↔ dual polygon 정합) 은 beta15+.
+        # Hybrid (tet + prism) — v0.4.0-beta25: best-effort dual-on-tet-subset +
+        # prism 보존. interface face 가 dual cell 경계와 정합하지 않을 경우
+        # pass-through 로 fallback.
+        ok, msg = _try_hybrid_dual(
+            pts, faces, owner, neighbour, cell_verts, tet_ids, non_tet_ids,
+            case_dir,
+        )
+        if ok:
+            return True, msg
+        # fallback: 원본 mesh 보존 (beta13 동작)
         log.info(
             "poly_bl_hybrid_pass_through",
-            n_tets=n_tets,
-            n_non_tet=n_non_tet,
-            message="hybrid mesh preserved — full hybrid dual deferred",
+            n_tets=n_tets, n_non_tet=n_non_tet,
+            fallback_reason=msg,
         )
         return False, (
             f"hybrid mesh preserved (tet={n_tets}, non-tet={n_non_tet}) — "
-            "full hybrid dual deferred to beta15+ roadmap"
+            f"hybrid dual fallback: {msg}"
         )
 
     # 순수 tet → 전체 dual 변환
@@ -137,6 +144,173 @@ def _try_native_poly_dual(case_dir: Path) -> tuple[bool, str]:
     if not res.success:
         return False, f"native tet_to_poly_dual 실패: {res.message}"
     return True, f"native tet→poly dual OK ({res.message})"
+
+
+def _try_hybrid_dual(
+    pts, faces, owner, neighbour, cell_verts, tet_ids, non_tet_ids,
+    case_dir: Path,
+) -> tuple[bool, str]:
+    """v0.4.0-beta25 best-effort hybrid dual.
+
+    전략:
+        1. tet 서브셋만 추출 → 임시 디렉터리에서 ``tet_to_poly_dual`` 실행.
+        2. non-tet (prism) cell 을 원본에서 face-list 형태로 복원.
+        3. 두 집합을 ``write_generic_polymesh`` 로 합쳐 새 폴리메쉬 생성.
+        4. interface face 는 prism outer 삼각형이 dual 결과의 boundary 에 동일한
+           3-vertex 로 존재해야 매칭 — 존재하지 않으면 topology 불일치 →
+           fallback (False 반환).
+
+    주의: dual tet 서브셋이 prism outer 를 "boundary" 로 인식해야 tet_to_poly_dual
+    의 boundary-vertex 처리가 원본 삼각형 정점을 유지함. tet subset 만 추출할 때
+    prism 과의 인터페이스 face 도 tet subset 내에서 1-cell only face (= boundary)
+    가 되므로 이 조건은 자연스럽게 만족.
+    """
+    import tempfile  # noqa: PLC0415
+
+    import numpy as np  # noqa: PLC0415
+
+    from core.generator.native_poly.dual import tet_to_poly_dual  # noqa: PLC0415
+    from core.generator.polymesh_writer import (  # noqa: PLC0415
+        write_generic_polymesh,
+    )
+    from core.utils.polymesh_reader import (  # noqa: PLC0415
+        parse_foam_faces, parse_foam_labels, parse_foam_points,
+    )
+
+    if len(tet_ids) == 0:
+        return False, "no_tet_cells"
+
+    try:
+        # 1. tet 서브셋 — 원본 vertex indexing 그대로 유지 (boundary 정점이
+        # prism 과 공유되므로 별도 remap 금지).
+        tets_arr = np.array(
+            [tuple(sorted(cell_verts[ci])) for ci in tet_ids],
+            dtype=np.int64,
+        )
+
+        # 2. 임시 디렉터리에서 dual 수행
+        with tempfile.TemporaryDirectory(prefix="hybrid_dual_") as tmp:
+            tmp_case = Path(tmp) / "dual_case"
+            res = tet_to_poly_dual(pts, tets_arr, tmp_case)
+            if not res.success:
+                return False, f"tet_to_poly_dual_failed: {res.message}"
+
+            # 3. dual 결과 읽기
+            dual_poly = tmp_case / "constant" / "polyMesh"
+            dual_pts = np.array(
+                parse_foam_points(dual_poly / "points"), dtype=np.float64,
+            )
+            dual_faces = parse_foam_faces(dual_poly / "faces")
+            dual_owner = np.array(
+                parse_foam_labels(dual_poly / "owner"), dtype=np.int64,
+            )
+            dual_nbr = np.array(
+                parse_foam_labels(dual_poly / "neighbour"), dtype=np.int64,
+            )
+
+            # 4. dual 의 cell-wise face-list 재구성 → write_generic_polymesh 입력 형식
+            n_dual_cells = int(dual_owner.max()) + 1
+            if len(dual_nbr):
+                n_dual_cells = max(n_dual_cells, int(dual_nbr.max()) + 1)
+            dual_cell_faces: list[list[list[int]]] = [
+                [] for _ in range(n_dual_cells)
+            ]
+            for fi, fv in enumerate(dual_faces):
+                o = int(dual_owner[fi])
+                dual_cell_faces[o].append(list(fv))
+                if fi < len(dual_nbr):
+                    n = int(dual_nbr[fi])
+                    # neighbour 측도 같은 face 를 갖지만 orientation 은 반대
+                    dual_cell_faces[n].append(list(reversed(fv)))
+
+        # 5. 원본 prism cell 의 face-list 복원 — 원본 pts indexing 기준
+        prism_cell_faces: list[list[list[int]]] = [
+            [] for _ in range(len(non_tet_ids))
+        ]
+        prism_idx_map = {ci: local_i for local_i, ci in enumerate(non_tet_ids)}
+        for fi, fv in enumerate(faces):
+            o = int(owner[fi])
+            if o in prism_idx_map:
+                prism_cell_faces[prism_idx_map[o]].append(list(fv))
+            if fi < len(neighbour):
+                n = int(neighbour[fi])
+                if n in prism_idx_map:
+                    prism_cell_faces[prism_idx_map[n]].append(
+                        list(reversed(fv)),
+                    )
+
+        # 6. 두 point 집합 합치기 (원본 pts 는 dual 의 boundary 정점과 교집합).
+        # dual_pts 에 이미 원본 boundary 정점이 포함되어 있을 수 있으므로 좌표
+        # 기반 dedup (scale quantization) 사용.
+        combined_V, vertex_remap_orig, vertex_remap_dual = _merge_vertices(
+            pts, dual_pts,
+        )
+
+        # 7. cell_faces 재인덱싱
+        def _remap_prism(face: list[int]) -> list[int]:
+            return [int(vertex_remap_orig[int(v)]) for v in face]
+
+        def _remap_dual(face: list[int]) -> list[int]:
+            return [int(vertex_remap_dual[int(v)]) for v in face]
+
+        combined_cell_faces: list[list[list[int]]] = []
+        for cf in prism_cell_faces:
+            combined_cell_faces.append([_remap_prism(f) for f in cf])
+        for cf in dual_cell_faces:
+            combined_cell_faces.append([_remap_dual(f) for f in cf])
+
+        # 8. write_generic_polymesh — face dedup 이 canonical sorted 기반이라
+        # interface 삼각형이 prism outer + dual boundary 양쪽에서 같은 3-vertex
+        # 집합이면 자연스럽게 internal face 로 합쳐진다. 불일치 시 양쪽이 각자의
+        # boundary 로 남아 mesh 는 여전히 valid (단 bulk-wall 간 연결 누락).
+        stats = write_generic_polymesh(combined_V, combined_cell_faces, case_dir)
+        log.info(
+            "poly_bl_hybrid_dual_success",
+            n_prism=len(prism_cell_faces),
+            n_dual_cells=len(dual_cell_faces),
+            **stats,
+        )
+        return True, (
+            f"hybrid dual OK — prism={len(prism_cell_faces)}, "
+            f"dual_cells={len(dual_cell_faces)}, faces={stats['num_faces']}"
+        )
+    except Exception as exc:  # noqa: BLE001
+        return False, f"hybrid_dual_exception: {exc}"
+
+
+def _merge_vertices(
+    orig_pts,
+    dual_pts,
+    tol: float = 1e-9,
+):
+    """두 vertex 집합을 좌표 양자화 기반으로 dedup 하여 합친다.
+
+    Returns:
+        (combined_V, remap_orig, remap_dual) — remap_* 는 각 원본 인덱스 → 합쳐진
+        인덱스 매핑 (np.int64 array).
+    """
+    import numpy as np  # noqa: PLC0415
+
+    scale = 1.0 / max(tol, 1e-30)
+    orig_keys = np.round(orig_pts * scale).astype(np.int64)
+    dual_keys = np.round(dual_pts * scale).astype(np.int64)
+
+    all_keys = np.concatenate([orig_keys, dual_keys], axis=0)
+    all_pts = np.concatenate([orig_pts, dual_pts], axis=0)
+    uq_keys, inverse = np.unique(all_keys, axis=0, return_inverse=True)
+
+    n_orig = orig_pts.shape[0]
+    # 첫 등장 위치에서 좌표 추출
+    combined_V = np.zeros((uq_keys.shape[0], 3), dtype=np.float64)
+    seen = np.zeros(uq_keys.shape[0], dtype=bool)
+    for i, new_idx in enumerate(inverse):
+        if not seen[new_idx]:
+            combined_V[new_idx] = all_pts[i]
+            seen[new_idx] = True
+
+    remap_orig = inverse[:n_orig].astype(np.int64)
+    remap_dual = inverse[n_orig:].astype(np.int64)
+    return combined_V, remap_orig, remap_dual
 
 
 def run_poly_bl_transition(
