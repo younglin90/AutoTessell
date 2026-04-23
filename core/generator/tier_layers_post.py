@@ -29,6 +29,67 @@ log = get_logger(__name__)
 TIER_NAME = "tier_layers_post"
 
 
+def _coerce_bool(v: object, default: bool) -> bool:
+    """params dict 의 bool 값 정규화 (문자열 'true'/'false' 도 허용)."""
+    if v is None:
+        return default
+    if isinstance(v, bool):
+        return v
+    s = str(v).strip().lower()
+    if s in ("true", "1", "yes", "on"):
+        return True
+    if s in ("false", "0", "no", "off"):
+        return False
+    return default
+
+
+def _build_bl_config(
+    bl_config_cls,
+    params: dict,
+    num_layers,
+    growth_ratio,
+    first_thickness,
+):
+    """beta75: Phase 1 필드 + Phase 2 (beta63-65) 필드를 params 에서 읽어 BLConfig
+    조립. GUI `bl_collision_safety=false` 등이 여기서 전파된다.
+    """
+    defaults = bl_config_cls()
+    return bl_config_cls(
+        num_layers=int(num_layers),
+        growth_ratio=float(growth_ratio),
+        first_thickness=float(first_thickness),
+        wall_patch_names=params.get("post_layers_wall_patch_names"),
+        backup_original=_coerce_bool(
+            params.get("post_layers_backup_original"), True,
+        ),
+        max_total_ratio=float(
+            params.get("post_layers_max_total_ratio", 0.3),
+        ),
+        # Phase 2: collision / feature / quality check — GUI 또는 tier-param 주입.
+        collision_safety=_coerce_bool(
+            params.get("bl_collision_safety"), defaults.collision_safety,
+        ),
+        collision_safety_factor=float(
+            params.get("bl_collision_safety_factor", defaults.collision_safety_factor),
+        ),
+        feature_lock=_coerce_bool(
+            params.get("bl_feature_lock"), defaults.feature_lock,
+        ),
+        feature_angle_deg=float(
+            params.get("bl_feature_angle_deg", defaults.feature_angle_deg),
+        ),
+        feature_reduction_ratio=float(
+            params.get("bl_feature_reduction_ratio", defaults.feature_reduction_ratio),
+        ),
+        quality_check_enabled=_coerce_bool(
+            params.get("bl_quality_check_enabled"), defaults.quality_check_enabled,
+        ),
+        aspect_ratio_threshold=float(
+            params.get("bl_aspect_ratio_threshold", defaults.aspect_ratio_threshold),
+        ),
+    )
+
+
 def _ensure_minimal_controldict(case_dir: Path) -> None:
     """OpenFOAM utility 가 요구하는 system/controlDict 최소 파일 생성."""
     system_dir = case_dir / "system"
@@ -1211,18 +1272,8 @@ class LayersPostGenerator:
             except Exception as exc:
                 ok, msg = False, f"native_bl import 실패: {exc}"
             else:
-                cfg_bl = BLConfig(
-                    num_layers=int(num_layers),
-                    growth_ratio=float(growth_ratio),
-                    first_thickness=float(first_thickness),
-                    wall_patch_names=params.get("post_layers_wall_patch_names"),
-                    backup_original=bool(params.get(
-                        "post_layers_backup_original", True,
-                    )),
-                    max_total_ratio=float(params.get(
-                        "post_layers_max_total_ratio", 0.3,
-                    )),
-                )
+                cfg_bl = _build_bl_config(BLConfig, params, num_layers,
+                                          growth_ratio, first_thickness)
                 _res = generate_native_bl(case_dir, cfg_bl)
                 ok, msg = bool(_res.success), str(_res.message)
         elif engine in ("tet_bl_subdivide", "tet_bl", "native_bl_tet"):
@@ -1236,18 +1287,8 @@ class LayersPostGenerator:
             except Exception as exc:
                 ok, msg = False, f"tet_bl 유틸 import 실패: {exc}"
             else:
-                cfg_bl = BLConfig(
-                    num_layers=int(num_layers),
-                    growth_ratio=float(growth_ratio),
-                    first_thickness=float(first_thickness),
-                    wall_patch_names=params.get("post_layers_wall_patch_names"),
-                    backup_original=bool(params.get(
-                        "post_layers_backup_original", True,
-                    )),
-                    max_total_ratio=float(params.get(
-                        "post_layers_max_total_ratio", 0.3,
-                    )),
-                )
+                cfg_bl = _build_bl_config(BLConfig, params, num_layers,
+                                          growth_ratio, first_thickness)
                 _res = generate_native_bl(case_dir, cfg_bl)
                 if not _res.success:
                     ok, msg = False, f"native_bl 단계 실패: {_res.message}"

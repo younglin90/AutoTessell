@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.4.0-beta75] - 2026-04-23 — "tier_layers_post 가 Phase 2 BL config 전파"
+
+### Fixed
+
+- `tier_layers_post.py` 의 `BLConfig` 조립부가 Phase 1 필드 (num_layers,
+  growth_ratio, first_thickness, wall_patch_names, backup_original,
+  max_total_ratio) 만 params 에서 읽고 있었음 → Phase 2 필드
+  (collision_safety, feature_lock, quality_check_enabled, angles, ratios) 는
+  항상 BLConfig 기본값으로 고정.
+- **Ph72 GUI 추가의 실질 gap**: 사용자가 GUI 에서 `bl_collision_safety=false`
+  로 바꿔도 파이프라인은 무시하던 상태였음.
+
+### Added
+
+- `_build_bl_config(cls, params, num_layers, growth_ratio, first_thickness)`
+  helper — Phase 1 + Phase 2 필드 전체를 params 에서 조립.
+- `_coerce_bool` helper — "true"/"false"/"0"/"1"/"yes"/"no" 문자열을 bool 로
+  정규화 (GUI 에서 넘어오는 문자열 처리).
+- `tests/test_tier_layers_post_bl_phase2.py` 23 tests: `_coerce_bool` 매트릭스
+  + Phase 1/2 field propagation, 전체 동시 override.
+
+### Impact
+
+- GUI 토글 (Ph72) → orchestrator → tier_layers_post → BLConfig 전 체인이 이제
+  실제로 동작. CLI `--tier-param bl_collision_safety=false` 도 효과.
+
+---
+
 ## [0.4.0-beta74] - 2026-04-23 — "STEP 파이프라인 E2E 검증"
 
 ### Added
