@@ -606,6 +606,17 @@ def evaluate(
          "자동 재시도. 실패 시 결과 error 필드에 [cross_engine_fallback poly→hex] 프리픽스.",
 )
 @click.option(
+    "--flow-velocity", type=float, default=1.0, show_default=True,
+    help="v0.4.0-beta78+ 유입 속도 [m/s]. 0/U 자동 생성 기준값. "
+         "turbulence 필드 (k, epsilon/omega) 에 반영.",
+)
+@click.option(
+    "--turbulence-model",
+    type=click.Choice(["kEpsilon", "kOmegaSST"]),
+    default="kEpsilon", show_default=True,
+    help="난류 모델 선택.",
+)
+@click.option(
     "--auto-retry",
     type=click.Choice(["off", "once", "continue"]),
     default="off",
@@ -665,6 +676,8 @@ def run(
     prefer_native: bool,
     prefer_native_tier: bool,
     cross_engine_fallback: bool,
+    flow_velocity: float,
+    turbulence_model: str,
     auto_retry: str,
     max_iterations: int,
     dry_run: bool,
@@ -825,6 +838,8 @@ def run(
         prefer_native=prefer_native,
         prefer_native_tier=prefer_native_tier,
         cross_engine_fallback=cross_engine_fallback,
+        flow_velocity=flow_velocity,
+        turbulence_model=turbulence_model,
     )
 
     # base_cell_num은 이미 element_size로 변환되어 orchestrator에 전달됨
@@ -935,6 +950,8 @@ def run(
                     prefer_native=prefer_native,
                     prefer_native_tier=prefer_native_tier,
                     cross_engine_fallback=cross_engine_fallback,
+                    flow_velocity=flow_velocity,
+                    turbulence_model=turbulence_model,
                 )
                 if result.quality_report:
                     from core.evaluator.report import render_terminal

@@ -90,6 +90,34 @@ def _build_bl_config(
     )
 
 
+def _extract_bl_phase2_stats(res) -> "Any | None":
+    """NativeBLResult 에서 Phase 2 메트릭을 NativeBLPhase2Stats 로 변환.
+
+    beta76: 리포트/EvaluationSummary 통합용. native_bl 결과가 없으면 None 반환.
+    """
+    if res is None:
+        return None
+    try:
+        from core.schemas import NativeBLPhase2Stats  # noqa: PLC0415
+    except Exception:
+        return None
+    return NativeBLPhase2Stats(
+        n_prism_cells=int(getattr(res, "n_prism_cells", 0) or 0),
+        n_wall_faces=int(getattr(res, "n_wall_faces", 0) or 0),
+        n_wall_verts=int(getattr(res, "n_wall_verts", 0) or 0),
+        total_thickness=float(getattr(res, "total_thickness", 0.0) or 0.0),
+        n_degenerate_prisms=int(getattr(res, "n_degenerate_prisms", 0) or 0),
+        max_aspect_ratio=float(getattr(res, "max_aspect_ratio", 0.0) or 0.0),
+        # collision_safety_triggered / feature_lock_triggered 은 로그 메시지에서 추론.
+        collision_safety_triggered="collision_safety_scaled" in (
+            getattr(res, "message", "") or ""
+        ),
+        feature_lock_triggered="feature_lock" in (
+            getattr(res, "message", "") or ""
+        ),
+    )
+
+
 def _ensure_minimal_controldict(case_dir: Path) -> None:
     """OpenFOAM utility 가 요구하는 system/controlDict 최소 파일 생성."""
     system_dir = case_dir / "system"
@@ -1230,6 +1258,7 @@ class LayersPostGenerator:
 
         ok = False
         msg = ""
+        _bl_p2 = None  # beta76: NativeBLPhase2Stats (native_bl 경로에서만 채워짐)
         if engine in ("generate_boundary_layers", "gbl", "cfmesh_layers_post"):
             ok, msg = _run_generate_boundary_layers(
                 case_dir, num_layers, growth_ratio, first_thickness,
@@ -1276,6 +1305,7 @@ class LayersPostGenerator:
                                           growth_ratio, first_thickness)
                 _res = generate_native_bl(case_dir, cfg_bl)
                 ok, msg = bool(_res.success), str(_res.message)
+                _bl_p2 = _extract_bl_phase2_stats(_res)
         elif engine in ("tet_bl_subdivide", "tet_bl", "native_bl_tet"):
             # v0.4 mesh_type=tet 전용: native_bl 로 prism 삽입 후 wedge 를 tet 3 개로
             # 분할. 결과는 전체 tet mesh.
@@ -1290,6 +1320,7 @@ class LayersPostGenerator:
                 cfg_bl = _build_bl_config(BLConfig, params, num_layers,
                                           growth_ratio, first_thickness)
                 _res = generate_native_bl(case_dir, cfg_bl)
+                _bl_p2 = _extract_bl_phase2_stats(_res)
                 if not _res.success:
                     ok, msg = False, f"native_bl 단계 실패: {_res.message}"
                 else:
@@ -1373,10 +1404,12 @@ class LayersPostGenerator:
             log.info("tier_layers_post_success", engine=engine, msg=msg, elapsed=elapsed)
             return TierAttempt(
                 tier=self.TIER_NAME, status="success", time_seconds=elapsed,
+                native_bl_phase2=_bl_p2,
             )
         log.warning("tier_layers_post_failed", engine=engine, msg=msg, elapsed=elapsed)
         return TierAttempt(
             tier=self.TIER_NAME, status="failed",
             time_seconds=elapsed,
             error_message=f"{engine}: {msg}",
+            native_bl_phase2=_bl_p2,
         )

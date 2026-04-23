@@ -1,5 +1,62 @@
 # Changelog
 
+## [0.4.0-beta78] - 2026-04-23 — "CLI --flow-velocity + --turbulence-model"
+
+### Added
+
+- `cli/main.py` 에 `--flow-velocity FLOAT` (기본 1.0 m/s) +
+  `--turbulence-model {kEpsilon|kOmegaSST}` (기본 kEpsilon) 플래그.
+- `PipelineOrchestrator.run(flow_velocity, turbulence_model)` kwarg 추가.
+- `FoamCaseWriter` 생성 시 두 kwarg 전달 → `0/U`, `0/k`, `0/epsilon` 자동 반영.
+- auto-retry 재호출 경로도 동일 값 전달.
+
+### Impact
+
+- 이전: 사용자가 velocity 바꾸려면 `0/U` 수동 편집 필요.
+- 이후: `auto-tessell run ... --flow-velocity 5.0 --turbulence-model kOmegaSST`.
+
+---
+
+## [0.4.0-beta77] - 2026-04-23 — "native_tet 대형 입력 guardrail"
+
+### Added
+
+- `generate_native_tet(max_input_vertices=100000)` kwarg — 초과 시 crash 없이
+  failure + 명확한 메시지 반환 (표면 리메쉬 또는 상향 권고).
+- `HARNESS_PARAMS` 에 `max_input_vertices` 엔트리 (draft/standard 100k, fine 200k).
+- `_TIER_PARAM_KEYS` 에 `max_input_vertices` 추가.
+- `tests/test_native_tet.py` 1 test: V=8 > cap=5 → failure.
+
+### Fixed
+
+- scipy.Delaunay 가 100k+ vertex 입력에서 OOM → guardrail 으로 미리 차단.
+
+---
+
+## [0.4.0-beta76] - 2026-04-23 — "BL Phase 2 메트릭 리포트 통합"
+
+### Added
+
+- `core/schemas.py` 에 `NativeBLPhase2Stats` 모델 (n_prism_cells, n_degenerate,
+  max_aspect_ratio, collision_safety_triggered, feature_lock_triggered 등 10 필드).
+- `AdditionalMetrics.native_bl_phase2: NativeBLPhase2Stats | None`.
+- `TierAttempt.native_bl_phase2: NativeBLPhase2Stats | None`.
+- `tier_layers_post._extract_bl_phase2_stats` — NativeBLResult → NativeBLPhase2Stats.
+- Orchestrator `_evaluate(bl_phase2_stats=...)` → `AdditionalMetrics.native_bl_phase2`.
+- `report.py::render_terminal` 에 "Boundary Layer (native_bl Phase 2)" 리치 패널:
+  - Prism cells / Wall faces / Total thickness
+  - Degenerate prisms (빨강/초록 색상)
+  - Max aspect ratio
+  - Phase 2 flags (collision scaled / feature locked)
+- `tests/test_bl_phase2_report.py` 8 tests.
+
+### Impact
+
+- 기존: BL Phase 2 계산 결과가 로그에만 존재, 사용자 불가시.
+- 이후: 터미널 리포트에 BL 품질 전체 표시.
+
+---
+
 ## [0.4.0-beta75] - 2026-04-23 — "tier_layers_post 가 Phase 2 BL config 전파"
 
 ### Fixed

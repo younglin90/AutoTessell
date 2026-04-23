@@ -56,6 +56,7 @@ def generate_native_tet(
     target_edge_length: float | None = None,
     seed_density: int = 12,
     sliver_quality_threshold: float = 0.05,
+    max_input_vertices: int = 100000,
 ) -> NativeTetResult:
     """입력 표면 메쉬 → tet polyMesh (MVP).
 
@@ -87,6 +88,23 @@ def generate_native_tet(
     F = np.asarray(faces, dtype=np.int64)
     if V.size == 0 or F.size == 0:
         return NativeTetResult(False, 0.0, message="빈 입력 mesh")
+
+    # beta77: large input guardrail — scipy.Delaunay 가 100k+ vertex 에서 OOM.
+    cap = max(1, int(max_input_vertices))
+    if V.shape[0] > cap:
+        log.warning(
+            "native_tet_input_too_large",
+            n_vertices=V.shape[0], cap=cap,
+            hint="max_input_vertices 늘리거나 표면 리메쉬로 decimation 권장",
+        )
+        return NativeTetResult(
+            False, 0.0,
+            message=(
+                f"입력 mesh 가 너무 큽니다: {V.shape[0]} vertices > "
+                f"max_input_vertices={cap}. "
+                "표면 리메쉬(--force-remesh) 또는 max_input_vertices 상향 권장."
+            ),
+        )
 
     bmin = V.min(axis=0); bmax = V.max(axis=0)
     diag = float(np.linalg.norm(bmax - bmin))

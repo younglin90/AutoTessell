@@ -43,9 +43,12 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
         #   draft  0.02 → 복잡 형상에서도 cell 이 남아 harness 수렴
         #   standard 0.05 → 기존 기본값
         #   fine   0.10 → sliver 공격적 제거 → 최고 품질
-        "draft":    {"seed_density": 10, "max_iter": 1, "sliver_quality_threshold": 0.02},
-        "standard": {"seed_density": 12, "max_iter": 2, "sliver_quality_threshold": 0.05},
-        "fine":     {"seed_density": 16, "max_iter": 3, "sliver_quality_threshold": 0.10},
+        "draft":    {"seed_density": 10, "max_iter": 1, "sliver_quality_threshold": 0.02,
+                     "max_input_vertices": 100000},
+        "standard": {"seed_density": 12, "max_iter": 2, "sliver_quality_threshold": 0.05,
+                     "max_input_vertices": 100000},
+        "fine":     {"seed_density": 16, "max_iter": 3, "sliver_quality_threshold": 0.10,
+                     "max_input_vertices": 200000},
     },
     "tier_native_hex": {
         # native_hex 는 uniform grid (harness 미사용). seed_density / snap_boundary 만 의미.
@@ -181,6 +184,7 @@ def run_native_tier(
         "sliver_quality_threshold",  # beta62: native_tet sliver filter
         "preserve_features",   # beta66: native_hex feature-aware snap
         "feature_angle_deg",   # beta66
+        "max_input_vertices",  # beta77: native_tet large input guardrail
     }
     tsp = getattr(strategy, "tier_specific_params", None) or {}
     for k in _TIER_PARAM_KEYS:

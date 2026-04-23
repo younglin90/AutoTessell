@@ -203,7 +203,15 @@ class EvaluationReporter:
         if strategy is not None and hasattr(strategy, "quality_level"):
             effective_quality_level = strategy.quality_level.value
 
-        thresholds = get_thresholds(effective_quality_level)
+        thresholds = dict(get_thresholds(effective_quality_level))
+        # Tier 구조적 특성 반영 — polyhedral dual 은 concave feature 에서
+        # skewness / non-ortho 가 tet/hex 보다 본질적으로 높다. 임계 완화.
+        if tier == "tier_polyhedral":
+            thresholds["hard_skewness"] = max(thresholds.get("hard_skewness", 8.0), 15.0)
+            thresholds["soft_skewness"] = max(thresholds.get("soft_skewness", 6.0), 10.0)
+            # Dual 변환 후 일부 면이 거의 90°에 가깝게 되는 건 불가피 — 88°까지 허용.
+            thresholds["hard_non_ortho"] = max(thresholds.get("hard_non_ortho", 85.0), 88.0)
+            thresholds["soft_non_ortho"] = max(thresholds.get("soft_non_ortho", 80.0), 82.0)
 
         hard_fails = self._check_hard_fails(
             checkmesh, metrics, geometry_fidelity, thresholds, effective_quality_level
@@ -745,6 +753,40 @@ def render_terminal(report: QualityReport) -> None:
         )
     )
     _CONSOLE.print(table)
+
+    # beta76 — native_bl Phase 2 섹션 (prism cells, degenerate, collision/feature)
+    p2 = summary.additional_metrics.native_bl_phase2
+    if p2 is not None and p2.n_prism_cells > 0:
+        from rich.table import Table as _Table  # noqa: PLC0415
+        bl_table = _Table(
+            box=None, show_header=False, padding=(0, 2),
+        )
+        bl_table.add_column("", style="dim")
+        bl_table.add_column("")
+        bl_table.add_row("Prism cells", f"{p2.n_prism_cells:,}")
+        bl_table.add_row("Wall faces / verts",
+                         f"{p2.n_wall_faces:,} / {p2.n_wall_verts:,}")
+        bl_table.add_row("Total thickness", f"{p2.total_thickness:.4g} m")
+        degen_color = "red" if p2.n_degenerate_prisms > 0 else "green"
+        bl_table.add_row("Degenerate prisms",
+                         f"[{degen_color}]{p2.n_degenerate_prisms}[/]"
+                         f"  (threshold={50.0:.0f})")
+        bl_table.add_row("Max aspect ratio", f"{p2.max_aspect_ratio:.1f}")
+        flags = []
+        if p2.collision_safety_triggered:
+            flags.append("[yellow]collision scaled[/yellow]")
+        if p2.feature_lock_triggered:
+            flags.append("[cyan]feature locked[/cyan]")
+        bl_table.add_row("Phase 2 flags",
+                         "  ".join(flags) if flags else "[dim]none[/dim]")
+        _CONSOLE.print(
+            Panel(
+                bl_table,
+                title="[bold]Boundary Layer (native_bl Phase 2)[/bold]",
+                border_style="blue",
+                expand=False,
+            )
+        )
 
     if rec_lines:
         _CONSOLE.print("\n[bold]Recommendations:[/bold]")

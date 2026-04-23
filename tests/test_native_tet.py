@@ -93,6 +93,23 @@ def test_native_tet_sliver_quality_threshold_loose_keeps_more(
     assert res_loose.n_cells >= res_strict.n_cells
 
 
+def test_native_tet_max_input_vertices_crash_guard(tmp_case_dir: Path) -> None:
+    """beta77 — 입력 vertex 수가 max_input_vertices 초과 시 crash 없이 failure."""
+    import numpy as _np
+    # 간단한 cube mesh (8 vert, 12 tri) 으로 cap=5 설정 → 초과
+    V = _np.array([[0,0,0],[1,0,0],[1,1,0],[0,1,0],
+                   [0,0,1],[1,0,1],[1,1,1],[0,1,1]], dtype=_np.float64)
+    F = _np.array([[0,1,2],[0,2,3],[4,6,5],[4,7,6],
+                   [0,4,5],[0,5,1],[3,2,6],[3,6,7],
+                   [0,3,7],[0,7,4],[1,5,6],[1,6,2]], dtype=_np.int64)
+    res = generate_native_tet(
+        V, F, tmp_case_dir / "cap_test",
+        max_input_vertices=5,
+    )
+    assert res.success is False
+    assert "max_input_vertices" in res.message or "vertices" in res.message.lower()
+
+
 def test_native_tet_harness_params_table_has_q_thresh() -> None:
     """beta62 — HARNESS_PARAMS 3 quality 에 sliver_quality_threshold 키 존재.
 

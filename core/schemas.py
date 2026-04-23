@@ -314,6 +314,7 @@ class TierAttempt(BaseModel):
     steps: list[GeneratorStep] = Field(default_factory=list)
     mesh_stats: MeshStats | None = None
     error_message: str | None = None
+    native_bl_phase2: "NativeBLPhase2Stats | None" = None  # beta76
 
 
 class ExecutionSummary(BaseModel):
@@ -365,9 +366,24 @@ class BoundaryLayerStats(BaseModel):
     max_first_layer_height: float
 
 
+class NativeBLPhase2Stats(BaseModel):
+    """beta76 — native_bl Phase 2 (beta63-65) 에서 생성된 BL 품질 메트릭."""
+    n_prism_cells: int = 0
+    n_wall_faces: int = 0
+    n_wall_verts: int = 0
+    total_thickness: float = 0.0
+    n_degenerate_prisms: int = 0
+    max_aspect_ratio: float = 0.0
+    collision_safety_triggered: bool = False
+    collision_scale_factor: float = 1.0
+    feature_lock_triggered: bool = False
+    n_feature_verts_locked: int = 0
+
+
 class AdditionalMetrics(BaseModel):
     cell_volume_stats: CellVolumeStats | None = None
     boundary_layer: BoundaryLayerStats | None = None
+    native_bl_phase2: NativeBLPhase2Stats | None = None
 
 
 class GeometryFidelity(BaseModel):

@@ -99,6 +99,8 @@ class PipelineOrchestrator:
         prefer_native_tier: bool = False,
         cross_engine_fallback: bool = False,
         _cross_engine_retried: bool = False,
+        flow_velocity: float = 1.0,
+        turbulence_model: str = "kEpsilon",
         progress_callback: Callable[[int, str], None] | None = None,
     ) -> PipelineResult:
         """전체 파이프라인을 실행한다.
@@ -411,11 +413,12 @@ class PipelineOrchestrator:
                         )
                     else:
                         _post_engine = "disabled"
+                _post_result_for_bl: Any = None
                 if str(_post_engine).lower() not in ("disabled", "none", "off", ""):
                     try:
                         from core.generator.tier_layers_post import LayersPostGenerator
                         post_gen = LayersPostGenerator()
-                        post_result = post_gen.run(
+                        _post_result_for_bl = post_gen.run(
                             strategy=strategy,
                             preprocessed_path=preprocessed_path,
                             case_dir=case_dir,
@@ -423,9 +426,9 @@ class PipelineOrchestrator:
                         log.info(
                             "post_layers_stage_done",
                             engine=_post_engine,
-                            status=post_result.status,
-                            elapsed=post_result.time_seconds,
-                            msg=post_result.error_message,
+                            status=_post_result_for_bl.status,
+                            elapsed=_post_result_for_bl.time_seconds,
+                            msg=_post_result_for_bl.error_message,
                         )
                     except Exception as exc:
                         log.warning(
@@ -445,7 +448,10 @@ class PipelineOrchestrator:
                         polymesh_dir = case_dir / "constant" / "polyMesh"
                         patches = classify_boundaries(case_dir, flow_type=flow_type)
                         result.boundary_patches = patches
-                        case_writer = FoamCaseWriter()
+                        case_writer = FoamCaseWriter(
+                            flow_velocity=float(flow_velocity),
+                            turbulence_model=str(turbulence_model),
+                        )
                         of_files = case_writer.write_case(
                             mesh_dir=polymesh_dir,
                             case_dir=case_dir,
@@ -469,6 +475,9 @@ class PipelineOrchestrator:
                 emit_progress(loop_generate_done + 2, f"Evaluate {iteration}/{max_iterations}")
                 log.info("Pipeline stage: Evaluate", tier=successful_tier)
                 try:
+                    _bl_p2_for_eval = getattr(
+                        _post_result_for_bl, "native_bl_phase2", None,
+                    )
                     quality_report = self._evaluate(
                         case_dir=case_dir,
                         strategy=strategy,
@@ -477,6 +486,7 @@ class PipelineOrchestrator:
                         quality_level=quality_level,
                         preprocessed_path=preprocessed_path,
                         geometry_report=geometry_report,
+                        bl_phase2_stats=_bl_p2_for_eval,
                     )
                 except Exception as exc:
                     log.warning("Evaluation failed", error=str(exc))
@@ -629,11 +639,15 @@ class PipelineOrchestrator:
         quality_level: str,
         preprocessed_path: Path | None = None,
         geometry_report: GeometryReport | None = None,
+        bl_phase2_stats=None,  # NativeBLPhase2Stats | None — beta76
     ) -> QualityReport:
         """Evaluator 단계 실행."""
         eval_start = time.perf_counter()
         checkmesh = self._checker.run(case_dir)
         metrics = self._metrics.compute(case_dir)
+        # beta76: inject BL Phase 2 stats passed from tier_layers_post.
+        if bl_phase2_stats is not None:
+            metrics.native_bl_phase2 = bl_phase2_stats
 
         # 지오메트리 충실도 계산 (원본 STL과 대각선 길이가 있을 때만)
         geometry_fidelity = None
