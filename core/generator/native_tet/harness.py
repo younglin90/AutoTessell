@@ -83,6 +83,7 @@ def run_native_tet_harness(
     max_iter: int = 2,
     max_cells: int = 50000,
     sliver_quality_threshold: float = 0.05,
+    max_input_vertices: int = 100000,
 ) -> TetHarnessResult:
     """native_tet Generator ↔ Evaluator 반복.
 
@@ -129,6 +130,7 @@ def run_native_tet_harness(
                 target_edge_length=target_edge_length,
                 seed_density=current_seed,
                 sliver_quality_threshold=current_q_thresh,
+                max_input_vertices=int(max_input_vertices),
             )
             if not res.success:
                 log.warning(

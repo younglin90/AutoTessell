@@ -448,9 +448,15 @@ class PipelineOrchestrator:
                         polymesh_dir = case_dir / "constant" / "polyMesh"
                         patches = classify_boundaries(case_dir, flow_type=flow_type)
                         result.boundary_patches = patches
+                        # beta83: GUI 는 flow_velocity / turbulence_model 을
+                        # tier_specific_params 로 전달 (TIER_PARAM_SPECS 경유).
+                        # CLI 직접 kwarg 가 우선, tier_specific_params 는 fallback.
+                        tsp = tier_specific_params or {}
+                        _fv = float(tsp.get("flow_velocity", flow_velocity))
+                        _tm = str(tsp.get("turbulence_model", turbulence_model))
                         case_writer = FoamCaseWriter(
-                            flow_velocity=float(flow_velocity),
-                            turbulence_model=str(turbulence_model),
+                            flow_velocity=_fv,
+                            turbulence_model=_tm,
                         )
                         of_files = case_writer.write_case(
                             mesh_dir=polymesh_dir,

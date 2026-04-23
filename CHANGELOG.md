@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.4.0-beta83] - 2026-04-23 — "harness gap 3종 수정"
+
+### Fixed
+
+**A. `run_native_tet_harness` max_input_vertices 미전달.**
+- `harness.py` 가 `max_input_vertices` kwarg 를 수용하지 않아 HARNESS_PARAMS
+  에 등록된 값이 `generate_native_tet` 에 전달되지 않던 gap.
+- kwarg 추가 + `generate_native_tet(max_input_vertices=...)` 호출에 전달.
+
+**B. `regenerate_baseline.sh` 기본 limit 수정.**
+- 기본값 `--limit 30` → `--limit 15` (draft only). standard quality 의
+  ultra_knot 이 300s+ 소요해 timeout=600s 초과하던 문제 반영.
+
+**C. GUI flow_velocity / turbulence_model 노출 + 파이프라인 연결.**
+- `AutoTessellWindow.TIER_PARAM_SPECS` 에 `flow_velocity` (float, 1.0) +
+  `turbulence_model` (str, kEpsilon) 등록.
+- `orchestrator.py` 에서 `tier_specific_params` 의 두 값을 fallback 으로 읽어
+  `FoamCaseWriter` 에 전달 (CLI kwarg 우선).
+
+---
+
 ## [0.4.0-beta82] - 2026-04-23 — "README 30초 Quickstart"
 
 ### Changed
