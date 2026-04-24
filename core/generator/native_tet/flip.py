@@ -233,13 +233,18 @@ def flip_edges_32(
     fmap = _face_map_vectorized(np.asarray(tets_list, dtype=np.int64))
 
     # boundary edge 는 한쪽 face 가 boundary (len(face owners)==1) 인 경우.
-    boundary_faces = set(k for k, lst in fmap.items() if len(lst) == 1)
+    # Round 20: boundary edge set 을 1 번만 구성 (edge tuple 소속).
+    boundary_edges: set[tuple[int, int]] = set()
+    for fk, lst in fmap.items():
+        if len(lst) == 1:
+            a_, b_, c_ = fk
+            for u_, v_ in ((a_, b_), (a_, c_), (b_, c_)):
+                key = (u_, v_) if u_ < v_ else (v_, u_)
+                boundary_edges.add(key)
 
     def _edge_on_boundary(u: int, v: int) -> bool:
-        for fk in boundary_faces:
-            if u in fk and v in fk:
-                return True
-        return False
+        key = (u, v) if u < v else (v, u)
+        return key in boundary_edges
 
     n_flip = 0
 

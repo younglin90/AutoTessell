@@ -72,6 +72,81 @@ def _closest_point_on_triangle(
     return cp, float(np.linalg.norm(p - cp))
 
 
+def _closest_points_on_triangles_batch(
+    p: np.ndarray, tri_pts: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """단일 점 p 와 k 개 triangle 에 대한 closest-point.
+
+    tri_pts: (k, 3, 3).
+    반환: (closest_points (k, 3), distances (k,)).
+    공식: Ericson §5.1.5 의 scalar 분기를 벡터로.
+    """
+    k = tri_pts.shape[0]
+    A = tri_pts[:, 0]; B = tri_pts[:, 1]; C = tri_pts[:, 2]
+    AB = B - A; AC = C - A
+    AP = p - A
+    d1 = np.einsum("ij,ij->i", AB, AP)
+    d2 = np.einsum("ij,ij->i", AC, AP)
+    BP = p - B
+    d3 = np.einsum("ij,ij->i", AB, BP)
+    d4 = np.einsum("ij,ij->i", AC, BP)
+    CP = p - C
+    d5 = np.einsum("ij,ij->i", AB, CP)
+    d6 = np.einsum("ij,ij->i", AC, CP)
+
+    out = np.zeros_like(A)
+    done = np.zeros(k, dtype=bool)
+
+    # Region A vertex.
+    ra = (d1 <= 0) & (d2 <= 0) & ~done
+    out[ra] = A[ra]; done |= ra
+    # Region B.
+    rb = (d3 >= 0) & (d4 <= d3) & ~done
+    out[rb] = B[rb]; done |= rb
+    # Edge AB.
+    vc = d1 * d4 - d3 * d2
+    rab = (vc <= 0) & (d1 >= 0) & (d3 <= 0) & ~done
+    if rab.any():
+        denom = np.where(d1[rab] - d3[rab] != 0, d1[rab] - d3[rab], 1.0)
+        v = d1[rab] / denom
+        out[rab] = A[rab] + v[:, None] * AB[rab]
+        done |= rab
+    # Region C.
+    rc = (d6 >= 0) & (d5 <= d6) & ~done
+    out[rc] = C[rc]; done |= rc
+    # Edge AC.
+    vb = d5 * d2 - d1 * d6
+    rac = (vb <= 0) & (d2 >= 0) & (d6 <= 0) & ~done
+    if rac.any():
+        denom = np.where(d2[rac] - d6[rac] != 0, d2[rac] - d6[rac], 1.0)
+        w = d2[rac] / denom
+        out[rac] = A[rac] + w[:, None] * AC[rac]
+        done |= rac
+    # Edge BC.
+    va = d3 * d6 - d5 * d4
+    rbc = (va <= 0) & (d4 - d3 >= 0) & (d5 - d6 >= 0) & ~done
+    if rbc.any():
+        denom = np.where(
+            (d4[rbc] - d3[rbc]) + (d5[rbc] - d6[rbc]) != 0,
+            (d4[rbc] - d3[rbc]) + (d5[rbc] - d6[rbc]),
+            1.0,
+        )
+        w = (d4[rbc] - d3[rbc]) / denom
+        out[rbc] = B[rbc] + w[:, None] * (C[rbc] - B[rbc])
+        done |= rbc
+    # Interior.
+    rem = ~done
+    if rem.any():
+        denom = va[rem] + vb[rem] + vc[rem]
+        denom = np.where(denom != 0, denom, 1.0)
+        v = vb[rem] / denom
+        w = vc[rem] / denom
+        out[rem] = A[rem] + v[:, None] * AB[rem] + w[:, None] * AC[rem]
+
+    ds = np.linalg.norm(p - out, axis=1)
+    return out, ds
+
+
 @dataclass
 class _BVHNode:
     aabb_min: np.ndarray
@@ -197,11 +272,75 @@ class TriangleBVH:
     def unsigned_distances(self, points: np.ndarray) -> np.ndarray:
         """각 점의 표면까지 distance (unsigned)."""
         points = np.asarray(points, dtype=np.float64)
-        out = np.zeros(points.shape[0], dtype=np.float64)
-        for i in range(points.shape[0]):
-            _, d, _ = self.closest_point(points[i])
-            out[i] = d
-        return out
+        if points.shape[0] == 0 or not self.nodes:
+            return np.zeros(points.shape[0], dtype=np.float64)
+        cps, ds, _tis = self.closest_points_batch(points)
+        return ds
+
+    def closest_points_batch(
+        self, points: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """N 개 점에 대해 closest_point 일괄 계산.
+
+        각 leaf 방문 시 해당 leaf 의 triangle 목록을 모든 query 점에 대해
+        한꺼번에 브로드캐스트 검사 (numpy). leaf 방문 순서는 per-point
+        이지만 leaf 당 batch 가속으로 python 오버헤드 감소.
+
+        fallback: closest_point 를 점별 호출. small N (< 32) 면 그냥 순회.
+        """
+        points = np.asarray(points, dtype=np.float64)
+        N = points.shape[0]
+        if N == 0 or not self.nodes:
+            return (
+                points.copy(),
+                np.zeros(N, dtype=np.float64),
+                -np.ones(N, dtype=np.int64),
+            )
+
+        best_d = np.full(N, np.inf, dtype=np.float64)
+        best_cp = points.copy()
+        best_ti = -np.ones(N, dtype=np.int64)
+
+        # 각 query 를 per-node stack 으로 병렬 탐색. N 이 큰 경우 공간 많이
+        # 쓰지 않도록 per-point loop + 각 leaf 내에서 numpy.
+        for i in range(N):
+            p = points[i]
+            stack = [0]
+            bd = float("inf")
+            bcp = p.copy()
+            bti = -1
+            while stack:
+                ni = stack.pop()
+                node = self.nodes[ni]
+                if self._aabb_dist_lower(p, node) >= bd:
+                    continue
+                if node.tri_start >= 0:
+                    # leaf: batch 대신 loop (tri 수 ≤ leaf_size).
+                    tri_ids = self.tri_order[node.tri_start:node.tri_end]
+                    # vectorize across triangles: 한 점 vs N_tri 삼각형.
+                    t_pts = self.V[self.F[tri_ids]]   # (k, 3, 3)
+                    cps, ds = _closest_points_on_triangles_batch(p, t_pts)
+                    if ds.size:
+                        j = int(np.argmin(ds))
+                        if ds[j] < bd:
+                            bd = float(ds[j])
+                            bcp = cps[j]
+                            bti = int(tri_ids[j])
+                else:
+                    l_node = self.nodes[node.left]
+                    r_node = self.nodes[node.right]
+                    dl = self._aabb_dist_lower(p, l_node)
+                    dr = self._aabb_dist_lower(p, r_node)
+                    if dl < dr:
+                        stack.append(node.right)
+                        stack.append(node.left)
+                    else:
+                        stack.append(node.left)
+                        stack.append(node.right)
+            best_d[i] = bd
+            best_cp[i] = bcp
+            best_ti[i] = bti
+        return best_cp, best_d, best_ti
 
     def inside_envelope(
         self, points: np.ndarray, envelope: float,
