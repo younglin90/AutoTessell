@@ -23,6 +23,8 @@ class NativeTetResult:
     # v0.4: dual 변환 등 downstream 사용을 위해 tet array 와 points 를 함께 반환.
     tet_points: np.ndarray | None = None
     tets: np.ndarray | None = None
+    # beta830: quality metric 요약 (min_q, mean_q, min_dihedral_deg 등).
+    quality: "Any" = None
 
 
 def _seed_points_uniform(
@@ -861,6 +863,16 @@ def generate_native_tet(
     elapsed = time.perf_counter() - t0
     n_cells = int(stats.get("num_cells", final_tets.shape[0]))
     n_points = int(stats.get("num_points", final_pts.shape[0]))
+
+    # beta830: final quality snapshot.
+    final_quality = None
+    try:
+        from core.generator.native_tet.quality import snapshot as _qsnap
+
+        final_quality = _qsnap(final_pts, final_tets)
+    except Exception:
+        pass
+
     _prog("done", 1.0, n_cells=n_cells, n_points=n_points, elapsed=elapsed)
     return NativeTetResult(
         success=True, elapsed=elapsed,
@@ -870,4 +882,5 @@ def generate_native_tet(
             f"seed_grid={grid.shape[0]}, target_edge={target_edge_length:.4g}"
         ),
         tet_points=final_pts, tets=final_tets,
+        quality=final_quality,
     )
