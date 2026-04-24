@@ -125,6 +125,14 @@ def check_input(
         except Exception:
             pass
 
+    # beta1100 (R172/R173) — degenerate 크기 / 빈 입력 처리.
+    if V.shape[0] < 4:
+        warnings.append(
+            f"insufficient vertices: {V.shape[0]} (tet 생성에 최소 4 필요)"
+        )
+    if F.shape[0] == 0:
+        warnings.append("empty face list (빈 surface)")
+
     return InputCheckResult(
         n_duplicate_vertices=n_dup,
         n_zero_area_triangles=n_zero,
