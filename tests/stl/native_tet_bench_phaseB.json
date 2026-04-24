@@ -6,12 +6,12 @@
     "A_n_cells": 132,
     "A_min_q": 0.0032,
     "A_mean_q": 0.3134,
-    "A_elapsed_s": 0.031,
+    "A_elapsed_s": 0.03,
     "ABC_success": true,
     "ABC_n_cells": 89,
     "ABC_min_q": 0.027,
     "ABC_mean_q": 0.2615,
-    "ABC_elapsed_s": 0.083
+    "ABC_elapsed_s": 0.084
   },
   {
     "stl": "02_medium_cylinder.stl",
@@ -20,12 +20,12 @@
     "A_n_cells": 1649,
     "A_min_q": 0.0001,
     "A_mean_q": 0.091,
-    "A_elapsed_s": 0.421,
+    "A_elapsed_s": 0.475,
     "ABC_success": true,
-    "ABC_n_cells": 1480,
+    "ABC_n_cells": 1484,
     "ABC_min_q": 0.0001,
-    "ABC_mean_q": 0.1234,
-    "ABC_elapsed_s": 2.081
+    "ABC_mean_q": 0.123,
+    "ABC_elapsed_s": 2.711
   },
   {
     "stl": "03_hard_bracket.stl",
@@ -34,12 +34,12 @@
     "A_n_cells": 479,
     "A_min_q": 0.0,
     "A_mean_q": 0.0471,
-    "A_elapsed_s": 0.221,
+    "A_elapsed_s": 0.327,
     "ABC_success": true,
     "ABC_n_cells": 479,
     "ABC_min_q": 0.0,
     "ABC_mean_q": 0.0483,
-    "ABC_elapsed_s": 0.589
+    "ABC_elapsed_s": 0.866
   },
   {
     "stl": "04_extreme_gear.stl",
@@ -48,12 +48,12 @@
     "A_n_cells": 5189,
     "A_min_q": 0.0,
     "A_mean_q": 0.1427,
-    "A_elapsed_s": 0.721,
+    "A_elapsed_s": 1.017,
     "ABC_success": true,
     "ABC_n_cells": 5189,
     "ABC_min_q": 0.0,
     "ABC_mean_q": 0.149,
-    "ABC_elapsed_s": 6.552
+    "ABC_elapsed_s": 7.028
   },
   {
     "stl": "05_ultra_knot.stl",
@@ -62,11 +62,11 @@
     "A_n_cells": 45036,
     "A_min_q": 0.0004,
     "A_mean_q": 0.1316,
-    "A_elapsed_s": 7.381,
+    "A_elapsed_s": 7.496,
     "ABC_success": true,
     "ABC_n_cells": 45036,
     "ABC_min_q": 0.0,
     "ABC_mean_q": 0.1341,
-    "ABC_elapsed_s": 258.573
+    "ABC_elapsed_s": 238.351
   }
 ]

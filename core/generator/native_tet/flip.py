@@ -42,6 +42,30 @@ def _tet_signed_vol6(A, B, C, D) -> float:
     return float(np.dot(B - A, np.cross(C - A, D - A)))
 
 
+def _face_map_vectorized(tets: np.ndarray) -> dict[tuple[int, int, int], list[int]]:
+    """numpy 로 각 tet 의 4 face 를 한 번에 정렬 + Python dict 로 취합.
+
+    전체 데이터 O(T) + Python 해시 insert.
+    """
+    tets = np.asarray(tets, dtype=np.int64)
+    if tets.size == 0:
+        return {}
+    T = tets.shape[0]
+    # 4 faces per tet: 각 opposite vertex 기준.
+    face_arr = np.stack(
+        [tets[:, [1, 2, 3]], tets[:, [0, 2, 3]],
+         tets[:, [0, 1, 3]], tets[:, [0, 1, 2]]],
+        axis=1,
+    ).reshape(-1, 3)
+    face_arr.sort(axis=1)
+    m: dict[tuple[int, int, int], list[int]] = {}
+    for idx in range(face_arr.shape[0]):
+        ti = idx // 4
+        k = (int(face_arr[idx, 0]), int(face_arr[idx, 1]), int(face_arr[idx, 2]))
+        m.setdefault(k, []).append(ti)
+    return m
+
+
 def flip_faces_23(
     pts: np.ndarray,
     tets: np.ndarray,
@@ -60,21 +84,12 @@ def flip_faces_23(
     if tets.size == 0:
         return tets, 0
 
-    def _face_map(T: np.ndarray) -> dict[tuple[int, int, int], list[int]]:
-        m: dict[tuple[int, int, int], list[int]] = {}
-        for i in range(T.shape[0]):
-            a, b, c, d = (int(x) for x in T[i])
-            for tri in ((a, b, c), (a, b, d), (a, c, d), (b, c, d)):
-                k = tuple(sorted(tri))
-                m.setdefault(k, []).append(i)  # type: ignore[arg-type]
-        return m
-
     n_flip = 0
     alive = np.ones(tets.shape[0], dtype=bool)
     tets_list = tets.tolist()
 
     # 한 번의 pass 로 처리 (여러 pass 는 외부에서 반복).
-    fmap = _face_map(np.asarray(tets_list, dtype=np.int64))
+    fmap = _face_map_vectorized(np.asarray(tets_list, dtype=np.int64))
     visited_faces: set[tuple[int, int, int]] = set()
 
     for face, owners in list(fmap.items()):
@@ -161,28 +176,28 @@ def flip_edges_32(
     if tets.size == 0:
         return tets, 0
 
-    def _edge_to_tets(T: np.ndarray) -> dict[tuple[int, int], list[int]]:
+    def _edge_to_tets_vec(T: np.ndarray) -> dict[tuple[int, int], list[int]]:
+        """numpy + dict 해시: 6 edges per tet 한 번에 추출."""
+        if T.size == 0:
+            return {}
+        pair_idx = np.array(
+            [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]], dtype=np.int64,
+        )
+        edges = np.stack(
+            [T[:, pair_idx[:, 0]], T[:, pair_idx[:, 1]]], axis=2,
+        ).reshape(-1, 2)
+        edges.sort(axis=1)
         m: dict[tuple[int, int], list[int]] = {}
-        for i in range(T.shape[0]):
-            a, b, c, d = (int(x) for x in T[i])
-            for u, v in ((a, b), (a, c), (a, d), (b, c), (b, d), (c, d)):
-                key = (u, v) if u < v else (v, u)
-                m.setdefault(key, []).append(i)
-        return m
-
-    def _face_map(T: np.ndarray) -> dict[tuple[int, int, int], list[int]]:
-        m: dict[tuple[int, int, int], list[int]] = {}
-        for i in range(T.shape[0]):
-            a, b, c, d = (int(x) for x in T[i])
-            for tri in ((a, b, c), (a, b, d), (a, c, d), (b, c, d)):
-                k = tuple(sorted(tri))
-                m.setdefault(k, []).append(i)  # type: ignore[arg-type]
+        for idx in range(edges.shape[0]):
+            ti = idx // 6
+            k = (int(edges[idx, 0]), int(edges[idx, 1]))
+            m.setdefault(k, []).append(ti)
         return m
 
     tets_list = tets.tolist()
     alive = np.ones(tets.shape[0], dtype=bool)
-    e2t = _edge_to_tets(np.asarray(tets_list, dtype=np.int64))
-    fmap = _face_map(np.asarray(tets_list, dtype=np.int64))
+    e2t = _edge_to_tets_vec(np.asarray(tets_list, dtype=np.int64))
+    fmap = _face_map_vectorized(np.asarray(tets_list, dtype=np.int64))
 
     # boundary edge 는 한쪽 face 가 boundary (len(face owners)==1) 인 경우.
     boundary_faces = set(k for k, lst in fmap.items() if len(lst) == 1)
