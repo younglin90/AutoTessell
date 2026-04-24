@@ -126,3 +126,75 @@ def test_native_tet_bench_drift_check() -> None:
             assert r.get("mean_q", 0.0) > 0.2, (
                 f"cube mean_q drift: {r.get('mean_q')}"
             )
+
+
+BENCH_PHASE_B_OUTPUT = Path(__file__).parent / "stl" / "native_tet_bench_phaseB.json"
+
+
+def test_native_tet_phase_b_comparison_bench() -> None:
+    """Phase A only vs A+B+C: 같은 STL 에 대해 품질 비교."""
+    from core.generator.native_tet.mesher import generate_native_tet
+    from core.generator.native_tet.quality import tet_shape_quality
+    import tempfile
+    import time
+    import trimesh
+
+    candidates = [
+        BENCH_STL_DIR / "01_easy_cube.stl",
+        BENCH_STL_DIR / "02_medium_cylinder.stl",
+        BENCH_STL_DIR / "03_hard_bracket.stl",
+    ]
+    existing = [p for p in candidates if p.exists()]
+    if not existing:
+        pytest.skip("tests/stl/ bench STL 없음")
+
+    rows = []
+    for stl in existing:
+        m = trimesh.load(str(stl), force="mesh")
+        V = np.asarray(m.vertices, dtype=np.float64)
+        F = np.asarray(m.faces, dtype=np.int64)
+
+        row = {"stl": stl.name, "n_surf": int(F.shape[0])}
+
+        with tempfile.TemporaryDirectory() as td:
+            for label, kw in [
+                ("A", dict(enable_phase_a=True, enable_phase_b=False)),
+                ("ABC", dict(
+                    enable_phase_a=True,
+                    enable_phase_b=True,
+                    enable_phase_c=True,
+                    local_ops_iterations=1,
+                    tangent_smooth_iterations=1,
+                )),
+            ]:
+                t0 = time.perf_counter()
+                try:
+                    res = generate_native_tet(
+                        V, F, Path(td) / f"case_{label}",
+                        seed_density=6,
+                        max_input_vertices=50000,
+                        **kw,
+                    )
+                    elapsed = time.perf_counter() - t0
+                    if res.success and res.tets is not None:
+                        q = tet_shape_quality(res.tet_points, res.tets)
+                        row[f"{label}_success"] = True
+                        row[f"{label}_n_cells"] = int(res.n_cells)
+                        row[f"{label}_min_q"] = round(float(q.min()), 4) if q.size else 0.0
+                        row[f"{label}_mean_q"] = round(float(q.mean()), 4) if q.size else 0.0
+                        row[f"{label}_elapsed_s"] = round(elapsed, 3)
+                    else:
+                        row[f"{label}_success"] = False
+                        row[f"{label}_elapsed_s"] = round(elapsed, 3)
+                        row[f"{label}_message"] = res.message[:100]
+                except Exception as e:
+                    row[f"{label}_success"] = False
+                    row[f"{label}_error"] = str(e)[:100]
+        rows.append(row)
+
+    BENCH_PHASE_B_OUTPUT.write_text(json.dumps(rows, indent=2, ensure_ascii=False))
+
+    # 최소한 cube 는 A/ABC 모두 성공해야.
+    cube = next((r for r in rows if r["stl"] == "01_easy_cube.stl"), None)
+    assert cube is not None
+    assert cube.get("A_success") and cube.get("ABC_success")
