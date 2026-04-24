@@ -44,27 +44,28 @@ def curvature_sizing(
     if F.shape[0] == 0:
         return out
 
-    # angle defect = 2π - sum(incident triangle angles). sphere 상 곡률에 비례.
-    # 간이 Gaussian 곡률 근사.
+    # beta960 (R91): Python loop 제거 — per-vertex angle defect 을 완전
+    # 벡터 (np.add.at scatter-add).
     total_angle = np.zeros(n, dtype=np.float64)
+    A = V[F[:, 0]]; B = V[F[:, 1]]; C = V[F[:, 2]]
 
-    def _angle(p0, p1, p2):
-        e1 = p1 - p0
-        e2 = p2 - p0
-        n1 = np.linalg.norm(e1)
-        n2 = np.linalg.norm(e2)
-        if n1 < 1e-30 or n2 < 1e-30:
-            return 0.0
-        c = float(np.dot(e1, e2)) / (n1 * n2)
-        c = max(-1.0, min(1.0, c))
-        return float(np.arccos(c))
+    def _corner_angle(P, Q, R):
+        e1 = Q - P; e2 = R - P
+        n1 = np.linalg.norm(e1, axis=1)
+        n2 = np.linalg.norm(e2, axis=1)
+        denom = np.where((n1 > 1e-30) & (n2 > 1e-30), n1 * n2, 1.0)
+        c = np.einsum("ij,ij->i", e1, e2) / denom
+        c = np.clip(c, -1.0, 1.0)
+        ang = np.arccos(c)
+        ang[(n1 < 1e-30) | (n2 < 1e-30)] = 0.0
+        return ang
 
-    for tri in F:
-        a, b, c = (int(x) for x in tri)
-        pa, pb, pc = V[a], V[b], V[c]
-        total_angle[a] += _angle(pa, pb, pc)
-        total_angle[b] += _angle(pb, pa, pc)
-        total_angle[c] += _angle(pc, pa, pb)
+    ang_a = _corner_angle(A, B, C)
+    ang_b = _corner_angle(B, A, C)
+    ang_c = _corner_angle(C, A, B)
+    np.add.at(total_angle, F[:, 0], ang_a)
+    np.add.at(total_angle, F[:, 1], ang_b)
+    np.add.at(total_angle, F[:, 2], ang_c)
 
     defect = 2.0 * np.pi - total_angle   # 볼록 영역 > 0, 평면 = 0.
     # 절댓값 기준으로 스케일.
