@@ -171,6 +171,10 @@ class TriangleBVH:
         bvh = TriangleBVH.build(V, F)
         cp, d = bvh.closest_point(np.array([x,y,z]))
         d_arr = bvh.signed_distance_unsigned(points)
+
+    beta930 (R86): node 를 SoA numpy 배열 (_node_min/_node_max/_node_left/
+    _node_right/_node_tri_start/_node_tri_end) 로 flatten — cache 친화적
+    traversal. 기존 `nodes: list[_BVHNode]` 는 backward-compat 으로 유지.
     """
 
     V: np.ndarray
@@ -178,6 +182,13 @@ class TriangleBVH:
     nodes: list[_BVHNode] = field(default_factory=list)
     tri_order: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.int64))
     leaf_size: int = 8
+    # SoA flat arrays — build() 가 채움.
+    _node_min: np.ndarray = field(default_factory=lambda: np.zeros((0, 3), dtype=np.float64))
+    _node_max: np.ndarray = field(default_factory=lambda: np.zeros((0, 3), dtype=np.float64))
+    _node_left: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.int32))
+    _node_right: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.int32))
+    _node_tri_start: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.int32))
+    _node_tri_end: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.int32))
 
     @classmethod
     def build(
@@ -223,6 +234,28 @@ class TriangleBVH:
 
         _build(0, F.shape[0])
         bvh.tri_order = order
+
+        # SoA flatten (R86).
+        n_nodes = len(bvh.nodes)
+        nmin = np.empty((n_nodes, 3), dtype=np.float64)
+        nmax = np.empty((n_nodes, 3), dtype=np.float64)
+        nleft = np.empty(n_nodes, dtype=np.int32)
+        nright = np.empty(n_nodes, dtype=np.int32)
+        nts = np.empty(n_nodes, dtype=np.int32)
+        nte = np.empty(n_nodes, dtype=np.int32)
+        for i, nd in enumerate(bvh.nodes):
+            nmin[i] = nd.aabb_min
+            nmax[i] = nd.aabb_max
+            nleft[i] = nd.left
+            nright[i] = nd.right
+            nts[i] = nd.tri_start
+            nte[i] = nd.tri_end
+        bvh._node_min = nmin
+        bvh._node_max = nmax
+        bvh._node_left = nleft
+        bvh._node_right = nright
+        bvh._node_tri_start = nts
+        bvh._node_tri_end = nte
         return bvh
 
     # ------------------------------------------------------------------
@@ -319,19 +352,28 @@ class TriangleBVH:
             (0, np.ones(N, dtype=bool))
         ]
 
+        # SoA references (cache-friendly, R86).
+        nmin = self._node_min
+        nmax = self._node_max
+        nleft = self._node_left
+        nright = self._node_right
+        nts_arr = self._node_tri_start
+        nte_arr = self._node_tri_end
+
         while stack:
             ni, active = stack.pop()
             if not active.any():
                 continue
-            node = self.nodes[ni]
-            # per-query AABB lower-bound.
-            d_low = _aabb_lower_batch(points, node.aabb_min, node.aabb_max)
+            # per-query AABB lower-bound via SoA.
+            d_low = _aabb_lower_batch(points, nmin[ni], nmax[ni])
             prune = d_low >= best_d
             sub_active = active & ~prune
             if not sub_active.any():
                 continue
-            if node.tri_start >= 0:
-                tri_ids = self.tri_order[node.tri_start:node.tri_end]
+            tri_start = int(nts_arr[ni])
+            tri_end = int(nte_arr[ni])
+            if tri_start >= 0:
+                tri_ids = self.tri_order[tri_start:tri_end]
                 if tri_ids.size == 0:
                     continue
                 # per-query × per-tri brute.
@@ -350,8 +392,8 @@ class TriangleBVH:
                             best_ti[qi] = int(tri_ids[j])
             else:
                 # push both children (RHS popped first).
-                stack.append((node.right, sub_active))
-                stack.append((node.left, sub_active))
+                stack.append((int(nright[ni]), sub_active))
+                stack.append((int(nleft[ni]), sub_active))
 
         return best_cp, best_d, best_ti
 
