@@ -172,21 +172,33 @@ def bowyer_watson_insert(
     n_cavity_total = 0
     n_new_total = 0
 
-    # Round 60: tet adjacency 구축 — 매 점 삽입 전 갱신하면 비싸니 새 삽입마다
-    # 재빌드. 대신 cavity flood 로 전체 tet 스캔 회피.
+    # Round 60: tet adjacency 구축 — 매 점 삽입 전 갱신. beta940 (R87/R88):
+    # Python dict 대신 numpy argsort 기반으로 O(T log T) 벡터 빌드.
     def _tet_neighbors(T: np.ndarray) -> list[list[int]]:
-        face_map: dict[tuple[int, int, int], list[int]] = {}
-        for i in range(T.shape[0]):
-            a, b, c, d = (int(x) for x in T[i])
-            for tri in ((a, b, c), (a, b, d), (a, c, d), (b, c, d)):
-                k2 = tuple(sorted(tri))
-                face_map.setdefault(k2, []).append(i)  # type: ignore[arg-type]
+        if T.shape[0] == 0:
+            return []
+        # 각 tet 의 4 face (정렬된 triplet).
+        t = T
+        faces = np.stack([
+            t[:, [0, 1, 2]], t[:, [0, 1, 3]],
+            t[:, [0, 2, 3]], t[:, [1, 2, 3]],
+        ], axis=1)   # (T, 4, 3)
+        faces_sorted = np.sort(faces, axis=2)
+        flat = faces_sorted.reshape(-1, 3)          # (4T, 3)
+        tet_of_face = np.repeat(np.arange(T.shape[0], dtype=np.int64), 4)
+        # lexsort by (c, b, a).
+        order = np.lexsort((flat[:, 2], flat[:, 1], flat[:, 0]))
+        sf = flat[order]
+        st = tet_of_face[order]
+        # 인접 쌍 중 동일 face.
+        eq = np.all(sf[:-1] == sf[1:], axis=1)
+        pair_i = np.where(eq)[0]
+        a_ids = st[pair_i]
+        b_ids = st[pair_i + 1]
         nbrs: list[list[int]] = [[] for _ in range(T.shape[0])]
-        for lst in face_map.values():
-            if len(lst) == 2:
-                a, b = lst
-                nbrs[a].append(b)
-                nbrs[b].append(a)
+        for a, b in zip(a_ids.tolist(), b_ids.tolist()):
+            nbrs[a].append(b)
+            nbrs[b].append(a)
         return nbrs
 
     def _single_circumsphere_test(T: np.ndarray, ti: int, p: np.ndarray, pts_arr) -> bool:
