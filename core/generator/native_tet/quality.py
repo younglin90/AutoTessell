@@ -50,6 +50,79 @@ def tet_shape_quality(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
     return q
 
 
+def tet_aspect_ratio(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
+    """Aspect ratio = circumradius / inradius (1 = regular, ∞ = degenerate)."""
+    tets = np.asarray(tets, dtype=np.int64)
+    if tets.size == 0:
+        return np.zeros(0)
+    v = pts[tets]
+    a, b, c, d = v[:, 0], v[:, 1], v[:, 2], v[:, 3]
+
+    # volume.
+    vol6 = np.abs(np.einsum("ij,ij->i", b - a, np.cross(c - a, d - a)))
+    vol = vol6 / 6.0
+
+    # face areas.
+    def _area(p, q, r):
+        return 0.5 * np.linalg.norm(np.cross(q - p, r - p), axis=1)
+    A1 = _area(a, b, c)
+    A2 = _area(a, b, d)
+    A3 = _area(a, c, d)
+    A4 = _area(b, c, d)
+    surf_sum = A1 + A2 + A3 + A4
+
+    # inradius = 3V / surface_area.
+    inrad = np.where(surf_sum > 1e-30, 3.0 * vol / surf_sum, 0.0)
+
+    # circumradius via formula: R = |det(M)| / (2 * |det(vectors)|) 복잡 →
+    # 근사 edge-max based: R ≈ sqrt(max edge^2) * correction.
+    e1 = np.linalg.norm(b - a, axis=1)
+    e2 = np.linalg.norm(c - a, axis=1)
+    e3 = np.linalg.norm(d - a, axis=1)
+    e4 = np.linalg.norm(c - b, axis=1)
+    e5 = np.linalg.norm(d - b, axis=1)
+    e6 = np.linalg.norm(d - c, axis=1)
+    rmax = np.maximum.reduce([e1, e2, e3, e4, e5, e6]) / 2.0
+
+    safe_inrad = np.where(inrad > 1e-30, inrad, 1.0)
+    ratio = rmax / safe_inrad
+    return np.where(inrad > 1e-30, ratio, 1e6)
+
+
+def tet_min_dihedral_deg(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
+    """각 tet 의 6 dihedral angle 중 최소 (degrees). 정사면체 ≈ 70.5°."""
+    tets = np.asarray(tets, dtype=np.int64)
+    if tets.size == 0:
+        return np.zeros(0)
+    v = pts[tets]
+    a, b, c, d = v[:, 0], v[:, 1], v[:, 2], v[:, 3]
+
+    # 4 face normals (positive orient 가정).
+    def _n(p, q, r):
+        n = np.cross(q - p, r - p)
+        norm = np.linalg.norm(n, axis=1, keepdims=True)
+        return n / np.where(norm > 1e-30, norm, 1.0)
+
+    n_abc = _n(a, b, c)
+    n_abd = _n(a, b, d)
+    n_acd = _n(a, c, d)
+    n_bcd = _n(b, c, d)
+
+    # dihedral between faces sharing edge = π - angle(face normals).
+    def _dih(n1, n2):
+        dot = np.clip(np.einsum("ij,ij->i", n1, n2), -1.0, 1.0)
+        return np.rad2deg(np.arccos(dot))
+
+    dh1 = 180.0 - _dih(n_abc, n_abd)   # edge ab
+    dh2 = 180.0 - _dih(n_abc, n_acd)   # edge ac
+    dh3 = 180.0 - _dih(n_abd, n_acd)   # edge ad
+    dh4 = 180.0 - _dih(n_abc, n_bcd)   # edge bc
+    dh5 = 180.0 - _dih(n_abd, n_bcd)   # edge bd
+    dh6 = 180.0 - _dih(n_acd, n_bcd)   # edge cd
+
+    return np.minimum.reduce([dh1, dh2, dh3, dh4, dh5, dh6])
+
+
 def snapshot(pts: np.ndarray, tets: np.ndarray) -> QualitySnapshot:
     q = tet_shape_quality(pts, tets)
     if q.size == 0:
