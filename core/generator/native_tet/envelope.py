@@ -31,6 +31,37 @@ class Envelope:
     eps: float
 
     @classmethod
+    def build_auto_eps(
+        cls, V: np.ndarray, F: np.ndarray,
+        *, base_ratio: float = 0.001,
+        min_feature_factor: float = 0.05,
+    ) -> "Envelope":
+        """beta1250 (R135) — eps 를 입력 feature 분포 기반 자동 산정.
+
+        eps = max(bbox_diag × base_ratio, shortest_edge × min_feature_factor).
+        """
+        V = np.asarray(V, dtype=np.float64)
+        F = np.asarray(F, dtype=np.int64)
+        if V.shape[0] == 0:
+            return cls(bvh=TriangleBVH.build(V, F), eps=1e-6)
+        diag = float(np.linalg.norm(V.max(axis=0) - V.min(axis=0)))
+        base = diag * float(base_ratio)
+        if F.shape[0] > 0:
+            e1 = np.linalg.norm(V[F[:, 1]] - V[F[:, 0]], axis=1)
+            e2 = np.linalg.norm(V[F[:, 2]] - V[F[:, 1]], axis=1)
+            e3 = np.linalg.norm(V[F[:, 0]] - V[F[:, 2]], axis=1)
+            shortest = float(np.minimum.reduce([e1, e2, e3]).min())
+        else:
+            shortest = diag
+        feat = shortest * float(min_feature_factor)
+        eps = max(base, feat)
+        return cls(bvh=TriangleBVH.build(V, F), eps=eps)
+
+    def relax_eps(self, factor: float = 1.5) -> "Envelope":
+        """beta1260 (R136) — envelope eps 를 factor 배로 완화 (새 인스턴스)."""
+        return Envelope(bvh=self.bvh, eps=self.eps * float(factor))
+
+    @classmethod
     def build(
         cls, V: np.ndarray, F: np.ndarray, *, eps_relative: float = 0.001,
     ) -> "Envelope":
@@ -61,6 +92,20 @@ class Envelope:
         """p 를 envelope 안 (가장 가까운 표면 점) 으로 projection."""
         cp, _d, _ = self.bvh.closest_point(np.asarray(p, dtype=np.float64))
         return cp
+
+    def heal_violations(self, pts: np.ndarray) -> tuple[np.ndarray, int]:
+        """beta1270 (R137) — envelope 바깥 vertex 를 가장 가까운 valid 위치로.
+
+        Returns: (pts_new, n_healed).
+        """
+        pts = np.asarray(pts, dtype=np.float64).copy()
+        d = self.bvh.unsigned_distances(pts)
+        bad = d > self.eps
+        if not bad.any():
+            return pts, 0
+        cps, _, _ = self.bvh.closest_points_all_shared(pts[bad])
+        pts[bad] = cps
+        return pts, int(bad.sum())
 
 
 def check_operation(
