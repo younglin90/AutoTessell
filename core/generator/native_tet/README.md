@@ -31,6 +31,8 @@ MPL-2.0) 및 TetGen (Si 2015) 핵심 알고리즘을 Python 으로 독립 재구
 - `core/utils/predicates.py` — tolerance 기반 orient3d / insphere.
 - `core/utils/predicates_exact.py` — Python fractions.Fraction 기반 exact-sign
   orient3d / insphere + robust fallback.
+- `core/utils/predicates_staged.py` — 3 단계 staged (double → float128 →
+  Fraction) orient3d. 평균 double 속도, 불확실 케이스만 exact drop.
 
 ## Phase 분류
 
@@ -82,12 +84,11 @@ detection.
 
 ## 남은 작업 (향후 rounds)
 
-- **Full-batch BVH traversal**: per-point stack 대신 SIMD 병렬.
-- **Thingi10k 규모 (1000+ STL) 다운로드 자동 벤치** (현재는 procedural 12 STL).
-- **Shewchuk expansion arithmetic**: 현 fractions.Fraction 은 정확하지만 느림.
-  Staged-expansion 으로 더 빠르게.
-- **Surface snap 을 B-W insertion 과 결합**: BSP → B-W 로 incremental surface
-  recovery.
+- **Thingi10k 실제 다운로드 벤치**: 현재는 procedural 12 STL 로 대체.
+- **Surface snap 과 B-W insertion 결합**: 이미 BSP → B-W recovery 파이프라인은
+  연결됐으나, B-W 이후 envelope snap 을 한 번 더 돌리면 Hausdorff 오차 감소.
+- **Conformal CDT (SI 2015 TetGen §4)**: 현 BSP + B-W 는 recovery 를 근사하지만
+  PLC 의 edge constraint 를 엄격히 보장하지 않음.
 
 ## 완료된 주요 기능 (beta110 → beta450)
 
