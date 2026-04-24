@@ -158,6 +158,102 @@ def split_long_edges(
     return new_pts, new_tets, n_split
 
 
+def _collapse_vectorized_single_pass(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    thresh: float,
+    locked_set: set[int],
+    max_collapses: int,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """단일 pass bulk collapse. 각 tet 의 "가장 짧은 edge" 만 후보.
+
+    greedy 하되 vectorized candidate enumeration: non-conflicting edge 만
+    선택 (한 vertex 가 두 collapse 에 victim/keeper 로 동시 참여 금지).
+    """
+    pair_idx = np.array(
+        [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]], dtype=np.int64,
+    )
+    vpts = pts[tets]
+    e_lens = np.linalg.norm(
+        vpts[:, pair_idx[:, 1]] - vpts[:, pair_idx[:, 0]], axis=2,
+    )
+    e_min = e_lens.min(axis=1)
+    need = e_min < thresh
+    if not need.any():
+        return pts, tets, 0
+
+    shortest = e_lens.argmin(axis=1)
+    iA = pair_idx[shortest, 0]
+    iB = pair_idx[shortest, 1]
+    vA = tets[np.arange(tets.shape[0]), iA]
+    vB = tets[np.arange(tets.shape[0]), iB]
+
+    # tets 정렬: 가장 짧은 edge 부터.
+    order = np.argsort(e_min)
+    cands = order[need[order]][:max_collapses]
+
+    used: set[int] = set()
+    victim_of: dict[int, int] = {}
+    keeper_of: list[tuple[int, int]] = []  # (keeper, victim)
+
+    for ti in cands.tolist():
+        u, v = int(vA[ti]), int(vB[ti])
+        if u in used or v in used:
+            continue
+        u_locked = u in locked_set
+        v_locked = v in locked_set
+        if u_locked and v_locked:
+            continue
+        keeper, victim = (u, v) if v_locked or (not u_locked and u < v) else (v, u)
+        used.add(keeper); used.add(victim)
+        victim_of[victim] = keeper
+        keeper_of.append((keeper, victim))
+
+    if not keeper_of:
+        return pts, tets, 0
+
+    # bulk apply: tets 내 victim → keeper 치환. degenerate (같은 vertex 2 번) 제거.
+    pts_new = pts.copy()
+    for keeper, victim in keeper_of:
+        if keeper not in locked_set and victim not in locked_set:
+            pts_new[keeper] = 0.5 * (pts[keeper] + pts[victim])
+
+    tets_new = tets.copy()
+    for victim, keeper in victim_of.items():
+        tets_new[tets_new == victim] = keeper
+
+    # degenerate 제거: 동일 vertex 중복된 tet.
+    u_sorted = np.sort(tets_new, axis=1)
+    dup = (
+        (u_sorted[:, 0] == u_sorted[:, 1])
+        | (u_sorted[:, 1] == u_sorted[:, 2])
+        | (u_sorted[:, 2] == u_sorted[:, 3])
+    )
+    # volume sign flip 방지: 부호 다르면 제거.
+    v_new6 = np.einsum(
+        "ij,ij->i",
+        pts_new[tets_new[:, 1]] - pts_new[tets_new[:, 0]],
+        np.cross(
+            pts_new[tets_new[:, 2]] - pts_new[tets_new[:, 0]],
+            pts_new[tets_new[:, 3]] - pts_new[tets_new[:, 0]],
+        ),
+    )
+    v_old6 = np.einsum(
+        "ij,ij->i",
+        pts[tets[:, 1]] - pts[tets[:, 0]],
+        np.cross(
+            pts[tets[:, 2]] - pts[tets[:, 0]],
+            pts[tets[:, 3]] - pts[tets[:, 0]],
+        ),
+    )
+    sign_flip = v_old6 * v_new6 < 0
+    keep_mask = ~(dup | sign_flip)
+
+    tets_out = tets_new[keep_mask]
+    return pts_new, tets_out, int(len(keeper_of))
+
+
 def collapse_short_edges(
     pts: np.ndarray,
     tets: np.ndarray,
@@ -167,15 +263,42 @@ def collapse_short_edges(
     locked_vertices: np.ndarray | None = None,
     max_collapses: int = 5000,
 ) -> tuple[np.ndarray, np.ndarray, int]:
-    """edge length < ratio × target_edge 인 edge 양 끝을 merge (u,v → u).
+    """edge length < ratio × target_edge 인 edge 양 끝을 merge.
 
-    Round 9 최적화: vertex→tets 맵을 1 번 빌드 후 증분 갱신.
-
-    제약:
-      - 둘 중 하나가 locked 이면 locked 쪽을 유지, 아니면 작은 id 유지.
-      - 둘 다 locked 이면 skip.
-      - collapse 가 inverted tet 을 만들면 skip (volume sign 체크).
+    Round 18 bulk vectorized: 각 tet 의 최단 edge 1 개만 후보, non-conflicting
+    edges 를 한 번에 집합 apply. volume sign 검사로 invalid 제거.
     """
+    pts = np.asarray(pts, dtype=np.float64).copy()
+    tets = np.asarray(tets, dtype=np.int64).copy()
+    if tets.size == 0:
+        return pts, tets, 0
+
+    locked_set: set[int] = set()
+    if locked_vertices is not None:
+        locked_set = set(int(x) for x in np.asarray(locked_vertices).ravel())
+
+    thresh = ratio * float(target_edge)
+
+    # bulk 벡터 경로 — 단 한 번 실행. 여러 pass 가 필요하면 mesher 쪽 loop.
+    new_pts, new_tets, n_c = _collapse_vectorized_single_pass(
+        pts, tets,
+        thresh=thresh,
+        locked_set=locked_set,
+        max_collapses=int(max_collapses),
+    )
+    return new_pts, new_tets, n_c
+
+
+def _collapse_short_edges_legacy(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    target_edge: float,
+    ratio: float = 4.0 / 5.0,
+    locked_vertices: np.ndarray | None = None,
+    max_collapses: int = 5000,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """레거시 iteration 기반 collapse (참고/회귀용)."""
     pts = np.asarray(pts, dtype=np.float64).copy()
     tets = np.asarray(tets, dtype=np.int64).copy()
     if tets.size == 0:
