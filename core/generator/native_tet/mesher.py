@@ -317,18 +317,27 @@ def generate_native_tet(
     final_pts = all_pts[used].copy()
 
     # 4b) Phase A1 + A4 — feature 잠금 + interior Laplacian smoothing.
+    # Round 7: feature corner 를 실제 locked set 에 포함.
+    feature_info = None
+    corner_new_ids_array = np.zeros(0, dtype=np.int64)
     if enable_phase_a and smooth_iterations > 0:
         from core.generator.native_tet.features import detect_features
         from core.generator.native_tet.smooth import smooth_interior
 
-        feat = detect_features(V, F, feature_angle_deg=float(feature_angle_deg))
-        # surface vertex 의 new-index: remap[surface_id] (0..n_surface-1 중 used).
+        feature_info = detect_features(
+            V, F, feature_angle_deg=float(feature_angle_deg),
+        )
         surface_new_ids = remap[np.arange(n_surface)]
         surface_new_ids = surface_new_ids[surface_new_ids >= 0]
         locked_new: list[int] = surface_new_ids.tolist()
-        # feature_locked 는 원래 surface vertex 의 부분집합 → 이미 surface 로 잠김.
-        # (추가 lock 이 필요하면 여기서 확장.)
-        _ = feat   # 향후 anisotropic smoothing 등에 활용.
+
+        # corner vertex (3+ feature edge 가 만나는 점) 의 new index 추출.
+        # 이들은 surface 에 포함되지만 명시적으로 lock 해 smoothing tangent
+        # 이동조차 금지.
+        if feature_info.corner_vertices.size > 0:
+            corner_new_ids = remap[feature_info.corner_vertices]
+            corner_new_ids = corner_new_ids[corner_new_ids >= 0]
+            corner_new_ids_array = corner_new_ids
 
         sr = smooth_interior(
             final_pts, final_tets,
@@ -341,8 +350,9 @@ def generate_native_tet(
             n_iter=sr.n_iter,
             moved=sr.n_interior_moved,
             max_disp=sr.max_displacement,
-            n_feature_edges=int(feat.feature_edges.shape[0]),
-            n_corner=int(feat.corner_vertices.shape[0]),
+            n_feature_edges=int(feature_info.feature_edges.shape[0]),
+            n_corner=int(feature_info.corner_vertices.shape[0]),
+            n_corner_new=int(corner_new_ids_array.size),
         )
 
     # 4c) Phase B — local operations (split/collapse/flip) + tangent smoothing.
@@ -423,6 +433,9 @@ def generate_native_tet(
                 snap_res = snap_surface_vertices(
                     final_pts, env.bvh, surface_new_ids2,
                     max_distance=env.eps * 2.0,
+                    locked_vertex_ids=(
+                        corner_new_ids_array if corner_new_ids_array.size else None
+                    ),
                 )
                 log.info(
                     "native_tet_surface_snap",
@@ -484,7 +497,8 @@ def generate_native_tet(
                 final_pts, final_tets,
                 surface_vertex_ids=surface_new_ids2,
                 vertex_normals=vn_new,
-                feature_locked_ids=None,   # 간이: 전체 lock 은 smooth_interior 에서 담당.
+                # Round 7: corner vertex 는 tangent smoothing 에서도 완전 고정.
+                feature_locked_ids=corner_new_ids_array if corner_new_ids_array.size else None,
                 n_iter=int(tangent_smooth_iterations),
                 relax=float(tangent_smooth_relax),
             )
