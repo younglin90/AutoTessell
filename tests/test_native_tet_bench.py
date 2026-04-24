@@ -144,13 +144,13 @@ def test_native_tet_phase_b_comparison_bench() -> None:
     import time
     import trimesh
 
-    # 비교 벤치는 Phase B 가 작동하는 first 3 STL 만 (4_gear, 5_knot 은
-    # O(T^2) 루프라 minutes 소요 — test_native_tet_bench_basic 에서 A-only
-    # 만 커버).
+    # Round 14 벡터화 후 4_gear / 5_knot 도 재시도 가능.
     candidates = [
         BENCH_STL_DIR / "01_easy_cube.stl",
         BENCH_STL_DIR / "02_medium_cylinder.stl",
         BENCH_STL_DIR / "03_hard_bracket.stl",
+        BENCH_STL_DIR / "04_extreme_gear.stl",
+        BENCH_STL_DIR / "05_ultra_knot.stl",
     ]
     existing = [p for p in candidates if p.exists()]
     if not existing:
