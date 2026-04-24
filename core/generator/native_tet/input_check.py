@@ -88,6 +88,43 @@ def check_input(
                 f"non-manifold: {n_nonmanifold} edges with 3+ owners"
             )
 
+    # 4) AABB 기반 빠른 self-intersection 후보 탐지.
+    #    정확한 체크는 비싸므로 AABB overlap 있는 쌍만 카운트 (over-estimate).
+    n_aabb_overlaps = 0
+    if F.shape[0] > 2 and F.shape[0] < 20000:
+        try:
+            tri_pts = V[F]                  # (T, 3, 3)
+            tmin = tri_pts.min(axis=1)
+            tmax = tri_pts.max(axis=1)
+            # 순진 O(T^2) 는 피하고 sorted-sweep 으로 대체.
+            order = np.argsort(tmin[:, 0])
+            n_over = 0
+            for idx_i in range(order.size):
+                i = int(order[idx_i])
+                for idx_j in range(idx_i + 1, order.size):
+                    j = int(order[idx_j])
+                    if tmin[j, 0] > tmax[i, 0]:
+                        break
+                    # AABB overlap 3D.
+                    if (tmin[j, 1] <= tmax[i, 1] and tmax[j, 1] >= tmin[i, 1]
+                        and tmin[j, 2] <= tmax[i, 2] and tmax[j, 2] >= tmin[i, 2]):
+                        # 공유 vertex 있으면 정상 adjacency (over-count 제외).
+                        if set(F[i].tolist()) & set(F[j].tolist()):
+                            continue
+                        n_over += 1
+                        if n_over >= 500:
+                            break
+                if n_over >= 500:
+                    break
+            n_aabb_overlaps = n_over
+            if n_over > 0:
+                warnings.append(
+                    f"possible self-intersection candidates: {n_over} "
+                    "(AABB overlap heuristic — manual check 권장)"
+                )
+        except Exception:
+            pass
+
     return InputCheckResult(
         n_duplicate_vertices=n_dup,
         n_zero_area_triangles=n_zero,
