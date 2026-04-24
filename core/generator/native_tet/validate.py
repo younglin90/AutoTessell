@@ -41,6 +41,19 @@ def signed_volume6(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
     )
 
 
+def orientation_signs(
+    pts: np.ndarray, tets: np.ndarray, *, tol: float = 1e-14,
+) -> np.ndarray:
+    """predicates.orient3d_batch 위임. 각 tet 부호 (int8)."""
+    from core.utils.predicates import orient3d_batch
+
+    tets = np.asarray(tets, dtype=np.int64)
+    if tets.size == 0:
+        return np.zeros(0, dtype=np.int8)
+    v = pts[tets]
+    return orient3d_batch(v[:, 0], v[:, 1], v[:, 2], v[:, 3], tol=tol)
+
+
 def fix_inverted_tets(
     pts: np.ndarray,
     tets: np.ndarray,
