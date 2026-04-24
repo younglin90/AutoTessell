@@ -508,6 +508,19 @@ def generate_native_tet(
                 max_disp=srt.max_displacement,
             )
 
+    # 4d) Round 10 — inverted tet 안전판 (local op 반복 후 numerical edge).
+    if enable_phase_a:
+        from core.generator.native_tet.validate import fix_inverted_tets
+
+        final_tets, vr = fix_inverted_tets(final_pts, final_tets)
+        if vr.n_inverted_before > 0 or vr.n_degenerate > 0:
+            log.info(
+                "native_tet_validate",
+                n_inverted=vr.n_inverted_before,
+                fixed_by_swap=vr.n_fixed_by_swap,
+                degenerate=vr.n_degenerate,
+            )
+
     # 5) polyMesh 쓰기
     try:
         stats = PolyMeshWriter().write(final_pts, final_tets, case_dir)
