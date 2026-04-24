@@ -64,6 +64,9 @@ def generate_native_tet(
     protect_boundary_faces: bool = True,
     smooth_iterations: int = 2,
     smooth_relax: float = 0.5,
+    # beta160 Phase F — BSP constrained triangle insertion (opt-in fallback).
+    enable_bsp_insertion: bool = False,
+    bsp_max_inserts_per_triangle: int = 50,
     # beta120 Phase B — local ops + tangent smoothing.
     # 기본 off: O(T^2) / O(V^2) Python 루프라 대형 메쉬에서 느림. 명시 opt-in.
     enable_phase_b: bool = False,
@@ -177,7 +180,9 @@ def generate_native_tet(
     all_pts, tets = dl_res
 
     if enable_phase_a and recovery_iterations > 0:
-        from core.generator.native_tet.insertion import recovery_seeds
+        from core.generator.native_tet.insertion import (
+            find_missing_triangles, recovery_seeds,
+        )
 
         for it in range(int(recovery_iterations)):
             rec = recovery_seeds(
@@ -198,7 +203,6 @@ def generate_native_tet(
             )
             if rec.extra_seeds.shape[0] == 0:
                 break
-            # 새 시드 중 outside 는 제외 (안쪽 판정만).
             inside_new = _inside_winding_number(rec.extra_seeds, V, F)
             good = rec.extra_seeds[inside_new]
             if good.shape[0] == 0:
@@ -209,6 +213,36 @@ def generate_native_tet(
             if dl_res2 is None:
                 break
             all_pts, tets = dl_res2
+
+        # Phase F — BSP constrained insertion fallback.
+        if enable_bsp_insertion:
+            from core.generator.native_tet.bsp_insert import bsp_insert_triangles
+
+            remaining = find_missing_triangles(F, tets)
+            if remaining.size > 0:
+                log.info(
+                    "native_tet_bsp_insert_start",
+                    n_missing=int(remaining.size),
+                )
+                all_pts, _tets_after, bsp_res = bsp_insert_triangles(
+                    all_pts, tets, V, F, remaining,
+                    max_inserts=int(bsp_max_inserts_per_triangle) * int(remaining.size),
+                )
+                if bsp_res.n_inserted_points > 0:
+                    # 신규 점 추가 후 전체 재-Delaunay.
+                    dl_res3 = _run_delaunay(all_pts)
+                    if dl_res3 is not None:
+                        all_pts, tets = dl_res3
+                        remaining_after = find_missing_triangles(F, tets)
+                        log.info(
+                            "native_tet_bsp_insert_done",
+                            inserted_points=bsp_res.n_inserted_points,
+                            subdivided_tets=bsp_res.n_subdivided_tets,
+                            missing_before=bsp_res.n_missing_before,
+                            missing_after=int(remaining_after.size),
+                        )
+                    else:
+                        log.warning("native_tet_bsp_redelaunay_failed")
 
     # 3) tet centroid 로 inside 판정
     centroids = all_pts[tets].mean(axis=1)
