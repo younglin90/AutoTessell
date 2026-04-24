@@ -151,6 +151,29 @@ def smooth_then_drop_slivers(
     return pts, tets_out, n_moved, n_drop
 
 
+def count_boundary_faces(tets: np.ndarray) -> int:
+    """beta1280 (R101) — 1-owner face (= surface) 개수.
+
+    validate / fix_inverted 후 surface 가 온전히 유지됐는지 caller 가 비교.
+    """
+    tets = np.asarray(tets, dtype=np.int64)
+    if tets.size == 0:
+        return 0
+    faces = np.stack([
+        tets[:, [0, 1, 2]], tets[:, [0, 1, 3]],
+        tets[:, [0, 2, 3]], tets[:, [1, 2, 3]],
+    ], axis=1).reshape(-1, 3)
+    faces = np.sort(faces, axis=1)
+    max_id = int(faces.max()) + 1 if faces.size else 1
+    key = (
+        faces[:, 0].astype(np.int64) * max_id * max_id
+        + faces[:, 1].astype(np.int64) * max_id
+        + faces[:, 2].astype(np.int64)
+    )
+    _, counts = np.unique(key, return_counts=True)
+    return int((counts == 1).sum())
+
+
 def fix_inverted_tets(
     pts: np.ndarray,
     tets: np.ndarray,
