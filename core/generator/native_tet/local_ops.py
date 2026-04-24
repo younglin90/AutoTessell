@@ -89,6 +89,28 @@ def _edge_lengths(pts: np.ndarray, tets: np.ndarray) -> dict[tuple[int, int], fl
     }
 
 
+def _edge_lengths_with_metric(
+    pts: np.ndarray, tets: np.ndarray, M: np.ndarray,
+) -> np.ndarray:
+    """각 tet 의 6 edge 에 대한 metric-aware length (T, 6).
+
+    l² = (p-q)ᵀ M_avg (p-q), M_avg = 0.5 (M_p + M_q).
+    """
+    pair_idx = np.array(
+        [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]], dtype=np.int64,
+    )
+    vpts = pts[tets]             # (T, 4, 3)
+    vM = M[tets]                 # (T, 4, 3, 3)
+    p = vpts[:, pair_idx[:, 0]]   # (T, 6, 3)
+    q = vpts[:, pair_idx[:, 1]]
+    Mp = vM[:, pair_idx[:, 0]]    # (T, 6, 3, 3)
+    Mq = vM[:, pair_idx[:, 1]]
+    d = p - q
+    Mavg = 0.5 * (Mp + Mq)
+    l2 = np.einsum("tij,tijk,tik->ti", d, Mavg, d)
+    return np.sqrt(np.maximum(l2, 0.0))
+
+
 def split_long_edges(
     pts: np.ndarray,
     tets: np.ndarray,
@@ -96,6 +118,7 @@ def split_long_edges(
     target_edge: float,
     ratio: float = 4.0 / 3.0,
     max_splits: int = 5000,
+    metric: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """edge length > ratio × target_edge 인 edge 를 중점 split.
 
@@ -112,14 +135,17 @@ def split_long_edges(
 
     thresh = float(ratio) * float(target_edge)
 
-    # 각 tet 의 6 edge 길이 계산 (벡터).
+    # 각 tet 의 6 edge 길이 계산 (벡터). metric 제공 시 metric-aware.
     pair_idx = np.array(
         [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]], dtype=np.int64,
     )
-    vpts = pts[tets]   # (T, 4, 3)
-    e_lens = np.linalg.norm(
-        vpts[:, pair_idx[:, 1]] - vpts[:, pair_idx[:, 0]], axis=2,
-    )   # (T, 6)
+    if metric is not None and metric.shape[0] == pts.shape[0]:
+        e_lens = _edge_lengths_with_metric(pts, tets, metric)
+    else:
+        vpts = pts[tets]   # (T, 4, 3)
+        e_lens = np.linalg.norm(
+            vpts[:, pair_idx[:, 1]] - vpts[:, pair_idx[:, 0]], axis=2,
+        )   # (T, 6)
     e_max = e_lens.max(axis=1)   # (T,)
     need = e_max > thresh
     if not need.any():
