@@ -1477,9 +1477,11 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._engine_policy = policy
 
         model = QStandardItemModel(parent)
-        # 기본 엔진: 정책이 지정한 값이 있으면 그것, 없으면 WildMesh
-        desired_default = policy.default_tier if policy.default_tier != "auto" else "tier_wildmesh"
+        # v0.4 Native-First: 기본 엔진 native_tet (우리 구현 권장).
+        # 정책이 명시 default_tier 를 주면 그것이 우선.
+        desired_default = policy.default_tier if policy.default_tier != "auto" else "tier_native_tet"
         default_idx = 1  # fallback: 첫 실제 아이템 (auto)
+        native_tet_idx = -1
         wildmesh_idx = -1
         for group, items in self.ENGINE_GROUPS:
             header = QStandardItem(f"── {group} ──")
@@ -1499,12 +1501,17 @@ class AutoTessellWindow:  # type: ignore[misc]
                 row_idx = model.rowCount()
                 if canonical == desired_default and item.isEnabled():
                     default_idx = row_idx
+                if value == "native_tet" and item.isEnabled():
+                    native_tet_idx = row_idx
                 if value == "wildmesh" and item.isEnabled():
                     wildmesh_idx = row_idx
                 model.appendRow(item)
-        # 정책 default를 찾지 못했으면 WildMesh 로 fallback
-        if default_idx == 1 and wildmesh_idx >= 0:
-            default_idx = wildmesh_idx
+        # 정책 default 를 못 찾았으면 native_tet, 그것도 없으면 WildMesh 로 fallback.
+        if default_idx == 1:
+            if native_tet_idx >= 0:
+                default_idx = native_tet_idx
+            elif wildmesh_idx >= 0:
+                default_idx = wildmesh_idx
         return model, default_idx
 
     def _rebuild_engine_combo_model(self) -> None:  # pragma: no cover
@@ -1731,48 +1738,61 @@ class AutoTessellWindow:  # type: ignore[misc]
         except Exception:
             self._generic_param_frame.setVisible(False)  # type: ignore[union-attr]
 
-    # Tier별 엔진 후보 — (combo value, display label). 기본값은 "disabled".
+    # Tier별 엔진 후보 — (combo value, display label).
+    # v0.4 Native-First: 우리가 직접 구현한 엔진을 항상 최상단 (권장) 에 노출.
+    # 외부 라이브러리는 참고/비교용으로만 유지.
     _TIER0_ENGINES: tuple[tuple[str, str], ...] = (
-        ("disabled", "비활성화 (기본)"),
-        ("pymeshfix", "pymeshfix"),
-        ("pymeshlab", "pymeshlab"),
-        ("trimesh", "trimesh.repair"),
+        # core/preprocessor/native_repair/ (dedup / degenerate / hole / manifold / normals)
+        ("native_repair", "✨ Native Repair (v0.4, 권장)"),
+        ("disabled", "비활성화"),
+        ("pymeshfix", "pymeshfix (참고용)"),
+        ("pymeshlab", "pymeshlab (참고용)"),
+        ("trimesh", "trimesh.repair (참고용)"),
     )
     _TIER1_ENGINES: tuple[tuple[str, str], ...] = (
+        # core/analyzer/readers/core_mesh.py — 자체 CAD→surface 생성 (초기)
+        ("native_surface", "✨ Native Surface (v0.4, 초기)"),
         ("disabled", "비활성화 (기본)"),
-        ("geogram_cdt", "Geogram CDT"),
-        ("tetgen", "TetGen surface"),
-        ("gmsh", "GMSH 2D"),
-        ("cadquery", "CadQuery"),
+        ("geogram_cdt", "Geogram CDT (참고용)"),
+        ("tetgen", "TetGen surface (참고용)"),
+        ("gmsh", "GMSH 2D (참고용)"),
+        ("cadquery", "CadQuery (참고용)"),
     )
     _TIER2_ENGINES: tuple[tuple[str, str], ...] = (
+        # core/preprocessor/native_remesh/ (isotropic Botsch 2004, Lloyd CVT)
+        ("native_isotropic", "✨ Native Isotropic (Botsch, 권장)"),
+        ("native_cvt", "✨ Native CVT (Lloyd)"),
         ("disabled", "비활성화 (기본)"),
-        ("auto", "auto (pyACVD+laplacian)"),
-        ("mmg", "MMG surface"),
-        ("quadwild", "Quadwild"),
+        ("auto", "auto (pyACVD+laplacian, 참고용)"),
+        ("mmg", "MMG surface (참고용)"),
+        ("quadwild", "Quadwild (참고용)"),
     )
     _TIER4_ENGINES: tuple[tuple[str, str], ...] = (
-        ("disabled", "비활성화 (기본)"),
+        # core/layers/native_bl.py Phase 2 완성 + tet_bl_subdivide.py (tet 전용)
+        ("native_bl", "✨ Native BL (Phase 2, 권장)"),
+        ("native_bl_tet", "✨ Native BL (tet 전용 3 분할)"),
+        ("disabled", "비활성화"),
         ("auto", "auto (품질 레벨 기반)"),
         # 내장 (주 엔진의 일부로 실행)
-        ("snappy_layers", "snappy addLayers (snappyHexMesh 내부)"),
-        ("cfmesh_layers", "cfMesh boundaryLayers (cfMesh 내부)"),
+        ("snappy_layers", "snappy addLayers (참고용)"),
+        ("cfmesh_layers", "cfMesh boundaryLayers (참고용)"),
         # 독립 후처리 — 주 엔진 무관. polyMesh 만 있으면 OK.
-        ("generate_boundary_layers", "generateBoundaryLayers (cfMesh post, 엔진 무관)"),
-        ("refine_wall_layer", "refineWallLayer (OpenFOAM 순정 post)"),
-        ("snappy_addlayers", "snappy addLayers (독립 post)"),
-        ("extrude_mesh", "extrudeMesh (OpenFOAM linearNormal extrude)"),
+        ("generate_boundary_layers", "generateBoundaryLayers (참고용)"),
+        ("refine_wall_layer", "refineWallLayer (참고용)"),
+        ("snappy_addlayers", "snappy addLayers 독립 (참고용)"),
+        ("extrude_mesh", "extrudeMesh (참고용)"),
         # 추가 라이브러리 기반 (설치 필요 — 미설치 시 친절한 가이드 에러)
-        ("netgen_bl", "Netgen BoundaryLayer (ngsolve)"),
-        ("gmsh_bl", "GMSH BoundaryLayer Field"),
-        ("pyhyp", "pyHyp (MDOlab, source build 필요)"),
-        ("meshkit_bl", "MeshKit BL (Sandia, 설치 복잡)"),
-        ("su2_hexpress", "SU2 HexPress (SU2 source build 필요)"),
-        ("salome_bl", "Salome SMESH Viscous Layers (Salome 설치 필요)"),
+        ("netgen_bl", "Netgen BoundaryLayer (참고용, ngsolve 필요)"),
+        ("gmsh_bl", "GMSH BoundaryLayer Field (참고용)"),
+        ("pyhyp", "pyHyp (참고용, source build 필요)"),
+        ("meshkit_bl", "MeshKit BL (참고용, 설치 복잡)"),
+        ("su2_hexpress", "SU2 HexPress (참고용)"),
+        ("salome_bl", "Salome SMESH Viscous Layers (참고용)"),
     )
     _TIER5_ENGINES: tuple[tuple[str, str], ...] = (
-        ("native", "Native Python 검증 (기본)"),
-        ("checkmesh", "OpenFOAM checkMesh"),
+        # core/evaluator/native_checker.py — OpenFOAM checkMesh parity 검증 완료
+        ("native", "✨ Native Checker (v0.4, 권장 · parity 검증)"),
+        ("checkmesh", "OpenFOAM checkMesh (참고용)"),
         ("disabled", "비활성화"),
     )
 
@@ -1786,11 +1806,12 @@ class AutoTessellWindow:  # type: ignore[misc]
 
         f, v = self._section_frame("Tier 엔진 (고급)")
 
+        # v0.4 Native-First: 각 Tier 기본값을 우리가 구현한 native_* 엔진으로.
         rows: list[tuple[str, str, tuple[tuple[str, str], ...], str]] = [
-            ("Tier 0 · 표면 수리", "tier0", self._TIER0_ENGINES, "disabled"),
+            ("Tier 0 · 표면 수리", "tier0", self._TIER0_ENGINES, "native_repair"),
             ("Tier 1 · 표면 생성", "tier1", self._TIER1_ENGINES, "disabled"),
-            ("Tier 2 · 표면 리메쉬", "tier2", self._TIER2_ENGINES, "disabled"),
-            ("Tier 4 · 경계층", "tier4", self._TIER4_ENGINES, "disabled"),
+            ("Tier 2 · 표면 리메쉬", "tier2", self._TIER2_ENGINES, "native_isotropic"),
+            ("Tier 4 · 경계층", "tier4", self._TIER4_ENGINES, "native_bl"),
             ("Tier 5 · 메쉬 검증", "tier5", self._TIER5_ENGINES, "native"),
         ]
 
@@ -2241,8 +2262,16 @@ class AutoTessellWindow:  # type: ignore[misc]
         rl.addWidget(QLabel("L2 엔진:"))
         cb = QComboBox()
         cb.setStyleSheet(self._dark_combo_qss())
-        cb.addItems(["disabled", "auto", "mmg", "quadwild"])
-        cb.setCurrentIndex(0)  # 기본값 disabled
+        # v0.4 Native-First: native_isotropic / native_cvt 를 최상단에 권장.
+        cb.addItems([
+            "native_isotropic",   # Botsch 2004 — 권장
+            "native_cvt",         # Lloyd CVT
+            "disabled",
+            "auto",               # pyACVD+laplacian (참고용)
+            "mmg",                # 외부
+            "quadwild",           # 외부
+        ])
+        cb.setCurrentIndex(0)  # 기본값 native_isotropic
         cb.currentIndexChanged.connect(
             lambda _idx: self._refresh_tier_strip_engine_labels()
         )
