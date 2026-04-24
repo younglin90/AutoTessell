@@ -62,6 +62,7 @@ from core.generator.native_tet.features import (
 )
 from core.generator.native_tet.input_check import (
     InputCheckResult,
+    auto_fix_input,
     check_input,
 )
 
@@ -86,4 +87,5 @@ __all__ = [
     "detect_features",
     "InputCheckResult",
     "check_input",
+    "auto_fix_input",
 ]
