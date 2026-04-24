@@ -150,6 +150,7 @@ def should_stop(
     history: list[QualitySnapshot],
     *,
     target_min_q: float = 0.3,
+    target_min_dihedral_deg: float | None = None,
     improvement_eps: float = 0.005,
     window: int = 3,
 ) -> tuple[bool, str]:
@@ -157,6 +158,7 @@ def should_stop(
 
     중단 조건:
         - 최신 min_q ≥ target_min_q: "target"
+        - target_min_dihedral_deg 설정 시 min_dihedral 이 threshold 이상: "dihedral_target"
         - 최근 window iteration 의 min_q 개선폭 < improvement_eps: "plateau"
         - n_tets 이 0: "empty"
 
@@ -170,6 +172,11 @@ def should_stop(
         return True, "empty"
     if last.min_q >= target_min_q:
         return True, "target"
+    if (
+        target_min_dihedral_deg is not None
+        and last.min_dihedral_deg >= float(target_min_dihedral_deg)
+    ):
+        return True, "dihedral_target"
     if len(history) >= window:
         recent = [h.min_q for h in history[-window:]]
         if max(recent) - min(recent) < improvement_eps:
