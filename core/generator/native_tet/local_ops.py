@@ -223,6 +223,7 @@ def _collapse_vectorized_single_pass(
     thresh: float,
     locked_set: set[int],
     max_collapses: int,
+    metric: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """단일 pass bulk collapse. 각 tet 의 "가장 짧은 edge" 만 후보.
 
@@ -232,10 +233,13 @@ def _collapse_vectorized_single_pass(
     pair_idx = np.array(
         [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]], dtype=np.int64,
     )
-    vpts = pts[tets]
-    e_lens = np.linalg.norm(
-        vpts[:, pair_idx[:, 1]] - vpts[:, pair_idx[:, 0]], axis=2,
-    )
+    if metric is not None and metric.shape[0] == pts.shape[0]:
+        e_lens = _edge_lengths_with_metric(pts, tets, metric)
+    else:
+        vpts = pts[tets]
+        e_lens = np.linalg.norm(
+            vpts[:, pair_idx[:, 1]] - vpts[:, pair_idx[:, 0]], axis=2,
+        )
     e_min = e_lens.min(axis=1)
     need = e_min < thresh
     if not need.any():
@@ -320,11 +324,11 @@ def collapse_short_edges(
     ratio: float = 4.0 / 5.0,
     locked_vertices: np.ndarray | None = None,
     max_collapses: int = 5000,
+    metric: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """edge length < ratio × target_edge 인 edge 양 끝을 merge.
 
-    Round 18 bulk vectorized: 각 tet 의 최단 edge 1 개만 후보, non-conflicting
-    edges 를 한 번에 집합 apply. volume sign 검사로 invalid 제거.
+    Round 18 bulk vectorized + Round 42 metric-aware.
     """
     pts = np.asarray(pts, dtype=np.float64).copy()
     tets = np.asarray(tets, dtype=np.int64).copy()
@@ -337,12 +341,12 @@ def collapse_short_edges(
 
     thresh = ratio * float(target_edge)
 
-    # bulk 벡터 경로 — 단 한 번 실행. 여러 pass 가 필요하면 mesher 쪽 loop.
     new_pts, new_tets, n_c = _collapse_vectorized_single_pass(
         pts, tets,
         thresh=thresh,
         locked_set=locked_set,
         max_collapses=int(max_collapses),
+        metric=metric,
     )
     return new_pts, new_tets, n_c
 

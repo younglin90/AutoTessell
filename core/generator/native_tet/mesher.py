@@ -92,6 +92,9 @@ def generate_native_tet(
     progress_cb: "Any" = None,
     # beta140 Phase E2 — curvature-adaptive sizing (split/collapse 기준).
     use_adaptive_sizing: bool = False,
+    # beta500 — anisotropic metric 활성 (curvature-aligned SPD tensor).
+    use_anisotropic_metric: bool = False,
+    anisotropic_ratio: float = 0.5,
     adaptive_min_ratio: float = 0.25,
     adaptive_max_ratio: float = 2.0,
     adaptive_curvature_gain: float = 2.0,
@@ -450,6 +453,30 @@ def generate_native_tet(
         surface_new_ids2 = remap[np.arange(n_surface)]
         surface_new_ids2 = surface_new_ids2[surface_new_ids2 >= 0]
 
+        # anisotropic metric: surface vertex 에 curvature-aligned tensor 구성,
+        # 내부 vertex 는 identity. split/collapse 에 metric kwarg 로 주입.
+        metric_full: "np.ndarray | None" = None
+        if use_anisotropic_metric:
+            from core.generator.native_tet.anisotropic import curvature_aligned_metric
+
+            surf_M = curvature_aligned_metric(
+                V, F, base_edge=float(target_edge_length),
+                aniso_ratio=float(anisotropic_ratio),
+            )
+            # final_pts 에 대해 metric 배열 구성 (surface new-index → surf_M,
+            # interior → identity × 1/target_edge²).
+            metric_full = np.zeros((final_pts.shape[0], 3, 3), dtype=np.float64)
+            inv_e2 = 1.0 / (float(target_edge_length) ** 2)
+            metric_full[:] = np.eye(3) * inv_e2
+            for old_id in range(n_surface):
+                new_id = remap[old_id]
+                if new_id >= 0 and new_id < metric_full.shape[0]:
+                    metric_full[new_id] = surf_M[old_id]
+            log.info(
+                "native_tet_anisotropic_metric",
+                aniso_ratio=float(anisotropic_ratio),
+            )
+
         # adaptive sizing: vertex 별 target 계산 후 split/collapse 에 사용할
         # scalar target 을 곡률 영향 받은 평균으로 조정.
         effective_target = float(target_edge_length)
@@ -497,13 +524,20 @@ def generate_native_tet(
                 final_pts, final_tets,
                 target_edge=effective_target if enable_phase_b else float(target_edge_length),
                 ratio=float(split_ratio),
+                metric=metric_full,
             )
+            # metric_full 은 vertex 수 변경된 이후 길이가 안 맞을 수 있음 — size 다르면 None 처리.
+            m_collapse = metric_full if (
+                metric_full is not None
+                and metric_full.shape[0] == final_pts.shape[0]
+            ) else None
             final_pts, final_tets, n_c = collapse_short_edges(
                 final_pts, final_tets,
                 target_edge=effective_target if enable_phase_b else float(target_edge_length),
                 ratio=float(collapse_ratio),
                 locked_vertices=surface_new_ids2,
                 max_collapses=int(max_collapses_per_iter),
+                metric=m_collapse,
             )
             # cell 수 급감 rollback: iteration 전 대비 급락하면 이전 상태로.
             if (
