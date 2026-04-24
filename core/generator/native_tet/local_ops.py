@@ -29,6 +29,38 @@ class LocalOpResult:
     n_tets_after: int
 
 
+def compact_unused_vertices(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    keep_first_n: int = 0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """tets 가 참조하지 않는 vertex 제거 + 인덱스 압축.
+
+    Args:
+        keep_first_n: [0, keep_first_n) 범위 vertex 는 사용 여부와 무관하게
+            유지 (surface vertex 보호용).
+
+    Returns:
+        (new_pts, new_tets).
+    """
+    pts = np.asarray(pts, dtype=np.float64)
+    tets = np.asarray(tets, dtype=np.int64)
+    if pts.shape[0] == 0 or tets.size == 0:
+        return pts, tets
+    used = np.zeros(pts.shape[0], dtype=bool)
+    used[np.unique(tets.ravel())] = True
+    if keep_first_n > 0:
+        used[: int(keep_first_n)] = True
+    if used.all():
+        return pts, tets
+    remap = -np.ones(pts.shape[0], dtype=np.int64)
+    remap[used] = np.arange(int(used.sum()))
+    new_pts = pts[used]
+    new_tets = remap[tets]
+    return new_pts, new_tets
+
+
 def _edge_lengths(pts: np.ndarray, tets: np.ndarray) -> dict[tuple[int, int], float]:
     """vectorized: tet 배열 → unique edge list + length. dict 로 반환."""
     tets = np.asarray(tets, dtype=np.int64)

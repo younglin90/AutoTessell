@@ -362,7 +362,7 @@ def generate_native_tet(
     # Phase C 가 켜져 있으면 envelope-guarded + quality stop 으로 승격.
     if enable_phase_b and local_ops_iterations > 0:
         from core.generator.native_tet.local_ops import (
-            collapse_short_edges, split_long_edges,
+            collapse_short_edges, compact_unused_vertices, split_long_edges,
         )
         from core.generator.native_tet.flip import face_flip_pass
         from core.generator.native_tet.smooth import (
@@ -446,6 +446,19 @@ def generate_native_tet(
                 final_pts, final_tets,
                 n_iter=int(flip_iterations),
             )
+
+            # 사용 안 된 vertex 제거 (surface vertex 는 보호).
+            before_pts = final_pts.shape[0]
+            final_pts, final_tets = compact_unused_vertices(
+                final_pts, final_tets, keep_first_n=int(n_surface),
+            )
+            # surface_new_ids2 는 [0, n_surface) 범위로 고정 유지됨.
+            if final_pts.shape[0] != before_pts:
+                log.info(
+                    "native_tet_compact_orphans",
+                    iter=loop_idx,
+                    removed=int(before_pts - final_pts.shape[0]),
+                )
 
             if env is not None and surface_new_ids2.size > 0:
                 # D2: surface vertex 를 입력 표면 BVH 로 projection (drift 복원).
