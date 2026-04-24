@@ -16,17 +16,17 @@ python3 desktop/qt_main.py
 
 ## 입력 / 분석
 
-- [ ] **S1.** `tests/stl/01_easy_cube.stl` drag-drop → 뷰포트에 큐브 표시.
-- [ ] **S2.** `_show_geometry_hint` 로그 (`[INFO] 지오메트리 분석 — ...`) + KPI
+- [O] **S1.** `tests/stl/01_easy_cube.stl` drag-drop → 뷰포트에 큐브 표시.
+- [O] **S2.** `_show_geometry_hint` 로그 (`[INFO] 지오메트리 분석 — ...`) + KPI
   (Cells / Tier / Time) 노출.
-- [ ] **S3.** right column JobPane 의 status_card 가 "idle" / "파일 로드됨" 상태 표시.
+- [O] **S3.** right column JobPane 의 status_card 가 "idle" / "파일 로드됨" 상태 표시.
 
 ## 전략 선택
 
-- [ ] **S4.** mesh_type 라디오 (auto / tet / hex_dominant / poly) 4 상태 전환 가능.
+- [O] **S4.** mesh_type 라디오 (auto / tet / hex_dominant / poly) 4 상태 전환 가능.
   Log 에 선택 반영 (내부 `_mesh_type` 변수 업데이트).
-- [ ] **S5.** Quality segmented (draft / standard / fine) 전환 + 설명 라벨 변경.
-- [ ] **S6.** 엔진 콤보에서 `native_tet` / `native_hex` / `native_poly` 선택 시 "엔진
+- [X] **S5.** Quality segmented (draft / standard / fine) 전환 + 설명 라벨 변경.
+- [X] **S6.** 엔진 콤보에서 `native_tet` / `native_hex` / `native_poly` 선택 시 "엔진
   파라미터" 섹션이 GenericEngineParamPanel 로 자동 갱신.
   - native_hex 선택 시 `adaptive`, `n_levels`, `refinement_distance_factor`,
     `snap_iterations` 슬라이더 노출.
@@ -34,23 +34,23 @@ python3 desktop/qt_main.py
 
 ## y⁺ 패널 (beta100 신규)
 
-- [ ] **S7.** 사이드바 "y⁺ 자동 BL 두께" 섹션 가시.
-- [ ] **S8.** STL drop 후 특성 길이 스핀박스가 bbox 대각선으로 자동 갱신.
-- [ ] **S9.** "계산하기" 클릭 → 결과 라벨 (`첫 층 두께: X.XXe-XX m`) + 클립보드에 값 복사.
-- [ ] **S10.** 로그에 `[INFO] y⁺ → bl_first_thickness = ... m (다음 Run 부터 자동 적용)`.
+- [O] **S7.** 사이드바 "y⁺ 자동 BL 두께" 섹션 가시.
+- [O] **S8.** STL drop 후 특성 길이 스핀박스가 bbox 대각선으로 자동 갱신.
+- [O] **S9.** "계산하기" 클릭 → 결과 라벨 (`첫 층 두께: X.XXe-XX m`) + 클립보드에 값 복사.
+- [O] **S10.** 로그에 `[INFO] y⁺ → bl_first_thickness = ... m (다음 Run 부터 자동 적용)`.
 
 ## 실행 & 결과
 
-- [ ] **S11.** native_tet draft 실행 → success=True, polyMesh 생성, 셀 수 KPI 갱신.
-- [ ] **S12.** native_hex draft 실행 → success=True, Hex 비율 표시.
-- [ ] **S13.** native_poly draft 실행 → success=True, polyMesh 생성.
-- [ ] **S14.** Stop 버튼 → 서브프로세스 종료 + UI "idle" 복구.
+- [O] **S11.** native_tet draft 실행 → success=True, polyMesh 생성, 셀 수 KPI 갱신.
+- [O] **S12.** native_hex draft 실행 → success=True, Hex 비율 표시.
+- [O] **S13.** native_poly draft 실행 → success=True, polyMesh 생성.
+- [O] **S14.** Stop 버튼 → 서브프로세스 종료 + UI "idle" 복구.
 
 ## 결과 뷰
 
-- [ ] **S15.** 뷰포트 품질 색상화 드롭다운 (Aspect / Skewness / Non-ortho) 3 모드 동작.
-- [ ] **S16.** Quality 탭 히스토그램이 Build 완료 직후 자동 갱신.
-- [ ] **S17.** Export pane 활성화 + STEP/IGES/STL 선택 포맷 export 동작.
+- [O] **S15.** 뷰포트 품질 색상화 드롭다운 (Aspect / Skewness / Non-ortho) 3 모드 동작.
+- [X] **S16.** Quality 탭 히스토그램이 Build 완료 직후 자동 갱신.
+- [O] **S17.** Export pane 활성화 + STEP/IGES/STL 선택 포맷 export 동작.
 
 ---
 

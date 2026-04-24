@@ -11,6 +11,15 @@
 """
 from __future__ import annotations
 
+import sys as _sys
+from pathlib import Path as _Path
+
+# 프로젝트 루트 (이 파일의 상위 디렉터리) 를 sys.path 에 삽입해
+# `python desktop/qt_main.py` 직접 실행 시에도 `desktop.*` / `core.*` import 가 동작.
+_PROJECT_ROOT = _Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in _sys.path:
+    _sys.path.insert(0, str(_PROJECT_ROOT))
+
 try:
     from core.version import APP_VERSION
 except ModuleNotFoundError:
@@ -39,6 +48,12 @@ def _configure_pyvista_runtime() -> None:
         if is_windows:
             return
 
+        # WSL/Linux X11 환경: xcb 플랫폼을 명시해야 VTK QtInteractor가
+        # QApplication 생성 이전에 window ID를 올바르게 처리한다.
+        # (없으면 XConfigureWindow BadWindow 오류로 프로세스가 죽음)
+        if has_display and not qt_offscreen:
+            os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
+
         if is_headless:
             # WSL 환경 감지
             is_wsl = "wsl" in os.environ.get("PATH", "").lower() or (
@@ -65,6 +80,8 @@ def _configure_pyvista_runtime() -> None:
 def main() -> None:  # pragma: no cover
     """QApplication 을 생성하고 AutoTessellWindow 를 표시한다."""
     import sys
+    import faulthandler
+    faulthandler.enable()  # SIGSEGV 시 Python traceback 출력
 
     _configure_pyvista_runtime()
 

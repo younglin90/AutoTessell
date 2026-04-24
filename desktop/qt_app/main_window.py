@@ -376,6 +376,12 @@ class AutoTessellWindow:  # type: ignore[misc]
     ENGINE_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # (group_label, [(value, display, status: ok/off/warn)])
         ("자동", [("auto", "Auto (best available tier)", "ok")]),
+        # v0.4 Native-First: 우리가 직접 구현한 엔진 (외부 의존 0).
+        ("Native (v0.4, 권장)", [
+            ("native_tet", "Native Tet (scipy Delaunay + envelope)", "ok"),
+            ("native_hex", "Native Hex (octree + snap + BL)", "ok"),
+            ("native_poly", "Native Poly (Voronoi + Lloyd CVT)", "ok"),
+        ]),
         ("Hex-dominant", [
             ("snappy", "SnappyHexMesh · CFD", "ok"),
             ("cfmesh", "cfMesh", "ok"),
@@ -721,13 +727,20 @@ class AutoTessellWindow:  # type: ignore[misc]
         return True
 
     def _refresh_quality_seg_btns(self) -> None:
-        """품질 레벨 세그먼트 버튼 활성 상태 갱신."""
+        """품질 레벨 세그먼트 버튼 활성 상태 갱신.
+
+        Qt style property 선택자 ``QPushButton[active="true"]`` 는 문자열 비교라
+        bool 을 그대로 전달해도 인식되지 않는 케이스가 있다. 명시적으로 "true"/"false"
+        문자열로 저장하고 update() 로 repaint 를 강제.
+        """
         for lvl, btn in self._quality_seg_btns.items():
             active = (lvl == self._quality_level.value)
             try:
-                btn.setProperty("active", active)  # type: ignore[union-attr]
-                btn.style().unpolish(btn)  # type: ignore[union-attr]
-                btn.style().polish(btn)  # type: ignore[union-attr]
+                btn.setProperty("active", "true" if active else "false")  # type: ignore[union-attr]
+                style = btn.style()  # type: ignore[union-attr]
+                style.unpolish(btn)
+                style.polish(btn)
+                btn.update()  # type: ignore[union-attr]
             except Exception:
                 pass
 
@@ -1945,6 +1958,10 @@ class AutoTessellWindow:  # type: ignore[misc]
             "hohqmesh": "HOHQMesh",
             "voro_poly": "Voronoi Polyhedral",
             "polyhedral": "polyDualMesh",
+            # v0.4 Native-First
+            "native_tet": "Native Tet",
+            "native_hex": "Native Hex",
+            "native_poly": "Native Poly",
         }
         volume_engine = display_map.get(tier, tier)
 
@@ -2157,7 +2174,7 @@ class AutoTessellWindow:  # type: ignore[misc]
             btn = QPushButton(label)
             btn.setFlat(True)
             btn.setCursor(_qt_cursor_pointing())
-            btn.setProperty("active", lvl == self._quality_level.value)
+            btn.setProperty("active", "true" if lvl == self._quality_level.value else "false")
             btn.setStyleSheet(
                 f"QPushButton {{ background: transparent; color: {PALETTE['text_2']}; "
                 f"border: none; border-radius: 4px; padding: 6px 10px; "

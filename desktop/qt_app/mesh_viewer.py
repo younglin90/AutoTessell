@@ -11,15 +11,80 @@ from pathlib import Path
 from typing import Optional
 import logging
 import gc
+import os
 
 log = logging.getLogger(__name__)
+
+
+def _env_flag(name: str) -> bool:
+    """환경변수를 boolean feature flag로 해석한다."""
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _qt_runtime_is_headless() -> bool:
+    """Qt/PyVistaQt가 native window를 만들기 어려운 환경인지 판별한다."""
+    if os.environ.get("QT_QPA_PLATFORM", "").strip().lower() == "offscreen":
+        return True
+    if os.name == "nt":
+        return False
+    return not (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+
+
+def _force_static_viewer_requested() -> bool:
+    """VTK native window 문제를 우회하기 위한 정적 뷰어 강제 flag."""
+    return _env_flag("AUTOTESSELL_STATIC_VIEWER")
+
+
+def _direct_polymesh_preview_enabled() -> bool:
+    """OpenFOAMReader 직접 preview를 명시적으로 허용했는지 확인한다."""
+    return _env_flag("AUTOTESSELL_POLYMESH_DIRECT_PREVIEW")
+
+
+def _find_case_preview_mesh(case_dir: Path) -> Path | None:
+    """OpenFOAM case에서 GUI preview에 적합한 VTK 계열 파일을 찾는다.
+
+    foamToVTK 출력 구조:
+      VTK/caseName_N/internal.vtu   — 실제 볼륨 cells (Quality 계산에 필수)
+      VTK/caseName_N/boundary/*.vtp — 경계 면
+
+    stale VTK (이전 tier/snappy 결과) 가 남아 있으면 GUI가 실제와 다른 셀 구성을
+    보여주므로, `constant/polyMesh/faces` 의 mtime 보다 오래된 VTU 는 무시한다.
+    """
+    try:
+        poly_faces = case_dir / "constant" / "polyMesh" / "faces"
+        poly_mtime = poly_faces.stat().st_mtime if poly_faces.exists() else 0.0
+    except Exception:
+        poly_mtime = 0.0
+
+    def _not_stale(p: Path) -> bool:
+        try:
+            return p.stat().st_mtime + 1.0 >= poly_mtime
+        except Exception:
+            return True
+
+    # 우선순위 1: internal.vtu (foamToVTK 볼륨 출력) — stale 제외
+    internal_files = [
+        p for p in case_dir.glob("**/internal.vtu")
+        if p.is_file() and _not_stale(p)
+    ]
+    if internal_files:
+        return max(internal_files, key=lambda p: p.stat().st_mtime)
+    # 우선순위 2: 나머지 VTK 포맷 — stale 제외
+    for pattern in ("**/*.vtu", "**/*.vtk", "**/*.vtp", "**/*.vtm"):
+        files = [
+            p for p in case_dir.glob(pattern)
+            if p.is_file() and _not_stale(p)
+        ]
+        if files:
+            return max(files, key=lambda p: p.stat().st_mtime)
+    return None
+
 
 try:
     import pyvista as pv
     import numpy as np
-    import os
 
-    pv.OFF_SCREEN = False  # 인터랙티브 모드에서는 오프스크린 끔
+    pv.OFF_SCREEN = _qt_runtime_is_headless()
     PYVISTA_AVAILABLE = True
 except ImportError:
     PYVISTA_AVAILABLE = False
@@ -188,15 +253,25 @@ def _mesh_element_label(mesh: object) -> tuple[str, str]:
         # 표면 메시: n_cells = 삼각형(face) 개수
         return (f"△ {n_cells:,} faces", "")
 
-try:
-    from pyvistaqt import QtInteractor
-    PYVISTAQT_AVAILABLE = True
-except ImportError:
+if _qt_runtime_is_headless() or _force_static_viewer_requested():
     PYVISTAQT_AVAILABLE = False
-    log.warning("pyvistaqt 미설치 — pip install pyvistaqt")
-except Exception as e:
-    PYVISTAQT_AVAILABLE = False
-    log.warning(f"pyvistaqt 초기화 실패: {e}")
+    QtInteractor = None  # type: ignore[assignment]
+    if _force_static_viewer_requested():
+        log.info("AUTOTESSELL_STATIC_VIEWER=1 — 정적 PNG 뷰어 사용")
+    else:
+        log.info("headless/offscreen Qt 환경 — 정적 PNG 뷰어 사용")
+else:
+    try:
+        from pyvistaqt import QtInteractor
+        PYVISTAQT_AVAILABLE = True
+    except ImportError:
+        PYVISTAQT_AVAILABLE = False
+        QtInteractor = None  # type: ignore[assignment]
+        log.warning("pyvistaqt 미설치 — pip install pyvistaqt")
+    except Exception as e:
+        PYVISTAQT_AVAILABLE = False
+        QtInteractor = None  # type: ignore[assignment]
+        log.warning(f"pyvistaqt 초기화 실패: {e}")
 
 try:
     from PySide6.QtCore import Qt, QObject, Signal, QThread
@@ -301,13 +376,33 @@ class RenderWorker(QObject):
             plotter.add_light(pv.Light(position=(1, 1, 1), intensity=0.8, color="white"))
             plotter.add_light(pv.Light(position=(-1, -1, 0.5), intensity=0.4, color="lightblue"))
 
+            # smooth_shading=True 를 add_mesh에 넘기면 PyVista 내부에서
+            # prepare_smooth_shading → _extract_surface → VTK _update_alg 를
+            # 백그라운드 스레드에서 호출해 SIGSEGV를 유발한다.
+            # 대신 normals를 미리 구운 뒤 smooth_shading=False 로 렌더한다.
+            try:
+                if isinstance(mesh, pv.UnstructuredGrid):
+                    mesh = mesh.extract_surface(algorithm="dataset_surface")
+            except Exception:
+                pass
+            try:
+                if isinstance(mesh, pv.PolyData):
+                    mesh = mesh.compute_normals(
+                        feature_angle=30,
+                        split_vertices=True,
+                        consistent_normals=True,
+                        non_manifold_traversal=False,
+                    )
+            except Exception:
+                pass
+
             plotter.add_mesh(
                 mesh,
                 color="#00d9ff",
                 opacity=opacity,
                 show_edges=show_edges,
                 edge_color="#ffffff" if show_edges else None,
-                smooth_shading=True,
+                smooth_shading=False,  # normals already baked in above
             )
 
             if show_points:
@@ -361,6 +456,9 @@ class RenderWorker(QObject):
 class StaticMeshViewer(QWidget):
     """폴백용 정적 PNG 뷰어 (pyvistaqt 미설치 시)."""
 
+    # 메시 로드 완료 후 PyVista mesh 객체 전달 — Quality 통계 계산 연결용
+    mesh_ready = Signal(object)
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._label = QLabel()
@@ -374,9 +472,10 @@ class StaticMeshViewer(QWidget):
             "QLabel { background-color: #161b22; border: 1px solid #30363d; "
             "border-radius: 4px; padding: 8px; font-size: 10px; color: #c9d1d9; }"
         )
-        self._render_thread: Optional[QThread] = None
-        self._render_worker: Optional[RenderWorker] = None
+        self._rendering: bool = False
         self._temp_files: list[Path] = []
+        self._pending_path: object = None
+        self._pending_kwargs: dict = {}
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -402,45 +501,49 @@ class StaticMeshViewer(QWidget):
             self._set_placeholder("❌ PyVista 미설치")
             return False
 
-        if self._render_thread is not None and isinstance(self._render_thread, QThread):
-            if self._render_thread.isRunning():
-                # 이전 워커 시그널 먼저 해제 — stale 콜백 방지
-                if self._render_worker is not None:
-                    try:
-                        self._render_worker.render_finished.disconnect()
-                        self._render_worker.render_error.disconnect()
-                    except Exception:
-                        pass
-                self._render_thread.quit()
-                self._render_thread.wait(2000)
+        if self._rendering:
+            # 이전 렌더가 진행 중이면 최신 요청만 보관한다.
+            self._pending_path = path
+            self._pending_kwargs = dict(kwargs)
+            return True
 
         self._set_placeholder("⏳ 렌더링 중...")
         self._info_label.setText("⏳ 메시 로딩 중...")
 
-        self._render_worker = RenderWorker()
-        self._render_thread = QThread()
-        self._render_worker.moveToThread(self._render_thread)
-        self._render_worker.render_finished.connect(self._on_done)
-        self._render_worker.render_error.connect(self._on_error)
-        self._render_worker.render_finished.connect(self._render_thread.quit)
-        self._render_worker.render_error.connect(self._render_thread.quit)
+        # VTK 필터(_update_alg)를 백그라운드 스레드에서 실행하면 WSL2/X11 환경에서
+        # SIGSEGV가 발생한다. QTimer.singleShot(0) 으로 메인 스레드에서 실행한다.
+        from PySide6.QtCore import QTimer
+        self._rendering = True
+        QTimer.singleShot(0, lambda: self._do_render(path, **{k: v for k, v in kwargs.items()}))
+        return True
+
+    def _do_render(self, path: object, **kwargs: object) -> None:
+        """메인 스레드에서 PyVista 오프스크린 렌더링을 실행한다."""
+        worker = RenderWorker()
+        worker.render_finished.connect(self._on_done)
+        worker.render_error.connect(self._on_error)
 
         show_edges = bool(kwargs.get("show_edges", True))
         show_points = bool(kwargs.get("show_points", False))
         camera_view = str(kwargs.get("camera_view", "isometric"))
         opacity = float(kwargs.get("opacity", 0.95))
 
-        self._render_thread.started.connect(
-            lambda: self._render_worker.render_mesh(
-                path,
-                show_edges=show_edges,
-                show_points=show_points,
-                camera_view=camera_view,
-                opacity=opacity,
-            )
+        worker.render_mesh(
+            path,
+            show_edges=show_edges,
+            show_points=show_points,
+            camera_view=camera_view,
+            opacity=opacity,
         )
-        self._render_thread.start()
-        return True
+
+        # 렌더 완료 후 품질 통계 파이프라인 트리거 — 메시를 한번 더 로드해
+        # mesh_ready를 emit한다 (메인 스레드 실행이므로 VTK 안전).
+        try:
+            mesh = _pv_read_any(Path(str(path)))
+            if mesh is not None:
+                self.mesh_ready.emit(mesh)
+        except Exception:
+            pass
 
     def _on_done(self, image_path: str, mesh_info: dict) -> None:
         from PySide6.QtGui import QPixmap as QP
@@ -466,18 +569,28 @@ class StaticMeshViewer(QWidget):
                     self._temp_files.pop(0).unlink()
                 except Exception:
                     pass
+        self._rendering = False
+        self._flush_pending()
 
     def _on_error(self, msg: str) -> None:
         self._set_placeholder(f"❌ 오류:\n{msg[:50]}")
         self._info_label.setText(f"❌ {msg[:80]}")
+        self._rendering = False
+        self._flush_pending()
+
+    def _flush_pending(self) -> None:
+        """대기 중인 렌더 요청이 있으면 지금 시작한다."""
+        if self._pending_path is not None:
+            path, kwargs = self._pending_path, self._pending_kwargs
+            self._pending_path = None
+            self._pending_kwargs = {}
+            self.load_mesh(path, **kwargs)
 
     def load_polymesh(self, case_dir: str | Path) -> bool:
         case_dir = Path(case_dir)
-        # VTU/VTK 우선
-        for pattern in ("**/*.vtu", "**/*.vtk"):
-            files = list(case_dir.glob(pattern))
-            if files:
-                return self.load_mesh(max(files, key=lambda p: p.stat().st_mtime))
+        preview_mesh = _find_case_preview_mesh(case_dir)
+        if preview_mesh is not None:
+            return self.load_mesh(preview_mesh)
         # MSH
         msh_files = list(case_dir.glob("**/*.msh"))
         if msh_files:
@@ -865,9 +978,20 @@ class InteractiveMeshViewer(QWidget):
         """OpenFOAM case 디렉터리에서 메시 로드."""
         case_dir = Path(case_dir)
 
-        # 1. OpenFOAM polyMesh 직접 읽기
+        # 1. foamToVTK/meshio 결과 우선.
+        preview_mesh = _find_case_preview_mesh(case_dir)
+        if preview_mesh is not None:
+            return self.load_mesh(preview_mesh, show_edges=True)
+
+        # 2. OpenFOAM polyMesh 직접 읽기
         # pv.OpenFOAMReader는 케이스 디렉터리 안의 빈 .foam 파일을 입력으로 받음
         if (case_dir / "constant" / "polyMesh").exists():
+            if not _direct_polymesh_preview_enabled():
+                self._info_label.setText(
+                    "✅ OpenFOAM polyMesh 생성됨 "
+                    "(3D preview는 foamToVTK 결과가 있을 때 표시)"
+                )
+                return True
             try:
                 mesh = self._read_openfoam(case_dir)
                 if mesh is not None:
@@ -881,29 +1005,20 @@ class InteractiveMeshViewer(QWidget):
                     if cell_str:
                         parts.append(cell_str)
                     self._info_label.setText(" | ".join(parts))
+                    # Quality 탭 히스토그램 자동 갱신을 위해 mesh_ready 명시 emit.
+                    # (_on_mesh_loaded 경로를 타지 않는 직접 읽기에서는 기존 emit 없음)
+                    if hasattr(self, "mesh_ready"):
+                        try:
+                            self.mesh_ready.emit(mesh)
+                        except Exception:
+                            pass
                     return True
             except Exception as e:
                 log.warning(f"OpenFOAM 읽기 실패: {e}")
 
             # 읽기 실패해도 polyMesh 존재 확인됐으므로 텍스트로 표시
-            if self._plotter:
-                try:
-                    self._plotter.clear()
-                    self._plotter.background_color = "#0d1117"
-                    self._plotter.add_text(
-                        "✅ polyMesh 생성됨\n(3D 렌더링 불가)", font_size=14, color="white"
-                    )
-                except Exception:
-                    pass
             self._info_label.setText("✅ OpenFOAM polyMesh 생성됨 (3D 렌더링 불가)")
             return True
-
-        # 2. VTK/VTU 파일
-        for pattern in ("**/*.vtu", "**/*.vtk"):
-            vtk_files = list(case_dir.glob(pattern))
-            if vtk_files:
-                latest = max(vtk_files, key=lambda p: p.stat().st_mtime)
-                return self.load_mesh(latest, show_edges=True)
 
         # 3. MSH (Gmsh) — meshio 경유 변환
         msh_files = list(case_dir.glob("**/*.msh"))
@@ -1063,6 +1178,27 @@ class InteractiveMeshViewer(QWidget):
             self._plotter.add_light(
                 pv.Light(position=(-1, -1, 0.5), intensity=0.4, color="lightblue")
             )
+
+            # UnstructuredGrid (볼륨 메시)는 VTK plotter.clear() 후 재사용 시
+            # dangling C++ 참조로 segfault가 발생한다. 표면을 추출해 PolyData로
+            # 변환한 뒤 렌더링한다.
+            try:
+                if isinstance(mesh, pv.UnstructuredGrid):
+                    mesh = mesh.extract_surface(algorithm="dataset_surface")
+            except Exception:
+                pass
+
+            # PolyData 에만 compute_normals 적용 (날카로운 모서리 보존)
+            try:
+                if isinstance(mesh, pv.PolyData) and hasattr(mesh, "compute_normals"):
+                    mesh = mesh.compute_normals(
+                        feature_angle=30,
+                        split_vertices=True,
+                        consistent_normals=True,
+                        non_manifold_traversal=False,
+                    )
+            except Exception:
+                pass
 
             # 메시 추가
             self._mesh_actor = self._plotter.add_mesh(
@@ -1348,12 +1484,15 @@ class MeshViewerWidget(QWidget):
         if PYVISTAQT_AVAILABLE and PYVISTA_AVAILABLE:
             self._viewer: InteractiveMeshViewer | StaticMeshViewer = InteractiveMeshViewer(self)
             log.info("인터랙티브 3D 뷰어 초기화 완료 (pyvistaqt)")
-            # mesh_ready Signal로 통계 계산 연결 (monkey-patch 방지)
-            if hasattr(self._viewer, "mesh_ready"):
-                self._viewer.mesh_ready.connect(self._compute_and_emit_stats)
         else:
             self._viewer = StaticMeshViewer(self)
             log.warning("정적 PNG 폴백 뷰어 사용 중 (pyvistaqt 미설치)")
+        # mesh_ready Signal로 품질 통계 파이프라인 트리거 (두 뷰어 공통)
+        if hasattr(self._viewer, "mesh_ready"):
+            try:
+                self._viewer.mesh_ready.connect(self._compute_and_emit_stats)
+            except Exception:
+                pass
 
         layout.addWidget(self._viewer)
 
@@ -1374,7 +1513,13 @@ class MeshViewerWidget(QWidget):
                 is_volume = bool(cell_types & _VOLUME_CELL_TYPES)
                 stats["is_volume"] = is_volume
 
-                # 셀 구성 (타입별 개수)
+                # 셀 구성 (타입별 개수).
+                # foamToVTK가 생성한 internal.vtu는 OpenFOAM polyMesh의 각 cell 을
+                # VTK_POLYHEDRON(42) 으로 내보내는 경우가 많다. VTK type 만 보면
+                # 전부 polyhedron이 되어 Quality 탭의 Hex/Tet 분류가 비현실적으로
+                # 나온다. 따라서 cell 당 point 개수 를 우선 기준으로 재분류한다:
+                #   4 pts → Tet, 5 pts → Pyramid, 6 pts → Wedge,
+                #   8 pts → Hex, 기타 → Polyhedral.
                 hex_types = {12, 25, 29}  # VTK_HEXAHEDRON, VTK_QUADRATIC_HEX, VTK_TRIQUADRATIC_HEX
                 tet_types = {10, 24}      # VTK_TETRA, VTK_QUADRATIC_TETRA
                 prism_types = {13, 26}    # VTK_WEDGE / VTK_QUADRATIC_WEDGE
@@ -1382,10 +1527,36 @@ class MeshViewerWidget(QWidget):
 
                 if n_cells > 0 and hasattr(mesh, "celltypes"):
                     ct_arr = list(getattr(mesh, "celltypes", []))
-                    n_hex = sum(1 for t in ct_arr if t in hex_types)
-                    n_tet = sum(1 for t in ct_arr if t in tet_types)
-                    n_prism = sum(1 for t in ct_arr if t in prism_types)
-                    n_poly = sum(1 for t in ct_arr if t in poly_types)
+                    n_hex = n_tet = n_prism = n_poly = 0
+
+                    def _points_of_cell(idx: int) -> int:
+                        try:
+                            return int(mesh.get_cell(idx).n_points)  # type: ignore[attr-defined]
+                        except Exception:
+                            return 0
+
+                    for idx, t in enumerate(ct_arr):
+                        if t in tet_types:
+                            n_tet += 1
+                        elif t in hex_types:
+                            n_hex += 1
+                        elif t in prism_types:
+                            n_prism += 1
+                        elif t in poly_types:
+                            # VTK_POLYHEDRON — points 개수로 재분류
+                            npts = _points_of_cell(idx)
+                            if npts == 4:
+                                n_tet += 1
+                            elif npts == 8:
+                                n_hex += 1
+                            elif npts == 6:
+                                n_prism += 1
+                            else:
+                                n_poly += 1
+                        else:
+                            # 미지의 cell 타입은 polyhedral로 분류
+                            n_poly += 1
+
                     total = max(n_cells, 1)
                     stats["hex_ratio"] = n_hex / total
                     stats["tet_ratio"] = n_tet / total
@@ -1399,50 +1570,49 @@ class MeshViewerWidget(QWidget):
                 pass
 
             # 품질 메트릭 (볼륨 메시인 경우에만, 셀 수 제한)
+            # pyvista >= 0.45: compute_cell_quality() deprecated → cell_quality() 사용
             if n_cells > 0 and n_cells <= 500_000:
-                try:
-                    qual = mesh.compute_cell_quality(quality_measure="aspect_ratio")  # type: ignore[union-attr]
-                    arr = qual.cell_data.get("CellQuality")
-                    if arr is not None and len(arr) > 0:
-                        import numpy as _np
-                        arr = _np.asarray(arr, dtype=float)
-                        arr = arr[_np.isfinite(arr)]
-                        if len(arr) > 0:
-                            stats["max_aspect_ratio"] = float(arr.max())
-                            stats["mean_aspect_ratio"] = float(arr.mean())
-                            stats["hist_aspect_ratio"] = arr.tolist()
-                except Exception:
-                    pass
+                import numpy as _np
 
-                try:
-                    skew = mesh.compute_cell_quality(quality_measure="skew")  # type: ignore[union-attr]
-                    arr = skew.cell_data.get("CellQuality")
-                    if arr is not None and len(arr) > 0:
-                        import numpy as _np
+                def _cell_quality_array(m: object, measure: str) -> "_np.ndarray | None":
+                    """새 cell_quality() API 우선, 없으면 compute_cell_quality() fallback."""
+                    try:
+                        if hasattr(m, "cell_quality"):
+                            result = m.cell_quality(quality_measure=measure)  # type: ignore[union-attr]
+                            # 새 API는 배열 이름이 quality_measure 값과 동일
+                            arr = result.cell_data.get(measure)
+                            if arr is None:
+                                # fallback: 첫 번째 cell_data array
+                                keys = list(result.cell_data.keys())
+                                arr = result.cell_data[keys[0]] if keys else None
+                        else:
+                            result = m.compute_cell_quality(quality_measure=measure)  # type: ignore[union-attr]
+                            arr = result.cell_data.get("CellQuality")
+                        if arr is None or len(arr) == 0:
+                            return None
                         arr = _np.asarray(arr, dtype=float)
-                        arr = arr[_np.isfinite(arr)]
-                        if len(arr) > 0:
-                            stats["max_skewness"] = float(arr.max())
-                            stats["mean_skewness"] = float(arr.mean())
-                            stats["hist_skewness"] = arr.tolist()
-                except Exception:
-                    pass
+                        return arr[_np.isfinite(arr)] if len(arr) > 0 else None
+                    except Exception:
+                        return None
 
-                # Non-orthogonality (CFD 핵심 메트릭, OpenFOAM checkMesh 기준)
-                # PyVista의 max_angle을 proxy로 사용 (180 - 인접 면 각도)
-                try:
-                    nonortho = mesh.compute_cell_quality(quality_measure="max_angle")  # type: ignore[union-attr]
-                    arr = nonortho.cell_data.get("CellQuality")
-                    if arr is not None and len(arr) > 0:
-                        import numpy as _np
-                        arr = _np.asarray(arr, dtype=float)
-                        arr = arr[_np.isfinite(arr)]
-                        if len(arr) > 0:
-                            stats["max_non_orthogonality"] = float(arr.max())
-                            stats["mean_non_orthogonality"] = float(arr.mean())
-                            stats["hist_non_orthogonality"] = arr.tolist()
-                except Exception:
-                    pass
+                arr = _cell_quality_array(mesh, "aspect_ratio")
+                if arr is not None and len(arr) > 0:
+                    stats["max_aspect_ratio"] = float(arr.max())
+                    stats["mean_aspect_ratio"] = float(arr.mean())
+                    stats["hist_aspect_ratio"] = arr.tolist()
+
+                arr = _cell_quality_array(mesh, "skew")
+                if arr is not None and len(arr) > 0:
+                    stats["max_skewness"] = float(arr.max())
+                    stats["mean_skewness"] = float(arr.mean())
+                    stats["hist_skewness"] = arr.tolist()
+
+                # Non-orthogonality proxy (max_angle)
+                arr = _cell_quality_array(mesh, "max_angle")
+                if arr is not None and len(arr) > 0:
+                    stats["max_non_orthogonality"] = float(arr.max())
+                    stats["mean_non_orthogonality"] = float(arr.mean())
+                    stats["hist_non_orthogonality"] = arr.tolist()
 
             if stats:
                 self.mesh_stats_computed.emit(stats)
