@@ -639,6 +639,12 @@ def generate_native_tet(
                 metric_full is not None
                 and metric_full.shape[0] == final_pts.shape[0]
             ) else None
+            # Round 64: 입력 surface edge 는 collapse 금지.
+            _cur_surf_edges: set[tuple[int, int]] = set()
+            for _ti in range(F.shape[0]):
+                _a, _b, _c = int(F[_ti, 0]), int(F[_ti, 1]), int(F[_ti, 2])
+                for _u, _v in ((_a, _b), (_b, _c), (_c, _a)):
+                    _cur_surf_edges.add((_u, _v) if _u < _v else (_v, _u))
             final_pts, final_tets, n_c = collapse_short_edges(
                 final_pts, final_tets,
                 target_edge=effective_target if enable_phase_b else float(target_edge_length),
@@ -646,6 +652,7 @@ def generate_native_tet(
                 locked_vertices=surface_new_ids2,
                 max_collapses=int(max_collapses_per_iter),
                 metric=m_collapse,
+                protected_edges=_cur_surf_edges,
             )
             # cell 수 급감 rollback: iteration 전 대비 급락하면 이전 상태로.
             if (

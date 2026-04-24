@@ -224,6 +224,7 @@ def _collapse_vectorized_single_pass(
     locked_set: set[int],
     max_collapses: int,
     metric: np.ndarray | None = None,
+    protected_edges: set[tuple[int, int]] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """단일 pass bulk collapse. 각 tet 의 "가장 짧은 edge" 만 후보.
 
@@ -267,6 +268,11 @@ def _collapse_vectorized_single_pass(
         v_locked = v in locked_set
         if u_locked and v_locked:
             continue
+        # Round 64: 입력 surface edge 는 collapse 금지 (conformal 보호).
+        if protected_edges:
+            key = (u, v) if u < v else (v, u)
+            if key in protected_edges:
+                continue
         keeper, victim = (u, v) if v_locked or (not u_locked and u < v) else (v, u)
         used.add(keeper); used.add(victim)
         victim_of[victim] = keeper
@@ -325,6 +331,7 @@ def collapse_short_edges(
     locked_vertices: np.ndarray | None = None,
     max_collapses: int = 5000,
     metric: np.ndarray | None = None,
+    protected_edges: set[tuple[int, int]] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """edge length < ratio × target_edge 인 edge 양 끝을 merge.
 
@@ -347,6 +354,7 @@ def collapse_short_edges(
         locked_set=locked_set,
         max_collapses=int(max_collapses),
         metric=metric,
+        protected_edges=protected_edges,
     )
     return new_pts, new_tets, n_c
 
