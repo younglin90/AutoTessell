@@ -21,6 +21,27 @@ class CDTCheckResult:
     n_present_as_tet_edges: int
     n_missing: int
     missing_edges: list[tuple[int, int]]   # input surface indexing.
+    # beta970 (R94): triangle 회복률.
+    n_surface_faces: int = 0
+    n_present_as_tet_faces: int = 0
+    n_missing_faces: int = 0
+
+
+def _tet_triangles(tets: np.ndarray) -> set[tuple[int, int, int]]:
+    """tet 배열의 모든 face (canonical sorted)."""
+    tets = np.asarray(tets, dtype=np.int64)
+    if tets.size == 0:
+        return set()
+    faces = np.stack(
+        [tets[:, [0, 1, 2]], tets[:, [0, 1, 3]],
+         tets[:, [0, 2, 3]], tets[:, [1, 2, 3]]],
+        axis=1,
+    ).reshape(-1, 3)
+    faces = np.sort(faces, axis=1)
+    s: set[tuple[int, int, int]] = set()
+    for i in range(faces.shape[0]):
+        s.add((int(faces[i, 0]), int(faces[i, 1]), int(faces[i, 2])))
+    return s
 
 
 def _tet_edges(tets: np.ndarray) -> set[tuple[int, int]]:
@@ -55,7 +76,7 @@ def check_edge_recovery(
     """
     F = np.asarray(F, dtype=np.int64)
     if F.size == 0:
-        return CDTCheckResult(0, 0, 0, [])
+        return CDTCheckResult(0, 0, 0, [], 0, 0, 0)
     # surface edge set.
     surf_edges: set[tuple[int, int]] = set()
     for ti in range(F.shape[0]):
@@ -67,9 +88,22 @@ def check_edge_recovery(
     tet_edges = _tet_edges(tets)
 
     missing = [e for e in surf_edges if e not in tet_edges]
+
+    # beta970 (R94): face 회복 집계.
+    tet_faces = _tet_triangles(tets)
+    surf_faces: set[tuple[int, int, int]] = set()
+    for ti in range(F.shape[0]):
+        tri = sorted((int(F[ti, 0]), int(F[ti, 1]), int(F[ti, 2])))
+        surf_faces.add((tri[0], tri[1], tri[2]))
+    n_face_present = sum(1 for t in surf_faces if t in tet_faces)
+    n_face_missing = len(surf_faces) - n_face_present
+
     return CDTCheckResult(
         n_surface_edges=len(surf_edges),
         n_present_as_tet_edges=len(surf_edges) - len(missing),
         n_missing=len(missing),
         missing_edges=missing,
+        n_surface_faces=len(surf_faces),
+        n_present_as_tet_faces=n_face_present,
+        n_missing_faces=n_face_missing,
     )
