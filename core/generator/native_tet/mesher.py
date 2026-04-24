@@ -57,6 +57,13 @@ def generate_native_tet(
     seed_density: int = 12,
     sliver_quality_threshold: float = 0.05,
     max_input_vertices: int = 100000,
+    # beta104 Phase A — TetWild-lite 1 단계.
+    enable_phase_a: bool = True,
+    feature_angle_deg: float = 30.0,
+    recovery_iterations: int = 2,
+    protect_boundary_faces: bool = True,
+    smooth_iterations: int = 2,
+    smooth_relax: float = 0.5,
 ) -> NativeTetResult:
     """입력 표면 메쉬 → tet polyMesh (MVP).
 
@@ -127,58 +134,115 @@ def generate_native_tet(
     all_pts = np.vstack([V, grid]) if grid.shape[0] else V.copy()
     log.info("native_tet_seed", n_points=all_pts.shape[0], n_grid_inside=grid.shape[0])
 
-    # 2) Delaunay
-    try:
-        dl = Delaunay(all_pts)
-    except Exception as exc:
+    # 2) Delaunay (Phase A3: missing triangle 감지 후 시드 추가 재시도).
+    n_surface = V.shape[0]
+    extra_seeds = np.zeros((0, 3), dtype=np.float64)
+
+    def _run_delaunay(seed_pts: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+        try:
+            _dl = Delaunay(seed_pts)
+        except Exception as _exc:
+            log.warning("native_tet_delaunay_failed", error=str(_exc))
+            return None
+        _tets = np.asarray(_dl.simplices, dtype=np.int64)
+        if _tets.shape[0] == 0:
+            return None
+        return seed_pts, _tets
+
+    dl_res = _run_delaunay(all_pts)
+    if dl_res is None:
         return NativeTetResult(
-            False, time.perf_counter() - t0,
-            message=f"Delaunay 실패: {exc}",
+            False, time.perf_counter() - t0, message="Delaunay 실패 또는 0 tet",
         )
-    tets = np.asarray(dl.simplices, dtype=np.int64)
-    if tets.shape[0] == 0:
-        return NativeTetResult(
-            False, time.perf_counter() - t0,
-            message="Delaunay 가 0 tet 반환",
-        )
+    all_pts, tets = dl_res
+
+    if enable_phase_a and recovery_iterations > 0:
+        from core.generator.native_tet.insertion import recovery_seeds
+
+        for it in range(int(recovery_iterations)):
+            rec = recovery_seeds(
+                all_pts, F, tets,
+                bump_distance=0.05 * float(target_edge_length),
+                max_seeds=2000,
+            )
+            if rec.n_missing == 0:
+                log.info(
+                    "native_tet_recovery_complete",
+                    iter=it, n_input=rec.n_input_triangles,
+                )
+                break
+            log.info(
+                "native_tet_recovery_iter",
+                iter=it, n_missing=rec.n_missing,
+                n_new_seeds=int(rec.extra_seeds.shape[0]),
+            )
+            if rec.extra_seeds.shape[0] == 0:
+                break
+            # 새 시드 중 outside 는 제외 (안쪽 판정만).
+            inside_new = _inside_winding_number(rec.extra_seeds, V, F)
+            good = rec.extra_seeds[inside_new]
+            if good.shape[0] == 0:
+                break
+            extra_seeds = np.vstack([extra_seeds, good])
+            augmented = np.vstack([all_pts, good])
+            dl_res2 = _run_delaunay(augmented)
+            if dl_res2 is None:
+                break
+            all_pts, tets = dl_res2
 
     # 3) tet centroid 로 inside 판정
     centroids = all_pts[tets].mean(axis=1)
     inside_tet = _inside_winding_number(centroids, V, F)
 
-    # 3b) sliver tet 제거 — shape quality:
-    #     q = 8.48 * volume / (sum of edge_len^3 / 6) ≈ aspect ratio 의 역수.
-    #     정사면체 q ≈ 1, sliver 는 0 근처. 임계값 ε 아래이면 탈락.
-    v = all_pts[tets]   # (T, 4, 3)
-    e01 = np.linalg.norm(v[:, 1] - v[:, 0], axis=1)
-    e02 = np.linalg.norm(v[:, 2] - v[:, 0], axis=1)
-    e03 = np.linalg.norm(v[:, 3] - v[:, 0], axis=1)
-    e12 = np.linalg.norm(v[:, 2] - v[:, 1], axis=1)
-    e13 = np.linalg.norm(v[:, 3] - v[:, 1], axis=1)
-    e23 = np.linalg.norm(v[:, 3] - v[:, 2], axis=1)
-    edge_max = np.maximum.reduce([e01, e02, e03, e12, e13, e23])
-    # tet signed volume (abs 이므로 winding 무관)
-    vol6 = np.abs(
-        np.einsum(
-            "ij,ij->i",
-            v[:, 1] - v[:, 0],
-            np.cross(v[:, 2] - v[:, 0], v[:, 3] - v[:, 0]),
-        )
-    )
-    # shape quality: 8.48 * V / edge_max^3 ∈ [0, 1]
-    safe = edge_max > 1e-30
-    q = np.zeros_like(edge_max)
-    q[safe] = (8.48 * (vol6[safe] / 6.0)) / (edge_max[safe] ** 3)
-    # beta5: sliver threshold 상향 (0.02 → 0.05). beta62: 파라미터화.
+    # 3b) Phase A2 — boundary-aware sliver filter.
     q_thresh = max(0.0, float(sliver_quality_threshold))
-    keep_mask = inside_tet & (q >= q_thresh)
-    n_dropped_sliver = int(inside_tet.sum() - keep_mask.sum())
-    log.info(
-        "native_tet_sliver_filter",
-        kept=int(keep_mask.sum()),
-        dropped_sliver=n_dropped_sliver,
-        q_threshold=q_thresh,
-    )
+    if enable_phase_a:
+        from core.generator.native_tet.filter import filter_slivers
+
+        fr = filter_slivers(
+            tets, all_pts, inside_tet,
+            n_surface_vertices=n_surface,
+            q_threshold_interior=q_thresh,
+            q_threshold_boundary=max(0.0, q_thresh * 0.1),
+            protect_boundary_faces=protect_boundary_faces,
+        )
+        keep_mask = fr.keep_mask
+        log.info(
+            "native_tet_sliver_filter_phase_a",
+            kept=int(keep_mask.sum()),
+            dropped_total=fr.n_dropped,
+            interior_dropped=fr.n_interior_dropped,
+            boundary_protected=fr.n_boundary_protected,
+            q_thresh_interior=fr.q_thresh_interior,
+            q_thresh_boundary=fr.q_thresh_boundary,
+        )
+    else:
+        # legacy: 일괄 q_thresh 적용.
+        v = all_pts[tets]
+        e01 = np.linalg.norm(v[:, 1] - v[:, 0], axis=1)
+        e02 = np.linalg.norm(v[:, 2] - v[:, 0], axis=1)
+        e03 = np.linalg.norm(v[:, 3] - v[:, 0], axis=1)
+        e12 = np.linalg.norm(v[:, 2] - v[:, 1], axis=1)
+        e13 = np.linalg.norm(v[:, 3] - v[:, 1], axis=1)
+        e23 = np.linalg.norm(v[:, 3] - v[:, 2], axis=1)
+        edge_max = np.maximum.reduce([e01, e02, e03, e12, e13, e23])
+        vol6 = np.abs(
+            np.einsum(
+                "ij,ij->i",
+                v[:, 1] - v[:, 0],
+                np.cross(v[:, 2] - v[:, 0], v[:, 3] - v[:, 0]),
+            )
+        )
+        safe = edge_max > 1e-30
+        q = np.zeros_like(edge_max)
+        q[safe] = (8.48 * (vol6[safe] / 6.0)) / (edge_max[safe] ** 3)
+        keep_mask = inside_tet & (q >= q_thresh)
+        log.info(
+            "native_tet_sliver_filter",
+            kept=int(keep_mask.sum()),
+            dropped_sliver=int(inside_tet.sum() - keep_mask.sum()),
+            q_threshold=q_thresh,
+        )
     kept = tets[keep_mask]
     if kept.shape[0] == 0:
         return NativeTetResult(
@@ -196,7 +260,36 @@ def generate_native_tet(
     remap = -np.ones(all_pts.shape[0], dtype=np.int64)
     remap[used] = np.arange(used.shape[0])
     final_tets = remap[kept].astype(np.int64)
-    final_pts = all_pts[used]
+    final_pts = all_pts[used].copy()
+
+    # 4b) Phase A1 + A4 — feature 잠금 + interior Laplacian smoothing.
+    if enable_phase_a and smooth_iterations > 0:
+        from core.generator.native_tet.features import detect_features
+        from core.generator.native_tet.smooth import smooth_interior
+
+        feat = detect_features(V, F, feature_angle_deg=float(feature_angle_deg))
+        # surface vertex 의 new-index: remap[surface_id] (0..n_surface-1 중 used).
+        surface_new_ids = remap[np.arange(n_surface)]
+        surface_new_ids = surface_new_ids[surface_new_ids >= 0]
+        locked_new: list[int] = surface_new_ids.tolist()
+        # feature_locked 는 원래 surface vertex 의 부분집합 → 이미 surface 로 잠김.
+        # (추가 lock 이 필요하면 여기서 확장.)
+        _ = feat   # 향후 anisotropic smoothing 등에 활용.
+
+        sr = smooth_interior(
+            final_pts, final_tets,
+            locked_vertex_ids=np.asarray(locked_new, dtype=np.int64),
+            n_iter=int(smooth_iterations),
+            relax=float(smooth_relax),
+        )
+        log.info(
+            "native_tet_smooth",
+            n_iter=sr.n_iter,
+            moved=sr.n_interior_moved,
+            max_disp=sr.max_displacement,
+            n_feature_edges=int(feat.feature_edges.shape[0]),
+            n_corner=int(feat.corner_vertices.shape[0]),
+        )
 
     # 5) polyMesh 쓰기
     try:
