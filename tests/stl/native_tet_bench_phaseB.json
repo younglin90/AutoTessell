@@ -8,9 +8,9 @@
     "A_mean_q": 0.3134,
     "A_elapsed_s": 0.031,
     "ABC_success": true,
-    "ABC_n_cells": 165,
+    "ABC_n_cells": 164,
     "ABC_min_q": 0.0046,
-    "ABC_mean_q": 0.2768,
+    "ABC_mean_q": 0.2806,
     "ABC_elapsed_s": 0.079
   },
   {
@@ -20,12 +20,12 @@
     "A_n_cells": 1649,
     "A_min_q": 0.0001,
     "A_mean_q": 0.091,
-    "A_elapsed_s": 0.423,
+    "A_elapsed_s": 0.417,
     "ABC_success": true,
-    "ABC_n_cells": 1900,
+    "ABC_n_cells": 1891,
     "ABC_min_q": 0.0001,
-    "ABC_mean_q": 0.1012,
-    "ABC_elapsed_s": 1.267
+    "ABC_mean_q": 0.1037,
+    "ABC_elapsed_s": 1.296
   },
   {
     "stl": "03_hard_bracket.stl",
@@ -34,12 +34,12 @@
     "A_n_cells": 479,
     "A_min_q": 0.0,
     "A_mean_q": 0.0471,
-    "A_elapsed_s": 0.225,
+    "A_elapsed_s": 0.233,
     "ABC_success": true,
-    "ABC_n_cells": 535,
+    "ABC_n_cells": 534,
     "ABC_min_q": 0.0001,
-    "ABC_mean_q": 0.0565,
-    "ABC_elapsed_s": 0.573
+    "ABC_mean_q": 0.0564,
+    "ABC_elapsed_s": 0.479
   },
   {
     "stl": "04_extreme_gear.stl",
@@ -48,12 +48,12 @@
     "A_n_cells": 5189,
     "A_min_q": 0.0,
     "A_mean_q": 0.1427,
-    "A_elapsed_s": 0.746,
+    "A_elapsed_s": 0.731,
     "ABC_success": true,
     "ABC_n_cells": 5189,
     "ABC_min_q": 0.0,
     "ABC_mean_q": 0.149,
-    "ABC_elapsed_s": 3.324
+    "ABC_elapsed_s": 3.38
   },
   {
     "stl": "05_ultra_knot.stl",
@@ -62,11 +62,11 @@
     "A_n_cells": 45036,
     "A_min_q": 0.0004,
     "A_mean_q": 0.1316,
-    "A_elapsed_s": 7.414,
+    "A_elapsed_s": 7.345,
     "ABC_success": true,
     "ABC_n_cells": 45036,
     "ABC_min_q": 0.0,
     "ABC_mean_q": 0.1341,
-    "ABC_elapsed_s": 211.597
+    "ABC_elapsed_s": 216.898
   }
 ]

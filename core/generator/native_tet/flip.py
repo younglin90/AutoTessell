@@ -88,18 +88,51 @@ def flip_faces_23(
     alive = np.ones(tets.shape[0], dtype=bool)
     tets_list = tets.tolist()
 
-    # 한 번의 pass 로 처리 (여러 pass 는 외부에서 반복).
-    fmap = _face_map_vectorized(np.asarray(tets_list, dtype=np.int64))
+    # 한 번의 pass — 2 owner face 만 빠르게 찾기 (numpy unique).
+    T = np.asarray(tets_list, dtype=np.int64)
+    face_arr = np.stack(
+        [T[:, [1, 2, 3]], T[:, [0, 2, 3]], T[:, [0, 1, 3]], T[:, [0, 1, 2]]],
+        axis=1,
+    ).reshape(-1, 3)
+    face_arr.sort(axis=1)
+    # canonical 64-bit encoding for group-by.
+    max_id = int(T.max()) + 1 if T.size else 1
+    key64 = (
+        face_arr[:, 0].astype(np.int64) * max_id * max_id
+        + face_arr[:, 1].astype(np.int64) * max_id
+        + face_arr[:, 2].astype(np.int64)
+    )
+    _, inv, counts = np.unique(key64, return_inverse=True, return_counts=True)
+    # 2 owner 인 face 의 행(전체 face_arr 기준) 을 찾는다.
+    # 각 unique 에 대해 owner tet 2 개 쌍을 선형 탐색.
+    shared_face_groups = np.where(counts == 2)[0]
+
+    fmap_shared: list[tuple[tuple[int, int, int], int, int]] = []
+    if shared_face_groups.size > 0:
+        # 각 group 의 owner tet id 2 개 선택.
+        group_pos = np.argsort(inv)
+        # 누적 시작 index.
+        boundaries = np.concatenate([[0], np.cumsum(counts)])
+        for gi in shared_face_groups.tolist():
+            s = int(boundaries[gi]); e = int(boundaries[gi + 1])
+            face_idxs = group_pos[s:e]
+            # face_arr row → (tet_id = row // 4).
+            ti1 = int(face_idxs[0]) // 4
+            ti2 = int(face_idxs[1]) // 4
+            if ti1 == ti2:
+                continue
+            f0 = face_arr[face_idxs[0]]
+            fmap_shared.append(
+                ((int(f0[0]), int(f0[1]), int(f0[2])), ti1, ti2)
+            )
+
     visited_faces: set[tuple[int, int, int]] = set()
 
-    for face, owners in list(fmap.items()):
+    for face, ti, tj in fmap_shared:
         if n_flip >= max_flips:
             break
-        if len(owners) != 2:
-            continue
         if face in visited_faces:
             continue
-        ti, tj = owners
         if not (alive[ti] and alive[tj]):
             continue
         a, b, c = face
