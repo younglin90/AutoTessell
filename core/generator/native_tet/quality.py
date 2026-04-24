@@ -26,6 +26,10 @@ class QualitySnapshot:
     mean_aspect: float = 0.0
     min_dihedral_deg: float = 0.0
     median_dihedral_deg: float = 0.0
+    # Round 75: volume-weighted metrics (큰 tet 이 영향 큼).
+    vol_weighted_mean_q: float = 0.0
+    p10_q: float = 0.0             # worst 10% quality (percentile).
+    p10_dihedral_deg: float = 0.0
 
 
 def tet_shape_quality(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
@@ -131,9 +135,22 @@ def snapshot(pts: np.ndarray, tets: np.ndarray) -> QualitySnapshot:
     q = tet_shape_quality(pts, tets)
     if q.size == 0:
         return QualitySnapshot(0, 0.0, 0.0, 0.0, 0.0)
-    # 정확한 aspect ratio + dihedral.
     aspect = tet_aspect_ratio(pts, tets)
     dih = tet_min_dihedral_deg(pts, tets)
+
+    # volume weight.
+    tets_arr = np.asarray(tets, dtype=np.int64)
+    v = pts[tets_arr]
+    vol6 = np.abs(np.einsum(
+        "ij,ij->i",
+        v[:, 1] - v[:, 0],
+        np.cross(v[:, 2] - v[:, 0], v[:, 3] - v[:, 0]),
+    ))
+    w_sum = float(vol6.sum())
+    vol_weighted_mean_q = (
+        float((q * vol6).sum() / w_sum) if w_sum > 0 else 0.0
+    )
+
     return QualitySnapshot(
         n_tets=int(q.size),
         min_q=float(q.min()),
@@ -143,6 +160,9 @@ def snapshot(pts: np.ndarray, tets: np.ndarray) -> QualitySnapshot:
         mean_aspect=float(aspect.mean()),
         min_dihedral_deg=float(dih.min()),
         median_dihedral_deg=float(np.median(dih)),
+        vol_weighted_mean_q=vol_weighted_mean_q,
+        p10_q=float(np.percentile(q, 10)),
+        p10_dihedral_deg=float(np.percentile(dih, 10)),
     )
 
 
