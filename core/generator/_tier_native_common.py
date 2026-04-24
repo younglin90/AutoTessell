@@ -63,7 +63,10 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
                      "enable_bsp_insertion": True,
                      # beta630: fine 에서 edge recovery 활성.
                      "enable_edge_recovery": True,
-                     "edge_recovery_max_iter": 2},
+                     "edge_recovery_max_iter": 2,
+                     # beta810: fine 에서는 더 엄격한 sliver drop.
+                     "sliver_drop_min_dihedral_deg": 1.0,
+                     "sliver_drop_max_aspect": 5e4},
     },
     "tier_native_hex": {
         # native_hex 는 uniform grid (harness 미사용). seed_density / snap_boundary 만 의미.

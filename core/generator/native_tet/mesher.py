@@ -82,6 +82,9 @@ def generate_native_tet(
     # beta220 — collapse 보수화: iteration 당 최대 cap + cell-drop guard.
     max_collapses_per_iter: int = 200,
     cell_drop_rollback_ratio: float = 0.5,
+    # beta810 — extreme sliver drop threshold.
+    sliver_drop_min_dihedral_deg: float = 0.5,
+    sliver_drop_max_aspect: float = 1e5,
     # beta125 Phase C — envelope + quality stop.
     enable_phase_c: bool = False,
     envelope_eps_relative: float = 0.001,
@@ -829,15 +832,15 @@ def generate_native_tet(
                 degenerate=vr.n_degenerate,
             )
 
-    # Round 73: extreme sliver 제거 (dihedral < 0.5°) — 옵션.
+    # Round 73-74: extreme sliver 제거 (파라미터 노출).
     if enable_phase_a:
         try:
             from core.generator.native_tet.validate import drop_extreme_slivers
 
             final_tets, n_drop = drop_extreme_slivers(
                 final_pts, final_tets,
-                min_dihedral_deg=0.5,
-                min_aspect_regular=1e5,
+                min_dihedral_deg=float(sliver_drop_min_dihedral_deg),
+                min_aspect_regular=float(sliver_drop_max_aspect),
             )
             if n_drop > 0:
                 log.info("native_tet_drop_slivers", dropped=n_drop)
