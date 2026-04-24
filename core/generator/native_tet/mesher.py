@@ -294,6 +294,36 @@ def generate_native_tet(
                     )
                     if bw_res.n_inserted > 0:
                         all_pts, tets = all_pts_new, tets_new
+                        # Round 48: B-W 로 삽입된 신규 점을 입력 표면 BVH 로
+                        # 한 번 snap — Hausdorff 오차 감소.
+                        try:
+                            from core.generator.native_tet.surface_snap import (
+                                snap_surface_vertices,
+                            )
+                            from core.utils.aabb import TriangleBVH
+
+                            n_before_bw = all_pts.shape[0] - bw_res.n_inserted
+                            new_ids = np.arange(
+                                n_before_bw, all_pts.shape[0], dtype=np.int64,
+                            )
+                            bvh_surf = TriangleBVH.build(V, F)
+                            bbox_diag = float(
+                                np.linalg.norm(V.max(axis=0) - V.min(axis=0))
+                            )
+                            snap_r = snap_surface_vertices(
+                                all_pts, bvh_surf, new_ids,
+                                max_distance=bbox_diag * 0.02,
+                            )
+                            log.info(
+                                "native_tet_bw_post_snap",
+                                snapped=snap_r.n_snapped,
+                                max_disp=snap_r.max_displacement,
+                            )
+                        except Exception as exc:
+                            log.debug(
+                                "native_tet_bw_post_snap_skipped",
+                                reason=str(exc),
+                            )
                         remaining_after = find_missing_triangles(F, tets)
                         log.info(
                             "native_tet_bsp_bw_insert_done",
