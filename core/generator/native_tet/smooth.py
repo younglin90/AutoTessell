@@ -56,10 +56,14 @@ def smooth_interior(
     locked_vertex_ids: np.ndarray,
     n_iter: int = 2,
     relax: float = 0.5,
+    quality_guard: bool = False,
 ) -> SmoothResult:
     """pts 를 in-place 로 업데이트. locked 외 vertex 만 이동.
 
     Vectorized: 1-ring neighbor centroid 를 np.add.at 로 O(E) per iter.
+
+    quality_guard=True: 각 iteration 이후 min tet quality 가 하락하면 이전
+    상태로 revert. 작은 메쉬에서 over-smoothing 으로 인한 품질 저하 방지.
     """
     pts = np.asarray(pts, dtype=np.float64)
     tets = np.asarray(tets, dtype=np.int64)
@@ -70,9 +74,32 @@ def smooth_interior(
 
     rows, cols = _build_edge_rows(tets)
 
+    def _min_q(P: np.ndarray) -> float:
+        if tets.size == 0:
+            return 1.0
+        v = P[tets]
+        e = np.stack(
+            [v[:, 1] - v[:, 0], v[:, 2] - v[:, 0], v[:, 3] - v[:, 0],
+             v[:, 2] - v[:, 1], v[:, 3] - v[:, 1], v[:, 3] - v[:, 2]],
+            axis=1,
+        )
+        emax = np.linalg.norm(e, axis=2).max(axis=1)
+        vol = np.abs(np.einsum(
+            "ij,ij->i",
+            v[:, 1] - v[:, 0],
+            np.cross(v[:, 2] - v[:, 0], v[:, 3] - v[:, 0]),
+        )) / 6.0
+        safe = emax > 1e-30
+        q = np.zeros_like(emax)
+        q[safe] = 8.48 * vol[safe] / (emax[safe] ** 3)
+        return float(q.min()) if q.size else 1.0
+
     max_disp = 0.0
     n_moved = 0
     for _ in range(max(0, int(n_iter))):
+        prev_snapshot = pts.copy() if quality_guard else None
+        prev_minq = _min_q(pts) if quality_guard else 0.0
+
         sum_nbr = np.zeros_like(pts)
         count = np.zeros(n, dtype=np.int64)
         np.add.at(sum_nbr, rows, pts[cols])
@@ -90,6 +117,13 @@ def smooth_interior(
                 max_disp = max_d
             n_moved += int(valid.sum())
         pts[:] = new_pts
+
+        if quality_guard:
+            new_minq = _min_q(pts)
+            # min_q 가 유의미하게 (>5%) 하락하면 revert.
+            if prev_minq > 1e-6 and new_minq < prev_minq * 0.95:
+                pts[:] = prev_snapshot   # type: ignore[arg-type]
+                break
 
     return SmoothResult(
         n_iter=int(n_iter),
