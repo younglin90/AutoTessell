@@ -73,6 +73,12 @@ def generate_native_tet(
     flip_iterations: int = 1,
     tangent_smooth_iterations: int = 1,
     tangent_smooth_relax: float = 0.3,
+    # beta125 Phase C — envelope + quality stop.
+    enable_phase_c: bool = False,
+    envelope_eps_relative: float = 0.001,
+    quality_target_min_q: float = 0.3,
+    quality_improvement_eps: float = 0.005,
+    quality_window: int = 3,
 ) -> NativeTetResult:
     """입력 표면 메쉬 → tet polyMesh (MVP).
 
@@ -301,6 +307,7 @@ def generate_native_tet(
         )
 
     # 4c) Phase B — local operations (split/collapse/flip) + tangent smoothing.
+    # Phase C 가 켜져 있으면 envelope-guarded + quality stop 으로 승격.
     if enable_phase_b and local_ops_iterations > 0:
         from core.generator.native_tet.local_ops import (
             collapse_short_edges, split_long_edges,
@@ -310,30 +317,58 @@ def generate_native_tet(
             _vertex_normal_from_faces, smooth_tangent_surface,
         )
 
-        # locked = surface vertex + feature corner (feature 는 이미 surface 에
-        # 속함이 일반적이라 sum 해도 중복).
         surface_new_ids2 = remap[np.arange(n_surface)]
         surface_new_ids2 = surface_new_ids2[surface_new_ids2 >= 0]
 
+        env = None
+        q_hist: list = []
+        if enable_phase_c:
+            from core.generator.native_tet.envelope import Envelope, check_operation
+            from core.generator.native_tet.quality import snapshot, should_stop
+
+            env = Envelope.build(V, F, eps_relative=float(envelope_eps_relative))
+            q_hist.append(snapshot(final_pts, final_tets))
+            log.info(
+                "native_tet_phase_c_init_quality",
+                n_tets=q_hist[0].n_tets, min_q=q_hist[0].min_q,
+                mean_q=q_hist[0].mean_q, max_aspect=q_hist[0].max_aspect,
+                envelope_eps=env.eps,
+            )
+
         for loop_idx in range(int(local_ops_iterations)):
-            # 1) split long edges.
+            # 이전 상태 스냅샷 (envelope reject 시 복원용).
+            prev_pts = final_pts.copy()
+            prev_tets = final_tets.copy()
+
             final_pts, final_tets, n_s = split_long_edges(
                 final_pts, final_tets,
                 target_edge=float(target_edge_length),
                 ratio=float(split_ratio),
             )
-            # 2) collapse short edges.
             final_pts, final_tets, n_c = collapse_short_edges(
                 final_pts, final_tets,
                 target_edge=float(target_edge_length),
                 ratio=float(collapse_ratio),
                 locked_vertices=surface_new_ids2,
             )
-            # 3) face flip (2-3).
             final_tets, fr2 = face_flip_pass(
                 final_pts, final_tets,
                 n_iter=int(flip_iterations),
             )
+
+            if env is not None and surface_new_ids2.size > 0:
+                ok, max_d = check_operation(env, final_pts[surface_new_ids2])
+                if not ok:
+                    # envelope 이탈 → 이전 상태로 복원.
+                    final_pts = prev_pts
+                    final_tets = prev_tets
+                    log.warning(
+                        "native_tet_phase_c_envelope_reject",
+                        iter=loop_idx, max_surf_distance=max_d,
+                        envelope_eps=env.eps,
+                    )
+                    break
+
             log.info(
                 "native_tet_phase_b_iter",
                 iter=loop_idx, splits=n_s, collapses=n_c,
@@ -341,6 +376,25 @@ def generate_native_tet(
                 q_before=fr2.min_quality_before,
                 q_after=fr2.min_quality_after,
             )
+
+            if enable_phase_c:
+                from core.generator.native_tet.quality import snapshot, should_stop
+
+                q_hist.append(snapshot(final_pts, final_tets))
+                stop, reason = should_stop(
+                    q_hist,
+                    target_min_q=float(quality_target_min_q),
+                    improvement_eps=float(quality_improvement_eps),
+                    window=int(quality_window),
+                )
+                if stop:
+                    log.info(
+                        "native_tet_phase_c_stop",
+                        iter=loop_idx, reason=reason,
+                        min_q=q_hist[-1].min_q,
+                    )
+                    break
+
             if n_s == 0 and n_c == 0 and fr2.n_flip_23 == 0:
                 break
 
