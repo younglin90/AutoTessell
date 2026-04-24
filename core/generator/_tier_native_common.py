@@ -80,9 +80,13 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
     "tier_native_poly": {
         # beta97: smooth_iters — dual 이후 Laplacian smoothing 횟수.
         # draft: 0 (빠름), standard: 3 (균형), fine: 5 (품질 우선).
-        "draft":    {"seed_density": 8,  "max_iter": 2, "smooth_iters": 0},
-        "standard": {"seed_density": 10, "max_iter": 3, "smooth_iters": 3},
-        "fine":     {"seed_density": 14, "max_iter": 4, "smooth_iters": 5},
+        # beta850: fine 은 tet base 에 더 큰 seed_density → dual 셀 품질 개선.
+        "draft":    {"seed_density": 8,  "max_iter": 2, "smooth_iters": 0,
+                     "smooth_relax": 0.25},
+        "standard": {"seed_density": 10, "max_iter": 3, "smooth_iters": 3,
+                     "smooth_relax": 0.3},
+        "fine":     {"seed_density": 16, "max_iter": 5, "smooth_iters": 7,
+                     "smooth_relax": 0.35, "max_tet_cells": 60000},
     },
 }
 
