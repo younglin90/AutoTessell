@@ -24,6 +24,7 @@ def _run_bench(stl_files, seed_density=6):
     from core.generator.native_tet.mesher import generate_native_tet
     from core.generator.native_tet.quality import (
         snapshot as quality_snapshot,
+        snapshot_to_dict,
     )
     import tempfile
     import time
@@ -66,10 +67,13 @@ def _run_bench(stl_files, seed_density=6):
                     row.update({
                         "n_cells": int(res.n_cells),
                         "n_points": int(res.n_points),
+                        # 단순 필드 유지 (backward-compat).
                         "min_q": round(snap.min_q, 4),
                         "mean_q": round(snap.mean_q, 4),
                         "mean_aspect": round(snap.mean_aspect, 2),
                         "min_dihedral_deg": round(snap.min_dihedral_deg, 2),
+                        # beta880: 확장 통계 dict 도 함께 저장.
+                        "quality_detail": snapshot_to_dict(snap),
                     })
                 rows.append(row)
             except Exception as e:
