@@ -25,6 +25,70 @@ class InputCheckResult:
     warnings: list[str]
 
 
+def auto_fix_input(
+    V: np.ndarray, F: np.ndarray,
+    *,
+    dup_tol: float = 1e-9,
+    drop_zero_area: bool = True,
+    align_winding: bool = True,
+) -> tuple[np.ndarray, np.ndarray, dict]:
+    """beta1110 (R174/R175) — 간단한 입력 자동 수리.
+
+    - dup_tol 그리드 기준 vertex merge + F 재매핑.
+    - drop_zero_area=True 이면 |area| < 1e-20 triangle 제거.
+    - align_winding=True 이면 bbox centroid 기준 전체 face 의 바깥 방향 통일
+      (flood-fill 이 아닌 centroid-direction heuristic — MVP).
+
+    Returns: (V_new, F_new, info_dict).
+    """
+    V = np.asarray(V, dtype=np.float64)
+    F = np.asarray(F, dtype=np.int64)
+    info: dict = {}
+
+    if V.shape[0] == 0 or F.shape[0] == 0:
+        return V, F, info
+
+    # 1) vertex dedup.
+    scale = 1.0 / max(dup_tol, 1e-30)
+    q = np.round(V * scale).astype(np.int64)
+    # 해시용 view.
+    view = np.ascontiguousarray(q).view(
+        np.dtype((np.void, q.dtype.itemsize * 3))
+    ).ravel()
+    _, first_idx, inv = np.unique(view, return_index=True, return_inverse=True)
+    V2 = V[first_idx]
+    F2 = inv[F]
+    info["n_dedup"] = int(V.shape[0] - V2.shape[0])
+
+    # 2) zero-area drop.
+    if drop_zero_area:
+        e1 = V2[F2[:, 1]] - V2[F2[:, 0]]
+        e2 = V2[F2[:, 2]] - V2[F2[:, 0]]
+        area = 0.5 * np.linalg.norm(np.cross(e1, e2), axis=1)
+        keep = area > 1e-20
+        info["n_zero_area_drop"] = int((~keep).sum())
+        F2 = F2[keep]
+
+    # 3) winding align (centroid-heuristic).
+    if align_winding and F2.shape[0] > 0:
+        centroid = V2.mean(axis=0)
+        tri_centroid = V2[F2].mean(axis=1)
+        outward = tri_centroid - centroid
+        e1 = V2[F2[:, 1]] - V2[F2[:, 0]]
+        e2 = V2[F2[:, 2]] - V2[F2[:, 0]]
+        face_n = np.cross(e1, e2)
+        dot = np.einsum("ij,ij->i", face_n, outward)
+        flip = dot < 0
+        # swap v1 ↔ v2.
+        F2_flip = F2.copy()
+        F2_flip[flip, 1] = F2[flip, 2]
+        F2_flip[flip, 2] = F2[flip, 1]
+        F2 = F2_flip
+        info["n_winding_flip"] = int(flip.sum())
+
+    return V2, F2, info
+
+
 def check_input(
     V: np.ndarray, F: np.ndarray,
     *,
