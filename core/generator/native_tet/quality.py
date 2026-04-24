@@ -245,8 +245,10 @@ def should_stop(
     *,
     target_min_q: float = 0.3,
     target_min_dihedral_deg: float | None = None,
+    target_max_aspect: float | None = None,
     improvement_eps: float = 0.005,
     window: int = 3,
+    require_all: bool = False,
 ) -> tuple[bool, str]:
     """iteration 을 더 돌릴지 판단.
 
@@ -264,13 +266,26 @@ def should_stop(
     last = history[-1]
     if last.n_tets == 0:
         return True, "empty"
-    if last.min_q >= target_min_q:
-        return True, "target"
-    if (
-        target_min_dihedral_deg is not None
-        and last.min_dihedral_deg >= float(target_min_dihedral_deg)
-    ):
-        return True, "dihedral_target"
+    # beta1040 (R113): multi-metric AND / OR.
+    q_ok = last.min_q >= target_min_q
+    dih_ok = (
+        target_min_dihedral_deg is None
+        or last.min_dihedral_deg >= float(target_min_dihedral_deg)
+    )
+    asp_ok = (
+        target_max_aspect is None
+        or last.max_aspect <= float(target_max_aspect)
+    )
+    if require_all:
+        if q_ok and dih_ok and asp_ok:
+            return True, "multi_target"
+    else:
+        if q_ok:
+            return True, "target"
+        if target_min_dihedral_deg is not None and dih_ok:
+            return True, "dihedral_target"
+        if target_max_aspect is not None and asp_ok:
+            return True, "aspect_target"
     if len(history) >= window:
         recent = [h.min_q for h in history[-window:]]
         if max(recent) - min(recent) < improvement_eps:
