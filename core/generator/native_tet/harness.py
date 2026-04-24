@@ -167,6 +167,24 @@ def run_native_tet_harness(
 
             passed, metrics = _evaluate_tet_mesh(tmp)
             last_metrics = metrics
+
+            # beta900: CDT edge recovery ratio 도 harness log 에 기록.
+            try:
+                from core.generator.native_tet.cdt_check import (
+                    check_edge_recovery,
+                )
+
+                if res.tets is not None and res.tets.shape[0] > 0:
+                    cdt = check_edge_recovery(faces, res.tets)
+                    if cdt.n_surface_edges > 0:
+                        metrics["cdt_recovered"] = int(cdt.n_present_as_tet_edges)
+                        metrics["cdt_total"] = int(cdt.n_surface_edges)
+                        metrics["cdt_ratio"] = round(
+                            cdt.n_present_as_tet_edges / cdt.n_surface_edges, 3
+                        )
+            except Exception:
+                pass
+
             log.info(
                 "native_tet_harness_eval",
                 iteration=it, passed=passed, **metrics,
