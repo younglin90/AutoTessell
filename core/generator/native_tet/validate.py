@@ -75,30 +75,22 @@ def fix_inverted_tets(
     inverted = vol6 < -float(degenerate_eps)
     degenerate = np.abs(vol6) < float(degenerate_eps)
 
-    # beta510: uncertain (|vol6| near tol) tet 은 exact predicate 로 재판정.
+    # beta510 → beta540: uncertain (|vol6| near tol) tet 은 staged predicate 로
+    # 재판정. staged 는 Stage 1 double 이 불확실하면 float128 → Fraction 으로
+    # drop, 평균 속도 유지하며 정확성 확보.
     if use_exact_for_uncertain and degenerate.any():
         uncertain_idx = np.where(degenerate)[0]
         try:
-            from core.utils.predicates_exact import orient3d as exact_orient3d
+            from core.utils.predicates_staged import orient3d_staged
 
-            new_inverted = []
-            new_degen = []
             for ti in uncertain_idx.tolist():
                 a, b, c, d = tets[ti]
-                s = exact_orient3d(
-                    tuple(pts[a].tolist()),
-                    tuple(pts[b].tolist()),
-                    tuple(pts[c].tolist()),
-                    tuple(pts[d].tolist()),
-                )
+                s = orient3d_staged(pts[a], pts[b], pts[c], pts[d])
                 if s < 0:
                     inverted[ti] = True
-                    new_inverted.append(ti)
                     degenerate[ti] = False
                 elif s > 0:
                     degenerate[ti] = False
-                else:
-                    new_degen.append(ti)
         except Exception:
             pass
 
