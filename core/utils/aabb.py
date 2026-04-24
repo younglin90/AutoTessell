@@ -462,6 +462,16 @@ class TriangleBVH:
             best_ti[i] = bti
         return best_cp, best_d, best_ti
 
+    def snap_to_surface(
+        self, points: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """beta1240 (R131/R132) — 각 점을 BVH 표면의 closest-point 위치로 snap.
+
+        Returns: (snapped_pts, distances).
+        """
+        cps, ds, _ = self.closest_points_all_shared(np.asarray(points))
+        return cps, ds
+
     def inside_envelope(
         self, points: np.ndarray, envelope: float,
     ) -> np.ndarray:
