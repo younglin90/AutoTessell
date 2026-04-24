@@ -325,6 +325,7 @@ def generate_native_tet(
         if enable_phase_c:
             from core.generator.native_tet.envelope import Envelope, check_operation
             from core.generator.native_tet.quality import snapshot, should_stop
+            from core.generator.native_tet.surface_snap import snap_surface_vertices
 
             env = Envelope.build(V, F, eps_relative=float(envelope_eps_relative))
             q_hist.append(snapshot(final_pts, final_tets))
@@ -357,6 +358,16 @@ def generate_native_tet(
             )
 
             if env is not None and surface_new_ids2.size > 0:
+                # D2: surface vertex 를 입력 표면 BVH 로 projection (drift 복원).
+                snap_res = snap_surface_vertices(
+                    final_pts, env.bvh, surface_new_ids2,
+                    max_distance=env.eps * 2.0,
+                )
+                log.info(
+                    "native_tet_surface_snap",
+                    iter=loop_idx, snapped=snap_res.n_snapped,
+                    max_disp=snap_res.max_displacement,
+                )
                 ok, max_d = check_operation(env, final_pts[surface_new_ids2])
                 if not ok:
                     # envelope 이탈 → 이전 상태로 복원.
