@@ -172,6 +172,71 @@ def sizing_callback_eval(
         return out
 
 
+def curvature_and_hausdorff_sizing(
+    V: np.ndarray, F: np.ndarray,
+    V_input: np.ndarray,
+    *,
+    target_edge: float,
+    curvature_gain: float = 2.0,
+    hausdorff_weight: float = 0.5,
+    min_ratio: float = 0.2,
+    max_ratio: float = 2.0,
+) -> np.ndarray:
+    """beta1220 (R122) — 곡률 + 거리 동시 반영 sizing.
+
+    per-vertex target = target_edge × combine(curvature_scale, hausdorff_scale).
+    hausdorff_scale = ratio based on 표면까지의 상대 거리.
+    """
+    V = np.asarray(V, dtype=np.float64)
+    curv_scale = curvature_sizing(
+        V, F, target_edge=target_edge,
+        curvature_gain=curvature_gain,
+        min_ratio=min_ratio, max_ratio=max_ratio,
+    ) / max(float(target_edge), 1e-30)
+    try:
+        from scipy.spatial import cKDTree  # noqa: PLC0415
+        tree = cKDTree(np.asarray(V_input, dtype=np.float64))
+        d, _ = tree.query(V, k=1)
+    except Exception:
+        d = np.zeros(V.shape[0])
+    diag = float(np.linalg.norm(np.ptp(V, axis=0))) + 1e-30
+    haus_scale = np.clip(d / diag, 0.0, 1.0)
+    haus_scale = 1.0 + float(hausdorff_weight) * haus_scale
+    combined = curv_scale * haus_scale
+    combined = np.clip(combined, float(min_ratio), float(max_ratio))
+    return float(target_edge) * combined
+
+
+def feature_aware_sizing(
+    V: np.ndarray, feature_vertices: np.ndarray,
+    *,
+    target_edge: float,
+    feature_ratio: float = 0.5,
+    falloff_radius: float = 0.1,
+) -> np.ndarray:
+    """beta1230 (R123) — feature edge 근방 vertex 를 더 조밀하게.
+
+    distance-to-feature 기반 smooth ramp: near → feature_ratio, far → 1.0.
+    """
+    V = np.asarray(V, dtype=np.float64)
+    n = V.shape[0]
+    if n == 0:
+        return np.zeros(0, dtype=np.float64)
+    if feature_vertices is None or len(feature_vertices) == 0:
+        return np.full(n, float(target_edge), dtype=np.float64)
+    try:
+        from scipy.spatial import cKDTree  # noqa: PLC0415
+        tree = cKDTree(V[np.asarray(feature_vertices, dtype=np.int64)])
+        d, _ = tree.query(V, k=1)
+    except Exception:
+        d = np.zeros(n)
+    diag = float(np.linalg.norm(np.ptp(V, axis=0))) + 1e-30
+    r = float(falloff_radius) * diag
+    t = np.clip(d / max(r, 1e-30), 0.0, 1.0)
+    scale = float(feature_ratio) + (1.0 - float(feature_ratio)) * t
+    return float(target_edge) * scale
+
+
 def per_vertex_target_to_edge_target(
     per_vertex: np.ndarray,
     edges: np.ndarray,
