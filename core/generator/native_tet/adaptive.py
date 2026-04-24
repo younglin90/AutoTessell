@@ -137,7 +137,7 @@ def distance_based_sizing(
         d, _ = tree.query(V, k=1)
     except Exception:
         d = np.linalg.norm(V[:, None] - np.asarray(V_surface)[None], axis=2).min(axis=1)
-    bbox = V.ptp(axis=0)
+    bbox = np.ptp(V, axis=0)
     diag = float(np.linalg.norm(bbox))
     t = np.clip(d / (float(transition) * diag + 1e-30), 0.0, 1.0)
     scale = float(near_ratio) + (float(far_ratio) - float(near_ratio)) * t
