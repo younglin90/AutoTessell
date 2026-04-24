@@ -387,6 +387,19 @@ def generate_native_tet(
             _vertex_normal_from_faces, smooth_tangent_surface,
         )
 
+        # beta380 — 대형 메쉬 heuristic: tets > 20k 이면 iteration 과 flip 을
+        # 1 로 강제 + tangent smoothing 도 1 회로. Python 루프 비용 폭증 방지.
+        if final_tets.shape[0] > 20000:
+            log.warning(
+                "native_tet_phase_b_large_mesh",
+                n_tets=int(final_tets.shape[0]),
+                original_iter=int(local_ops_iterations),
+                original_flip=int(flip_iterations),
+            )
+            local_ops_iterations = 1
+            flip_iterations = 1
+            tangent_smooth_iterations = min(1, int(tangent_smooth_iterations))
+
         surface_new_ids2 = remap[np.arange(n_surface)]
         surface_new_ids2 = surface_new_ids2[surface_new_ids2 >= 0]
 
