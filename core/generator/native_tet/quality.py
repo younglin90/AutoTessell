@@ -22,6 +22,10 @@ class QualitySnapshot:
     mean_q: float
     median_q: float
     max_aspect: float
+    # Round 70 확장.
+    mean_aspect: float = 0.0
+    min_dihedral_deg: float = 0.0
+    median_dihedral_deg: float = 0.0
 
 
 def tet_shape_quality(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
@@ -127,14 +131,18 @@ def snapshot(pts: np.ndarray, tets: np.ndarray) -> QualitySnapshot:
     q = tet_shape_quality(pts, tets)
     if q.size == 0:
         return QualitySnapshot(0, 0.0, 0.0, 0.0, 0.0)
-    # aspect ratio = 1/q 근사.
-    aspect = np.where(q > 1e-6, 1.0 / q, 1e6)
+    # 정확한 aspect ratio + dihedral.
+    aspect = tet_aspect_ratio(pts, tets)
+    dih = tet_min_dihedral_deg(pts, tets)
     return QualitySnapshot(
         n_tets=int(q.size),
         min_q=float(q.min()),
         mean_q=float(q.mean()),
         median_q=float(np.median(q)),
         max_aspect=float(aspect.max()),
+        mean_aspect=float(aspect.mean()),
+        min_dihedral_deg=float(dih.min()),
+        median_dihedral_deg=float(np.median(dih)),
     )
 
 
