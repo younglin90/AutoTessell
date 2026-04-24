@@ -519,6 +519,11 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._generic_param_panel: object | None = None
         self._generic_param_frame: object | None = None
 
+        # y⁺ 자동 BL 두께 패널 (beta100 배선)
+        self._yplus_panel: object | None = None
+        self._yplus_frame: object | None = None
+        self._computed_bl_first_thickness: float | None = None
+
         # 품질 레벨 섹션 (WildMesh 선택 시 숨김 — 중복 UI 제거)
         self._quality_section_frame: object | None = None
 
@@ -577,6 +582,13 @@ class AutoTessellWindow:  # type: ignore[misc]
         hint = analyze(path)
         text = format_hint(hint)
         self._log("[INFO] 지오메트리 분석 — " + text.replace("\n", " / "))
+
+        # y⁺ 패널의 특성 길이에 bbox 대각선 자동 주입 (beta100)
+        if self._yplus_panel is not None and hint.bbox_diag > 0:
+            try:
+                self._yplus_panel.set_characteristic_length(float(hint.bbox_diag))  # type: ignore[union-attr]
+            except Exception:
+                pass
 
         # 뷰포트 KPI 오버레이 — 미실행 상태에서 프리뷰 정보 표시
         if self._viewport_overlays is not None and not hint.error:
@@ -1177,6 +1189,7 @@ class AutoTessellWindow:  # type: ignore[misc]
         v.addWidget(self._build_section_quality())
         v.addWidget(self._build_section_preprocess())
         v.addWidget(self._build_section_surface_mesh())
+        v.addWidget(self._build_section_yplus())
         # 파이프라인 실행 버튼은 하단 Tier 스트립의 Run/Stop 버튼으로 통합됨.
         # (중복 UI 제거 — 2026-04-19)
         v.addStretch()
@@ -1647,6 +1660,35 @@ class AutoTessellWindow:  # type: ignore[misc]
     def _on_generic_engine_params_changed(self, _params: dict) -> None:  # pragma: no cover
         """generic 엔진 파라미터 변경 — 값은 _on_run_clicked 에서 읽는다."""
         pass
+
+    def _build_section_yplus(self) -> object:  # pragma: no cover
+        """y⁺ 기반 첫 BL 층 두께 자동 계산 패널 (beta100).
+
+        사용자가 유체·유입 속도·특성 길이·목표 y⁺ 입력 후 Calculate 를 누르면
+        `bl_thickness_computed` 시그널이 발행되고, `_on_run_clicked` 시 해당 값이
+        `tier_params["bl_first_thickness"]` 에 주입된다. 파일 drop 시 bbox 대각선을
+        `set_characteristic_length` 로 자동 주입.
+        """
+        from desktop.qt_app.widgets.yplus_panel import YPlusPanel
+
+        f, v = self._section_frame("y⁺ 자동 BL 두께")
+        panel = YPlusPanel()
+        panel.bl_thickness_computed.connect(self._on_yplus_thickness_computed)
+        self._yplus_panel = panel
+        v.addWidget(panel)
+        self._yplus_frame = f
+        return f
+
+    def _on_yplus_thickness_computed(self, thickness: float) -> None:  # pragma: no cover
+        """y⁺ 패널 Calculate → 계산된 첫 층 두께 [m] 수신 후 저장 + 로그."""
+        self._computed_bl_first_thickness = float(thickness)
+        try:
+            self._log(
+                f"[INFO] y⁺ → bl_first_thickness = {thickness:.3e} m "
+                "(다음 Run 부터 자동 적용)"
+            )
+        except Exception:
+            pass
 
     def _refresh_generic_param_panel(self) -> None:  # pragma: no cover
         """엔진 변경 시 generic 패널을 현재 엔진 spec 으로 갱신.
@@ -2557,6 +2599,10 @@ class AutoTessellWindow:  # type: ignore[misc]
         tier_params: dict[str, object] = {}
         if feature_angle is not None:
             tier_params["bl_feature_angle"] = feature_angle
+
+        # y⁺ 패널에서 계산된 첫 층 두께 자동 주입 (beta100)
+        if self._computed_bl_first_thickness is not None:
+            tier_params["bl_first_thickness"] = float(self._computed_bl_first_thickness)
 
         # Tier 4 (경계층) 엔진 콤보 → 내부 BL (snappy/cfmesh) on/off + 독립 후처리 설정
         try:

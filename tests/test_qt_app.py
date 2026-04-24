@@ -342,6 +342,113 @@ def test_qt_pipeline_native_tet_e2e(monkeypatch, tmp_path) -> None:
     assert sink.received.success is True
 
 
+def _run_native_engine_e2e(
+    monkeypatch,
+    tmp_path,
+    *,
+    mesh_type: str,
+    tier_hint: str,
+    quality,
+):
+    """native_tet/hex/poly E2E 공통 본체. GUI → Worker → orchestrator.run() stub.
+
+    orchestrator 를 stub 으로 교체해 실제 메시 생성은 하지 않고, worker 가 올바른
+    tier/mesh_type 을 전파하는지 + finished 시그널 payload 를 검증한다.
+    """
+    from types import SimpleNamespace
+
+    from PySide6.QtCore import QCoreApplication, QObject, Slot
+    from desktop.qt_app.main_window import AutoTessellWindow
+    from desktop.qt_app.pipeline_worker import PipelineWorker
+
+    app = QCoreApplication.instance() or QCoreApplication([])
+
+    win = AutoTessellWindow()
+    win.set_mesh_type(mesh_type)
+    assert win._mesh_type == mesh_type
+
+    stub_stl = tmp_path / "dummy.stl"
+    stub_stl.write_text("solid empty\nendsolid\n")
+
+    captured: dict = {}
+
+    class _StubOrchestrator:
+        def run(self, **kwargs):  # noqa: ANN003
+            captured.update(kwargs)
+            return SimpleNamespace(
+                success=True,
+                iterations=1,
+                total_time_seconds=0.0,
+                error=None,
+                final_case_dir=str(tmp_path),
+                quality_report=None,
+            )
+
+    import core.pipeline.orchestrator as orch_mod  # noqa: PLC0415
+
+    monkeypatch.setattr(orch_mod, "PipelineOrchestrator", _StubOrchestrator)
+
+    worker = PipelineWorker(
+        stub_stl,
+        quality,
+        output_dir=tmp_path / "case",
+        tier_hint=tier_hint,
+        mesh_type=mesh_type,
+        auto_retry="off",
+        prefer_native=True,
+    )
+    assert worker._tier_hint == tier_hint
+    assert worker._mesh_type == mesh_type
+
+    class _Sink(QObject):
+        def __init__(self) -> None:
+            super().__init__()
+            self.received = None
+
+        @Slot(object)
+        def on_finished(self, result) -> None:  # noqa: ANN001
+            self.received = result
+
+    sink = _Sink()
+    worker.finished.connect(sink.on_finished)
+    worker.run()
+    app.processEvents()
+
+    assert captured, "orchestrator.run() 이 호출되지 않음"
+    assert captured.get("tier_hint") == tier_hint
+    assert captured.get("mesh_type") == mesh_type
+    assert captured.get("quality_level") == quality.value
+    assert captured.get("prefer_native") is True
+    assert sink.received is not None
+    assert sink.received.success is True
+
+
+def test_qt_pipeline_native_hex_e2e(monkeypatch, tmp_path) -> None:
+    """v0.4 e2e: mesh_type=hex_dominant + tier_hint=native_hex (beta100 QA2)."""
+    from core.schemas import QualityLevel as _QL
+
+    _run_native_engine_e2e(
+        monkeypatch,
+        tmp_path,
+        mesh_type="hex_dominant",
+        tier_hint="native_hex",
+        quality=_QL.DRAFT,
+    )
+
+
+def test_qt_pipeline_native_poly_e2e(monkeypatch, tmp_path) -> None:
+    """v0.4 e2e: mesh_type=poly + tier_hint=native_poly (beta100 QA2)."""
+    from core.schemas import QualityLevel as _QL
+
+    _run_native_engine_e2e(
+        monkeypatch,
+        tmp_path,
+        mesh_type="poly",
+        tier_hint="native_poly",
+        quality=_QL.DRAFT,
+    )
+
+
 def test_pipeline_step_labels_attribute_exists() -> None:
     """AutoTessellWindow 가 _pipeline_step_labels list 속성을 갖는다."""
     from desktop.qt_app.main_window import AutoTessellWindow
