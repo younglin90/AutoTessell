@@ -83,6 +83,38 @@ def curvature_sizing(
     return out
 
 
+def gradient_limited_sizing(
+    per_vertex: np.ndarray,
+    edges: np.ndarray,
+    *,
+    max_ratio: float = 1.5,
+    max_iter: int = 10,
+) -> np.ndarray:
+    """beta1010 (R114) — adjacent vertex 간 sizing 비율을 `max_ratio` 이내로.
+
+    fTetWild §3.2 gradation control. edge 양 끝 sizing 차이가 너무 크면
+    작은 쪽을 올려 점진 변화.
+    """
+    s = np.asarray(per_vertex, dtype=np.float64).copy()
+    E = np.asarray(edges, dtype=np.int64)
+    if s.size == 0 or E.size == 0:
+        return s
+    r = float(max_ratio)
+    u = E[:, 0]; v = E[:, 1]
+    for _ in range(int(max_iter)):
+        su = s[u]; sv = s[v]
+        cap_u = sv * r
+        cap_v = su * r
+        new_su = np.minimum(su, cap_u)
+        new_sv = np.minimum(sv, cap_v)
+        # scatter minimum.
+        np.minimum.at(s, u, new_su)
+        np.minimum.at(s, v, new_sv)
+        if np.allclose(s[u], su) and np.allclose(s[v], sv):
+            break
+    return s
+
+
 def per_vertex_target_to_edge_target(
     per_vertex: np.ndarray,
     edges: np.ndarray,
