@@ -25,6 +25,14 @@ class NativeTetResult:
     tets: np.ndarray | None = None
     # beta830: quality metric 요약 (min_q, mean_q, min_dihedral_deg 등).
     quality: "Any" = None
+    # beta1090 (R171) — 비치명 경고 + 개발자 디버그 정보.
+    warnings: list[str] | None = None
+    debug_info: dict | None = None
+
+    @property
+    def ok(self) -> bool:
+        """success alias (R171)."""
+        return bool(self.success)
 
 
 def _seed_points_uniform(
