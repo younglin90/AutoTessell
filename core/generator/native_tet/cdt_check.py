@@ -62,6 +62,20 @@ def _tet_edges(tets: np.ndarray) -> set[tuple[int, int]]:
     return s
 
 
+def cdt_ratio(result: "CDTCheckResult") -> float:
+    """beta1120 (R156) — edge 회복률 (0.0~1.0)."""
+    if result.n_surface_edges == 0:
+        return 1.0
+    return float(result.n_present_as_tet_edges) / float(result.n_surface_edges)
+
+
+def cdt_face_ratio(result: "CDTCheckResult") -> float:
+    """face 회복률 (0.0~1.0)."""
+    if result.n_surface_faces == 0:
+        return 1.0
+    return float(result.n_present_as_tet_faces) / float(result.n_surface_faces)
+
+
 def missing_edge_report(
     V: np.ndarray, F: np.ndarray, tets: np.ndarray,
 ) -> list[dict]:
