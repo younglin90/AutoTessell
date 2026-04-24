@@ -30,6 +30,17 @@ class FeatureInfo:
     corner_vertices: np.ndarray = field(default_factory=lambda: np.zeros(0, dtype=np.int64))
     """3 개 이상의 feature edge 가 만나는 corner vertex."""
 
+    def as_protected_edges(self) -> set[tuple[int, int]]:
+        """beta1180 (R98) — feature edge 를 CDT constraint set 으로 반환.
+
+        B-W 삽입 / collapse / flip 등에서 `protected_edges` kwarg 에 직접 전달.
+        """
+        out: set[tuple[int, int]] = set()
+        for uv in self.feature_edges.tolist():
+            u, v = int(uv[0]), int(uv[1])
+            out.add((u, v) if u < v else (v, u))
+        return out
+
 
 def detect_features(
     V: np.ndarray,
