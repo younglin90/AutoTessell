@@ -75,8 +75,32 @@ detection.
 
 ## 남은 작업 (향후 rounds)
 
-- Robust floating-point predicates (Shewchuk) — 수치 안정.
-- 4-4 edge flip.
-- Full-batch BVH traversal (현재는 per-point stack).
-- Thingi10k 규모 (1000+ STL) 자동 벤치.
-- Anisotropic sizing tensor.
+- **Exact-arithmetic predicates**: 현재 tolerance 기반 (`core/utils/predicates.py`).
+  Shewchuk double-double 이 필요한 극한 얇은 tet 에 대비.
+- **4-4 edge flip**: 현재 2-3 / 3-2 만.
+- **Full-batch BVH traversal**: 지금은 per-point stack.
+- **Thingi10k 규모 (1000+ STL) 자동 벤치**.
+- **Anisotropic sizing tensor**.
+- **Incremental Bowyer-Watson**: BSP insertion 이후 full re-Delaunay 대신.
+
+## 누적 개발 이력 (beta110 → beta380)
+
+28 rounds, ~3,500 LoC, 94 tests (88 non-slow + 6 predicates). 주요 마일스톤:
+
+- beta110 Phase A: feature + filter + recovery + smoothing.
+- beta120 Phase B: split / collapse / flip.
+- beta125 Phase C: envelope + quality stop.
+- beta130: vectorized smoothing + BVH snap.
+- beta140: 3-2 flip + adaptive.
+- beta160: BSP constrained insertion.
+- beta170: feature lock + adversarial bench.
+- beta190: 5-STL bench 5/5 success.
+- beta200: inverted tet validator.
+- beta220: collapse cap + rollback (cell 붕괴 해소).
+- beta240–280: edge length / split / collapse / flip numpy 벡터화.
+- beta300: BVH batch + boundary cache.
+- beta310: HARNESS_PARAMS quality 자동 주입.
+- beta320–330: orphan cleanup + target_cells heuristic.
+- beta350–360: tolerance predicates.
+- beta370: smoothing quality guard (opt-in).
+- beta380: large-mesh 자동 보수화.
