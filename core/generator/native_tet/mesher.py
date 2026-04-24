@@ -137,6 +137,23 @@ def generate_native_tet(
 
     _prog("start", 0.0, n_verts=V.shape[0], n_faces=F.shape[0])
 
+    # beta420 — 입력 건강성 pre-check (경고만, 실행 계속).
+    try:
+        from core.generator.native_tet.input_check import check_input
+
+        chk = check_input(V, F)
+        if chk.warnings:
+            log.warning(
+                "native_tet_input_warnings",
+                duplicate=chk.n_duplicate_vertices,
+                zero_area=chk.n_zero_area_triangles,
+                boundary_edges=chk.n_boundary_edges,
+                nonmanifold=chk.n_nonmanifold_edges,
+                warnings=chk.warnings,
+            )
+    except Exception as exc:
+        log.debug("native_tet_input_check_skipped", reason=str(exc))
+
     # beta77: large input guardrail — scipy.Delaunay 가 100k+ vertex 에서 OOM.
     cap = max(1, int(max_input_vertices))
     if V.shape[0] > cap:
