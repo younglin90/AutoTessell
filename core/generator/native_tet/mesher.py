@@ -269,6 +269,7 @@ def generate_native_tet(
         # Phase F — BSP constrained insertion fallback.
         if enable_bsp_insertion:
             from core.generator.native_tet.bsp_insert import bsp_insert_triangles
+            from core.generator.native_tet.bowyer_watson import bowyer_watson_insert
 
             remaining = find_missing_triangles(F, tets)
             if remaining.size > 0:
@@ -276,25 +277,38 @@ def generate_native_tet(
                     "native_tet_bsp_insert_start",
                     n_missing=int(remaining.size),
                 )
-                all_pts, _tets_after, bsp_res = bsp_insert_triangles(
+                # BSP 가 신규 점을 제안 (삽입 위치 계산).
+                pts_with_new, _tets_after, bsp_res = bsp_insert_triangles(
                     all_pts, tets, V, F, remaining,
                     max_inserts=int(bsp_max_inserts_per_triangle) * int(remaining.size),
                 )
                 if bsp_res.n_inserted_points > 0:
-                    # 신규 점 추가 후 전체 재-Delaunay.
-                    dl_res3 = _run_delaunay(all_pts)
-                    if dl_res3 is not None:
-                        all_pts, tets = dl_res3
+                    # 신규 점들만 추출해 Bowyer-Watson incremental insertion.
+                    # beta480: full re-Delaunay 대신 B-W 로 O(K log T) 점진 삽입.
+                    new_pts = pts_with_new[all_pts.shape[0]:]
+                    all_pts_new, tets_new, bw_res = bowyer_watson_insert(
+                        all_pts, tets, new_pts,
+                    )
+                    if bw_res.n_inserted > 0:
+                        all_pts, tets = all_pts_new, tets_new
                         remaining_after = find_missing_triangles(F, tets)
                         log.info(
-                            "native_tet_bsp_insert_done",
-                            inserted_points=bsp_res.n_inserted_points,
-                            subdivided_tets=bsp_res.n_subdivided_tets,
+                            "native_tet_bsp_bw_insert_done",
+                            bsp_proposed_points=bsp_res.n_inserted_points,
+                            bw_inserted=bw_res.n_inserted,
+                            bw_cavity_total=bw_res.n_cavity_total,
                             missing_before=bsp_res.n_missing_before,
                             missing_after=int(remaining_after.size),
                         )
                     else:
-                        log.warning("native_tet_bsp_redelaunay_failed")
+                        # B-W 실패 → full re-Delaunay fallback.
+                        all_pts = pts_with_new
+                        dl_res3 = _run_delaunay(all_pts)
+                        if dl_res3 is not None:
+                            all_pts, tets = dl_res3
+                            log.info("native_tet_bsp_insert_redelaunay_fallback")
+                        else:
+                            log.warning("native_tet_bsp_redelaunay_failed")
 
     # 3) tet centroid 로 inside 판정
     centroids = all_pts[tets].mean(axis=1)
