@@ -64,6 +64,13 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
                      # beta630: fine 에서 edge recovery 활성.
                      "enable_edge_recovery": True,
                      "edge_recovery_max_iter": 2,
+                     # beta1380: fine 에서 통합 CDT recovery + AMIPS smoothing.
+                     "enable_cdt_recovery": True,
+                     "cdt_recovery_max_cycles": 3,
+                     "cdt_recovery_points_budget": 200,
+                     "enable_amips_smooth": True,
+                     "amips_iterations": 2,
+                     "amips_alpha": 1.0,
                      # beta810: fine 에서는 더 엄격한 sliver drop.
                      "sliver_drop_min_dihedral_deg": 1.0,
                      "sliver_drop_max_aspect": 5e4},
