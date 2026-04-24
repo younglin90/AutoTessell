@@ -50,6 +50,41 @@ def propose_edge_midpoints(
     )
 
 
+def propose_recursive_midpoint(
+    V: np.ndarray, missing_edges: list[tuple[int, int]],
+    *, max_depth: int = 3, max_points: int = 1000,
+) -> EdgeRecoveryProposal:
+    """beta1170 (R96) — Shewchuk 2002 recursive midpoint segment split.
+
+    midpoint 1번으로 edge 회복이 안 되면 두 half 를 각각 재귀 midpoint 로
+    분할 후보에 추가. depth ↑ 로 dense 한 샘플 제공.
+    """
+    V = np.asarray(V, dtype=np.float64)
+    if not missing_edges:
+        return EdgeRecoveryProposal(0, np.zeros((0, 3)), 0)
+
+    out: list[list[float]] = []
+
+    def _rec(a: np.ndarray, b: np.ndarray, depth: int) -> None:
+        if depth <= 0 or len(out) >= max_points:
+            return
+        mid = 0.5 * (a + b)
+        out.append(mid.tolist())
+        _rec(a, mid, depth - 1)
+        _rec(mid, b, depth - 1)
+
+    for (u, v) in missing_edges:
+        if len(out) >= max_points:
+            break
+        _rec(V[u], V[v], int(max_depth))
+
+    return EdgeRecoveryProposal(
+        n_missing_before=len(missing_edges),
+        new_points=np.asarray(out, dtype=np.float64) if out else np.zeros((0, 3)),
+        edges_resolved_by_proposal=-1,
+    )
+
+
 def propose_edge_subdivision(
     V: np.ndarray, missing_edges: list[tuple[int, int]],
     *, splits_per_edge: int = 3,
