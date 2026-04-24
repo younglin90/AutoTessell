@@ -6,12 +6,12 @@
     "A_n_cells": 132,
     "A_min_q": 0.0032,
     "A_mean_q": 0.3134,
-    "A_elapsed_s": 0.031,
+    "A_elapsed_s": 0.023,
     "ABC_success": true,
     "ABC_n_cells": 115,
     "ABC_min_q": 0.081,
     "ABC_mean_q": 0.314,
-    "ABC_elapsed_s": 0.254
+    "ABC_elapsed_s": 0.248
   },
   {
     "stl": "02_medium_cylinder.stl",
@@ -20,12 +20,12 @@
     "A_n_cells": 1649,
     "A_min_q": 0.0001,
     "A_mean_q": 0.091,
-    "A_elapsed_s": 0.414,
+    "A_elapsed_s": 0.31,
     "ABC_success": true,
-    "ABC_n_cells": 27,
-    "ABC_min_q": 0.1137,
-    "ABC_mean_q": 0.3478,
-    "ABC_elapsed_s": 6.788
+    "ABC_n_cells": 1580,
+    "ABC_min_q": 0.0001,
+    "ABC_mean_q": 0.1224,
+    "ABC_elapsed_s": 3.657
   },
   {
     "stl": "03_hard_bracket.stl",
@@ -34,11 +34,11 @@
     "A_n_cells": 479,
     "A_min_q": 0.0,
     "A_mean_q": 0.0471,
-    "A_elapsed_s": 0.226,
+    "A_elapsed_s": 0.221,
     "ABC_success": true,
-    "ABC_n_cells": 1,
-    "ABC_min_q": 0.0984,
-    "ABC_mean_q": 0.0984,
-    "ABC_elapsed_s": 1.371
+    "ABC_n_cells": 277,
+    "ABC_min_q": 0.0,
+    "ABC_mean_q": 0.064,
+    "ABC_elapsed_s": 1.215
   }
 ]

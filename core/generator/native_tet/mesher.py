@@ -76,6 +76,9 @@ def generate_native_tet(
     flip_iterations: int = 1,
     tangent_smooth_iterations: int = 1,
     tangent_smooth_relax: float = 0.3,
+    # beta220 — collapse 보수화: iteration 당 최대 cap + cell-drop guard.
+    max_collapses_per_iter: int = 200,
+    cell_drop_rollback_ratio: float = 0.5,
     # beta125 Phase C — envelope + quality stop.
     enable_phase_c: bool = False,
     envelope_eps_relative: float = 0.001,
@@ -422,7 +425,23 @@ def generate_native_tet(
                 target_edge=effective_target if enable_phase_b else float(target_edge_length),
                 ratio=float(collapse_ratio),
                 locked_vertices=surface_new_ids2,
+                max_collapses=int(max_collapses_per_iter),
             )
+            # cell 수 급감 rollback: iteration 전 대비 급락하면 이전 상태로.
+            if (
+                prev_tets.shape[0] > 0
+                and final_tets.shape[0] < prev_tets.shape[0] * float(cell_drop_rollback_ratio)
+            ):
+                log.warning(
+                    "native_tet_phase_b_cell_drop_rollback",
+                    iter=loop_idx,
+                    before=int(prev_tets.shape[0]),
+                    after=int(final_tets.shape[0]),
+                    threshold=float(cell_drop_rollback_ratio),
+                )
+                final_pts = prev_pts
+                final_tets = prev_tets
+                break
             final_tets, fr2 = face_flip_pass(
                 final_pts, final_tets,
                 n_iter=int(flip_iterations),
