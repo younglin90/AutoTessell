@@ -345,27 +345,32 @@ def generate_native_tet(
                         total_inserted=total_inserted,
                     )
 
-                # Round 67: 남은 missing edge 에 대해 targeted 2-3 flip.
+                # Round 67-68: iterative targeted 2-3 flip (최대 3 패스).
                 try:
                     from core.generator.native_tet.edge_flip_recovery import (
                         recover_edges_via_flip,
                     )
 
-                    cdt_now = check_edge_recovery(F, tets)
-                    if cdt_now.n_missing > 0:
+                    for _flip_pass in range(3):
+                        cdt_now = check_edge_recovery(F, tets)
+                        if cdt_now.n_missing == 0:
+                            break
                         tets_flip, flip_res = recover_edges_via_flip(
                             all_pts, tets, cdt_now.missing_edges,
                             max_attempts=200,
                         )
-                        if flip_res.n_edges_recovered > 0:
-                            tets = tets_flip
-                            cdt_after_flip = check_edge_recovery(F, tets)
-                            log.info(
-                                "native_tet_edge_recovery_flip",
-                                attempted=flip_res.n_edges_attempted,
-                                recovered_by_flip=flip_res.n_edges_recovered,
-                                missing_after=cdt_after_flip.n_missing,
-                            )
+                        if flip_res.n_edges_recovered == 0:
+                            break
+                        tets = tets_flip
+                        cdt_after = check_edge_recovery(F, tets)
+                        log.info(
+                            "native_tet_edge_recovery_flip_iter",
+                            pass_=_flip_pass,
+                            recovered=flip_res.n_edges_recovered,
+                            missing_after=cdt_after.n_missing,
+                        )
+                        if cdt_after.n_missing >= cdt_now.n_missing:
+                            break
                 except Exception as exc:
                     log.debug(
                         "native_tet_edge_recovery_flip_skipped", reason=str(exc),
