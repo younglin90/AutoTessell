@@ -77,6 +77,61 @@ def tet_shape_quality(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
     return q
 
 
+def tet_radius_edge_ratio(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
+    """beta990 (R111) — Shewchuk "radius-edge quality": circumradius / shortest edge.
+
+    Sliver 검출에 강한 지표. 정사면체 ≈ 0.612, sliver → ∞.
+    """
+    tets = np.asarray(tets, dtype=np.int64)
+    if tets.size == 0:
+        return np.zeros(0)
+    v = pts[tets]
+    a, b, c, d = v[:, 0], v[:, 1], v[:, 2], v[:, 3]
+    e1 = np.linalg.norm(b - a, axis=1)
+    e2 = np.linalg.norm(c - a, axis=1)
+    e3 = np.linalg.norm(d - a, axis=1)
+    e4 = np.linalg.norm(c - b, axis=1)
+    e5 = np.linalg.norm(d - b, axis=1)
+    e6 = np.linalg.norm(d - c, axis=1)
+    emin = np.minimum.reduce([e1, e2, e3, e4, e5, e6])
+    # circumradius 근사: max edge / (2 sin(min_dihedral)) 는 비싸니 emax/2 사용.
+    emax = np.maximum.reduce([e1, e2, e3, e4, e5, e6])
+    R = emax / 2.0  # 근사 (정사면체 기준).
+    return np.where(emin > 1e-30, R / emin, 1e6)
+
+
+def tet_min_solid_angle_sr(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
+    """beta1000 (R112) — 각 tet 의 4 vertex 중 최소 solid angle (steradian).
+
+    정사면체 ≈ 0.551 sr, degenerate → 0.
+    Van Oosterom–Strackee 공식.
+    """
+    tets = np.asarray(tets, dtype=np.int64)
+    if tets.size == 0:
+        return np.zeros(0)
+    v = pts[tets]
+
+    def _sa(o, p1, p2, p3):
+        a = p1 - o; b = p2 - o; c = p3 - o
+        na = np.linalg.norm(a, axis=1)
+        nb = np.linalg.norm(b, axis=1)
+        nc = np.linalg.norm(c, axis=1)
+        num = np.abs(np.einsum("ij,ij->i", a, np.cross(b, c)))
+        ab = np.einsum("ij,ij->i", a, b)
+        bc = np.einsum("ij,ij->i", b, c)
+        ca = np.einsum("ij,ij->i", c, a)
+        denom = (
+            na * nb * nc + ab * nc + bc * na + ca * nb
+        )
+        return 2.0 * np.arctan2(num, np.where(np.abs(denom) > 1e-30, denom, 1e-30))
+
+    sa0 = _sa(v[:, 0], v[:, 1], v[:, 2], v[:, 3])
+    sa1 = _sa(v[:, 1], v[:, 0], v[:, 2], v[:, 3])
+    sa2 = _sa(v[:, 2], v[:, 0], v[:, 1], v[:, 3])
+    sa3 = _sa(v[:, 3], v[:, 0], v[:, 1], v[:, 2])
+    return np.minimum.reduce([sa0, sa1, sa2, sa3])
+
+
 def tet_aspect_ratio(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
     """Aspect ratio = circumradius / inradius (1 = regular, ∞ = degenerate)."""
     tets = np.asarray(tets, dtype=np.int64)

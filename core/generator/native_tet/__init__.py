@@ -48,6 +48,8 @@ from core.generator.native_tet.quality import (
     should_stop,
     tet_aspect_ratio,
     tet_min_dihedral_deg,
+    tet_min_solid_angle_sr,
+    tet_radius_edge_ratio,
     tet_shape_quality,
 )
 from core.generator.native_tet.cdt_check import (
@@ -75,6 +77,8 @@ __all__ = [
     "should_stop",
     "tet_aspect_ratio",
     "tet_min_dihedral_deg",
+    "tet_min_solid_angle_sr",
+    "tet_radius_edge_ratio",
     "tet_shape_quality",
     "CDTCheckResult",
     "check_edge_recovery",
