@@ -59,6 +59,7 @@ def fix_inverted_tets(
     tets: np.ndarray,
     *,
     degenerate_eps: float = 1e-20,
+    use_exact_for_uncertain: bool = True,
 ) -> tuple[np.ndarray, ValidateResult]:
     """음수 signed vol tet 은 마지막 두 vertex swap 으로 양수화.
 
@@ -73,6 +74,34 @@ def fix_inverted_tets(
     vol6 = signed_volume6(pts, tets)
     inverted = vol6 < -float(degenerate_eps)
     degenerate = np.abs(vol6) < float(degenerate_eps)
+
+    # beta510: uncertain (|vol6| near tol) tet 은 exact predicate 로 재판정.
+    if use_exact_for_uncertain and degenerate.any():
+        uncertain_idx = np.where(degenerate)[0]
+        try:
+            from core.utils.predicates_exact import orient3d as exact_orient3d
+
+            new_inverted = []
+            new_degen = []
+            for ti in uncertain_idx.tolist():
+                a, b, c, d = tets[ti]
+                s = exact_orient3d(
+                    tuple(pts[a].tolist()),
+                    tuple(pts[b].tolist()),
+                    tuple(pts[c].tolist()),
+                    tuple(pts[d].tolist()),
+                )
+                if s < 0:
+                    inverted[ti] = True
+                    new_inverted.append(ti)
+                    degenerate[ti] = False
+                elif s > 0:
+                    degenerate[ti] = False
+                else:
+                    new_degen.append(ti)
+        except Exception:
+            pass
+
     n_before = int(inverted.sum())
     n_degen = int(degenerate.sum())
 
