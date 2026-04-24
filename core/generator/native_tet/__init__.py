@@ -41,6 +41,27 @@ from core.generator.native_tet.mesher import (
     NativeTetResult,
     generate_native_tet,
 )
+from core.generator.native_tet.quality import (
+    QualitySnapshot,
+    snapshot as quality_snapshot,
+    snapshot_to_dict as quality_snapshot_to_dict,
+    should_stop,
+    tet_aspect_ratio,
+    tet_min_dihedral_deg,
+    tet_shape_quality,
+)
+from core.generator.native_tet.cdt_check import (
+    CDTCheckResult,
+    check_edge_recovery,
+)
+from core.generator.native_tet.features import (
+    FeatureInfo,
+    detect_features,
+)
+from core.generator.native_tet.input_check import (
+    InputCheckResult,
+    check_input,
+)
 
 
 __all__ = [
@@ -48,4 +69,17 @@ __all__ = [
     "generate_native_tet",
     "TetHarnessResult",
     "run_native_tet_harness",
+    "QualitySnapshot",
+    "quality_snapshot",
+    "quality_snapshot_to_dict",
+    "should_stop",
+    "tet_aspect_ratio",
+    "tet_min_dihedral_deg",
+    "tet_shape_quality",
+    "CDTCheckResult",
+    "check_edge_recovery",
+    "FeatureInfo",
+    "detect_features",
+    "InputCheckResult",
+    "check_input",
 ]
