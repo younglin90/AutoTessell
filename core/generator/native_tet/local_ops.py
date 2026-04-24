@@ -151,6 +151,8 @@ def collapse_short_edges(
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """edge length < ratio × target_edge 인 edge 양 끝을 merge (u,v → u).
 
+    Round 9 최적화: vertex→tets 맵을 1 번 빌드 후 증분 갱신.
+
     제약:
       - 둘 중 하나가 locked 이면 locked 쪽을 유지, 아니면 작은 id 유지.
       - 둘 다 locked 이면 skip.
@@ -173,9 +175,13 @@ def collapse_short_edges(
     n_collapse = 0
     alive = np.ones(tets.shape[0], dtype=bool)
 
-    # 반복적으로 짧은 edge 하나씩 처리 (greedy).
+    # vertex → tet id set. 매번 재계산 대신 증분 갱신.
+    v2t: dict[int, set[int]] = {}
+    for ti in range(tets.shape[0]):
+        for vi in tets[ti]:
+            v2t.setdefault(int(vi), set()).add(ti)
+
     for _ in range(max_collapses):
-        # 현재 edge 길이 재계산.
         current = tets[alive]
         if current.size == 0:
             break
@@ -183,7 +189,6 @@ def collapse_short_edges(
         short = [k for k, L in lens.items() if L < thresh]
         if not short:
             break
-        # 가장 짧은 것 부터.
         short.sort(key=lambda k: lens[k])
         done = False
         for (u, v) in short:
@@ -192,17 +197,13 @@ def collapse_short_edges(
             if u_locked and v_locked:
                 continue
             keeper, victim = (u, v) if v_locked or (not u_locked and u < v) else (v, u)
-            # 가능한지 사전 검사: victim 의 인접 tet 중 keeper 도 포함하지 않는
-            # tet 에 대해 merge 후 volume sign 이 뒤집히면 skip.
             vic_tet_ids = [
-                ti for ti in range(tets.shape[0])
-                if alive[ti] and victim in tets[ti].tolist()
+                ti for ti in v2t.get(victim, set()) if alive[ti]
             ]
             ok = True
             for ti in vic_tet_ids:
                 a, b, c, d = tets[ti].tolist()
                 if keeper in (a, b, c, d):
-                    # edge 공유 tet — merge 로 degenerate 됨, 제거 대상.
                     continue
                 new_tet = [keeper if x == victim else x for x in (a, b, c, d)]
                 if len(set(new_tet)) < 4:
@@ -219,18 +220,26 @@ def collapse_short_edges(
                     break
             if not ok:
                 continue
-            # 수행: keeper 이동 옵션 = midpoint (둘 다 unlocked 일 때), 아니면 keeper 유지.
             if not u_locked and not v_locked:
                 pts[keeper] = 0.5 * (pts[u] + pts[v])
-            # merge 적용.
             for ti in vic_tet_ids:
                 a, b, c, d = tets[ti].tolist()
                 if keeper in (a, b, c, d):
+                    # edge 공유 tet 삭제 + v2t 갱신.
                     alive[ti] = False
+                    for vi in (a, b, c, d):
+                        s = v2t.get(int(vi))
+                        if s is not None:
+                            s.discard(ti)
                     continue
                 for idx in range(4):
                     if tets[ti, idx] == victim:
                         tets[ti, idx] = keeper
+                # v2t 에서 victim 제거, keeper 추가.
+                s_vic = v2t.get(victim)
+                if s_vic is not None:
+                    s_vic.discard(ti)
+                v2t.setdefault(keeper, set()).add(ti)
             n_collapse += 1
             done = True
             break
@@ -238,5 +247,4 @@ def collapse_short_edges(
             break
 
     new_tets = tets[alive]
-    # 미사용 vertex 는 그대로 둠 (인덱스 안정성). mesher 상위에서 정리.
     return pts, new_tets, n_collapse

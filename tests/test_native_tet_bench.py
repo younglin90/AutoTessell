@@ -87,6 +87,8 @@ def test_native_tet_bench_basic(tmp_path) -> None:
         BENCH_STL_DIR / "01_easy_cube.stl",
         BENCH_STL_DIR / "02_medium_cylinder.stl",
         BENCH_STL_DIR / "03_hard_bracket.stl",
+        BENCH_STL_DIR / "04_extreme_gear.stl",
+        BENCH_STL_DIR / "05_ultra_knot.stl",
     ]
     existing = [p for p in candidates if p.exists()]
     if not existing:
@@ -108,3 +110,19 @@ def test_native_tet_bench_basic(tmp_path) -> None:
     # 전체 성공률 >= 1/3 (현재 수준).
     n_success = sum(1 for r in rows if r.get("success"))
     assert n_success >= max(1, len(rows) // 3)
+
+
+def test_native_tet_bench_drift_check() -> None:
+    """최신 벤치 JSON 이 존재하면 min_q 가 비정상적으로 떨어지지 않았는지 확인.
+
+    baseline: cube 만 하드 고정. 나머지는 소프트 가이드.
+    """
+    if not BENCH_OUTPUT.exists():
+        pytest.skip("벤치 JSON 아직 없음 — test_native_tet_bench_basic 먼저 실행")
+    rows = json.loads(BENCH_OUTPUT.read_text())
+    for r in rows:
+        if r.get("stl") == "01_easy_cube.stl" and r.get("success"):
+            # cube 는 mean_q > 0.2 유지.
+            assert r.get("mean_q", 0.0) > 0.2, (
+                f"cube mean_q drift: {r.get('mean_q')}"
+            )
