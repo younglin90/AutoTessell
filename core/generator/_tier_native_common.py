@@ -46,9 +46,17 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
         "draft":    {"seed_density": 10, "max_iter": 1, "sliver_quality_threshold": 0.02,
                      "max_input_vertices": 100000},
         "standard": {"seed_density": 12, "max_iter": 2, "sliver_quality_threshold": 0.05,
-                     "max_input_vertices": 100000},
+                     "max_input_vertices": 100000,
+                     # beta310: standard 부터 Phase B (vectorized) 자동 활성.
+                     "enable_phase_b": True, "local_ops_iterations": 1,
+                     "tangent_smooth_iterations": 1},
         "fine":     {"seed_density": 16, "max_iter": 3, "sliver_quality_threshold": 0.10,
-                     "max_input_vertices": 200000},
+                     "max_input_vertices": 200000,
+                     # fine: Phase B + C (envelope + quality stop) + adaptive sizing.
+                     "enable_phase_b": True, "local_ops_iterations": 2,
+                     "flip_iterations": 2, "tangent_smooth_iterations": 2,
+                     "enable_phase_c": True, "envelope_eps_relative": 0.01,
+                     "use_adaptive_sizing": True},
     },
     "tier_native_hex": {
         # native_hex 는 uniform grid (harness 미사용). seed_density / snap_boundary 만 의미.

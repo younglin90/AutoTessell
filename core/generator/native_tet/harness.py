@@ -84,6 +84,8 @@ def run_native_tet_harness(
     max_cells: int = 50000,
     sliver_quality_threshold: float = 0.05,
     max_input_vertices: int = 100000,
+    # beta310: quality=standard/fine 에서 전달되는 Phase B/C/adaptive kwargs.
+    **kwargs,
 ) -> TetHarnessResult:
     """native_tet Generator ↔ Evaluator 반복.
 
@@ -131,6 +133,7 @@ def run_native_tet_harness(
                 seed_density=current_seed,
                 sliver_quality_threshold=current_q_thresh,
                 max_input_vertices=int(max_input_vertices),
+                **kwargs,
             )
             if not res.success:
                 log.warning(
