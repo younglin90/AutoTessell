@@ -141,6 +141,120 @@ def flip_faces_23(
     return out, n_flip
 
 
+def flip_edges_32(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    min_quality_improvement: float = 1e-4,
+    max_flips: int = 5000,
+) -> tuple[np.ndarray, int]:
+    """3-2 edge flip: 내부 edge (u,v) 를 공유하는 3 tet 제거 후 2 tet 로 재구성.
+
+    3 tet 의 반대편 vertex 가 정확히 3 개 (x, y, z) 이어야 한다. 결과:
+        {u, x, y, z}, {v, x, y, z} — 2 tet.
+
+    quality 개선 시에만 적용. edge 가 boundary 에 있으면 skip (topology 훼손
+    방지).
+    """
+    pts = np.asarray(pts, dtype=np.float64)
+    tets = np.asarray(tets, dtype=np.int64).copy()
+    if tets.size == 0:
+        return tets, 0
+
+    def _edge_to_tets(T: np.ndarray) -> dict[tuple[int, int], list[int]]:
+        m: dict[tuple[int, int], list[int]] = {}
+        for i in range(T.shape[0]):
+            a, b, c, d = (int(x) for x in T[i])
+            for u, v in ((a, b), (a, c), (a, d), (b, c), (b, d), (c, d)):
+                key = (u, v) if u < v else (v, u)
+                m.setdefault(key, []).append(i)
+        return m
+
+    def _face_map(T: np.ndarray) -> dict[tuple[int, int, int], list[int]]:
+        m: dict[tuple[int, int, int], list[int]] = {}
+        for i in range(T.shape[0]):
+            a, b, c, d = (int(x) for x in T[i])
+            for tri in ((a, b, c), (a, b, d), (a, c, d), (b, c, d)):
+                k = tuple(sorted(tri))
+                m.setdefault(k, []).append(i)  # type: ignore[arg-type]
+        return m
+
+    tets_list = tets.tolist()
+    alive = np.ones(tets.shape[0], dtype=bool)
+    e2t = _edge_to_tets(np.asarray(tets_list, dtype=np.int64))
+    fmap = _face_map(np.asarray(tets_list, dtype=np.int64))
+
+    # boundary edge 는 한쪽 face 가 boundary (len(face owners)==1) 인 경우.
+    boundary_faces = set(k for k, lst in fmap.items() if len(lst) == 1)
+
+    def _edge_on_boundary(u: int, v: int) -> bool:
+        for fk in boundary_faces:
+            if u in fk and v in fk:
+                return True
+        return False
+
+    n_flip = 0
+
+    for (u, v), owners in list(e2t.items()):
+        if n_flip >= max_flips:
+            break
+        if len(owners) != 3:
+            continue
+        if not all(alive[t] for t in owners):
+            continue
+        if _edge_on_boundary(u, v):
+            continue
+        # 3 tet 의 반대편 vertex 3 개.
+        opposite: list[int] = []
+        for ti in owners:
+            verts = [x for x in tets_list[ti] if x != u and x != v]
+            if len(verts) != 2:
+                opposite = []
+                break
+            opposite.extend(verts)
+        # opposite 는 6 개 (3 tet × 2 other vertex). 중복 제거 시 정확히 3 고유.
+        uniq = sorted(set(opposite))
+        if len(uniq) != 3:
+            continue
+        x, y, z = uniq
+        # 기존 quality.
+        q_old = min(
+            _tet_quality(pts[tets_list[ti][0]], pts[tets_list[ti][1]],
+                         pts[tets_list[ti][2]], pts[tets_list[ti][3]])
+            for ti in owners
+        )
+        # 새 2 tet.
+        new_tets = [(u, x, y, z), (v, x, y, z)]
+        ok = True
+        q_new_min = 1.0
+        for nt in new_tets:
+            if len(set(nt)) != 4:
+                ok = False; break
+            vol6 = _tet_signed_vol6(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
+            if abs(vol6) < 1e-20:
+                ok = False; break
+            q = _tet_quality(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
+            if q < q_new_min:
+                q_new_min = q
+        if not ok:
+            continue
+        if q_new_min <= q_old + float(min_quality_improvement):
+            continue
+
+        for ti in owners:
+            alive[ti] = False
+        for nt in new_tets:
+            tets_list.append(list(nt))
+            alive = np.append(alive, True)
+        n_flip += 1
+
+    out = np.asarray(
+        [tets_list[i] for i in range(len(tets_list)) if alive[i]],
+        dtype=np.int64,
+    )
+    return out, n_flip
+
+
 def face_flip_pass(
     pts: np.ndarray,
     tets: np.ndarray,
@@ -166,17 +280,23 @@ def face_flip_pass(
 
     q_before = _min_quality(tets0)
     T = tets0
-    n_flip_total = 0
+    n_flip_23_total = 0
+    n_flip_32_total = 0
     for _ in range(max(1, n_iter)):
-        T_new, n = flip_faces_23(pts, T, max_flips=max_flips_per_iter)
-        if n == 0:
+        T_new, n23 = flip_faces_23(pts, T, max_flips=max_flips_per_iter)
+        if n23 > 0:
+            T = T_new
+            n_flip_23_total += n23
+        T_new2, n32 = flip_edges_32(pts, T, max_flips=max_flips_per_iter)
+        if n32 > 0:
+            T = T_new2
+            n_flip_32_total += n32
+        if n23 == 0 and n32 == 0:
             break
-        T = T_new
-        n_flip_total += n
     q_after = _min_quality(T)
     return T, FlipResult(
-        n_flip_23=n_flip_total,
-        n_flip_32=0,
+        n_flip_23=n_flip_23_total,
+        n_flip_32=n_flip_32_total,
         n_tets_before=int(tets0.shape[0]),
         n_tets_after=int(T.shape[0]),
         min_quality_before=q_before,
