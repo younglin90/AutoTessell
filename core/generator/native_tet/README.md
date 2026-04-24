@@ -21,9 +21,12 @@ MPL-2.0) 및 TetGen (Si 2015) 핵심 알고리즘을 Python 으로 독립 재구
 | `envelope.py` | ε-envelope surface preservation | `Envelope.build`, `check_operation` |
 | `quality.py` | Per-tet shape quality + stop criterion | `tet_shape_quality`, `snapshot`, `should_stop` |
 | `adaptive.py` | Curvature 기반 per-vertex target edge | `curvature_sizing` |
-| `validate.py` | Inverted / degenerate tet 검출 + swap 복구 | `fix_inverted_tets` |
+| `validate.py` | Inverted / degenerate tet 검출 + swap 복구 | `fix_inverted_tets`, `orientation_signs` |
+| `input_check.py` | 입력 surface pre-check (duplicate / zero-area / non-watertight) | `check_input` |
 
-추가: `core/utils/aabb.py` — AABB BVH (closest-point / envelope query 공통).
+추가:
+- `core/utils/aabb.py` — AABB BVH (closest-point / envelope query 공통).
+- `core/utils/predicates.py` — tolerance 기반 orient3d / insphere.
 
 ## Phase 분류
 
@@ -104,3 +107,6 @@ detection.
 - beta350–360: tolerance predicates.
 - beta370: smoothing quality guard (opt-in).
 - beta380: large-mesh 자동 보수화.
+- beta400: 4-4 edge flip.
+- beta410: progress_cb + 4-4 flip tests.
+- beta420: input pre-check (duplicate / zero-area / non-watertight / non-manifold).
