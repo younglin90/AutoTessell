@@ -132,6 +132,136 @@ def smooth_interior(
     )
 
 
+def smooth_odt(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    locked_vertex_ids: np.ndarray,
+    n_iter: int = 1,
+    relax: float = 0.7,
+) -> SmoothResult:
+    """beta1070 (R104) — Optimal Delaunay Triangulation (ODT) smoothing.
+
+    각 interior vertex 를 1-ring tet 의 volume-weighted circumcenter 평균
+    위치로 이동. Chen & Xu 2004.
+
+    구현: 각 tet 의 외심 C_t, 부피 V_t 계산. vertex i 의 new position =
+    Σ V_t·C_t / Σ V_t  (t ∈ 1-ring).
+
+    Laplacian 보다 ~10-30% 더 좋은 min_dihedral 경향 (tetwild 경험).
+    """
+    pts = np.asarray(pts, dtype=np.float64).copy()
+    tets = np.asarray(tets, dtype=np.int64)
+    n = pts.shape[0]
+    if tets.size == 0:
+        return SmoothResult(0, 0, 0.0)
+    locked_mask = np.zeros(n, dtype=bool)
+    if locked_vertex_ids is not None and len(locked_vertex_ids) > 0:
+        locked_mask[np.asarray(locked_vertex_ids, dtype=np.int64)] = True
+
+    def _circumcenter_and_vol(v0, v1, v2, v3):
+        # Ericson 2005 — tet circumcenter.
+        A = np.stack([v1 - v0, v2 - v0, v3 - v0], axis=1)   # (T,3,3)
+        b = 0.5 * np.stack([
+            np.einsum("ij,ij->i", v1 - v0, v1 - v0),
+            np.einsum("ij,ij->i", v2 - v0, v2 - v0),
+            np.einsum("ij,ij->i", v3 - v0, v3 - v0),
+        ], axis=1)[..., None]   # (T,3,1)
+        # solve per-tet A · x = b.
+        det = np.linalg.det(A)
+        safe = np.abs(det) > 1e-20
+        x = np.zeros_like(b)
+        if safe.any():
+            x[safe] = np.linalg.solve(A[safe], b[safe])
+        center = v0 + x[..., 0]
+        vol = np.abs(det) / 6.0
+        return center, vol
+
+    max_disp = 0.0
+    moved = 0
+    for _ in range(max(0, int(n_iter))):
+        v = pts[tets]
+        C, W = _circumcenter_and_vol(v[:, 0], v[:, 1], v[:, 2], v[:, 3])
+        sum_wc = np.zeros_like(pts)
+        sum_w = np.zeros(n, dtype=np.float64)
+        for k in range(4):
+            np.add.at(sum_wc, tets[:, k], W[:, None] * C)
+            np.add.at(sum_w, tets[:, k], W)
+        valid = (sum_w > 1e-30) & (~locked_mask)
+        if not valid.any():
+            break
+        target = np.zeros_like(pts)
+        target[valid] = sum_wc[valid] / sum_w[valid, None]
+        step = float(relax) * (target[valid] - pts[valid])
+        pts[valid] = pts[valid] + step
+        max_d = float(np.linalg.norm(step, axis=1).max()) if step.size else 0.0
+        if max_d > max_disp:
+            max_disp = max_d
+        moved += int(valid.sum())
+
+    return SmoothResult(
+        n_iter=int(n_iter),
+        n_interior_moved=int(moved),
+        max_displacement=float(max_disp),
+    ), pts
+
+
+def smooth_cvt(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    locked_vertex_ids: np.ndarray,
+    n_iter: int = 1,
+    relax: float = 0.5,
+) -> tuple[SmoothResult, np.ndarray]:
+    """beta1080 (R105) — Centroidal Voronoi Tessellation 유사 relaxation.
+
+    interior vertex 를 1-ring tet centroid 의 volume-weighted 평균으로.
+    Du, Faber, Gunzburger 1999.
+    """
+    pts = np.asarray(pts, dtype=np.float64).copy()
+    tets = np.asarray(tets, dtype=np.int64)
+    n = pts.shape[0]
+    if tets.size == 0:
+        return SmoothResult(0, 0, 0.0), pts
+    locked_mask = np.zeros(n, dtype=bool)
+    if locked_vertex_ids is not None and len(locked_vertex_ids) > 0:
+        locked_mask[np.asarray(locked_vertex_ids, dtype=np.int64)] = True
+
+    max_disp = 0.0
+    moved = 0
+    for _ in range(max(0, int(n_iter))):
+        v = pts[tets]
+        centroid = v.mean(axis=1)
+        vol6 = np.abs(np.einsum(
+            "ij,ij->i",
+            v[:, 1] - v[:, 0],
+            np.cross(v[:, 2] - v[:, 0], v[:, 3] - v[:, 0]),
+        ))
+        sum_wc = np.zeros_like(pts)
+        sum_w = np.zeros(n, dtype=np.float64)
+        for k in range(4):
+            np.add.at(sum_wc, tets[:, k], vol6[:, None] * centroid)
+            np.add.at(sum_w, tets[:, k], vol6)
+        valid = (sum_w > 1e-30) & (~locked_mask)
+        if not valid.any():
+            break
+        target = np.zeros_like(pts)
+        target[valid] = sum_wc[valid] / sum_w[valid, None]
+        step = float(relax) * (target[valid] - pts[valid])
+        pts[valid] = pts[valid] + step
+        max_d = float(np.linalg.norm(step, axis=1).max()) if step.size else 0.0
+        if max_d > max_disp:
+            max_disp = max_d
+        moved += int(valid.sum())
+
+    return SmoothResult(
+        n_iter=int(n_iter),
+        n_interior_moved=int(moved),
+        max_displacement=float(max_disp),
+    ), pts
+
+
 def _vertex_normal_from_faces(
     V: np.ndarray, F: np.ndarray,
 ) -> np.ndarray:
@@ -147,9 +277,10 @@ def _vertex_normal_from_faces(
     e1 = V[F[:, 1]] - V[F[:, 0]]
     e2 = V[F[:, 2]] - V[F[:, 0]]
     face_n = np.cross(e1, e2)   # area-weighted
-    for i in range(F.shape[0]):
-        for vi in F[i]:
-            N[vi] += face_n[i]
+    # beta1060 (R106 보조): Python nested loop → np.add.at scatter-add.
+    np.add.at(N, F[:, 0], face_n)
+    np.add.at(N, F[:, 1], face_n)
+    np.add.at(N, F[:, 2], face_n)
     norms = np.linalg.norm(N, axis=1, keepdims=True)
     safe = norms[:, 0] > 1e-30
     out = np.zeros_like(N)
