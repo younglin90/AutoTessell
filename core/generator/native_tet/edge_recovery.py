@@ -48,3 +48,36 @@ def propose_edge_midpoints(
         new_points=np.asarray(pts_list, dtype=np.float64),
         edges_resolved_by_proposal=-1,    # caller 가 post-insertion 에 측정.
     )
+
+
+def propose_edge_subdivision(
+    V: np.ndarray, missing_edges: list[tuple[int, int]],
+    *, splits_per_edge: int = 3,
+    max_points: int = 1000,
+) -> EdgeRecoveryProposal:
+    """Shewchuk-style denser recovery — 각 missing edge 를 splits_per_edge 등분.
+
+    중점 1 개 삽입으로 부족하면 edge 를 여러 균등 분할 점으로 쪼갠다. 각 삽입
+    후보는 B-W 의 cavity 를 깊게 침투해 원본 edge 를 포함하는 tet 구성 유도.
+
+    레퍼런스: TetGen Si 2015 §4 recursive segment recovery.
+    """
+    V = np.asarray(V, dtype=np.float64)
+    if not missing_edges:
+        return EdgeRecoveryProposal(0, np.zeros((0, 3)), 0)
+    splits_per_edge = max(1, int(splits_per_edge))
+    pts_list: list[list[float]] = []
+    for (u, v) in missing_edges:
+        if len(pts_list) >= max_points:
+            break
+        a = V[u]; b = V[v]
+        for i in range(1, splits_per_edge + 1):
+            if len(pts_list) >= max_points:
+                break
+            t = i / (splits_per_edge + 1)
+            pts_list.append((a + t * (b - a)).tolist())
+    return EdgeRecoveryProposal(
+        n_missing_before=len(missing_edges),
+        new_points=np.asarray(pts_list, dtype=np.float64) if pts_list else np.zeros((0, 3)),
+        edges_resolved_by_proposal=-1,
+    )

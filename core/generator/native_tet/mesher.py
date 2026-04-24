@@ -275,6 +275,8 @@ def generate_native_tet(
             from core.generator.native_tet.edge_recovery import propose_edge_midpoints
             from core.generator.native_tet.bowyer_watson import bowyer_watson_insert as _bw_edge
 
+            from core.generator.native_tet.edge_recovery import propose_edge_subdivision
+
             edge_rec_iter = 3   # 최대 3 라운드 반복.
             cdt_initial = check_edge_recovery(F, tets)
             n_miss_initial = cdt_initial.n_missing
@@ -283,7 +285,15 @@ def generate_native_tet(
             for rec_i in range(edge_rec_iter):
                 if not cur_missing:
                     break
-                prop = propose_edge_midpoints(V, cur_missing, max_points=200)
+                # 1 차 라운드: midpoint. 2+ 라운드: 더 dense subdivision.
+                if rec_i == 0:
+                    prop = propose_edge_midpoints(V, cur_missing, max_points=200)
+                else:
+                    prop = propose_edge_subdivision(
+                        V, cur_missing,
+                        splits_per_edge=3,
+                        max_points=300,
+                    )
                 if prop.new_points.shape[0] == 0:
                     break
                 inside_new = _inside_winding_number(prop.new_points, V, F)
@@ -296,7 +306,7 @@ def generate_native_tet(
                 all_pts, tets = ap_new, ts_new
                 total_inserted += er_res.n_inserted
                 cdt_next = check_edge_recovery(F, tets)
-                if cdt_next.n_missing == len(cur_missing):
+                if cdt_next.n_missing >= len(cur_missing):
                     # 진전 없으면 종료.
                     break
                 cur_missing = cdt_next.missing_edges
@@ -304,6 +314,7 @@ def generate_native_tet(
                     "native_tet_edge_recovery_iter",
                     iter=rec_i, missing=cdt_next.n_missing,
                     inserted_this_iter=er_res.n_inserted,
+                    mode="midpoint" if rec_i == 0 else "subdivision",
                 )
             if total_inserted > 0:
                 cdt_final = check_edge_recovery(F, tets)
