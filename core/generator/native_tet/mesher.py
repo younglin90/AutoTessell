@@ -157,6 +157,7 @@ def generate_native_tet(
     _prog("start", 0.0, n_verts=V.shape[0], n_faces=F.shape[0])
 
     # beta420 — 입력 건강성 pre-check (경고만, 실행 계속).
+    chk = None
     try:
         from core.generator.native_tet.input_check import check_input
 
