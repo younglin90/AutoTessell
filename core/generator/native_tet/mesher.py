@@ -79,6 +79,11 @@ def generate_native_tet(
     quality_target_min_q: float = 0.3,
     quality_improvement_eps: float = 0.005,
     quality_window: int = 3,
+    # beta140 Phase E2 — curvature-adaptive sizing (split/collapse 기준).
+    use_adaptive_sizing: bool = False,
+    adaptive_min_ratio: float = 0.25,
+    adaptive_max_ratio: float = 2.0,
+    adaptive_curvature_gain: float = 2.0,
 ) -> NativeTetResult:
     """입력 표면 메쉬 → tet polyMesh (MVP).
 
@@ -320,6 +325,28 @@ def generate_native_tet(
         surface_new_ids2 = remap[np.arange(n_surface)]
         surface_new_ids2 = surface_new_ids2[surface_new_ids2 >= 0]
 
+        # adaptive sizing: vertex 별 target 계산 후 split/collapse 에 사용할
+        # scalar target 을 곡률 영향 받은 평균으로 조정.
+        effective_target = float(target_edge_length)
+        if use_adaptive_sizing:
+            from core.generator.native_tet.adaptive import curvature_sizing
+
+            per_v = curvature_sizing(
+                V, F,
+                target_edge=effective_target if enable_phase_b else float(target_edge_length),
+                min_ratio=float(adaptive_min_ratio),
+                max_ratio=float(adaptive_max_ratio),
+                curvature_gain=float(adaptive_curvature_gain),
+            )
+            effective_target = float(per_v.mean())
+            log.info(
+                "native_tet_adaptive_sizing",
+                base_target=float(target_edge_length),
+                adaptive_mean=effective_target,
+                adaptive_min=float(per_v.min()),
+                adaptive_max=float(per_v.max()),
+            )
+
         env = None
         q_hist: list = []
         if enable_phase_c:
@@ -343,12 +370,12 @@ def generate_native_tet(
 
             final_pts, final_tets, n_s = split_long_edges(
                 final_pts, final_tets,
-                target_edge=float(target_edge_length),
+                target_edge=effective_target if enable_phase_b else float(target_edge_length),
                 ratio=float(split_ratio),
             )
             final_pts, final_tets, n_c = collapse_short_edges(
                 final_pts, final_tets,
-                target_edge=float(target_edge_length),
+                target_edge=effective_target if enable_phase_b else float(target_edge_length),
                 ratio=float(collapse_ratio),
                 locked_vertices=surface_new_ids2,
             )

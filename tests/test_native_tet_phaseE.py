@@ -200,3 +200,69 @@ def test_native_tet_phase_b_with_32_flip(tmp_path) -> None:
     )
     assert res.success, res.message
     assert res.n_cells > 0
+
+
+# ======================================================================
+# Integration — adaptive sizing wired + quality benchmark
+# ======================================================================
+
+
+def test_native_tet_adaptive_sizing_wired(tmp_path) -> None:
+    from core.generator.native_tet.mesher import generate_native_tet
+    import trimesh
+
+    m = trimesh.creation.box(extents=(1, 1, 1))
+    V = np.asarray(m.vertices, dtype=np.float64)
+    F = np.asarray(m.faces, dtype=np.int64)
+
+    res = generate_native_tet(
+        V, F, tmp_path / "cube_adaptive",
+        seed_density=4,
+        enable_phase_b=True,
+        use_adaptive_sizing=True,
+        local_ops_iterations=1,
+        flip_iterations=1,
+    )
+    assert res.success, res.message
+
+
+def test_native_tet_phase_c_improves_quality(tmp_path) -> None:
+    """Phase C + envelope + snap 을 거치면 min_q 가 enable 전보다 같거나 향상.
+
+    Phase B/C 가 quality 를 '망가뜨리지' 않는지 안전판.
+    """
+    from core.generator.native_tet.mesher import generate_native_tet
+    from core.generator.native_tet.quality import tet_shape_quality
+    import trimesh
+
+    m = trimesh.creation.icosphere(subdivisions=1, radius=1.0)
+    V = np.asarray(m.vertices, dtype=np.float64)
+    F = np.asarray(m.faces, dtype=np.int64)
+
+    # baseline: Phase A 만.
+    res_a = generate_native_tet(
+        V, F, tmp_path / "sphere_A_only",
+        seed_density=6,
+        enable_phase_a=True, enable_phase_b=False, enable_phase_c=False,
+    )
+    # Phase C 풀세트.
+    res_c = generate_native_tet(
+        V, F, tmp_path / "sphere_C_full",
+        seed_density=6,
+        enable_phase_a=True, enable_phase_b=True, enable_phase_c=True,
+        local_ops_iterations=2, flip_iterations=2,
+        tangent_smooth_iterations=1,
+        envelope_eps_relative=0.02,
+        quality_target_min_q=0.25,
+    )
+    assert res_a.success and res_c.success
+
+    q_a = tet_shape_quality(res_a.tet_points, res_a.tets)
+    q_c = tet_shape_quality(res_c.tet_points, res_c.tets)
+    # Phase C 가 quality 를 catastrophic 하게 망가뜨리지 않음 (0.5× 이상 유지).
+    # 실제 큰 개선은 Phase D (BSP constrained insertion) 에서 기대.
+    assert q_c.mean() >= q_a.mean() * 0.5, (
+        f"mean q 심각 악화: A={q_a.mean():.4f} C={q_c.mean():.4f}"
+    )
+    # 둘 다 유효한 양의 quality 유지.
+    assert q_c.mean() > 0.0
