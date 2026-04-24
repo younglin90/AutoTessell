@@ -64,6 +64,15 @@ def generate_native_tet(
     protect_boundary_faces: bool = True,
     smooth_iterations: int = 2,
     smooth_relax: float = 0.5,
+    # beta120 Phase B — local ops + tangent smoothing.
+    # 기본 off: O(T^2) / O(V^2) Python 루프라 대형 메쉬에서 느림. 명시 opt-in.
+    enable_phase_b: bool = False,
+    local_ops_iterations: int = 1,
+    split_ratio: float = 4.0 / 3.0,
+    collapse_ratio: float = 4.0 / 5.0,
+    flip_iterations: int = 1,
+    tangent_smooth_iterations: int = 1,
+    tangent_smooth_relax: float = 0.3,
 ) -> NativeTetResult:
     """입력 표면 메쉬 → tet polyMesh (MVP).
 
@@ -290,6 +299,74 @@ def generate_native_tet(
             n_feature_edges=int(feat.feature_edges.shape[0]),
             n_corner=int(feat.corner_vertices.shape[0]),
         )
+
+    # 4c) Phase B — local operations (split/collapse/flip) + tangent smoothing.
+    if enable_phase_b and local_ops_iterations > 0:
+        from core.generator.native_tet.local_ops import (
+            collapse_short_edges, split_long_edges,
+        )
+        from core.generator.native_tet.flip import face_flip_pass
+        from core.generator.native_tet.smooth import (
+            _vertex_normal_from_faces, smooth_tangent_surface,
+        )
+
+        # locked = surface vertex + feature corner (feature 는 이미 surface 에
+        # 속함이 일반적이라 sum 해도 중복).
+        surface_new_ids2 = remap[np.arange(n_surface)]
+        surface_new_ids2 = surface_new_ids2[surface_new_ids2 >= 0]
+
+        for loop_idx in range(int(local_ops_iterations)):
+            # 1) split long edges.
+            final_pts, final_tets, n_s = split_long_edges(
+                final_pts, final_tets,
+                target_edge=float(target_edge_length),
+                ratio=float(split_ratio),
+            )
+            # 2) collapse short edges.
+            final_pts, final_tets, n_c = collapse_short_edges(
+                final_pts, final_tets,
+                target_edge=float(target_edge_length),
+                ratio=float(collapse_ratio),
+                locked_vertices=surface_new_ids2,
+            )
+            # 3) face flip (2-3).
+            final_tets, fr2 = face_flip_pass(
+                final_pts, final_tets,
+                n_iter=int(flip_iterations),
+            )
+            log.info(
+                "native_tet_phase_b_iter",
+                iter=loop_idx, splits=n_s, collapses=n_c,
+                flips_23=fr2.n_flip_23,
+                q_before=fr2.min_quality_before,
+                q_after=fr2.min_quality_after,
+            )
+            if n_s == 0 and n_c == 0 and fr2.n_flip_23 == 0:
+                break
+
+        # 4) tangent-plane surface smoothing.
+        if tangent_smooth_iterations > 0 and surface_new_ids2.size > 0:
+            # new index 공간에서 surface V/F 재구성.
+            vn_old = _vertex_normal_from_faces(V, F)
+            # remap 으로 new-index 기반 법선 재매핑.
+            vn_new = np.zeros((final_pts.shape[0], 3), dtype=np.float64)
+            for old_id in range(n_surface):
+                new_id = remap[old_id]
+                if new_id >= 0:
+                    vn_new[new_id] = vn_old[old_id]
+            srt = smooth_tangent_surface(
+                final_pts, final_tets,
+                surface_vertex_ids=surface_new_ids2,
+                vertex_normals=vn_new,
+                feature_locked_ids=None,   # 간이: 전체 lock 은 smooth_interior 에서 담당.
+                n_iter=int(tangent_smooth_iterations),
+                relax=float(tangent_smooth_relax),
+            )
+            log.info(
+                "native_tet_tangent_smooth",
+                n_iter=srt.n_iter, moved=srt.n_interior_moved,
+                max_disp=srt.max_displacement,
+            )
 
     # 5) polyMesh 쓰기
     try:
