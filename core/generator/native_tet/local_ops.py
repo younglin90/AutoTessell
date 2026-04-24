@@ -30,14 +30,31 @@ class LocalOpResult:
 
 
 def _edge_lengths(pts: np.ndarray, tets: np.ndarray) -> dict[tuple[int, int], float]:
-    d: dict[tuple[int, int], float] = {}
-    for t in tets:
-        a, b, c, dd = (int(x) for x in t)
-        for u, v in ((a, b), (a, c), (a, dd), (b, c), (b, dd), (c, dd)):
-            k = (u, v) if u < v else (v, u)
-            if k not in d:
-                d[k] = float(np.linalg.norm(pts[u] - pts[v]))
-    return d
+    """vectorized: tet 배열 → unique edge list + length. dict 로 반환."""
+    tets = np.asarray(tets, dtype=np.int64)
+    if tets.size == 0:
+        return {}
+    # 6 edges per tet.
+    pairs = np.stack(
+        [
+            tets[:, [0, 1]], tets[:, [0, 2]], tets[:, [0, 3]],
+            tets[:, [1, 2]], tets[:, [1, 3]], tets[:, [2, 3]],
+        ],
+        axis=1,
+    ).reshape(-1, 2)
+    # canonical (min, max).
+    pairs.sort(axis=1)
+    # unique.
+    struct = np.ascontiguousarray(pairs).view(
+        np.dtype((np.void, pairs.dtype.itemsize * 2))
+    )
+    _, idx = np.unique(struct, return_index=True)
+    uniq = pairs[idx]
+    lens = np.linalg.norm(pts[uniq[:, 0]] - pts[uniq[:, 1]], axis=1)
+    return {
+        (int(uniq[i, 0]), int(uniq[i, 1])): float(lens[i])
+        for i in range(uniq.shape[0])
+    }
 
 
 def split_long_edges(
