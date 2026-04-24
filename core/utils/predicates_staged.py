@@ -21,6 +21,70 @@ import numpy as np
 _ORIENT3D_ERROR_BOUND_COEF = 7.0 * (2.0 ** -53)
 
 
+# P3 — optional Shewchuk-style exact predicate binding.
+# 설치돼 있으면 Stage 3 에서 Fraction 대신 native C 구현 사용.
+# CLAUDE.md 정책에 따라 optional import: 없으면 Fraction fallback.
+_SHEWCHUK_ORIENT3D = None
+_SHEWCHUK_INSPHERE = None
+
+for _modname in ("robust_predicates", "shewchuk_predicates", "predicates"):
+    try:
+        _mod = __import__(_modname)
+    except Exception:
+        continue
+    for _ot in ("orient3d", "orientation3d", "orient_3d"):
+        if hasattr(_mod, _ot):
+            _SHEWCHUK_ORIENT3D = getattr(_mod, _ot)
+            break
+    for _is in ("insphere", "in_sphere", "insphere3d"):
+        if hasattr(_mod, _is):
+            _SHEWCHUK_INSPHERE = getattr(_mod, _is)
+            break
+    if _SHEWCHUK_ORIENT3D is not None:
+        break
+
+
+def _orient3d_via_shewchuk(a, b, c, d) -> int | None:
+    """Return -1/0/+1 or None if library 없음."""
+    if _SHEWCHUK_ORIENT3D is None:
+        return None
+    try:
+        v = _SHEWCHUK_ORIENT3D(
+            tuple(map(float, a)), tuple(map(float, b)),
+            tuple(map(float, c)), tuple(map(float, d)),
+        )
+    except Exception:
+        return None
+    if v > 0:
+        return 1
+    if v < 0:
+        return -1
+    return 0
+
+
+def _insphere_via_shewchuk(a, b, c, d, e) -> int | None:
+    if _SHEWCHUK_INSPHERE is None:
+        return None
+    try:
+        v = _SHEWCHUK_INSPHERE(
+            tuple(map(float, a)), tuple(map(float, b)),
+            tuple(map(float, c)), tuple(map(float, d)),
+            tuple(map(float, e)),
+        )
+    except Exception:
+        return None
+    if v > 0:
+        return 1
+    if v < 0:
+        return -1
+    return 0
+
+
+def has_shewchuk_predicates() -> bool:
+    """Shewchuk C predicate 가 감지됐는지 반환. 진단용."""
+    return _SHEWCHUK_ORIENT3D is not None
+
+
 def orient3d_staged(a, b, c, d) -> int:
     """3 단계 staged orient3d.
 
@@ -65,7 +129,12 @@ def orient3d_staged(a, b, c, d) -> int:
         # 플랫폼에 float128 없으면 stage 2 건너뜀.
         pass
 
-    # Stage 3: exact fraction.
+    # Stage 3a: optional Shewchuk C binding.
+    v = _orient3d_via_shewchuk(a, b, c, d)
+    if v is not None:
+        return v
+
+    # Stage 3b: exact fraction.
     from core.utils.predicates_exact import orient3d as exact_orient3d
     return exact_orient3d(
         tuple(a.tolist()), tuple(b.tolist()),
@@ -122,7 +191,12 @@ def insphere_staged(a, b, c, d, e) -> int:
     except Exception:
         pass
 
-    # Stage 3: exact via fractions (시간 여유 시 고정밀 expansion 권장).
+    # Stage 3a: optional Shewchuk C binding.
+    v = _insphere_via_shewchuk(A, B, C, D, E)
+    if v is not None:
+        return v
+
+    # Stage 3b: exact via fractions.
     from fractions import Fraction  # noqa: PLC0415
 
     def _frac(v):
