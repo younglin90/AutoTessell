@@ -25,6 +25,107 @@ class InputCheckResult:
     warnings: list[str]
 
 
+def _tri_aabb_overlap(tmin, tmax, i, j) -> bool:
+    return (
+        tmin[j, 0] <= tmax[i, 0] and tmax[j, 0] >= tmin[i, 0]
+        and tmin[j, 1] <= tmax[i, 1] and tmax[j, 1] >= tmin[i, 1]
+        and tmin[j, 2] <= tmax[i, 2] and tmax[j, 2] >= tmin[i, 2]
+    )
+
+
+def _moller_tri_intersect(A, B, C, D, E, F) -> bool:
+    """beta1290 (R102) — Möller 1997 triangle-triangle intersection test.
+
+    두 triangle (A,B,C), (D,E,F) 의 실제 교차 여부 반환. 공유 vertex 또는
+    공면 coplanar 는 False (false positive 최소화).
+    """
+    import numpy as _np
+
+    A = _np.asarray(A); B = _np.asarray(B); C = _np.asarray(C)
+    D = _np.asarray(D); E = _np.asarray(E); F = _np.asarray(F)
+
+    n2 = _np.cross(E - D, F - D)
+    d2 = -_np.dot(n2, D)
+    d_a = _np.dot(n2, A) + d2
+    d_b = _np.dot(n2, B) + d2
+    d_c = _np.dot(n2, C) + d2
+    if (d_a > 0 and d_b > 0 and d_c > 0) or (d_a < 0 and d_b < 0 and d_c < 0):
+        return False
+    if abs(d_a) < 1e-20 and abs(d_b) < 1e-20 and abs(d_c) < 1e-20:
+        return False  # coplanar 무시.
+
+    n1 = _np.cross(B - A, C - A)
+    d1 = -_np.dot(n1, A)
+    d_d = _np.dot(n1, D) + d1
+    d_e = _np.dot(n1, E) + d1
+    d_f = _np.dot(n1, F) + d1
+    if (d_d > 0 and d_e > 0 and d_f > 0) or (d_d < 0 and d_e < 0 and d_f < 0):
+        return False
+    if abs(d_d) < 1e-20 and abs(d_e) < 1e-20 and abs(d_f) < 1e-20:
+        return False
+
+    # 두 plane 의 교선 방향.
+    D_line = _np.cross(n1, n2)
+    axis = int(_np.argmax(_np.abs(D_line)))
+
+    def _interval(P1, P2, P3, dP1, dP2, dP3):
+        # 부호가 다른 vertex 찾기.
+        if dP1 * dP2 > 0:
+            # P3 는 반대 부호.
+            t1 = P1[axis] + (P3[axis] - P1[axis]) * dP1 / (dP1 - dP3)
+            t2 = P2[axis] + (P3[axis] - P2[axis]) * dP2 / (dP2 - dP3)
+        elif dP1 * dP3 > 0:
+            t1 = P1[axis] + (P2[axis] - P1[axis]) * dP1 / (dP1 - dP2)
+            t2 = P3[axis] + (P2[axis] - P3[axis]) * dP3 / (dP3 - dP2)
+        else:
+            t1 = P2[axis] + (P1[axis] - P2[axis]) * dP2 / (dP2 - dP1)
+            t2 = P3[axis] + (P1[axis] - P3[axis]) * dP3 / (dP3 - dP1)
+        return (min(t1, t2), max(t1, t2))
+
+    i1 = _interval(A, B, C, d_a, d_b, d_c)
+    i2 = _interval(D, E, F, d_d, d_e, d_f)
+    return i1[1] >= i2[0] and i2[1] >= i1[0]
+
+
+def exact_self_intersection_check(
+    V: np.ndarray, F: np.ndarray, *, max_checks: int = 20000,
+) -> int:
+    """beta1290 (R102) — AABB sweep 후 Möller 정확 테스트로 self-intersection.
+
+    AABB overlap 후보 쌍만 정확 체크. 공유 vertex 있는 쌍은 제외.
+    Returns: 실제 교차 쌍 수 (over-estimate 아님).
+    """
+    V = np.asarray(V, dtype=np.float64)
+    F = np.asarray(F, dtype=np.int64)
+    if F.shape[0] < 2:
+        return 0
+    tri_pts = V[F]
+    tmin = tri_pts.min(axis=1)
+    tmax = tri_pts.max(axis=1)
+    order = np.argsort(tmin[:, 0])
+    n_hit = 0
+    n_checks = 0
+    for ii in range(order.size):
+        i = int(order[ii])
+        for jj in range(ii + 1, order.size):
+            j = int(order[jj])
+            if tmin[j, 0] > tmax[i, 0]:
+                break
+            if not _tri_aabb_overlap(tmin, tmax, i, j):
+                continue
+            if set(F[i].tolist()) & set(F[j].tolist()):
+                continue
+            n_checks += 1
+            if n_checks > max_checks:
+                return n_hit
+            if _moller_tri_intersect(
+                V[F[i, 0]], V[F[i, 1]], V[F[i, 2]],
+                V[F[j, 0]], V[F[j, 1]], V[F[j, 2]],
+            ):
+                n_hit += 1
+    return n_hit
+
+
 def auto_fix_input(
     V: np.ndarray, F: np.ndarray,
     *,
