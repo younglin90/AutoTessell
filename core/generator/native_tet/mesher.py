@@ -269,6 +269,37 @@ def generate_native_tet(
                 break
             all_pts, tets = dl_res2
 
+        # Round 50: missing edge recovery (midpoint 삽입 + B-W).
+        try:
+            from core.generator.native_tet.cdt_check import check_edge_recovery
+            from core.generator.native_tet.edge_recovery import propose_edge_midpoints
+            from core.generator.native_tet.bowyer_watson import bowyer_watson_insert as _bw_edge
+
+            cdt = check_edge_recovery(F, tets)
+            if cdt.n_missing > 0:
+                prop = propose_edge_midpoints(V, cdt.missing_edges, max_points=200)
+                if prop.new_points.shape[0] > 0:
+                    inside_new = _inside_winding_number(prop.new_points, V, F)
+                    good = prop.new_points[inside_new]
+                    if good.shape[0] == 0:
+                        # 모두 surface 위라 inside_winding 가 애매 — 그대로 시도.
+                        good = prop.new_points
+                    ap_new, ts_new, er_res = _bw_edge(
+                        all_pts, tets, good,
+                    )
+                    if er_res.n_inserted > 0:
+                        all_pts, tets = ap_new, ts_new
+                        cdt2 = check_edge_recovery(F, tets)
+                        log.info(
+                            "native_tet_edge_recovery",
+                            missing_before=cdt.n_missing,
+                            midpoints_proposed=int(prop.new_points.shape[0]),
+                            inserted=er_res.n_inserted,
+                            missing_after=cdt2.n_missing,
+                        )
+        except Exception as exc:
+            log.debug("native_tet_edge_recovery_skipped", reason=str(exc))
+
         # Phase F — BSP constrained insertion fallback.
         if enable_bsp_insertion:
             from core.generator.native_tet.bsp_insert import bsp_insert_triangles
