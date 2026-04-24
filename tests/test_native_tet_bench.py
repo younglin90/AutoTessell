@@ -1,0 +1,110 @@
+"""Round 8 / H2 — native_tet 성공률 / 품질 벤치.
+
+여러 STL 에 대해 native_tet 실행 후:
+  - 성공 여부
+  - cell 수 / min_q / mean_q
+  - elapsed
+
+벤치 result 를 JSON 으로 저장 + 최소 허용 기준 검증.
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+
+BENCH_STL_DIR = Path(__file__).parent / "stl"
+BENCH_OUTPUT = Path(__file__).parent / "stl" / "native_tet_bench_latest.json"
+
+
+def _run_bench(stl_files, seed_density=6):
+    from core.generator.native_tet.mesher import generate_native_tet
+    from core.generator.native_tet.quality import tet_shape_quality
+    import tempfile
+    import time
+    import trimesh
+
+    rows = []
+    for stl in stl_files:
+        try:
+            m = trimesh.load(str(stl), force="mesh")
+        except Exception as e:
+            rows.append({
+                "stl": stl.name, "success": False,
+                "error": f"load failed: {e}",
+            })
+            continue
+        V = np.asarray(m.vertices, dtype=np.float64)
+        F = np.asarray(m.faces, dtype=np.int64)
+
+        with tempfile.TemporaryDirectory() as td:
+            t0 = time.perf_counter()
+            try:
+                res = generate_native_tet(
+                    V, F, Path(td) / "case",
+                    seed_density=seed_density,
+                    enable_phase_a=True,
+                    enable_phase_b=False,
+                    max_input_vertices=100000,
+                )
+                elapsed = time.perf_counter() - t0
+                row = {
+                    "stl": stl.name,
+                    "n_surf_verts": int(V.shape[0]),
+                    "n_surf_faces": int(F.shape[0]),
+                    "success": bool(res.success),
+                    "elapsed_s": round(elapsed, 3),
+                    "message": res.message[:200],
+                }
+                if res.success and res.tets is not None:
+                    q = tet_shape_quality(res.tet_points, res.tets)
+                    row.update({
+                        "n_cells": int(res.n_cells),
+                        "n_points": int(res.n_points),
+                        "min_q": round(float(q.min()), 4) if q.size else 0.0,
+                        "mean_q": round(float(q.mean()), 4) if q.size else 0.0,
+                    })
+                rows.append(row)
+            except Exception as e:
+                rows.append({
+                    "stl": stl.name,
+                    "success": False,
+                    "error": str(e),
+                    "elapsed_s": round(time.perf_counter() - t0, 3),
+                })
+    return rows
+
+
+def test_native_tet_bench_basic(tmp_path) -> None:
+    """주요 bench STL 에 대해 벤치 실행 + JSON 저장 + 최소 성공률 보장.
+
+    skip 조건: bench STL 이 없는 환경.
+    """
+    candidates = [
+        BENCH_STL_DIR / "01_easy_cube.stl",
+        BENCH_STL_DIR / "02_medium_cylinder.stl",
+        BENCH_STL_DIR / "03_hard_bracket.stl",
+    ]
+    existing = [p for p in candidates if p.exists()]
+    if not existing:
+        pytest.skip("tests/stl/ bench STL 없음")
+
+    rows = _run_bench(existing, seed_density=6)
+
+    # 결과 저장 (최신 벤치 스냅샷).
+    BENCH_OUTPUT.parent.mkdir(parents=True, exist_ok=True)
+    BENCH_OUTPUT.write_text(json.dumps(rows, indent=2, ensure_ascii=False))
+
+    # 최소 허용: 쉬운 형상 (cube) 은 반드시 성공.
+    easy = [r for r in rows if r.get("stl") == "01_easy_cube.stl"]
+    assert easy, "cube bench row 없음"
+    assert easy[0].get("success") is True, (
+        f"easy cube 실패: {easy[0].get('message') or easy[0].get('error')}"
+    )
+
+    # 전체 성공률 >= 1/3 (현재 수준).
+    n_success = sum(1 for r in rows if r.get("success"))
+    assert n_success >= max(1, len(rows) // 3)

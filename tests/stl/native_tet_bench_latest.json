@@ -1,0 +1,38 @@
+[
+  {
+    "stl": "01_easy_cube.stl",
+    "n_surf_verts": 8,
+    "n_surf_faces": 12,
+    "success": true,
+    "elapsed_s": 0.021,
+    "message": "native_tet OK — cells=132, points=52, seed_grid=36, target_edge=0.2887",
+    "n_cells": 132,
+    "n_points": 52,
+    "min_q": 0.0032,
+    "mean_q": 0.3134
+  },
+  {
+    "stl": "02_medium_cylinder.stl",
+    "n_surf_verts": 256,
+    "n_surf_faces": 512,
+    "success": true,
+    "elapsed_s": 0.412,
+    "message": "native_tet OK — cells=1649, points=768, seed_grid=24, target_edge=0.2887",
+    "n_cells": 1649,
+    "n_points": 768,
+    "min_q": 0.0001,
+    "mean_q": 0.091
+  },
+  {
+    "stl": "03_hard_bracket.stl",
+    "n_surf_verts": 204,
+    "n_surf_faces": 416,
+    "success": true,
+    "elapsed_s": 0.222,
+    "message": "native_tet OK — cells=479, points=442, seed_grid=13, target_edge=0.423",
+    "n_cells": 479,
+    "n_points": 442,
+    "min_q": 0.0,
+    "mean_q": 0.0471
+  }
+]

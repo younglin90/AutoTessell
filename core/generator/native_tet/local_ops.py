@@ -50,6 +50,8 @@ def split_long_edges(
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """edge length > ratio × target_edge 인 edge 를 중점 split.
 
+    Round 8 최적화: edge→tet 맵 단 1 번 빌드 후 증분 갱신.
+
     Returns:
         (new_pts, new_tets, n_split).
     """
@@ -61,7 +63,6 @@ def split_long_edges(
     thresh = ratio * float(target_edge)
     lens = _edge_lengths(pts, tets)
 
-    # 가장 긴 edge 부터 처리.
     long_edges = sorted(
         (k for k, L in lens.items() if L > thresh),
         key=lambda k: -lens[k],
@@ -69,48 +70,65 @@ def split_long_edges(
     if not long_edges:
         return pts, tets, 0
 
-    # edge → 인접 tet id 맵 (변동되는 tets 에 대응하기 위해 매 iter 재계산).
-    def _edge_to_tets(T: np.ndarray) -> dict[tuple[int, int], list[int]]:
-        m: dict[tuple[int, int], list[int]] = {}
-        for i in range(T.shape[0]):
-            a, b, c, d = (int(x) for x in T[i])
-            for u, v in ((a, b), (a, c), (a, d), (b, c), (b, d), (c, d)):
-                k = (u, v) if u < v else (v, u)
-                m.setdefault(k, []).append(i)
-        return m
+    # 1 번만 빌드. 이후 새 tet 추가/삭제 시 직접 갱신.
+    e2t: dict[tuple[int, int], set[int]] = {}
+    for i in range(tets.shape[0]):
+        a, b, c, d = (int(x) for x in tets[i])
+        for u0, v0 in ((a, b), (a, c), (a, d), (b, c), (b, d), (c, d)):
+            k = (u0, v0) if u0 < v0 else (v0, u0)
+            e2t.setdefault(k, set()).add(i)
 
     n_split = 0
     pts_list = pts.tolist()
-    tets_list = tets.tolist()
+    tets_list: list[list[int]] = [list(x) for x in tets.tolist()]
     removed_tets: set[int] = set()
+
+    def _remove_tet(ti: int) -> None:
+        if ti in removed_tets:
+            return
+        removed_tets.add(ti)
+        a, b, c, d = tets_list[ti]
+        for u0, v0 in ((a, b), (a, c), (a, d), (b, c), (b, d), (c, d)):
+            k = (u0, v0) if u0 < v0 else (v0, u0)
+            s = e2t.get(k)
+            if s is not None:
+                s.discard(ti)
+
+    def _add_tet(nt: list[int]) -> int:
+        new_id = len(tets_list)
+        tets_list.append(nt)
+        a, b, c, d = nt
+        for u0, v0 in ((a, b), (a, c), (a, d), (b, c), (b, d), (c, d)):
+            k = (u0, v0) if u0 < v0 else (v0, u0)
+            e2t.setdefault(k, set()).add(new_id)
+        return new_id
 
     for (u, v) in long_edges:
         if n_split >= max_splits:
             break
-        # 현재 pts 로 길이 재확인.
-        cur_len = float(np.linalg.norm(np.asarray(pts_list[u]) - np.asarray(pts_list[v])))
+        cur_len = float(
+            np.linalg.norm(
+                np.asarray(pts_list[u]) - np.asarray(pts_list[v]),
+            )
+        )
         if cur_len <= thresh:
             continue
-        # 중점 생성.
         mid = (np.asarray(pts_list[u]) + np.asarray(pts_list[v])) / 2.0
         mid_id = len(pts_list)
         pts_list.append(mid.tolist())
-        # 인접 tet 찾아서 1→2 분할.
-        e2t = _edge_to_tets(np.asarray(tets_list, dtype=np.int64))
         key = (u, v) if u < v else (v, u)
-        for ti in e2t.get(key, []):
+        owners = list(e2t.get(key, set()))
+        for ti in owners:
             if ti in removed_tets:
                 continue
             a, b, c, d = tets_list[ti]
-            # edge 의 반대편 두 vertex 식별.
             others = [x for x in (a, b, c, d) if x != u and x != v]
             if len(others) != 2:
                 continue
             o1, o2 = others
-            # 기존 tet 삭제 + 2 개 새 tet 추가: (u, mid, o1, o2), (v, mid, o1, o2).
-            removed_tets.add(ti)
-            tets_list.append([u, mid_id, o1, o2])
-            tets_list.append([v, mid_id, o1, o2])
+            _remove_tet(ti)
+            _add_tet([u, mid_id, o1, o2])
+            _add_tet([v, mid_id, o1, o2])
             n_split += 1
 
     if not removed_tets and n_split == 0:
