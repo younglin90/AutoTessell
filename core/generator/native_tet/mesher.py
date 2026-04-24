@@ -114,6 +114,18 @@ def generate_native_tet(
     adaptive_min_ratio: float = 0.25,
     adaptive_max_ratio: float = 2.0,
     adaptive_curvature_gain: float = 2.0,
+    # beta1350 — AMIPS 통합 (P2).
+    enable_amips_smooth: bool = False,
+    amips_iterations: int = 2,
+    amips_alpha: float = 1.0,
+    # beta1360 — chunked Delaunay 자동 스위칭 (P5).
+    chunked_delaunay_threshold: int = 30000,
+    enable_chunked_delaunay: bool = True,
+    chunked_n_div: int = 2,
+    # beta1370 — CDT recovery 통합 (P1).
+    enable_cdt_recovery: bool = False,
+    cdt_recovery_max_cycles: int = 3,
+    cdt_recovery_points_budget: int = 200,
 ) -> NativeTetResult:
     """입력 표면 메쉬 → tet polyMesh (MVP).
 
@@ -232,6 +244,28 @@ def generate_native_tet(
     extra_seeds = np.zeros((0, 3), dtype=np.float64)
 
     def _run_delaunay(seed_pts: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+        # beta1360 (P5) — 임계 초과 시 chunked Delaunay 자동 사용.
+        if (
+            enable_chunked_delaunay
+            and seed_pts.shape[0] > int(chunked_delaunay_threshold)
+        ):
+            try:
+                from core.generator.native_tet.chunked import chunked_delaunay
+                _, _tets, _info = chunked_delaunay(
+                    seed_pts, n_div=int(chunked_n_div), overlap_ratio=0.15,
+                )
+                log.info(
+                    "native_tet_chunked_delaunay",
+                    n_points=int(seed_pts.shape[0]),
+                    n_chunks=int(_info.n_chunks),
+                    n_tets=int(_info.n_tets),
+                    n_overlap=int(_info.n_overlap_filtered),
+                    elapsed=round(_info.elapsed_s, 3),
+                )
+                if _tets.shape[0] > 0:
+                    return seed_pts, _tets
+            except Exception as _exc:
+                log.warning("native_tet_chunked_failed", error=str(_exc))
         try:
             _dl = Delaunay(seed_pts)
         except Exception as _exc:
@@ -288,6 +322,38 @@ def generate_native_tet(
             if dl_res2 is None:
                 break
             all_pts, tets = dl_res2
+
+        # beta1370 (P1) — 통합 CDT recovery 루틴 (flip + recursive midpoint
+        # + B-W + snap). enable_cdt_recovery=True 일 때만 사용.
+        if enable_cdt_recovery:
+            try:
+                from core.generator.native_tet.cdt_recovery import (
+                    run_cdt_recovery,
+                )
+                pts_new, tets_new, cdt_info = run_cdt_recovery(
+                    all_pts, tets, V, F,
+                    max_cycles=int(cdt_recovery_max_cycles),
+                    points_budget=int(cdt_recovery_points_budget),
+                    snap_final=False,   # surface snap 은 후단에서 일괄 처리.
+                )
+                if (
+                    cdt_info.ratio_after >= cdt_info.ratio_before
+                    and tets_new.shape[0] > 0
+                ):
+                    all_pts = pts_new
+                    tets = tets_new
+                    log.info(
+                        "native_tet_cdt_recovery",
+                        cycles=cdt_info.cycles,
+                        ratio_before=round(cdt_info.ratio_before, 3),
+                        ratio_after=round(cdt_info.ratio_after, 3),
+                        missing_before=cdt_info.n_edges_before,
+                        missing_after=cdt_info.n_edges_after,
+                        inserted=cdt_info.n_inserted_points,
+                        reverted=cdt_info.reverted,
+                    )
+            except Exception as _exc:
+                log.debug("native_tet_cdt_recovery_skipped", reason=str(_exc))
 
         # Round 50-51: iterative missing edge recovery (midpoint 삽입 + B-W).
         # Round 55: enable_edge_recovery=True 일 때만 (draft 성능 보호).
@@ -829,6 +895,36 @@ def generate_native_tet(
                 n_iter=srt.n_iter, moved=srt.n_interior_moved,
                 max_disp=srt.max_displacement,
             )
+
+        # beta1350 — AMIPS energy-based interior smoothing (P2).
+        if enable_amips_smooth and final_tets.shape[0] > 0:
+            try:
+                from core.generator.native_tet.amips import smooth_amips
+
+                # surface vertex 는 lock.
+                ar, new_pts_amips = smooth_amips(
+                    final_pts, final_tets,
+                    locked_vertex_ids=surface_new_ids2,
+                    n_iter=int(amips_iterations),
+                    alpha=float(amips_alpha),
+                )
+                if ar.energy_after <= ar.energy_before * 1.05:
+                    final_pts = new_pts_amips
+                    log.info(
+                        "native_tet_amips",
+                        moved=ar.n_moved,
+                        e_before=round(ar.energy_before, 3),
+                        e_after=round(ar.energy_after, 3),
+                        max_disp=round(ar.max_disp, 6),
+                    )
+                else:
+                    log.warning(
+                        "native_tet_amips_revert",
+                        e_before=round(ar.energy_before, 3),
+                        e_after=round(ar.energy_after, 3),
+                    )
+            except Exception as exc:
+                log.debug("native_tet_amips_skipped", reason=str(exc))
 
     # 4d) Round 10 — inverted tet 안전판 (local op 반복 후 numerical edge).
     if enable_phase_a:
