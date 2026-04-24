@@ -158,12 +158,17 @@ def test_visual_keyboard_shortcuts(qt_app, monkeypatch) -> None:
     _compare_or_save(win._qmain, "08_mainwindow_after_build", size=(1400, 900))
 
 
-@pytest.mark.skip(
-    reason="v0.4 beta103: wildmesh 엔진이 ENGINE_GROUPS 에서 제거되어 콤보에서 선택 불가."
-)
 def test_visual_mainwindow_wildmesh_panel_visible(qt_app) -> None:
-    """메인 윈도우 — tier=wildmesh 선택 후 WildMesh 튜닝 패널 표시 (legacy)."""
-    pass
+    """메인 윈도우 — tier=wildmesh 선택 후 WildMesh 튜닝 패널 표시."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    win._build()
+    idx = win._engine_combo.findData("wildmesh")
+    assert idx >= 0
+    win._engine_combo.setCurrentIndex(idx)
+    assert not win._wildmesh_param_frame.isHidden()
+    _compare_or_save(win._qmain, "09_mainwindow_wildmesh_panel", size=(1400, 900))
 
 
 def test_visual_engine_policy_wildmesh_only_dropdown(qt_app, tmp_path, monkeypatch) -> None:
@@ -172,9 +177,19 @@ def test_visual_engine_policy_wildmesh_only_dropdown(qt_app, tmp_path, monkeypat
     from desktop.qt_app import engine_policy
     from desktop.qt_app.main_window import AutoTessellWindow
 
-    pytest.skip(
-        "v0.4 beta103: wildmesh 엔진이 ENGINE_GROUPS 에서 제거되어 정책 차단 대상 없음."
-    )
+    monkeypatch.setattr(engine_policy, "_POLICY_DIR", tmp_path / "ep")
+    monkeypatch.setattr(engine_policy, "_POLICY_FILE", tmp_path / "ep" / "policy.json")
+    monkeypatch.delenv("AUTOTESSELL_ENGINE_POLICY", raising=False)
+    engine_policy.set_mode("wildmesh_only")
+
+    win = AutoTessellWindow()
+    win._build()
+    win._engine_combo.showPopup()
+    QApplication.processEvents()
+    view = win._engine_combo.view()
+    view.resize(360, 520)
+    view.show()
+    _compare_or_save(view, "10_engine_policy_wildmesh_only_dropdown", size=(360, 520))
 
 
 def test_visual_wildmesh_fine_preset_slider_sync(qt_app) -> None:

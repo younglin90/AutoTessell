@@ -3099,16 +3099,37 @@ def test_pipeline_worker_requestInterruption_emits_finished(tmp_path) -> None:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-@pytest.mark.skip(
-    reason=(
-        "v0.4 beta103: ENGINE_GROUPS 에서 wildmesh 포함 모든 외부 엔진 제거 — "
-        "'wildmesh_only' 정책이 차단할 대상이 없어 before/after 차이 없음. "
-        "engine_policy 인프라 자체는 남아있으나 native-first 전환으로 사실상 deprecated."
-    )
-)
 def test_engine_policy_switch_rebuilds_dropdown(monkeypatch, tmp_path) -> None:
-    """정책 변경시 드롭다운 disabled 아이템 수가 바뀌어야 한다 (legacy)."""
-    pass
+    """정책 변경시 드롭다운 disabled 아이템 수가 바뀌어야 한다."""
+    from desktop.qt_app import engine_policy
+    from desktop.qt_app import mesh_viewer
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    monkeypatch.setattr(mesh_viewer, "PYVISTAQT_AVAILABLE", False)
+    monkeypatch.setattr(engine_policy, "_POLICY_DIR", tmp_path / "x")
+    monkeypatch.setattr(engine_policy, "_POLICY_FILE", tmp_path / "x" / "p.json")
+    monkeypatch.delenv("AUTOTESSELL_ENGINE_POLICY", raising=False)
+
+    win = AutoTessellWindow()
+    win._build()
+    assert win._engine_combo is not None
+
+    def _count_enabled() -> int:
+        model = win._engine_combo.model()
+        enabled = 0
+        for i in range(model.rowCount()):
+            item = model.item(i)
+            if item and item.isEnabled():
+                enabled += 1
+        return enabled
+
+    before = _count_enabled()
+    engine_policy.set_mode("wildmesh_only")
+    win._rebuild_engine_combo_model()
+    after = _count_enabled()
+
+    assert after < before
+    assert after >= 2
 
 
 def test_preset_wildmesh_fine_syncs_slider_panel(monkeypatch, tmp_path) -> None:
@@ -3236,12 +3257,25 @@ def test_esc_dismisses_history_and_error_dialogs() -> None:
         assert rejected == [True]
 
 
-@pytest.mark.skip(
-    reason="v0.4 beta103: ENGINE_GROUPS 에서 wildmesh 제거 — 이 테스트의 전제 (dropdown 에 WildMesh 존재) 가 더이상 유효하지 않음."
-)
 def test_engine_policy_wildmesh_only_marks_blocked_items(monkeypatch, tmp_path) -> None:
-    """wildmesh_only 모델에는 wildmesh 외 엔진에 정책 차단 마커가 있어야 한다 (legacy)."""
-    pass
+    """wildmesh_only 모델에는 wildmesh 외 엔진에 정책 차단 마커가 있어야 한다."""
+    from desktop.qt_app import engine_policy
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    monkeypatch.setattr(engine_policy, "_POLICY_DIR", tmp_path / "ep")
+    monkeypatch.setattr(engine_policy, "_POLICY_FILE", tmp_path / "ep" / "p.json")
+    monkeypatch.delenv("AUTOTESSELL_ENGINE_POLICY", raising=False)
+    engine_policy.set_mode("wildmesh_only")
+
+    win = AutoTessellWindow()
+    model, _ = win._make_engine_combo_model()
+    labels = [
+        model.item(i).text()
+        for i in range(model.rowCount())
+        if model.item(i) is not None
+    ]
+    assert any("정책 차단" in label for label in labels)
+    assert any("WildMesh" in label and "정책 차단" not in label for label in labels)
 
 
 def test_engine_policy_all_mode_has_no_blocked_items(monkeypatch, tmp_path) -> None:

@@ -372,14 +372,40 @@ class AutoTessellWindow:  # type: ignore[misc]
         "fine": "~2M cells · snappy + BL · 약 30분+",
     }
 
-    # v0.4 Native-First: 우리가 직접 구현한 엔진만 노출. 외부 라이브러리 전부 제거.
+    # v0.4 Native-First + beta104: 우리 엔진 최상단 + 외부 엔진은 "참고용"
+    # 카테고리로 유지. native_tet 이 TetWild/WildMesh 수준에 도달할 때까지
+    # 실제 CFD 수요가 있는 사용자가 돌아가는 엔진 선택할 수 있게 함.
     ENGINE_GROUPS: list[tuple[str, list[tuple[str, str, str]]]] = [
         # (group_label, [(value, display, status: ok/off/warn)])
         ("자동", [("auto", "Auto (strategist 가 mesh_type 기반 선택)", "ok")]),
-        ("Native Tier 3 (볼륨 메쉬)", [
-            ("native_tet", "Native Tet · scipy Delaunay + envelope", "ok"),
+        ("Native (v0.4)", [
+            ("native_tet", "Native Tet · MVP (개선 중, TetWild-lite 포팅 예정)", "ok"),
             ("native_hex", "Native Hex · octree + snap + BL", "ok"),
             ("native_poly", "Native Poly · Voronoi + Lloyd CVT", "ok"),
+        ]),
+        # 참고용 (외부 의존). 우리 엔진 고도화 완료 시 단계적 제거 예정.
+        ("참고용 · Tetrahedral", [
+            ("wildmesh", "WildMesh (fTetWild, 참고용)", "ok"),
+            ("tetwild", "TetWild (참고용)", "ok"),
+            ("netgen", "Netgen (참고용)", "ok"),
+            ("mmg3d", "MMG3D (참고용)", "ok"),
+            ("meshpy", "MeshPy / TetGen (참고용)", "ok"),
+            ("jigsaw", "JIGSAW (참고용)", "ok"),
+            ("core", "Geogram CDT (참고용)", "ok"),
+        ]),
+        ("참고용 · Hex-dominant", [
+            ("snappy", "snappyHexMesh (참고용)", "ok"),
+            ("cfmesh", "cfMesh (참고용)", "ok"),
+            ("algohex", "AlgoHex (참고용)", "ok"),
+            ("robust_hex", "Robust Pure Hex octree (참고용)", "ok"),
+            ("hex_classy", "HexClassyBlocks (참고용)", "ok"),
+            ("cinolib_hex", "Cinolib Hex (참고용)", "ok"),
+            ("gmsh_hex", "GMSH Hex (참고용)", "ok"),
+            ("hohqmesh", "HOHQMesh (참고용)", "ok"),
+        ]),
+        ("참고용 · Polyhedral", [
+            ("voro_poly", "Voronoi Polyhedral (참고용)", "ok"),
+            ("polyhedral", "polyDualMesh · OpenFOAM (참고용)", "ok"),
         ]),
     ]
 
@@ -1458,9 +1484,9 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._engine_policy = policy
 
         model = QStandardItemModel(parent)
-        # v0.4 Native-First: 기본 엔진 native_tet (우리 구현 권장).
-        # 정책이 명시 default_tier 를 주면 그것이 우선.
-        desired_default = policy.default_tier if policy.default_tier != "auto" else "tier_native_tet"
+        # beta104: 기본 엔진 = auto (strategist 가 mesh_type × quality 로 결정).
+        # native_tet 이 MVP 수준이라 기본 강제하면 품질 실망 가능.
+        desired_default = policy.default_tier if policy.default_tier != "auto" else "tier_auto"
         default_idx = 1  # fallback: 첫 실제 아이템 (auto)
         native_tet_idx = -1
         wildmesh_idx = -1
@@ -1746,6 +1772,13 @@ class AutoTessellWindow:  # type: ignore[misc]
         ("native_bl_tet", "Native BL — tet 3 분할"),
         ("auto", "Auto (품질 레벨 기반)"),
         ("disabled", "비활성화"),
+        # 참고용 — 우리 BL 대비 비교 / 외부 의존 옵션.
+        ("snappy_layers", "snappy addLayers (참고용)"),
+        ("cfmesh_layers", "cfMesh boundaryLayers (참고용)"),
+        ("generate_boundary_layers", "generateBoundaryLayers (참고용)"),
+        ("refine_wall_layer", "refineWallLayer (참고용)"),
+        ("snappy_addlayers", "snappy addLayers 독립 (참고용)"),
+        ("extrude_mesh", "extrudeMesh (참고용)"),
     )
     _TIER5_ENGINES: tuple[tuple[str, str], ...] = (
         ("native", "Native Checker · parity 검증"),
@@ -1788,13 +1821,19 @@ class AutoTessellWindow:  # type: ignore[misc]
 
             cb = QComboBox()
             cb.setStyleSheet(self._dark_combo_qss())
-            for value, display in options:
-                cb.addItem(display, value)
-            # 기본값 설정
-            for i in range(cb.count()):
-                if cb.itemData(i) == default:
-                    cb.setCurrentIndex(i)
-                    break
+            if slot == "tier3":
+                # Tier 3 는 풀 ENGINE_GROUPS (참고용 외부 엔진 포함) 모델 사용.
+                model, default_idx = self._make_engine_combo_model(cb)
+                cb.setModel(model)
+                cb.setCurrentIndex(default_idx)
+            else:
+                for value, display in options:
+                    cb.addItem(display, value)
+                # 기본값 설정
+                for i in range(cb.count()):
+                    if cb.itemData(i) == default:
+                        cb.setCurrentIndex(i)
+                        break
             if slot == "tier3":
                 # Tier 3 (볼륨 메쉬) 는 기존 "메시 엔진" 섹션과 같은 역할.
                 # _engine_combo / _tier_combo 와 동일 객체로 alias 해 기존
