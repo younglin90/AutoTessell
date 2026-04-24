@@ -67,92 +67,93 @@ def split_long_edges(
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """edge length > ratio × target_edge 인 edge 를 중점 split.
 
-    Round 8 최적화: edge→tet 맵 단 1 번 빌드 후 증분 갱신.
+    Round 16 bulk vectorized: long edge 를 한꺼번에 처리.
 
-    Returns:
-        (new_pts, new_tets, n_split).
+    각 tet 에 대해 6 edge 중 "가장 긴 것 중 split 대상" 만 1 개 골라 1→2
+    subdivide. 즉 1 iteration 에서 같은 tet 은 최대 1 번만 split. 품질은
+    살짝 떨어지지만 반복 호출로 수렴.
     """
-    pts = np.asarray(pts, dtype=np.float64).copy()
-    tets = np.asarray(tets, dtype=np.int64).copy()
+    pts = np.asarray(pts, dtype=np.float64)
+    tets = np.asarray(tets, dtype=np.int64)
     if tets.size == 0:
-        return pts, tets, 0
+        return pts.copy(), tets.copy(), 0
 
-    thresh = ratio * float(target_edge)
-    lens = _edge_lengths(pts, tets)
+    thresh = float(ratio) * float(target_edge)
 
-    long_edges = sorted(
-        (k for k, L in lens.items() if L > thresh),
-        key=lambda k: -lens[k],
+    # 각 tet 의 6 edge 길이 계산 (벡터).
+    pair_idx = np.array(
+        [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]], dtype=np.int64,
     )
-    if not long_edges:
-        return pts, tets, 0
+    vpts = pts[tets]   # (T, 4, 3)
+    e_lens = np.linalg.norm(
+        vpts[:, pair_idx[:, 1]] - vpts[:, pair_idx[:, 0]], axis=2,
+    )   # (T, 6)
+    e_max = e_lens.max(axis=1)   # (T,)
+    need = e_max > thresh
+    if not need.any():
+        return pts.copy(), tets.copy(), 0
 
-    # 1 번만 빌드. 이후 새 tet 추가/삭제 시 직접 갱신.
-    e2t: dict[tuple[int, int], set[int]] = {}
-    for i in range(tets.shape[0]):
-        a, b, c, d = (int(x) for x in tets[i])
-        for u0, v0 in ((a, b), (a, c), (a, d), (b, c), (b, d), (c, d)):
-            k = (u0, v0) if u0 < v0 else (v0, u0)
-            e2t.setdefault(k, set()).add(i)
+    # 각 tet 에서 가장 긴 edge 의 local idx (0..5).
+    longest = e_lens.argmax(axis=1)
+    # 해당 edge 의 2 local vertex idx.
+    iA = pair_idx[longest, 0]
+    iB = pair_idx[longest, 1]
+    # 전역 vertex id.
+    vA = tets[np.arange(tets.shape[0]), iA]
+    vB = tets[np.arange(tets.shape[0]), iB]
 
-    n_split = 0
+    # split 대상 tet indices.
+    tgt = np.where(need)[0]
+    if tgt.size > int(max_splits):
+        # 가장 긴 것부터 cap.
+        order = np.argsort(-e_max[tgt])[: int(max_splits)]
+        tgt = tgt[order]
+
+    # 각 edge (vA[ti], vB[ti]) 의 유니크 (canonical 정렬) set → midpoint 1 번만 생성.
+    a_sorted = np.minimum(vA[tgt], vB[tgt])
+    b_sorted = np.maximum(vA[tgt], vB[tgt])
+    edge_keys = np.stack([a_sorted, b_sorted], axis=1)  # (N, 2)
+
+    # Python dict 로 edge → mid_id.
+    mid_map: dict[tuple[int, int], int] = {}
     pts_list = pts.tolist()
+    for i in range(edge_keys.shape[0]):
+        k = (int(edge_keys[i, 0]), int(edge_keys[i, 1]))
+        if k not in mid_map:
+            new_id = len(pts_list)
+            mid = (pts[k[0]] + pts[k[1]]) / 2.0
+            pts_list.append(mid.tolist())
+            mid_map[k] = new_id
+
     tets_list: list[list[int]] = [list(x) for x in tets.tolist()]
-    removed_tets: set[int] = set()
+    alive = np.ones(tets.shape[0], dtype=bool)
+    n_split = 0
 
-    def _remove_tet(ti: int) -> None:
-        if ti in removed_tets:
-            return
-        removed_tets.add(ti)
-        a, b, c, d = tets_list[ti]
-        for u0, v0 in ((a, b), (a, c), (a, d), (b, c), (b, d), (c, d)):
-            k = (u0, v0) if u0 < v0 else (v0, u0)
-            s = e2t.get(k)
-            if s is not None:
-                s.discard(ti)
-
-    def _add_tet(nt: list[int]) -> int:
-        new_id = len(tets_list)
-        tets_list.append(nt)
-        a, b, c, d = nt
-        for u0, v0 in ((a, b), (a, c), (a, d), (b, c), (b, d), (c, d)):
-            k = (u0, v0) if u0 < v0 else (v0, u0)
-            e2t.setdefault(k, set()).add(new_id)
-        return new_id
-
-    for (u, v) in long_edges:
-        if n_split >= max_splits:
-            break
-        cur_len = float(
-            np.linalg.norm(
-                np.asarray(pts_list[u]) - np.asarray(pts_list[v]),
-            )
-        )
-        if cur_len <= thresh:
+    for idx, ti in enumerate(tgt.tolist()):
+        if not alive[ti]:
             continue
-        mid = (np.asarray(pts_list[u]) + np.asarray(pts_list[v])) / 2.0
-        mid_id = len(pts_list)
-        pts_list.append(mid.tolist())
-        key = (u, v) if u < v else (v, u)
-        owners = list(e2t.get(key, set()))
-        for ti in owners:
-            if ti in removed_tets:
-                continue
-            a, b, c, d = tets_list[ti]
-            others = [x for x in (a, b, c, d) if x != u and x != v]
-            if len(others) != 2:
-                continue
-            o1, o2 = others
-            _remove_tet(ti)
-            _add_tet([u, mid_id, o1, o2])
-            _add_tet([v, mid_id, o1, o2])
-            n_split += 1
+        a, b, c, d = tets_list[ti]
+        u = int(vA[ti])
+        v = int(vB[ti])
+        others = [x for x in (a, b, c, d) if x != u and x != v]
+        if len(others) != 2:
+            continue
+        o1, o2 = others
+        k = (min(u, v), max(u, v))
+        mid_id = mid_map[k]
+        alive[ti] = False
+        tets_list.append([u, mid_id, o1, o2])
+        tets_list.append([v, mid_id, o1, o2])
+        alive = np.append(alive, [True, True])
+        n_split += 1
 
-    if not removed_tets and n_split == 0:
-        return pts, tets, 0
+    if n_split == 0:
+        return pts.copy(), tets.copy(), 0
 
-    keep = [i for i in range(len(tets_list)) if i not in removed_tets]
-    new_tets = np.asarray([tets_list[i] for i in keep], dtype=np.int64)
+    new_tets = np.asarray(
+        [tets_list[i] for i in range(len(tets_list)) if alive[i]],
+        dtype=np.int64,
+    )
     new_pts = np.asarray(pts_list, dtype=np.float64)
     return new_pts, new_tets, n_split
 
