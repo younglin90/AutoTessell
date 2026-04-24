@@ -15,6 +15,25 @@ from dataclasses import dataclass
 import numpy as np
 
 
+def snapshot_to_dict(snap: "QualitySnapshot | None") -> dict:
+    """QualitySnapshot → JSON-serializable dict. 로그/리포트/bench 파일 공용."""
+    if snap is None:
+        return {}
+    return {
+        "n_tets": int(snap.n_tets),
+        "min_q": round(float(snap.min_q), 6),
+        "mean_q": round(float(snap.mean_q), 6),
+        "median_q": round(float(snap.median_q), 6),
+        "max_aspect": round(float(snap.max_aspect), 3),
+        "mean_aspect": round(float(snap.mean_aspect), 3),
+        "min_dihedral_deg": round(float(snap.min_dihedral_deg), 3),
+        "median_dihedral_deg": round(float(snap.median_dihedral_deg), 3),
+        "vol_weighted_mean_q": round(float(snap.vol_weighted_mean_q), 6),
+        "p10_q": round(float(snap.p10_q), 6),
+        "p10_dihedral_deg": round(float(snap.p10_dihedral_deg), 3),
+    }
+
+
 @dataclass
 class QualitySnapshot:
     n_tets: int
