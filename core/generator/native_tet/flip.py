@@ -177,19 +177,20 @@ def flip_faces_23(
         if q_new_min <= q_old + float(min_quality_improvement):
             continue
 
-        # flip apply.
+        # beta950 (R90): batch apply — alive flip + new tets deferred.
         alive[ti] = False
         alive[tj] = False
         for nt in new_tets:
             tets_list.append(list(nt))
-            alive = np.append(alive, True)
         n_flip += 1
         visited_faces.add(face)
 
-    out = np.asarray(
-        [tets_list[i] for i in range(len(tets_list)) if alive[i]],
-        dtype=np.int64,
-    )
+    # 배치 종료 후 alive 연장.
+    n_new = len(tets_list) - alive.shape[0]
+    if n_new > 0:
+        alive = np.concatenate([alive, np.ones(n_new, dtype=bool)])
+    tets_arr = np.asarray(tets_list, dtype=np.int64)
+    out = tets_arr[alive]
     return out, n_flip
 
 
