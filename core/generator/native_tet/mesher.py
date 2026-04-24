@@ -628,11 +628,18 @@ def generate_native_tet(
             prev_pts = final_pts.copy()
             prev_tets = final_tets.copy()
 
+            # Round 66: split 에도 surface edge 보호.
+            _split_surf_edges: set[tuple[int, int]] = set()
+            for _ti in range(F.shape[0]):
+                _a, _b, _c = int(F[_ti, 0]), int(F[_ti, 1]), int(F[_ti, 2])
+                for _u, _v in ((_a, _b), (_b, _c), (_c, _a)):
+                    _split_surf_edges.add((_u, _v) if _u < _v else (_v, _u))
             final_pts, final_tets, n_s = split_long_edges(
                 final_pts, final_tets,
                 target_edge=effective_target if enable_phase_b else float(target_edge_length),
                 ratio=float(split_ratio),
                 metric=metric_full,
+                protected_edges=_split_surf_edges,
             )
             # metric_full 은 vertex 수 변경된 이후 길이가 안 맞을 수 있음 — size 다르면 None 처리.
             m_collapse = metric_full if (

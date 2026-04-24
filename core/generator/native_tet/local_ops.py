@@ -119,6 +119,7 @@ def split_long_edges(
     ratio: float = 4.0 / 3.0,
     max_splits: int = 5000,
     metric: np.ndarray | None = None,
+    protected_edges: set[tuple[int, int]] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """edge length > ratio × target_edge 인 edge 를 중점 split.
 
@@ -166,6 +167,17 @@ def split_long_edges(
         # 가장 긴 것부터 cap.
         order = np.argsort(-e_max[tgt])[: int(max_splits)]
         tgt = tgt[order]
+
+    # Round 66: protected (surface) edge 는 split 금지. 입력 surface edge 가
+    # split 되면 원본 edge 가 두 half 로 쪼개져 conformal 성 깨짐.
+    if protected_edges:
+        keep: list[int] = []
+        for ti in tgt.tolist():
+            u = int(vA[ti]); v = int(vB[ti])
+            key = (u, v) if u < v else (v, u)
+            if key not in protected_edges:
+                keep.append(ti)
+        tgt = np.array(keep, dtype=np.int64)
 
     # 각 edge (vA[ti], vB[ti]) 의 유니크 (canonical 정렬) set → midpoint 1 번만 생성.
     a_sorted = np.minimum(vA[tgt], vB[tgt])
@@ -273,6 +285,12 @@ def _collapse_vectorized_single_pass(
             key = (u, v) if u < v else (v, u)
             if key in protected_edges:
                 continue
+        # Round 66: locked (surface) vertex 가 한쪽이라도 있으면 skip.
+        # 이유: interior → surface merge 가 topology ripple 로 인접 surface
+        # edge 를 간접 제거하는 케이스가 존재 (collapse 는 interior-interior
+        # 에만 허용). 이로써 surface 전체 conformal 성 보장.
+        if u_locked or v_locked:
+            continue
         keeper, victim = (u, v) if v_locked or (not u_locked and u < v) else (v, u)
         used.add(keeper); used.add(victim)
         victim_of[victim] = keeper
