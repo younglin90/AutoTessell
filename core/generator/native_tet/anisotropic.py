@@ -127,6 +127,38 @@ def edge_length_metric(
     return float(np.sqrt(d @ M @ d))
 
 
+def log_euclidean_average(
+    M1: np.ndarray, M2: np.ndarray,
+) -> np.ndarray:
+    """beta1200 (R119) — log-Euclidean metric 평균.
+
+    M_avg = exp(0.5 · (log(M1) + log(M2))).
+
+    symmetric PD 텐서는 직접 평균하면 보간이 왜곡되지만 log 공간 평균은
+    invariant 유지. Arsigny et al. 2006.
+
+    Args:
+        M1, M2: (3, 3) 혹은 (N, 3, 3) SPD.
+    """
+    def _safe_log(M):
+        # eigen-decomp → log eigen → 복원.
+        w, V = np.linalg.eigh(M)
+        w = np.where(w > 1e-30, w, 1e-30)
+        return np.einsum(
+            "...ij,...j,...kj->...ik",
+            V, np.log(w), V,
+        )
+
+    def _safe_exp(M):
+        w, V = np.linalg.eigh(M)
+        return np.einsum(
+            "...ij,...j,...kj->...ik",
+            V, np.exp(w), V,
+        )
+
+    return _safe_exp(0.5 * (_safe_log(M1) + _safe_log(M2)))
+
+
 def edge_lengths_metric_batch(
     pts: np.ndarray, M: np.ndarray, edges: np.ndarray,
 ) -> np.ndarray:
