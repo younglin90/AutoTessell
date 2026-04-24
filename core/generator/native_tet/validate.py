@@ -81,6 +81,76 @@ def drop_extreme_slivers(
     return tets[~drop], n_drop
 
 
+def smooth_then_drop_slivers(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    locked_vertex_ids: np.ndarray | None = None,
+    min_dihedral_deg: float = 0.5,
+    min_aspect_regular: float = 10000.0,
+    n_smooth_iter: int = 2,
+    relax: float = 0.3,
+) -> tuple[np.ndarray, np.ndarray, int, int]:
+    """beta1130 (R110) — drop 대신 sliver 주변 vertex smoothing 으로 complete.
+
+    1) 극단 sliver 감지.
+    2) sliver 가 포함하는 non-locked interior vertex 를 1-ring 평균 방향으로
+       relax × n_smooth_iter 이동.
+    3) 그래도 여전히 sliver 인 tet 만 drop.
+
+    Returns: (pts_new, tets_new, n_smooth_moved, n_dropped).
+    """
+    from core.generator.native_tet.quality import (
+        tet_aspect_ratio, tet_min_dihedral_deg,
+    )
+    from core.generator.native_tet.smooth import _build_edge_rows
+
+    pts = np.asarray(pts, dtype=np.float64).copy()
+    tets = np.asarray(tets, dtype=np.int64)
+    if tets.size == 0:
+        return pts, tets, 0, 0
+
+    locked_mask = np.zeros(pts.shape[0], dtype=bool)
+    if locked_vertex_ids is not None and len(locked_vertex_ids) > 0:
+        locked_mask[np.asarray(locked_vertex_ids, dtype=np.int64)] = True
+
+    dih = tet_min_dihedral_deg(pts, tets)
+    asp = tet_aspect_ratio(pts, tets)
+    bad = (dih < float(min_dihedral_deg)) | (asp > float(min_aspect_regular))
+    if not bad.any():
+        return pts, tets, 0, 0
+
+    affected = np.zeros(pts.shape[0], dtype=bool)
+    for ti in np.where(bad)[0]:
+        for vi in tets[ti]:
+            affected[int(vi)] = True
+    affected &= ~locked_mask
+    n_moved = 0
+    if affected.any():
+        rows, cols = _build_edge_rows(tets)
+        for _ in range(int(n_smooth_iter)):
+            sum_nbr = np.zeros_like(pts)
+            count = np.zeros(pts.shape[0], dtype=np.int64)
+            np.add.at(sum_nbr, rows, pts[cols])
+            np.add.at(count, rows, 1)
+            valid = affected & (count > 0)
+            if not valid.any():
+                break
+            centroid = np.zeros_like(pts)
+            centroid[valid] = sum_nbr[valid] / count[valid, None]
+            step = float(relax) * (centroid[valid] - pts[valid])
+            pts[valid] = pts[valid] + step
+            n_moved += int(valid.sum())
+
+    # re-evaluate.
+    dih = tet_min_dihedral_deg(pts, tets)
+    asp = tet_aspect_ratio(pts, tets)
+    drop = (dih < float(min_dihedral_deg)) | (asp > float(min_aspect_regular))
+    n_drop = int(drop.sum())
+    tets_out = tets[~drop]
+    return pts, tets_out, n_moved, n_drop
+
+
 def fix_inverted_tets(
     pts: np.ndarray,
     tets: np.ndarray,
