@@ -73,6 +73,93 @@ def orient3d_staged(a, b, c, d) -> int:
     )
 
 
+_INSPHERE_ERROR_BOUND_COEF = 1.5e-14
+
+
+def insphere_staged(a, b, c, d, e) -> int:
+    """beta1190 (R124) — staged insphere.
+
+    4 vertex tet (a,b,c,d) (positive orient) + query e. 반환:
+        +1: e 가 circumsphere 내부
+        -1: 외부
+         0: boundary
+    """
+    A = np.asarray(a, dtype=np.float64)
+    B = np.asarray(b, dtype=np.float64)
+    C = np.asarray(c, dtype=np.float64)
+    D = np.asarray(d, dtype=np.float64)
+    E = np.asarray(e, dtype=np.float64)
+
+    # Stage 1: double.
+    def _det5(A_, B_, C_, D_, E_, dtype):
+        M = np.empty((4, 4), dtype=dtype)
+        for i, P in enumerate([A_, B_, C_, D_]):
+            d = np.asarray(P, dtype=dtype) - np.asarray(E_, dtype=dtype)
+            M[i, 0] = d[0]; M[i, 1] = d[1]; M[i, 2] = d[2]
+            M[i, 3] = d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
+        return np.linalg.det(M)
+
+    det = float(_det5(A, B, C, D, E, np.float64))
+    scale_pts = (
+        float(np.abs(A - E).sum())
+        + float(np.abs(B - E).sum())
+        + float(np.abs(C - E).sum())
+        + float(np.abs(D - E).sum())
+    ) ** 4
+    bound = _INSPHERE_ERROR_BOUND_COEF * max(scale_pts, 1.0)
+    if det > bound:
+        return 1
+    if det < -bound:
+        return -1
+
+    # Stage 2: float128.
+    try:
+        det_l = float(_det5(A, B, C, D, E, np.float128))
+        if det_l > bound * 1e-4:
+            return 1
+        if det_l < -bound * 1e-4:
+            return -1
+    except Exception:
+        pass
+
+    # Stage 3: exact via fractions (시간 여유 시 고정밀 expansion 권장).
+    from fractions import Fraction  # noqa: PLC0415
+
+    def _frac(v):
+        return Fraction(float(v)).limit_denominator(10 ** 18)
+
+    def _det4_frac(rows):
+        # 4x4 determinant by expansion.
+        def _minor(M, r, c):
+            return [row[:c] + row[c + 1:] for i, row in enumerate(M) if i != r]
+
+        def _det3(M3):
+            return (
+                M3[0][0] * (M3[1][1] * M3[2][2] - M3[1][2] * M3[2][1])
+                - M3[0][1] * (M3[1][0] * M3[2][2] - M3[1][2] * M3[2][0])
+                + M3[0][2] * (M3[1][0] * M3[2][1] - M3[1][1] * M3[2][0])
+            )
+
+        total = Fraction(0)
+        for c in range(4):
+            sign = 1 if c % 2 == 0 else -1
+            total += sign * rows[0][c] * _det3(_minor(rows, 0, c))
+        return total
+
+    rows = []
+    for P in (A, B, C, D):
+        dx = _frac(P[0]) - _frac(E[0])
+        dy = _frac(P[1]) - _frac(E[1])
+        dz = _frac(P[2]) - _frac(E[2])
+        rows.append([dx, dy, dz, dx * dx + dy * dy + dz * dz])
+    det_f = _det4_frac(rows)
+    if det_f > 0:
+        return 1
+    if det_f < 0:
+        return -1
+    return 0
+
+
 def orient3d_staged_batch(
     A: np.ndarray, B: np.ndarray, C: np.ndarray, D: np.ndarray,
 ) -> np.ndarray:
