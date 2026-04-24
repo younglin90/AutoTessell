@@ -44,6 +44,8 @@ class TetHarnessResult:
     max_non_ortho: float = 0.0
     max_skewness: float = 0.0
     message: str = ""
+    # beta840: harness 가 들고 있는 최종 quality snapshot.
+    quality: "Any" = None
 
 
 def _evaluate_tet_mesh(case_dir: Path) -> tuple[bool, dict]:
@@ -118,6 +120,8 @@ def run_native_tet_harness(
     best_non_ortho = float("inf")
     current_seed = int(seed_density)
     current_q_thresh = float(sliver_quality_threshold)
+    # beta840: 가장 최근 성공한 iteration 의 quality snapshot 보존.
+    latest_quality = None
 
     for it in range(1, int(max_iter) + 1):
         log.info(
@@ -135,6 +139,8 @@ def run_native_tet_harness(
                 max_input_vertices=int(max_input_vertices),
                 **kwargs,
             )
+            if res.success and getattr(res, "quality", None) is not None:
+                latest_quality = res.quality
             if not res.success:
                 log.warning(
                     "native_tet_harness_gen_fail",
@@ -192,6 +198,7 @@ def run_native_tet_harness(
                         f"native_tet_harness PASS iter={it}, cells={metrics['cells']}, "
                         f"non_ortho={metrics['max_non_orthogonality']:.1f}°"
                     ),
+                    quality=latest_quality,
                 )
             # 실패 → seed density 늘려 재시도 (surface 보존 개선)
             current_seed = int(current_seed * 1.3)
@@ -218,4 +225,5 @@ def run_native_tet_harness(
             f"native_tet_harness best_effort after {max_iter} iter "
             f"(best non_ortho={best_non_ortho:.1f}°)"
         ),
+        quality=latest_quality,
     )
