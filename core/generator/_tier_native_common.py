@@ -72,10 +72,14 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
         # native_hex 는 uniform grid (harness 미사용). seed_density / snap_boundary 만 의미.
         # beta22: fine quality 는 기본적으로 surface snap 활성화.
         # beta66: fine quality 는 preserve_features=True 로 sharp corner snap 개선.
+        # beta860: fine 에 N-level octree n_levels=4 + snap_iterations=5 더 강화.
         "draft":    {"seed_density": 12, "snap_boundary": False},
-        "standard": {"seed_density": 16, "snap_boundary": False},
+        "standard": {"seed_density": 16, "snap_boundary": True,
+                     "adaptive": True, "n_levels": 2, "snap_iterations": 2},
         "fine":     {"seed_density": 24, "snap_boundary": True, "preserve_features": True,
-                     "adaptive": True, "n_levels": 3, "snap_iterations": 3},
+                     "adaptive": True, "n_levels": 4, "snap_iterations": 5,
+                     "refinement_distance_factor": 2.5,
+                     "feature_angle_deg": 40.0},
     },
     "tier_native_poly": {
         # beta97: smooth_iters — dual 이후 Laplacian smoothing 횟수.
