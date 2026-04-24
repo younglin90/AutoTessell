@@ -132,6 +132,60 @@ def smooth_interior(
     )
 
 
+def smooth_interior_metric(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    metric: np.ndarray,
+    *,
+    locked_vertex_ids: np.ndarray,
+    n_iter: int = 1,
+    relax: float = 0.4,
+) -> tuple["SmoothResult", np.ndarray]:
+    """beta1210 (R121) — metric-aware Laplacian smoothing.
+
+    각 interior vertex 의 1-ring 이동 방향을 metric-weighted centroid 로.
+    neighbor weight = exp(-d_M(p, q)) 근사 (가까운 metric 이웃에 큰 가중).
+    """
+    pts = np.asarray(pts, dtype=np.float64).copy()
+    tets = np.asarray(tets, dtype=np.int64)
+    n = pts.shape[0]
+    locked_mask = np.zeros(n, dtype=bool)
+    if locked_vertex_ids is not None and len(locked_vertex_ids) > 0:
+        locked_mask[np.asarray(locked_vertex_ids, dtype=np.int64)] = True
+
+    rows, cols = _build_edge_rows(tets)
+    if rows.size == 0:
+        return SmoothResult(0, 0, 0.0), pts
+
+    max_disp = 0.0
+    moved = 0
+    for _ in range(max(0, int(n_iter))):
+        d = pts[rows] - pts[cols]
+        Mavg = 0.5 * (metric[rows] + metric[cols])
+        d2 = np.einsum("ij,ijk,ik->i", d, Mavg, d)
+        w = np.exp(-np.sqrt(np.maximum(d2, 0.0)))
+        sum_wq = np.zeros_like(pts)
+        sum_w = np.zeros(n, dtype=np.float64)
+        np.add.at(sum_wq, rows, pts[cols] * w[:, None])
+        np.add.at(sum_w, rows, w)
+        valid = (sum_w > 1e-30) & (~locked_mask)
+        if not valid.any():
+            break
+        target = np.zeros_like(pts)
+        target[valid] = sum_wq[valid] / sum_w[valid, None]
+        step = float(relax) * (target[valid] - pts[valid])
+        pts[valid] = pts[valid] + step
+        md = float(np.linalg.norm(step, axis=1).max()) if step.size else 0.0
+        if md > max_disp:
+            max_disp = md
+        moved += int(valid.sum())
+
+    return SmoothResult(
+        n_iter=int(n_iter), n_interior_moved=int(moved),
+        max_displacement=float(max_disp),
+    ), pts
+
+
 def smooth_odt(
     pts: np.ndarray,
     tets: np.ndarray,
