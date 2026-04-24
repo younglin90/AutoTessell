@@ -199,6 +199,8 @@ def flip_edges_32(
     *,
     min_quality_improvement: float = 1e-4,
     max_flips: int = 5000,
+    protected_edges: set[tuple[int, int]] | None = None,
+    protected_faces: set[tuple[int, int, int]] | None = None,
 ) -> tuple[np.ndarray, int]:
     """3-2 edge flip: 내부 edge (u,v) 를 공유하는 3 tet 제거 후 2 tet 로 재구성.
 
@@ -261,6 +263,11 @@ def flip_edges_32(
             continue
         if _edge_on_boundary(u, v):
             continue
+        # Round 63: 입력 surface edge 는 flip 으로 제거 금지.
+        if protected_edges:
+            key = (u, v) if u < v else (v, u)
+            if key in protected_edges:
+                continue
         # 3 tet 의 반대편 vertex 3 개.
         opposite: list[int] = []
         for ti in owners:
@@ -318,6 +325,7 @@ def flip_edges_44(
     *,
     min_quality_improvement: float = 1e-4,
     max_flips: int = 5000,
+    protected_edges: set[tuple[int, int]] | None = None,
 ) -> tuple[np.ndarray, int]:
     """4-4 edge flip: 내부 edge 공유 4 tet 을 다른 대각선으로 재배치.
 
@@ -373,6 +381,8 @@ def flip_edges_44(
         if not all(alive[t] for t in owners):
             continue
         if (u, v) in boundary_edges:
+            continue
+        if protected_edges and (u, v) in protected_edges:
             continue
         # 각 tet 의 반대 2 vertex 수집.
         ring: list[int] = []
@@ -453,6 +463,7 @@ def face_flip_pass(
     n_iter: int = 3,
     max_flips_per_iter: int = 5000,
     protected_faces: set[tuple[int, int, int]] | None = None,
+    protected_edges: set[tuple[int, int]] | None = None,
 ) -> tuple[np.ndarray, FlipResult]:
     """2-3 flip 을 여러 pass 반복. 업데이트된 tets array 와 FlipResult 반환.
 
@@ -483,11 +494,18 @@ def face_flip_pass(
         if n23 > 0:
             T = T_new
             n_flip_23_total += n23
-        T_new2, n32 = flip_edges_32(pts, T, max_flips=max_flips_per_iter)
+        T_new2, n32 = flip_edges_32(
+            pts, T, max_flips=max_flips_per_iter,
+            protected_edges=protected_edges,
+            protected_faces=protected_faces,
+        )
         if n32 > 0:
             T = T_new2
             n_flip_32_total += n32
-        T_new3, n44 = flip_edges_44(pts, T, max_flips=max_flips_per_iter)
+        T_new3, n44 = flip_edges_44(
+            pts, T, max_flips=max_flips_per_iter,
+            protected_edges=protected_edges,
+        )
         if n44 > 0:
             T = T_new3
             n_flip_44_total += n44

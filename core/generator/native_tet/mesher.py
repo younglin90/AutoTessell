@@ -662,16 +662,20 @@ def generate_native_tet(
                 final_pts = prev_pts
                 final_tets = prev_tets
                 break
-            # Round 62: 입력 surface face 를 protected set 으로 전달해
-            # 2-3 flip 에서 제거되지 않도록.
+            # Round 62/63: 입력 surface face + edge 를 protected set 으로
+            # 전달해 2-3/3-2/4-4 flip 모두에서 제거되지 않도록.
             surf_face_set: set[tuple[int, int, int]] = set()
+            surf_edge_set: set[tuple[int, int]] = set()
             for ti in range(F.shape[0]):
                 a, b, c = int(F[ti, 0]), int(F[ti, 1]), int(F[ti, 2])
                 surf_face_set.add(tuple(sorted((a, b, c))))   # type: ignore[arg-type]
+                for u, v in ((a, b), (b, c), (c, a)):
+                    surf_edge_set.add((u, v) if u < v else (v, u))
             final_tets, fr2 = face_flip_pass(
                 final_pts, final_tets,
                 n_iter=int(flip_iterations),
                 protected_faces=surf_face_set,
+                protected_edges=surf_edge_set,
             )
 
             # 사용 안 된 vertex 제거 (surface vertex 는 보호).
