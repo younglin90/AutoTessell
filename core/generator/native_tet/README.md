@@ -130,3 +130,24 @@ detection.
 - beta400: 4-4 edge flip.
 - beta410: progress_cb + 4-4 flip tests.
 - beta420: input pre-check (duplicate / zero-area / non-watertight / non-manifold).
+- beta440: AABB self-intersection heuristic.
+- beta450: Rounds 35-38 — Bowyer-Watson · exact predicates · anisotropic
+  metric · procedural bench matrix.
+- beta470: shared-stack BVH.
+- beta480: B-W wired as BSP recovery fallback.
+- beta490-500: metric-aware split/collapse + mesher wire.
+- beta510-540: staged predicates (double→float128→Fraction).
+- beta560: snap-after-BW.
+- beta570-590: CDT edge-recovery check + midpoint insertion pipeline.
+- beta600-610: subdivision mode + revert guard.
+- beta630: enable_edge_recovery flag + fine preset auto-enable.
+- beta640: __init__ docstring update.
+
+### 55 rounds 완료 기준 테스트 현황
+
+129 passed (non-slow) + 1 slow (5-STL Phase B 비교 bench). 전체 모듈
+테스트 커버리지:
+  test_native_tet / harness / phaseA / B / C / D / E / F / G / J / bench
+  + test_predicates / _exact / _staged
+  + test_bowyer_watson / anisotropic / cdt_check / edge_recovery
+  + test_native_tet_input_check / matrix_bench.
