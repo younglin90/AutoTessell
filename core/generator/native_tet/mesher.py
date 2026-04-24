@@ -829,6 +829,21 @@ def generate_native_tet(
                 degenerate=vr.n_degenerate,
             )
 
+    # Round 73: extreme sliver 제거 (dihedral < 0.5°) — 옵션.
+    if enable_phase_a:
+        try:
+            from core.generator.native_tet.validate import drop_extreme_slivers
+
+            final_tets, n_drop = drop_extreme_slivers(
+                final_pts, final_tets,
+                min_dihedral_deg=0.5,
+                min_aspect_regular=1e5,
+            )
+            if n_drop > 0:
+                log.info("native_tet_drop_slivers", dropped=n_drop)
+        except Exception as exc:
+            log.debug("native_tet_drop_slivers_skipped", reason=str(exc))
+
     _prog("write", 0.9, n_tets=int(final_tets.shape[0]))
 
     # 5) polyMesh 쓰기

@@ -54,6 +54,33 @@ def orientation_signs(
     return orient3d_batch(v[:, 0], v[:, 1], v[:, 2], v[:, 3], tol=tol)
 
 
+def drop_extreme_slivers(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    min_dihedral_deg: float = 0.5,
+    min_aspect_regular: float = 10000.0,
+) -> tuple[np.ndarray, int]:
+    """dihedral 이 극단적으로 작거나 (대략 공면) aspect 가 비정상적으로 큰 tet 제거.
+
+    boundary 보호: surface triangle 이 유지되는지는 caller 가 별도 체크 필요.
+    본 함수는 단순히 "수치적으로 무의미한" tet 만 제거.
+    """
+    tets = np.asarray(tets, dtype=np.int64)
+    if tets.size == 0:
+        return tets, 0
+    # 간단: signed vol 이 거의 0 이거나, dihedral 최소가 threshold 미만인 tet 탈락.
+    from core.generator.native_tet.quality import (
+        tet_aspect_ratio, tet_min_dihedral_deg,
+    )
+
+    dih = tet_min_dihedral_deg(pts, tets)
+    asp = tet_aspect_ratio(pts, tets)
+    drop = (dih < float(min_dihedral_deg)) | (asp > float(min_aspect_regular))
+    n_drop = int(drop.sum())
+    return tets[~drop], n_drop
+
+
 def fix_inverted_tets(
     pts: np.ndarray,
     tets: np.ndarray,
