@@ -172,13 +172,50 @@ def bowyer_watson_insert(
     n_cavity_total = 0
     n_new_total = 0
 
+    # Round 60: tet adjacency 구축 — 매 점 삽입 전 갱신하면 비싸니 새 삽입마다
+    # 재빌드. 대신 cavity flood 로 전체 tet 스캔 회피.
+    def _tet_neighbors(T: np.ndarray) -> list[list[int]]:
+        face_map: dict[tuple[int, int, int], list[int]] = {}
+        for i in range(T.shape[0]):
+            a, b, c, d = (int(x) for x in T[i])
+            for tri in ((a, b, c), (a, b, d), (a, c, d), (b, c, d)):
+                k2 = tuple(sorted(tri))
+                face_map.setdefault(k2, []).append(i)  # type: ignore[arg-type]
+        nbrs: list[list[int]] = [[] for _ in range(T.shape[0])]
+        for lst in face_map.values():
+            if len(lst) == 2:
+                a, b = lst
+                nbrs[a].append(b)
+                nbrs[b].append(a)
+        return nbrs
+
+    def _single_circumsphere_test(T: np.ndarray, ti: int, p: np.ndarray, pts_arr) -> bool:
+        a = pts_arr[T[ti, 0]]; b = pts_arr[T[ti, 1]]
+        c = pts_arr[T[ti, 2]]; d = pts_arr[T[ti, 3]]
+        return _in_circumsphere(p, a, b, c, d)
+
     for k in range(new_points.shape[0]):
         p = new_points[k]
         cur_pts = np.asarray(pts_list, dtype=np.float64)
         if tets_cur.shape[0] == 0:
             break
 
-        mask = _tet_circumsphere_batch(cur_pts, tets_cur, p)
+        # seed tet 찾기: 가장 가까운 centroid.
+        centroids = cur_pts[tets_cur].mean(axis=1)
+        seed = int(np.argmin(np.linalg.norm(centroids - p, axis=1)))
+
+        # flood: seed 부터 BFS, circumsphere 포함 tet 만 확장.
+        nbrs = _tet_neighbors(tets_cur)
+        mask = np.zeros(tets_cur.shape[0], dtype=bool)
+        if _single_circumsphere_test(tets_cur, seed, p, cur_pts):
+            mask[seed] = True
+            queue = [seed]
+            while queue:
+                ti = queue.pop()
+                for nb in nbrs[ti]:
+                    if not mask[nb] and _single_circumsphere_test(tets_cur, nb, p, cur_pts):
+                        mask[nb] = True
+                        queue.append(nb)
         n_cav = int(mask.sum())
         if n_cav == 0:
             continue
