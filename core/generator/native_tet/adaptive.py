@@ -115,6 +115,63 @@ def gradient_limited_sizing(
     return s
 
 
+def distance_based_sizing(
+    V: np.ndarray,
+    V_surface: np.ndarray,
+    *,
+    target_edge: float,
+    near_ratio: float = 0.5,
+    far_ratio: float = 2.0,
+    transition: float = 1.0,
+) -> np.ndarray:
+    """beta1020 (R117) — 표면 근접 vertex 는 작은 edge, 내부 깊은 곳은 큰 edge.
+
+    transition: bbox-diag 단위 상대 거리.
+    """
+    V = np.asarray(V, dtype=np.float64)
+    if V.shape[0] == 0:
+        return np.zeros(0, dtype=np.float64)
+    try:
+        from scipy.spatial import cKDTree  # noqa: PLC0415
+        tree = cKDTree(np.asarray(V_surface, dtype=np.float64))
+        d, _ = tree.query(V, k=1)
+    except Exception:
+        d = np.linalg.norm(V[:, None] - np.asarray(V_surface)[None], axis=2).min(axis=1)
+    bbox = V.ptp(axis=0)
+    diag = float(np.linalg.norm(bbox))
+    t = np.clip(d / (float(transition) * diag + 1e-30), 0.0, 1.0)
+    scale = float(near_ratio) + (float(far_ratio) - float(near_ratio)) * t
+    return float(target_edge) * scale
+
+
+def sizing_callback_eval(
+    V: np.ndarray,
+    sizing_cb,
+    *,
+    fallback: float = 1.0,
+) -> np.ndarray:
+    """beta1030 (R115) — user sizing_cb(xyz)->scalar 를 per-vertex 로 평가.
+
+    cb 가 None 이면 uniform fallback.
+    """
+    V = np.asarray(V, dtype=np.float64)
+    if sizing_cb is None:
+        return np.full(V.shape[0], float(fallback), dtype=np.float64)
+    try:
+        arr = np.asarray(sizing_cb(V), dtype=np.float64)
+        if arr.shape == ():
+            arr = np.full(V.shape[0], float(arr), dtype=np.float64)
+        return arr
+    except Exception:
+        out = np.empty(V.shape[0], dtype=np.float64)
+        for i in range(V.shape[0]):
+            try:
+                out[i] = float(sizing_cb(V[i]))
+            except Exception:
+                out[i] = float(fallback)
+        return out
+
+
 def per_vertex_target_to_edge_target(
     per_vertex: np.ndarray,
     edges: np.ndarray,
