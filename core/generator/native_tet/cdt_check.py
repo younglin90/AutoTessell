@@ -62,6 +62,26 @@ def _tet_edges(tets: np.ndarray) -> set[tuple[int, int]]:
     return s
 
 
+def missing_edge_report(
+    V: np.ndarray, F: np.ndarray, tets: np.ndarray,
+) -> list[dict]:
+    """beta980 (R100) — 각 missing edge 에 대한 상세 (midpoint/length)."""
+    V = np.asarray(V, dtype=np.float64)
+    r = check_edge_recovery(F, tets)
+    out: list[dict] = []
+    for (u, v) in r.missing_edges:
+        if u < 0 or v < 0 or u >= V.shape[0] or v >= V.shape[0]:
+            continue
+        mid = 0.5 * (V[u] + V[v])
+        length = float(np.linalg.norm(V[u] - V[v]))
+        out.append({
+            "u": int(u), "v": int(v),
+            "midpoint": mid.tolist(),
+            "length": length,
+        })
+    return out
+
+
 def check_edge_recovery(
     F: np.ndarray, tets: np.ndarray,
 ) -> CDTCheckResult:
