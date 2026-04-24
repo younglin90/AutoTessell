@@ -72,6 +72,12 @@ def _closest_point_on_triangle(
     return cp, float(np.linalg.norm(p - cp))
 
 
+def _aabb_lower_batch(points: np.ndarray, amin: np.ndarray, amax: np.ndarray) -> np.ndarray:
+    """N 개 점 각각에 대해 주어진 하나의 AABB 까지의 lower-bound 거리."""
+    d = np.maximum(amin - points, 0) + np.maximum(points - amax, 0)
+    return np.linalg.norm(d, axis=1)
+
+
 def _closest_points_on_triangles_batch(
     p: np.ndarray, tri_pts: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -270,12 +276,84 @@ class TriangleBVH:
         return best_cp, best_d, best_tri
 
     def unsigned_distances(self, points: np.ndarray) -> np.ndarray:
-        """각 점의 표면까지 distance (unsigned)."""
+        """각 점의 표면까지 distance (unsigned).
+
+        beta470: closest_points_all_shared 경유 — 전면 shared-stack BVH 로
+        Python overhead 감소.
+        """
         points = np.asarray(points, dtype=np.float64)
         if points.shape[0] == 0 or not self.nodes:
             return np.zeros(points.shape[0], dtype=np.float64)
-        cps, ds, _tis = self.closest_points_batch(points)
+        cps, ds, _tis = self.closest_points_all_shared(points)
         return ds
+
+    def closest_points_all_shared(
+        self, points: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """N 개 query 가 stack 을 공유하는 전면-batch BVH.
+
+        per-point closest_points_batch 는 query 당 독립 stack 이라 Python
+        overhead 가 N 배. 여기서는:
+            - 각 query 에 대해 best_d 배열 유지.
+            - node 방문 큐: (node_idx, active_mask).
+            - 노드 AABB 의 per-query lower-bound 거리 → 각 query 별로 prune.
+
+        leaf 에 도달하면 active 인 모든 query × leaf 내 모든 tri 를 브로드캐스트
+        로 한꺼번에 평가.
+        """
+        points = np.asarray(points, dtype=np.float64)
+        N = points.shape[0]
+        if N == 0 or not self.nodes:
+            return (
+                points.copy(),
+                np.zeros(N, dtype=np.float64),
+                -np.ones(N, dtype=np.int64),
+            )
+
+        best_d = np.full(N, np.inf, dtype=np.float64)
+        best_cp = points.copy()
+        best_ti = -np.ones(N, dtype=np.int64)
+
+        # stack of (node_idx, active_mask).
+        stack: list[tuple[int, np.ndarray]] = [
+            (0, np.ones(N, dtype=bool))
+        ]
+
+        while stack:
+            ni, active = stack.pop()
+            if not active.any():
+                continue
+            node = self.nodes[ni]
+            # per-query AABB lower-bound.
+            d_low = _aabb_lower_batch(points, node.aabb_min, node.aabb_max)
+            prune = d_low >= best_d
+            sub_active = active & ~prune
+            if not sub_active.any():
+                continue
+            if node.tri_start >= 0:
+                tri_ids = self.tri_order[node.tri_start:node.tri_end]
+                if tri_ids.size == 0:
+                    continue
+                # per-query × per-tri brute.
+                tri_pts = self.V[self.F[tri_ids]]
+                active_idx = np.where(sub_active)[0]
+                # 각 active query 당 leaf tri 모두 평가.
+                for qi in active_idx:
+                    cps, ds = _closest_points_on_triangles_batch(
+                        points[qi], tri_pts,
+                    )
+                    if ds.size:
+                        j = int(np.argmin(ds))
+                        if ds[j] < best_d[qi]:
+                            best_d[qi] = float(ds[j])
+                            best_cp[qi] = cps[j]
+                            best_ti[qi] = int(tri_ids[j])
+            else:
+                # push both children (RHS popped first).
+                stack.append((node.right, sub_active))
+                stack.append((node.left, sub_active))
+
+        return best_cp, best_d, best_ti
 
     def closest_points_batch(
         self, points: np.ndarray,
