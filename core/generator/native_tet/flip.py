@@ -72,6 +72,7 @@ def flip_faces_23(
     *,
     min_quality_improvement: float = 1e-4,
     max_flips: int = 5000,
+    protected_faces: set[tuple[int, int, int]] | None = None,
 ) -> tuple[np.ndarray, int]:
     """공유 face 를 가진 tet pair 마다 2-3 flip 시도.
 
@@ -132,6 +133,9 @@ def flip_faces_23(
         if n_flip >= max_flips:
             break
         if face in visited_faces:
+            continue
+        if protected_faces and face in protected_faces:
+            # 입력 surface face — 유지 (flip 시 사라지면 conformal 안 됨).
             continue
         if not (alive[ti] and alive[tj]):
             continue
@@ -448,6 +452,7 @@ def face_flip_pass(
     *,
     n_iter: int = 3,
     max_flips_per_iter: int = 5000,
+    protected_faces: set[tuple[int, int, int]] | None = None,
 ) -> tuple[np.ndarray, FlipResult]:
     """2-3 flip 을 여러 pass 반복. 업데이트된 tets array 와 FlipResult 반환.
 
@@ -471,7 +476,10 @@ def face_flip_pass(
     n_flip_32_total = 0
     n_flip_44_total = 0
     for _ in range(max(1, n_iter)):
-        T_new, n23 = flip_faces_23(pts, T, max_flips=max_flips_per_iter)
+        T_new, n23 = flip_faces_23(
+            pts, T, max_flips=max_flips_per_iter,
+            protected_faces=protected_faces,
+        )
         if n23 > 0:
             T = T_new
             n_flip_23_total += n23
