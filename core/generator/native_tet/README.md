@@ -23,10 +23,14 @@ MPL-2.0) 및 TetGen (Si 2015) 핵심 알고리즘을 Python 으로 독립 재구
 | `adaptive.py` | Curvature 기반 per-vertex target edge | `curvature_sizing` |
 | `validate.py` | Inverted / degenerate tet 검출 + swap 복구 | `fix_inverted_tets`, `orientation_signs` |
 | `input_check.py` | 입력 surface pre-check (duplicate / zero-area / non-watertight) | `check_input` |
+| `bowyer_watson.py` | Incremental Delaunay insertion (cavity 방식) | `bowyer_watson_insert`, `_in_circumsphere` |
+| `anisotropic.py` | Per-vertex SPD metric tensor (axis / curvature) | `axis_aligned_metric`, `curvature_aligned_metric`, `edge_length_metric` |
 
 추가:
 - `core/utils/aabb.py` — AABB BVH (closest-point / envelope query 공통).
 - `core/utils/predicates.py` — tolerance 기반 orient3d / insphere.
+- `core/utils/predicates_exact.py` — Python fractions.Fraction 기반 exact-sign
+  orient3d / insphere + robust fallback.
 
 ## Phase 분류
 
@@ -78,13 +82,28 @@ detection.
 
 ## 남은 작업 (향후 rounds)
 
-- **Exact-arithmetic predicates**: 현재 tolerance 기반 (`core/utils/predicates.py`).
-  Shewchuk double-double 이 필요한 극한 얇은 tet 에 대비.
-- **4-4 edge flip**: 현재 2-3 / 3-2 만.
-- **Full-batch BVH traversal**: 지금은 per-point stack.
-- **Thingi10k 규모 (1000+ STL) 자동 벤치**.
-- **Anisotropic sizing tensor**.
-- **Incremental Bowyer-Watson**: BSP insertion 이후 full re-Delaunay 대신.
+- **Full-batch BVH traversal**: per-point stack 대신 SIMD 병렬.
+- **Thingi10k 규모 (1000+ STL) 다운로드 자동 벤치** (현재는 procedural 12 STL).
+- **Shewchuk expansion arithmetic**: 현 fractions.Fraction 은 정확하지만 느림.
+  Staged-expansion 으로 더 빠르게.
+- **Surface snap 을 B-W insertion 과 결합**: BSP → B-W 로 incremental surface
+  recovery.
+
+## 완료된 주요 기능 (beta110 → beta450)
+
+- Phase A/B/C/F 전체 파이프라인.
+- Edge split / collapse / flip (2-3, 3-2, 4-4).
+- BVH (AABB) closest-point + envelope preservation.
+- Feature edge / corner detection + lock.
+- Curvature-adaptive scalar sizing + anisotropic tensor metric.
+- Tolerance + exact-rational predicates.
+- Bowyer-Watson incremental insertion.
+- Input pre-check (duplicate / zero-area / non-watertight / non-manifold /
+  self-intersection heuristic).
+- Inverted tet validator + orphan vertex cleanup + cell-drop rollback.
+- Progress callback + large-mesh auto-conservative.
+- HARNESS_PARAMS quality 자동 Phase B/C 주입.
+- target_cells heuristic + target_edge_length 파라미터화.
 
 ## 누적 개발 이력 (beta110 → beta380)
 
