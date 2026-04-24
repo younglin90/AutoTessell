@@ -266,6 +266,9 @@ def generate_native_tet(
             if good.shape[0] == 0:
                 break
             extra_seeds = np.vstack([extra_seeds, good])
+            # Round 59 시도: B-W incremental — 큰 메시에서 per-point cavity
+            # 스캔 O(T) 가 반복되어 느림 (harness 벤치 timeout). 반려 — full
+            # re-Delaunay 유지 (scipy.Delaunay 는 C-level 이라 더 빠름).
             augmented = np.vstack([all_pts, good])
             dl_res2 = _run_delaunay(augmented)
             if dl_res2 is None:
