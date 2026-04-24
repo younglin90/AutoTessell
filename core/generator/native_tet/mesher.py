@@ -286,6 +286,14 @@ def generate_native_tet(
                 n_miss_initial = cdt_initial.n_missing
                 cur_missing = cdt_initial.missing_edges
                 total_inserted = 0
+                # Round 58: 현재 tet edge set 중 surface edge 인 것은 보호.
+                # recovered 된 surface edge 가 B-W cavity 로 다시 제거되지
+                # 않도록 protected set 전달.
+                surf_edges_all: set[tuple[int, int]] = set()
+                for ti in range(F.shape[0]):
+                    a, b, c = int(F[ti, 0]), int(F[ti, 1]), int(F[ti, 2])
+                    for u, v in ((a, b), (b, c), (c, a)):
+                        surf_edges_all.add((u, v) if u < v else (v, u))
                 for rec_i in range(int(edge_recovery_max_iter)):
                     if not cur_missing:
                         break
@@ -296,7 +304,15 @@ def generate_native_tet(
                     good = prop.new_points[inside_new]
                     if good.shape[0] == 0:
                         good = prop.new_points
-                    ap_new, ts_new, er_res = _bw_edge(all_pts, tets, good)
+                    # 현재 tet 에 존재하는 surface edge (= 이미 recovered) 를 보호.
+                    from core.generator.native_tet.cdt_check import _tet_edges
+
+                    cur_tet_edges = _tet_edges(tets)
+                    protected = surf_edges_all & cur_tet_edges
+                    ap_new, ts_new, er_res = _bw_edge(
+                        all_pts, tets, good,
+                        protected_edges=protected,
+                    )
                     if er_res.n_inserted == 0:
                         break
                     cdt_candidate = check_edge_recovery(F, ts_new)

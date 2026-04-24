@@ -145,6 +145,7 @@ def bowyer_watson_insert(
     new_points: np.ndarray,
     *,
     max_cavity_size: int = 500,
+    protected_edges: set[tuple[int, int]] | None = None,
 ) -> tuple[np.ndarray, np.ndarray, BWInsertResult]:
     """신규 점들을 순차적으로 incremental insertion.
 
@@ -180,12 +181,36 @@ def bowyer_watson_insert(
         mask = _tet_circumsphere_batch(cur_pts, tets_cur, p)
         n_cav = int(mask.sum())
         if n_cav == 0:
-            # p 는 어떤 circumsphere 안에도 없음 — 삽입해도 Delaunay 안 깨짐.
-            # 하지만 현재 tet 에 포함되지도 않으면 무효 (외부).
             continue
         if n_cav > max_cavity_size:
-            # 너무 큰 cavity — degenerate 위험. skip.
             continue
+
+        # Round 58: cavity 가 protected edge 를 내부 (boundary 가 아닌) 로
+        # 삼키면 삽입 거부. 외부 면에 protected edge 가 남아 있으면 OK.
+        if protected_edges:
+            cavity_ids = np.where(mask)[0]
+            # cavity 내부 edge 집합.
+            interior_pair_counts: dict[tuple[int, int], int] = {}
+            for ti in cavity_ids:
+                a, b, c, d = (int(x) for x in tets_cur[ti])
+                for u, v in ((a, b), (a, c), (a, d), (b, c), (b, d), (c, d)):
+                    k = (u, v) if u < v else (v, u)
+                    interior_pair_counts[k] = interior_pair_counts.get(k, 0) + 1
+            # boundary 외곽 face 의 edge set.
+            b_faces = _boundary_faces_of_cavity(tets_cur, mask)
+            boundary_edges: set[tuple[int, int]] = set()
+            for fk in b_faces:
+                a_, b_, c_ = fk
+                for u_, v_ in ((a_, b_), (a_, c_), (b_, c_)):
+                    boundary_edges.add((u_, v_) if u_ < v_ else (v_, u_))
+            # protected edge 가 cavity interior 에 속하고 boundary 에 없으면 거부.
+            reject = False
+            for pe in protected_edges:
+                if pe in interior_pair_counts and pe not in boundary_edges:
+                    reject = True
+                    break
+            if reject:
+                continue
 
         boundary = _boundary_faces_of_cavity(tets_cur, mask)
         if not boundary:
