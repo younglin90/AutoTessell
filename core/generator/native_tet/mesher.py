@@ -85,6 +85,9 @@ def generate_native_tet(
     quality_target_min_q: float = 0.3,
     quality_improvement_eps: float = 0.005,
     quality_window: int = 3,
+    # beta330 — volume target: 사용자가 희망 cell 수 지정 시 seed_density
+    # 자동 조정 (bbox 기반 heuristic: target_edge = (V_bbox / target_cells)^(1/3)).
+    target_cells: int | None = None,
     # beta140 Phase E2 — curvature-adaptive sizing (split/collapse 기준).
     use_adaptive_sizing: bool = False,
     adaptive_min_ratio: float = 0.25,
@@ -142,7 +145,22 @@ def generate_native_tet(
     bmin = V.min(axis=0); bmax = V.max(axis=0)
     diag = float(np.linalg.norm(bmax - bmin))
     if target_edge_length is None or target_edge_length <= 0:
-        target_edge_length = diag / max(1, int(seed_density))
+        # beta330: target_cells 가 지정되면 bbox volume 기반 heuristic 으로
+        # target_edge 유도. 정사면체 V ≈ edge^3 / (6√2) ≈ 0.118 × edge^3.
+        if target_cells is not None and int(target_cells) > 0:
+            span = (bmax - bmin).prod()
+            if span > 0:
+                # total_vol / (0.118 × edge^3) ≈ n_cells → edge = (vol / (0.118 × n))^(1/3).
+                target_edge_length = float((span / (0.118 * int(target_cells))) ** (1.0 / 3.0))
+            else:
+                target_edge_length = diag / max(1, int(seed_density))
+            log.info(
+                "native_tet_target_cells_adjusted",
+                target_cells=int(target_cells),
+                derived_target_edge=target_edge_length,
+            )
+        else:
+            target_edge_length = diag / max(1, int(seed_density))
 
     log.info(
         "native_tet_start",
