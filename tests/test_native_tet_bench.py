@@ -22,7 +22,9 @@ BENCH_OUTPUT = Path(__file__).parent / "stl" / "native_tet_bench_latest.json"
 
 def _run_bench(stl_files, seed_density=6):
     from core.generator.native_tet.mesher import generate_native_tet
-    from core.generator.native_tet.quality import tet_shape_quality
+    from core.generator.native_tet.quality import (
+        snapshot as quality_snapshot,
+    )
     import tempfile
     import time
     import trimesh
@@ -60,12 +62,14 @@ def _run_bench(stl_files, seed_density=6):
                     "message": res.message[:200],
                 }
                 if res.success and res.tets is not None:
-                    q = tet_shape_quality(res.tet_points, res.tets)
+                    snap = quality_snapshot(res.tet_points, res.tets)
                     row.update({
                         "n_cells": int(res.n_cells),
                         "n_points": int(res.n_points),
-                        "min_q": round(float(q.min()), 4) if q.size else 0.0,
-                        "mean_q": round(float(q.mean()), 4) if q.size else 0.0,
+                        "min_q": round(snap.min_q, 4),
+                        "mean_q": round(snap.mean_q, 4),
+                        "mean_aspect": round(snap.mean_aspect, 2),
+                        "min_dihedral_deg": round(snap.min_dihedral_deg, 2),
                     })
                 rows.append(row)
             except Exception as e:
