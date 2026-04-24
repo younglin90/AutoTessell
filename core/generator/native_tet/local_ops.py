@@ -189,6 +189,10 @@ def collapse_short_edges(
         short = [k for k, L in lens.items() if L < thresh]
         if not short:
             break
+        # 가장 짧은 edge 부터 (심플 그리디). Round 13 quality-priority 는 반려:
+        # O(E × tets_per_edge) 가 실험 결과 5-STL bench 에서 timeout. 길이 정렬만
+        # 유지하고 cap (max_collapses_per_iter) + rollback (cell_drop_ratio) 으로
+        # 안전 확보.
         short.sort(key=lambda k: lens[k])
         done = False
         for (u, v) in short:

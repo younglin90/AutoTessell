@@ -131,14 +131,22 @@ def test_native_tet_bench_drift_check() -> None:
 BENCH_PHASE_B_OUTPUT = Path(__file__).parent / "stl" / "native_tet_bench_phaseB.json"
 
 
+@pytest.mark.slow
 def test_native_tet_phase_b_comparison_bench() -> None:
-    """Phase A only vs A+B+C: 같은 STL 에 대해 품질 비교."""
+    """Phase A only vs A+B+C: 같은 STL 에 대해 품질 비교.
+
+    Slow: 5 STL × 2 모드 + Phase B local ops 이 ultra_knot 에 10s+ 걸림.
+    기본 회귀 세트에서 제외. 수동 실행 시에만 사용.
+    """
     from core.generator.native_tet.mesher import generate_native_tet
     from core.generator.native_tet.quality import tet_shape_quality
     import tempfile
     import time
     import trimesh
 
+    # 비교 벤치는 Phase B 가 작동하는 first 3 STL 만 (4_gear, 5_knot 은
+    # O(T^2) 루프라 minutes 소요 — test_native_tet_bench_basic 에서 A-only
+    # 만 커버).
     candidates = [
         BENCH_STL_DIR / "01_easy_cube.stl",
         BENCH_STL_DIR / "02_medium_cylinder.stl",
