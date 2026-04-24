@@ -882,6 +882,21 @@ def generate_native_tet(
         pass
 
     _prog("done", 1.0, n_cells=n_cells, n_points=n_points, elapsed=elapsed)
+
+    # beta1140 (R180) — 개발자용 debug_info dump + input-check warnings 전파.
+    debug_info: dict = {
+        "seed_grid": int(grid.shape[0]),
+        "target_edge": float(target_edge_length),
+        "n_final_tets": int(final_tets.shape[0]),
+        "n_final_points": int(final_pts.shape[0]),
+    }
+    warnings_list: list[str] = []
+    try:
+        if chk is not None and chk.warnings:
+            warnings_list.extend(chk.warnings)
+    except Exception:
+        pass
+
     return NativeTetResult(
         success=True, elapsed=elapsed,
         n_cells=n_cells, n_points=n_points,
@@ -891,4 +906,6 @@ def generate_native_tet(
         ),
         tet_points=final_pts, tets=final_tets,
         quality=final_quality,
+        warnings=warnings_list or None,
+        debug_info=debug_info,
     )
