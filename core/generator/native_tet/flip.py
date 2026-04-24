@@ -308,6 +308,140 @@ def flip_edges_32(
     return out, n_flip
 
 
+def flip_edges_44(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    min_quality_improvement: float = 1e-4,
+    max_flips: int = 5000,
+) -> tuple[np.ndarray, int]:
+    """4-4 edge flip: 내부 edge 공유 4 tet 을 다른 대각선으로 재배치.
+
+    edge (u, v) 공유 4 tet 의 반대 vertex 4 개가 ring 을 이룰 때, 해당 ring 의
+    두 "대각선" 중 원래 edge 와 다른 쪽을 채택. 결과도 4 tet. quality 개선
+    시에만 적용.
+
+    현 구현은 ring 의 4 vertex 중 평균 edge 품질이 더 높은 대각선을 골라 4 tet
+    으로 재구성. boundary edge 는 skip.
+    """
+    pts = np.asarray(pts, dtype=np.float64)
+    tets = np.asarray(tets, dtype=np.int64).copy()
+    if tets.size == 0:
+        return tets, 0
+
+    def _edge_to_tets_vec(T: np.ndarray) -> dict[tuple[int, int], list[int]]:
+        if T.size == 0:
+            return {}
+        pair_idx = np.array(
+            [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]], dtype=np.int64,
+        )
+        edges = np.stack(
+            [T[:, pair_idx[:, 0]], T[:, pair_idx[:, 1]]], axis=2,
+        ).reshape(-1, 2)
+        edges.sort(axis=1)
+        m: dict[tuple[int, int], list[int]] = {}
+        for idx in range(edges.shape[0]):
+            ti = idx // 6
+            k = (int(edges[idx, 0]), int(edges[idx, 1]))
+            m.setdefault(k, []).append(ti)
+        return m
+
+    tets_list = tets.tolist()
+    alive = np.ones(tets.shape[0], dtype=bool)
+    e2t = _edge_to_tets_vec(np.asarray(tets_list, dtype=np.int64))
+
+    # 간이 boundary edge 체크.
+    fmap = _face_map_vectorized(np.asarray(tets_list, dtype=np.int64))
+    boundary_edges: set[tuple[int, int]] = set()
+    for fk, lst in fmap.items():
+        if len(lst) == 1:
+            a_, b_, c_ = fk
+            for u_, v_ in ((a_, b_), (a_, c_), (b_, c_)):
+                key = (u_, v_) if u_ < v_ else (v_, u_)
+                boundary_edges.add(key)
+
+    n_flip = 0
+    for (u, v), owners in list(e2t.items()):
+        if n_flip >= max_flips:
+            break
+        if len(owners) != 4:
+            continue
+        if not all(alive[t] for t in owners):
+            continue
+        if (u, v) in boundary_edges:
+            continue
+        # 각 tet 의 반대 2 vertex 수집.
+        ring: list[int] = []
+        for ti in owners:
+            rest = [x for x in tets_list[ti] if x != u and x != v]
+            if len(rest) != 2:
+                ring = []; break
+            ring.extend(rest)
+        uniq = sorted(set(ring))
+        if len(uniq) != 4:
+            continue
+        # ring 을 u, v 주변으로 순서를 맞추기 위해 간단히: pts 기준으로 u-v 축에
+        # 수직 평면 좌표로 ordering. 4 tet 재구성:
+        #   원래: 각 tet (u, v, r_i, r_{i+1})  (r = ring 순환).
+        #   대각선 교체: 다른 pairing 으로 ring 을 나눠 4 tet.
+        # 간단 구현: ring 의 2 대각선 (r0-r2, r1-r3) 중 원래 (u-v) 가 아닌 것으로
+        # ring 을 반분해 두 triangle 로 본 뒤 각각 u/v 와 결합해 4 tet.
+        r = uniq
+        # 원래 구성을 재현하려면 tet 별로 어느 두 r 이 인접했는지 알아야 함.
+        # pragmatic: 항상 ring 의 "shortest 대각선" 을 새 pivot 으로 채택.
+        d02 = float(np.linalg.norm(pts[r[0]] - pts[r[2]]))
+        d13 = float(np.linalg.norm(pts[r[1]] - pts[r[3]]))
+        if d02 <= d13:
+            new_pivot = (r[0], r[2])
+            t1 = (u, r[0], r[1], r[2])
+            t2 = (u, r[0], r[2], r[3])
+            t3 = (v, r[0], r[1], r[2])
+            t4 = (v, r[0], r[2], r[3])
+        else:
+            new_pivot = (r[1], r[3])
+            t1 = (u, r[1], r[0], r[3])
+            t2 = (u, r[1], r[3], r[2])
+            t3 = (v, r[1], r[0], r[3])
+            t4 = (v, r[1], r[3], r[2])
+
+        # quality 개선 검사.
+        q_old = min(
+            _tet_quality(pts[tets_list[ti][0]], pts[tets_list[ti][1]],
+                         pts[tets_list[ti][2]], pts[tets_list[ti][3]])
+            for ti in owners
+        )
+        new_tets = (t1, t2, t3, t4)
+        ok = True
+        q_new_min = 1.0
+        for nt in new_tets:
+            if len(set(nt)) != 4:
+                ok = False; break
+            vol6 = _tet_signed_vol6(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
+            if abs(vol6) < 1e-20:
+                ok = False; break
+            q = _tet_quality(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
+            if q < q_new_min:
+                q_new_min = q
+        if not ok:
+            continue
+        if q_new_min <= q_old + float(min_quality_improvement):
+            continue
+
+        for ti in owners:
+            alive[ti] = False
+        for nt in new_tets:
+            tets_list.append(list(nt))
+            alive = np.append(alive, True)
+        n_flip += 1
+        _ = new_pivot
+
+    out = np.asarray(
+        [tets_list[i] for i in range(len(tets_list)) if alive[i]],
+        dtype=np.int64,
+    )
+    return out, n_flip
+
+
 def face_flip_pass(
     pts: np.ndarray,
     tets: np.ndarray,
@@ -335,6 +469,7 @@ def face_flip_pass(
     T = tets0
     n_flip_23_total = 0
     n_flip_32_total = 0
+    n_flip_44_total = 0
     for _ in range(max(1, n_iter)):
         T_new, n23 = flip_faces_23(pts, T, max_flips=max_flips_per_iter)
         if n23 > 0:
@@ -344,12 +479,16 @@ def face_flip_pass(
         if n32 > 0:
             T = T_new2
             n_flip_32_total += n32
-        if n23 == 0 and n32 == 0:
+        T_new3, n44 = flip_edges_44(pts, T, max_flips=max_flips_per_iter)
+        if n44 > 0:
+            T = T_new3
+            n_flip_44_total += n44
+        if n23 == 0 and n32 == 0 and n44 == 0:
             break
     q_after = _min_quality(T)
     return T, FlipResult(
         n_flip_23=n_flip_23_total,
-        n_flip_32=n_flip_32_total,
+        n_flip_32=n_flip_32_total + n_flip_44_total,   # 3-2 + 4-4 를 기존 필드에 합산.
         n_tets_before=int(tets0.shape[0]),
         n_tets_after=int(T.shape[0]),
         min_quality_before=q_before,
