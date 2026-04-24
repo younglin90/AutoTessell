@@ -60,7 +60,10 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
                      "use_adaptive_sizing": True,
                      "use_anisotropic_metric": True, "anisotropic_ratio": 0.5,
                      # BSP + Bowyer-Watson 경로 활성 (fTetWild recovery parity).
-                     "enable_bsp_insertion": True},
+                     "enable_bsp_insertion": True,
+                     # beta630: fine 에서 edge recovery 활성.
+                     "enable_edge_recovery": True,
+                     "edge_recovery_max_iter": 2},
     },
     "tier_native_hex": {
         # native_hex 는 uniform grid (harness 미사용). seed_density / snap_boundary 만 의미.

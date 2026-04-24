@@ -67,6 +67,9 @@ def generate_native_tet(
     # beta160 Phase F — BSP constrained triangle insertion (opt-in fallback).
     enable_bsp_insertion: bool = False,
     bsp_max_inserts_per_triangle: int = 50,
+    # beta630 — edge recovery (opt-in; draft 기본 경로 비활성화 해 성능 유지).
+    enable_edge_recovery: bool = False,
+    edge_recovery_max_iter: int = 2,
     # beta120 Phase B — local ops + tangent smoothing.
     # 기본 off: O(T^2) / O(V^2) Python 루프라 대형 메쉬에서 느림. 명시 opt-in.
     enable_phase_b: bool = False,
@@ -270,63 +273,60 @@ def generate_native_tet(
             all_pts, tets = dl_res2
 
         # Round 50-51: iterative missing edge recovery (midpoint 삽입 + B-W).
-        try:
-            from core.generator.native_tet.cdt_check import check_edge_recovery
-            from core.generator.native_tet.edge_recovery import propose_edge_midpoints
-            from core.generator.native_tet.bowyer_watson import bowyer_watson_insert as _bw_edge
+        # Round 55: enable_edge_recovery=True 일 때만 (draft 성능 보호).
+        if enable_edge_recovery:
+            try:
+                from core.generator.native_tet.cdt_check import check_edge_recovery
+                from core.generator.native_tet.edge_recovery import propose_edge_midpoints
+                from core.generator.native_tet.bowyer_watson import (
+                    bowyer_watson_insert as _bw_edge,
+                )
 
-            from core.generator.native_tet.edge_recovery import propose_edge_subdivision
-
-            edge_rec_iter = 2   # Round 53 revert: 2 라운드 제한 (진전 없으면
-            # early exit; midpoint 만 사용). 더 aggressive 한 subdivision 은
-            # missing 을 오히려 증가시키는 경우 존재 — 진정한 CDT 는 별도 연구
-            # 범위.
-            cdt_initial = check_edge_recovery(F, tets)
-            n_miss_initial = cdt_initial.n_missing
-            cur_missing = cdt_initial.missing_edges
-            total_inserted = 0
-            for rec_i in range(edge_rec_iter):
-                if not cur_missing:
-                    break
-                prop = propose_edge_midpoints(V, cur_missing, max_points=200)
-                if prop.new_points.shape[0] == 0:
-                    break
-                inside_new = _inside_winding_number(prop.new_points, V, F)
-                good = prop.new_points[inside_new]
-                if good.shape[0] == 0:
-                    good = prop.new_points
-                ap_new, ts_new, er_res = _bw_edge(all_pts, tets, good)
-                if er_res.n_inserted == 0:
-                    break
-                # candidate result 검증: missing 이 증가하면 revert.
-                cdt_candidate = check_edge_recovery(F, ts_new)
-                if cdt_candidate.n_missing > len(cur_missing):
+                cdt_initial = check_edge_recovery(F, tets)
+                n_miss_initial = cdt_initial.n_missing
+                cur_missing = cdt_initial.missing_edges
+                total_inserted = 0
+                for rec_i in range(int(edge_recovery_max_iter)):
+                    if not cur_missing:
+                        break
+                    prop = propose_edge_midpoints(V, cur_missing, max_points=200)
+                    if prop.new_points.shape[0] == 0:
+                        break
+                    inside_new = _inside_winding_number(prop.new_points, V, F)
+                    good = prop.new_points[inside_new]
+                    if good.shape[0] == 0:
+                        good = prop.new_points
+                    ap_new, ts_new, er_res = _bw_edge(all_pts, tets, good)
+                    if er_res.n_inserted == 0:
+                        break
+                    cdt_candidate = check_edge_recovery(F, ts_new)
+                    if cdt_candidate.n_missing > len(cur_missing):
+                        log.info(
+                            "native_tet_edge_recovery_reverted",
+                            iter=rec_i, before=len(cur_missing),
+                            candidate_after=cdt_candidate.n_missing,
+                        )
+                        break
+                    all_pts, tets = ap_new, ts_new
+                    total_inserted += er_res.n_inserted
                     log.info(
-                        "native_tet_edge_recovery_reverted",
-                        iter=rec_i, before=len(cur_missing),
-                        candidate_after=cdt_candidate.n_missing,
+                        "native_tet_edge_recovery_iter",
+                        iter=rec_i, missing=cdt_candidate.n_missing,
+                        inserted_this_iter=er_res.n_inserted,
                     )
-                    break
-                all_pts, tets = ap_new, ts_new
-                total_inserted += er_res.n_inserted
-                log.info(
-                    "native_tet_edge_recovery_iter",
-                    iter=rec_i, missing=cdt_candidate.n_missing,
-                    inserted_this_iter=er_res.n_inserted,
-                )
-                if cdt_candidate.n_missing >= len(cur_missing):
-                    break
-                cur_missing = cdt_candidate.missing_edges
-            if total_inserted > 0:
-                cdt_final = check_edge_recovery(F, tets)
-                log.info(
-                    "native_tet_edge_recovery_done",
-                    missing_before=n_miss_initial,
-                    missing_after=cdt_final.n_missing,
-                    total_inserted=total_inserted,
-                )
-        except Exception as exc:
-            log.debug("native_tet_edge_recovery_skipped", reason=str(exc))
+                    if cdt_candidate.n_missing >= len(cur_missing):
+                        break
+                    cur_missing = cdt_candidate.missing_edges
+                if total_inserted > 0:
+                    cdt_final = check_edge_recovery(F, tets)
+                    log.info(
+                        "native_tet_edge_recovery_done",
+                        missing_before=n_miss_initial,
+                        missing_after=cdt_final.n_missing,
+                        total_inserted=total_inserted,
+                    )
+            except Exception as exc:
+                log.debug("native_tet_edge_recovery_skipped", reason=str(exc))
 
         # Phase F — BSP constrained insertion fallback.
         if enable_bsp_insertion:
