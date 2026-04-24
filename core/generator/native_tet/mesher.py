@@ -277,7 +277,10 @@ def generate_native_tet(
 
             from core.generator.native_tet.edge_recovery import propose_edge_subdivision
 
-            edge_rec_iter = 3   # 최대 3 라운드 반복.
+            edge_rec_iter = 2   # Round 53 revert: 2 라운드 제한 (진전 없으면
+            # early exit; midpoint 만 사용). 더 aggressive 한 subdivision 은
+            # missing 을 오히려 증가시키는 경우 존재 — 진정한 CDT 는 별도 연구
+            # 범위.
             cdt_initial = check_edge_recovery(F, tets)
             n_miss_initial = cdt_initial.n_missing
             cur_missing = cdt_initial.missing_edges
@@ -285,15 +288,7 @@ def generate_native_tet(
             for rec_i in range(edge_rec_iter):
                 if not cur_missing:
                     break
-                # 1 차 라운드: midpoint. 2+ 라운드: 더 dense subdivision.
-                if rec_i == 0:
-                    prop = propose_edge_midpoints(V, cur_missing, max_points=200)
-                else:
-                    prop = propose_edge_subdivision(
-                        V, cur_missing,
-                        splits_per_edge=3,
-                        max_points=300,
-                    )
+                prop = propose_edge_midpoints(V, cur_missing, max_points=200)
                 if prop.new_points.shape[0] == 0:
                     break
                 inside_new = _inside_winding_number(prop.new_points, V, F)
@@ -303,19 +298,25 @@ def generate_native_tet(
                 ap_new, ts_new, er_res = _bw_edge(all_pts, tets, good)
                 if er_res.n_inserted == 0:
                     break
+                # candidate result 검증: missing 이 증가하면 revert.
+                cdt_candidate = check_edge_recovery(F, ts_new)
+                if cdt_candidate.n_missing > len(cur_missing):
+                    log.info(
+                        "native_tet_edge_recovery_reverted",
+                        iter=rec_i, before=len(cur_missing),
+                        candidate_after=cdt_candidate.n_missing,
+                    )
+                    break
                 all_pts, tets = ap_new, ts_new
                 total_inserted += er_res.n_inserted
-                cdt_next = check_edge_recovery(F, tets)
-                if cdt_next.n_missing >= len(cur_missing):
-                    # 진전 없으면 종료.
-                    break
-                cur_missing = cdt_next.missing_edges
                 log.info(
                     "native_tet_edge_recovery_iter",
-                    iter=rec_i, missing=cdt_next.n_missing,
+                    iter=rec_i, missing=cdt_candidate.n_missing,
                     inserted_this_iter=er_res.n_inserted,
-                    mode="midpoint" if rec_i == 0 else "subdivision",
                 )
+                if cdt_candidate.n_missing >= len(cur_missing):
+                    break
+                cur_missing = cdt_candidate.missing_edges
             if total_inserted > 0:
                 cdt_final = check_edge_recovery(F, tets)
                 log.info(
