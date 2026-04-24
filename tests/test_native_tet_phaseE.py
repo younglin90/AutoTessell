@@ -21,6 +21,42 @@ def test_flip_edges_32_no_op_when_no_ring() -> None:
     assert out.shape[0] == 1
 
 
+def test_flip_edges_44_no_op_when_no_ring() -> None:
+    """단일 tet — 4-4 flip 대상 없음 (4 tet 공유 edge 필요)."""
+    from core.generator.native_tet.flip import flip_edges_44
+
+    pts = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+    tets = np.array([[0, 1, 2, 3]], dtype=np.int64)
+    out, n = flip_edges_44(pts, tets)
+    assert n == 0
+    assert out.shape[0] == 1
+
+
+def test_flip_edges_44_preserves_tet_count() -> None:
+    """4-4 flip 은 tet 수 불변 (topology 재배치만)."""
+    from core.generator.native_tet.flip import flip_edges_44
+
+    # 4 tet share edge (0, 1); ring = [2, 3, 4, 5] around the edge.
+    pts = np.array(
+        [
+            [0, 0, 0],  # 0: 축 하
+            [0, 0, 1],  # 1: 축 상
+            [1, 0, 0.5],    # 2
+            [0, 1, 0.5],    # 3
+            [-1, 0, 0.5],   # 4
+            [0, -1, 0.5],   # 5
+        ],
+        dtype=np.float64,
+    )
+    tets = np.array(
+        [[0, 1, 2, 3], [0, 1, 3, 4], [0, 1, 4, 5], [0, 1, 5, 2]],
+        dtype=np.int64,
+    )
+    out, n = flip_edges_44(pts, tets, min_quality_improvement=-1.0)
+    # flip 되거나 안 되거나 — tet 수는 4 로 유지.
+    assert out.shape[0] == 4
+
+
 def test_flip_edges_32_finds_ring_of_three() -> None:
     """pentahedron 을 3 tet 으로 분할 (중심 edge (0,1) 공유). 3-2 flip 으로
     topology 가 정상 변환되면 결과 tet 수 2."""

@@ -88,6 +88,8 @@ def generate_native_tet(
     # beta330 — volume target: 사용자가 희망 cell 수 지정 시 seed_density
     # 자동 조정 (bbox 기반 heuristic: target_edge = (V_bbox / target_cells)^(1/3)).
     target_cells: int | None = None,
+    # beta410 — progress_cb(stage: str, pct: float, info: dict): 진행 보고.
+    progress_cb: "Any" = None,
     # beta140 Phase E2 — curvature-adaptive sizing (split/collapse 기준).
     use_adaptive_sizing: bool = False,
     adaptive_min_ratio: float = 0.25,
@@ -124,6 +126,16 @@ def generate_native_tet(
     F = np.asarray(faces, dtype=np.int64)
     if V.size == 0 or F.size == 0:
         return NativeTetResult(False, 0.0, message="빈 입력 mesh")
+
+    def _prog(stage: str, pct: float, **info: object) -> None:
+        if progress_cb is None:
+            return
+        try:
+            progress_cb(stage, float(pct), dict(info))
+        except Exception:
+            pass
+
+    _prog("start", 0.0, n_verts=V.shape[0], n_faces=F.shape[0])
 
     # beta77: large input guardrail — scipy.Delaunay 가 100k+ vertex 에서 OOM.
     cap = max(1, int(max_input_vertices))
@@ -193,12 +205,14 @@ def generate_native_tet(
             return None
         return seed_pts, _tets
 
+    _prog("delaunay", 0.2, n_points=int(all_pts.shape[0]))
     dl_res = _run_delaunay(all_pts)
     if dl_res is None:
         return NativeTetResult(
             False, time.perf_counter() - t0, message="Delaunay 실패 또는 0 tet",
         )
     all_pts, tets = dl_res
+    _prog("delaunay_done", 0.3, n_tets=int(tets.shape[0]))
 
     if enable_phase_a and recovery_iterations > 0:
         from core.generator.native_tet.insertion import (
@@ -378,6 +392,8 @@ def generate_native_tet(
 
     # 4c) Phase B — local operations (split/collapse/flip) + tangent smoothing.
     # Phase C 가 켜져 있으면 envelope-guarded + quality stop 으로 승격.
+    _prog("phase_a_done", 0.6, n_tets=int(final_tets.shape[0]))
+
     if enable_phase_b and local_ops_iterations > 0:
         from core.generator.native_tet.local_ops import (
             collapse_short_edges, compact_unused_vertices, split_long_edges,
@@ -584,6 +600,8 @@ def generate_native_tet(
                 degenerate=vr.n_degenerate,
             )
 
+    _prog("write", 0.9, n_tets=int(final_tets.shape[0]))
+
     # 5) polyMesh 쓰기
     try:
         stats = PolyMeshWriter().write(final_pts, final_tets, case_dir)
@@ -596,6 +614,7 @@ def generate_native_tet(
     elapsed = time.perf_counter() - t0
     n_cells = int(stats.get("num_cells", final_tets.shape[0]))
     n_points = int(stats.get("num_points", final_pts.shape[0]))
+    _prog("done", 1.0, n_cells=n_cells, n_points=n_points, elapsed=elapsed)
     return NativeTetResult(
         success=True, elapsed=elapsed,
         n_cells=n_cells, n_points=n_points,
