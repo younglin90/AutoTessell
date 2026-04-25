@@ -325,40 +325,69 @@ def generate_native_poly_voronoi(
             drop_degenerate_poly_cells,
         )
 
-        # Z1 (beta1670) — degenerate cell drop 먼저.
-        prev_n = len(final_cells)
-        final_cells, n_drop = drop_degenerate_poly_cells(
+        # AA2 (beta1700) — best-of-three 후보 점수 비교 채택.
+        # 후보 1: raw (변화 없음).
+        # 후보 2: drop only.
+        # 후보 3: drop + smooth (이전 단계).
+        def _poly_score(p_arr, c_list) -> tuple[float, dict]:
+            if not c_list:
+                return -1.0, {"n": 0}
+            qr = poly_quality_report(p_arr, c_list)
+            # n_cells 가중 + (90 - no) + (5 - skew). 모두 0~1 스케일링.
+            cell_score = min(1.0, qr.n_cells / 50.0)
+            no_score = max(0.0, (90.0 - qr.max_non_orthogonality_deg) / 90.0)
+            sk_score = max(0.0, (5.0 - min(qr.max_skewness, 5.0)) / 5.0)
+            score = 0.3 * cell_score + 0.35 * no_score + 0.35 * sk_score
+            return score, {
+                "n": qr.n_cells,
+                "no": round(qr.max_non_orthogonality_deg, 1),
+                "sk": round(qr.max_skewness, 3),
+            }
+
+        cand_raw_pts = final_vertices.copy()
+        cand_raw_cells = [list(c) for c in final_cells]
+        raw_score, raw_info = _poly_score(cand_raw_pts, cand_raw_cells)
+
+        # 후보 2: drop only.
+        cand_drop_cells, n_drop = drop_degenerate_poly_cells(
             final_vertices, final_cells,
             max_skewness=8.0, max_non_ortho_deg=78.0,
         )
-        if n_drop > 0:
-            log.info(
-                "native_poly_drop_degenerate",
-                dropped=n_drop, before=prev_n, after=len(final_cells),
-            )
+        drop_score, drop_info = _poly_score(final_vertices, cand_drop_cells)
 
-        # AA1 (beta1680) — n_iter 8 + 큰 relax + 단계별 best 채택.
-        prev_skew = poly_quality_report(final_vertices, final_cells).max_skewness
-        best_pts = final_vertices
-        best_skew = prev_skew
-        cur_pts = final_vertices
-        for _it_block in range(4):   # 2 iter × 4 block.
-            cur_pts = smooth_poly_in_memory(
-                cur_pts, final_cells, n_iter=2, relax=0.35,
-            )
-            cur_skew = poly_quality_report(cur_pts, final_cells).max_skewness
-            if cur_skew < best_skew:
-                best_skew = cur_skew
-                best_pts = cur_pts.copy()
-            else:
-                break   # divergence 시 중단.
-        if best_skew < prev_skew * 0.95:
-            log.info(
-                "native_poly_smoothed",
-                prev_max_skew=round(prev_skew, 3),
-                new_max_skew=round(best_skew, 3),
-            )
-            final_vertices = best_pts
+        # 후보 3: drop + smooth.
+        smoothed_pts = final_vertices.copy()
+        if cand_drop_cells:
+            best_pts = smoothed_pts
+            best_skew = poly_quality_report(smoothed_pts, cand_drop_cells).max_skewness
+            cur_pts = smoothed_pts.copy()
+            for _it_block in range(4):
+                cur_pts = smooth_poly_in_memory(
+                    cur_pts, cand_drop_cells, n_iter=2, relax=0.35,
+                )
+                cur_skew = poly_quality_report(cur_pts, cand_drop_cells).max_skewness
+                if cur_skew < best_skew:
+                    best_skew = cur_skew
+                    best_pts = cur_pts.copy()
+                else:
+                    break
+            smoothed_pts = best_pts
+        smoothed_score, sm_info = _poly_score(smoothed_pts, cand_drop_cells)
+
+        log.info(
+            "native_poly_best_of_three",
+            raw=round(raw_score, 3), raw_info=raw_info,
+            drop=round(drop_score, 3), drop_info=drop_info,
+            smooth=round(smoothed_score, 3), sm_info=sm_info,
+            n_drop=n_drop,
+        )
+
+        if smoothed_score >= drop_score and smoothed_score >= raw_score:
+            final_vertices = smoothed_pts
+            final_cells = cand_drop_cells
+        elif drop_score >= raw_score:
+            final_cells = cand_drop_cells
+        # else: raw keep.
     except Exception as exc:
         log.debug("native_poly_smooth_skipped", reason=str(exc))
 
