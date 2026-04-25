@@ -130,6 +130,9 @@ def generate_native_tet(
     enable_cdt_recovery: bool = False,
     cdt_recovery_max_cycles: int = 3,
     cdt_recovery_points_budget: int = 200,
+    # beta1430 (Q6) — outer loop: B 등급 이하면 추가 cycle 까지.
+    cdt_recovery_outer_iter: int = 1,
+    cdt_recovery_target_ratio: float = 0.9,
 ) -> NativeTetResult:
     """입력 표면 메쉬 → tet polyMesh (MVP).
 
@@ -327,35 +330,50 @@ def generate_native_tet(
                 break
             all_pts, tets = dl_res2
 
-        # beta1370 (P1) — 통합 CDT recovery 루틴 (flip + recursive midpoint
-        # + B-W + snap). enable_cdt_recovery=True 일 때만 사용.
+        # beta1370+1430 — 통합 CDT recovery + outer iteration.
         if enable_cdt_recovery:
             try:
                 from core.generator.native_tet.cdt_recovery import (
                     run_cdt_recovery,
                 )
-                pts_new, tets_new, cdt_info = run_cdt_recovery(
-                    all_pts, tets, V, F,
-                    max_cycles=int(cdt_recovery_max_cycles),
-                    points_budget=int(cdt_recovery_points_budget),
-                    snap_final=False,   # surface snap 은 후단에서 일괄 처리.
+                from core.generator.native_tet.cdt_check import (
+                    check_edge_recovery, cdt_ratio as _cdt_ratio_fn,
                 )
-                if (
-                    cdt_info.ratio_after >= cdt_info.ratio_before
-                    and tets_new.shape[0] > 0
-                ):
-                    all_pts = pts_new
-                    tets = tets_new
-                    log.info(
-                        "native_tet_cdt_recovery",
-                        cycles=cdt_info.cycles,
-                        ratio_before=round(cdt_info.ratio_before, 3),
-                        ratio_after=round(cdt_info.ratio_after, 3),
-                        missing_before=cdt_info.n_edges_before,
-                        missing_after=cdt_info.n_edges_after,
-                        inserted=cdt_info.n_inserted_points,
-                        reverted=cdt_info.reverted,
+
+                outer_iter = max(1, int(cdt_recovery_outer_iter))
+                target_ratio = float(cdt_recovery_target_ratio)
+                for outer_i in range(outer_iter):
+                    cur_check = check_edge_recovery(F, tets)
+                    cur_ratio = _cdt_ratio_fn(cur_check)
+                    if cur_ratio >= target_ratio:
+                        break
+                    pts_new, tets_new, cdt_info = run_cdt_recovery(
+                        all_pts, tets, V, F,
+                        max_cycles=int(cdt_recovery_max_cycles),
+                        points_budget=int(cdt_recovery_points_budget),
+                        snap_final=False,
                     )
+                    if (
+                        cdt_info.ratio_after >= cdt_info.ratio_before
+                        and tets_new.shape[0] > 0
+                    ):
+                        all_pts = pts_new
+                        tets = tets_new
+                        log.info(
+                            "native_tet_cdt_recovery",
+                            outer=outer_i,
+                            cycles=cdt_info.cycles,
+                            ratio_before=round(cdt_info.ratio_before, 3),
+                            ratio_after=round(cdt_info.ratio_after, 3),
+                            missing_before=cdt_info.n_edges_before,
+                            missing_after=cdt_info.n_edges_after,
+                            inserted=cdt_info.n_inserted_points,
+                            reverted=cdt_info.reverted,
+                        )
+                        if cdt_info.ratio_after - cdt_info.ratio_before < 1e-3:
+                            break   # 더 이상 개선 안 됨.
+                    else:
+                        break
             except Exception as _exc:
                 log.debug("native_tet_cdt_recovery_skipped", reason=str(_exc))
 

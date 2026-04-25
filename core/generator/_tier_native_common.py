@@ -66,8 +66,10 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
                      "edge_recovery_max_iter": 2,
                      # beta1380: fine 에서 통합 CDT recovery + AMIPS smoothing.
                      "enable_cdt_recovery": True,
-                     "cdt_recovery_max_cycles": 3,
-                     "cdt_recovery_points_budget": 200,
+                     "cdt_recovery_max_cycles": 4,
+                     "cdt_recovery_points_budget": 300,
+                     "cdt_recovery_outer_iter": 3,
+                     "cdt_recovery_target_ratio": 0.9,
                      "enable_amips_smooth": True,
                      "amips_iterations": 2,
                      "amips_alpha": 1.0,
