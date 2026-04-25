@@ -28,6 +28,10 @@ class NativeTetResult:
     # beta1090 (R171) — 비치명 경고 + 개발자 디버그 정보.
     warnings: list[str] | None = None
     debug_info: dict | None = None
+    # beta1420 (Q4) — 통합 PASS gate 평가.
+    quality_grade: str = "?"           # 'A' / 'B' / 'C' / '?'
+    cdt_ratio: float = -1.0
+    hausdorff_relative: float = -1.0   # h_symmetric / bbox_diag.
 
     @property
     def ok(self) -> bool:
@@ -978,6 +982,54 @@ def generate_native_tet(
     except Exception:
         pass
 
+    # beta1420 (Q4) — 통합 PASS gate 산출 (cdt_ratio + hausdorff + quality).
+    grade = "?"
+    cdt_ratio_val = -1.0
+    haus_rel = -1.0
+    try:
+        from core.generator.native_tet.cdt_check import (
+            check_edge_recovery, cdt_ratio as _cdt_ratio,
+        )
+        from core.generator.native_tet.hausdorff import hausdorff_vs_input
+
+        cdt_r = check_edge_recovery(F, final_tets)
+        cdt_ratio_val = float(_cdt_ratio(cdt_r))
+
+        haus = hausdorff_vs_input(
+            V, F, final_pts, final_tets, n_samples_per_tri=2,
+        )
+        bbox = V.max(axis=0) - V.min(axis=0)
+        diag = float(np.linalg.norm(bbox)) + 1e-30
+        haus_rel = float(haus.h_symmetric / diag)
+
+        # quality grade — three-axis gate.
+        mean_q = float(getattr(final_quality, "mean_q", 0.0)) if final_quality else 0.0
+        if (
+            cdt_ratio_val >= 0.9
+            and haus_rel <= 0.02
+            and mean_q >= 0.25
+        ):
+            grade = "A"
+        elif (
+            cdt_ratio_val >= 0.7
+            and haus_rel <= 0.05
+            and mean_q >= 0.15
+        ):
+            grade = "B"
+        elif cdt_ratio_val >= 0.5 and mean_q >= 0.05:
+            grade = "C"
+        else:
+            grade = "D"
+        log.info(
+            "native_tet_pass_gate",
+            grade=grade,
+            cdt_ratio=round(cdt_ratio_val, 3),
+            hausdorff_rel=round(haus_rel, 5),
+            mean_q=round(mean_q, 3),
+        )
+    except Exception as exc:
+        log.debug("native_tet_pass_gate_skipped", reason=str(exc))
+
     _prog("done", 1.0, n_cells=n_cells, n_points=n_points, elapsed=elapsed)
 
     # beta1140 (R180) — 개발자용 debug_info dump + input-check warnings 전파.
@@ -1005,4 +1057,7 @@ def generate_native_tet(
         quality=final_quality,
         warnings=warnings_list or None,
         debug_info=debug_info,
+        quality_grade=grade,
+        cdt_ratio=float(cdt_ratio_val),
+        hausdorff_relative=float(haus_rel),
     )
