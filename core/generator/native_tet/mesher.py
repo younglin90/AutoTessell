@@ -298,6 +298,20 @@ def generate_native_tet(
     all_pts, tets = dl_res
     _prog("delaunay_done", 0.3, n_tets=int(tets.shape[0]))
 
+    # V8 (beta1570) — base Delaunay 의 surface plane area 보존. 마지막에
+    # 이보다 떨어지면 fallback.
+    base_pts_for_fallback = all_pts.copy()
+    base_tets_for_fallback = tets.copy()
+    try:
+        from core.generator.native_tet.plane_coverage import (
+            plane_coverage as _pc_base,
+        )
+        base_area_for_fallback = float(
+            _pc_base(V, F, base_pts_for_fallback, base_tets_for_fallback).area_coverage
+        )
+    except Exception:
+        base_area_for_fallback = -1.0
+
     if enable_phase_a and recovery_iterations > 0:
         from core.generator.native_tet.insertion import (
             find_missing_triangles, recovery_seeds,
@@ -1122,6 +1136,29 @@ def generate_native_tet(
         final_quality = _qsnap(final_pts, final_tets)
     except Exception:
         pass
+
+    # V8 (beta1570) — final 결과가 base Delaunay 보다 surface area 가 떨어지면 fallback.
+    try:
+        final_area_check = float(
+            _pc_base(V, F, final_pts, final_tets).area_coverage
+        )
+        if (
+            base_area_for_fallback > 0
+            and final_area_check + 0.20 < base_area_for_fallback
+        ):
+            log.warning(
+                "native_tet_final_fallback_to_base",
+                final_area=round(final_area_check, 3),
+                base_area=round(base_area_for_fallback, 3),
+                reason="post-pipeline 결과가 base Delaunay 보다 surface 깎임",
+            )
+            # base 결과 + inside winding filter 만 적용한 fallback.
+            base_centroids = base_pts_for_fallback[base_tets_for_fallback].mean(axis=1)
+            base_inside = _inside_winding_number(base_centroids, V, F)
+            final_pts = base_pts_for_fallback
+            final_tets = base_tets_for_fallback[base_inside]
+    except Exception as exc:
+        log.debug("native_tet_final_fallback_skipped", reason=str(exc))
 
     # beta1530 (V3) — 외부 tet 제거: 입력 surface 외부에 centroid 가 있는 tet drop.
     if enable_boundary_clip:
