@@ -1020,22 +1020,16 @@ def generate_native_tet(
         diag = float(np.linalg.norm(bbox)) + 1e-30
         haus_rel = float(haus.h_symmetric / diag)
 
-        # quality grade — three-axis gate. hausdorff 는 입력 surface 자체의
-        # piecewise-linear 표현 한계 고려해 완화 (0.05/0.15).
+        # quality grade — cdt_ratio + mean_q 가 메인, hausdorff 는 보조.
+        # 곡면 입력은 piecewise-linear 화자체로 hausdorff_rel 이 0.2 까지
+        # 자연스럽게 발생 — gate 에서는 매우 큰 값 (>= 0.5) 만 강등 사유.
         mean_q = float(getattr(final_quality, "mean_q", 0.0)) if final_quality else 0.0
-        if (
-            cdt_ratio_val >= 0.9
-            and haus_rel <= 0.05
-            and mean_q >= 0.25
-        ):
+        haus_ok = haus_rel <= 0.5
+        if cdt_ratio_val >= 0.9 and mean_q >= 0.25 and haus_ok:
             grade = "A"
-        elif (
-            cdt_ratio_val >= 0.7
-            and haus_rel <= 0.15
-            and mean_q >= 0.15
-        ):
+        elif cdt_ratio_val >= 0.7 and mean_q >= 0.18 and haus_ok:
             grade = "B"
-        elif cdt_ratio_val >= 0.5 and mean_q >= 0.05:
+        elif cdt_ratio_val >= 0.4 and mean_q >= 0.10:
             grade = "C"
         else:
             grade = "D"
