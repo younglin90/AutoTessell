@@ -263,8 +263,11 @@ def poly_quality_grade(report: PolyQualityReport) -> str:
         A: max_no < 40°, max_skew < 0.5  (Fluent typical)
         B: max_no < 60°, max_skew < 1.5
         C: max_no < 75°, max_skew < 4.0
-        D: 그 외.
+        D: 그 외 / 빈 mesh.
     """
+    # 빈 mesh 는 무조건 D.
+    if report.n_cells == 0:
+        return "D"
     if report.max_non_orthogonality_deg < 40.0 and report.max_skewness < 0.5:
         return "A"
     if report.max_non_orthogonality_deg < 60.0 and report.max_skewness < 1.5:

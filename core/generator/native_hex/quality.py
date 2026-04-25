@@ -164,8 +164,10 @@ def hex_quality_grade(report: HexQualityReport) -> str:
         A: max_non_ortho < 50°, max_skew < 1.0
         B: max_non_ortho < 70°, max_skew < 4.0
         C: max_non_ortho < 80°, max_skew < 8.0
-        D: 그 외.
+        D: 그 외 / 빈 mesh.
     """
+    if report.n_cells == 0:
+        return "D"
     if report.max_non_orthogonality_deg < 50.0 and report.max_skewness < 1.0:
         return "A"
     if report.max_non_orthogonality_deg < 70.0 and report.max_skewness < 4.0:
