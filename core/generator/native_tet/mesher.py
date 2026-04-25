@@ -142,6 +142,11 @@ def generate_native_tet(
     # beta1530 (V3) — boundary clipping (외부 tet 제거).
     enable_boundary_clip: bool = False,
     boundary_clip_threshold: float = 0.5,
+    # W4 (beta1610) — best-of-two score 가중 (area / cdt / mq).
+    score_weight_area: float = 0.5,
+    score_weight_cdt: float = 0.3,
+    score_weight_mq: float = 0.2,
+    prefer_base_threshold: float = 0.02,
 ) -> NativeTetResult:
     """입력 표면 메쉬 → tet polyMesh (MVP).
 
@@ -1228,7 +1233,11 @@ def generate_native_tet(
                 mq_v = float(getattr(snap, "mean_q", 0.0))
             except Exception:
                 mq_v = 0.0
-            return 0.5 * pc_v + 0.3 * cdt_v + 0.2 * mq_v, (pc_v, cdt_v, mq_v)
+            return (
+                float(score_weight_area) * pc_v
+                + float(score_weight_cdt) * cdt_v
+                + float(score_weight_mq) * mq_v
+            ), (pc_v, cdt_v, mq_v)
 
         final_score, final_metrics = _score(final_pts, final_tets)
 
@@ -1246,7 +1255,7 @@ def generate_native_tet(
             base_metrics=tuple(round(x, 3) for x in base_metrics),
         )
 
-        if base_score > final_score + 0.02:
+        if base_score > final_score + float(prefer_base_threshold):
             log.warning(
                 "native_tet_best_of_picks_base",
                 base_score=round(base_score, 3),
