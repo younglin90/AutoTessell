@@ -293,7 +293,7 @@ def smooth_amips(
     if locked_vertex_ids is not None and len(locked_vertex_ids) > 0:
         locked_mask[np.asarray(locked_vertex_ids, dtype=np.int64)] = True
 
-    # 1-ring tet index — np.add.at 으로 호환 빌드.
+    # 1-ring tet index.
     counts = np.zeros(n, dtype=np.int64)
     for k in range(4):
         np.add.at(counts, tets[:, k], 1)
@@ -306,6 +306,26 @@ def smooth_amips(
             flat[cursor[v]] = ti
             cursor[v] += 1
 
+    # T3 — per-vertex 1-ring 평균 edge length 캐시 (step_init scaling).
+    bbox = pts.max(axis=0) - pts.min(axis=0)
+    bbox_diag = float(np.linalg.norm(bbox)) + 1e-30
+    avg_edge_per_v = np.full(n, bbox_diag * 0.05, dtype=np.float64)
+    for vi in range(n):
+        inc = flat[offsets[vi]:offsets[vi + 1]]
+        if inc.size == 0:
+            continue
+        v = pts[tets[inc]]
+        elens = np.concatenate([
+            np.linalg.norm(v[:, 1] - v[:, 0], axis=1),
+            np.linalg.norm(v[:, 2] - v[:, 0], axis=1),
+            np.linalg.norm(v[:, 3] - v[:, 0], axis=1),
+            np.linalg.norm(v[:, 2] - v[:, 1], axis=1),
+            np.linalg.norm(v[:, 3] - v[:, 1], axis=1),
+            np.linalg.norm(v[:, 3] - v[:, 2], axis=1),
+        ])
+        if elens.size:
+            avg_edge_per_v[vi] = float(elens.mean())
+
     def _incident_tets(vi: int) -> np.ndarray:
         return flat[offsets[vi]:offsets[vi + 1]]
 
@@ -315,7 +335,6 @@ def smooth_amips(
             return 0.0, True
         return _amips_local_energy(pts, tets[inc], alpha)
 
-    # 전역 energy (시작/종료 1회).
     v_all = pts[tets]
     e_all_before = _tet_amips_energy(
         v_all[:, 0], v_all[:, 1], v_all[:, 2], v_all[:, 3], alpha,
@@ -333,26 +352,29 @@ def smooth_amips(
                 continue
 
             orig = pts[vi].copy()
+            local_eps = max(grad_eps, avg_edge_per_v[vi] * 1e-4)
             grad = np.zeros(3, dtype=np.float64)
             for ax in range(3):
-                pts[vi, ax] = orig[ax] + grad_eps
+                pts[vi, ax] = orig[ax] + local_eps
                 eplus, _ = _energy_local(vi)
-                pts[vi, ax] = orig[ax] - grad_eps
+                pts[vi, ax] = orig[ax] - local_eps
                 eminus, _ = _energy_local(vi)
                 pts[vi, ax] = orig[ax]
                 if not (np.isfinite(eplus) and np.isfinite(eminus)):
                     grad = np.zeros(3, dtype=np.float64)
                     break
-                grad[ax] = (eplus - eminus) / (2.0 * grad_eps)
+                grad[ax] = (eplus - eminus) / (2.0 * local_eps)
 
             gnorm = float(np.linalg.norm(grad))
             if gnorm < 1e-20:
                 continue
             direction = -grad / gnorm
 
-            step = float(step_init)
+            # T3 — auto step: 1-ring edge length × step_init.
+            step = float(step_init) * avg_edge_per_v[vi]
+            local_step_min = max(step_min, avg_edge_per_v[vi] * 1e-6)
             improved = False
-            while step >= step_min:
+            while step >= local_step_min:
                 pts[vi] = orig + step * direction
                 e1, ok1 = _energy_local(vi)
                 if ok1 and np.isfinite(e1) and e1 < e0 - 1e-20:

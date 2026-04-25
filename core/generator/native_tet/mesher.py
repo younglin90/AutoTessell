@@ -31,6 +31,7 @@ class NativeTetResult:
     # beta1420 (Q4) — 통합 PASS gate 평가.
     quality_grade: str = "?"           # 'A' / 'B' / 'C' / '?'
     cdt_ratio: float = -1.0
+    cdt_face_ratio: float = -1.0       # T3 — surface face 회복률.
     hausdorff_relative: float = -1.0   # h_symmetric / bbox_diag.
 
     @property
@@ -1024,11 +1025,12 @@ def generate_native_tet(
     # beta1420 (Q4) — 통합 PASS gate 산출 (cdt_ratio + hausdorff + quality).
     grade = "?"
     cdt_ratio_val = -1.0
+    cdt_face_ratio_val = -1.0
     haus_rel = -1.0
     try:
         from core.generator.native_tet.cdt_check import (
             check_edge_recovery, check_edge_recovery_chained,
-            cdt_ratio as _cdt_ratio,
+            cdt_ratio as _cdt_ratio, cdt_face_ratio as _cdt_face_ratio,
         )
         from core.generator.native_tet.hausdorff import hausdorff_vs_input
 
@@ -1038,6 +1040,9 @@ def generate_native_tet(
         except Exception:
             cdt_r = check_edge_recovery(F, final_tets)
         cdt_ratio_val = float(_cdt_ratio(cdt_r))
+        # face ratio (strict).
+        cdt_strict = check_edge_recovery(F, final_tets)
+        cdt_face_ratio_val = float(_cdt_face_ratio(cdt_strict))
 
         haus = hausdorff_vs_input(
             V, F, final_pts, final_tets, n_samples_per_tri=2,
@@ -1063,6 +1068,7 @@ def generate_native_tet(
             "native_tet_pass_gate",
             grade=grade,
             cdt_ratio=round(cdt_ratio_val, 3),
+            cdt_face_ratio=round(cdt_face_ratio_val, 3),
             hausdorff_rel=round(haus_rel, 5),
             mean_q=round(mean_q, 3),
         )
@@ -1098,5 +1104,6 @@ def generate_native_tet(
         debug_info=debug_info,
         quality_grade=grade,
         cdt_ratio=float(cdt_ratio_val),
+        cdt_face_ratio=float(cdt_face_ratio_val),
         hausdorff_relative=float(haus_rel),
     )
