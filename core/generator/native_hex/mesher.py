@@ -24,6 +24,15 @@ class NativeHexResult:
     fill_ratio: float = 0.0   # kept_cells / total_grid_cells (stair-step 품질 지표)
     grid_shape: tuple[int, int, int] = (0, 0, 0)
     n_grid_total: int = 0      # inside filter 이전 전체 grid cell 수
+    # X1 (beta1640) — checkMesh-style quality + grade.
+    quality_grade: str = "?"
+    max_non_orthogonality_deg: float = -1.0
+    mean_non_orthogonality_deg: float = -1.0
+    max_skewness: float = -1.0
+    mean_skewness: float = -1.0
+    max_aspect: float = -1.0
+    plane_coverage: float = -1.0
+    plane_area_coverage: float = -1.0
 
 
 # OpenFOAM hex cell 의 6 face 정의 — 각 face 는 4 vertex (CCW from outside).
@@ -287,6 +296,89 @@ def generate_native_hex(
             fill_ratio=_fill, n_kept=_n_kept, n_grid_total=n_grid_total,
             hint="target_edge_length 를 줄이거나 seed_density 를 높이면 fill 개선",
         )
+
+    # X1 (beta1640) — checkMesh-style quality + plane_coverage + grade.
+    grade = "?"
+    max_no = -1.0; mean_no = -1.0
+    max_sk = -1.0; mean_sk = -1.0
+    max_asp = -1.0
+    plane_cov = -1.0; plane_area = -1.0
+    try:
+        from core.generator.native_hex.quality import (
+            hex_quality_report, hex_quality_grade,
+        )
+        q = hex_quality_report(final_pts, final_hexes)
+        grade = hex_quality_grade(q)
+        max_no = q.max_non_orthogonality_deg
+        mean_no = q.mean_non_orthogonality_deg
+        max_sk = q.max_skewness
+        mean_sk = q.mean_skewness
+        max_asp = q.max_aspect
+        log.info(
+            "native_hex_quality_gate",
+            grade=grade,
+            max_non_ortho=round(max_no, 2),
+            mean_non_ortho=round(mean_no, 2),
+            max_skew=round(max_sk, 3),
+            max_aspect=round(max_asp, 2),
+        )
+    except Exception as exc:
+        log.debug("native_hex_quality_skipped", reason=str(exc))
+
+    try:
+        from core.generator.native_tet.plane_coverage import (
+            _triangle_planes_and_areas, _group_by_plane,
+        )
+        # hex boundary face (1-owner) 추출 → 2 triangle 로 분할.
+        face_owner_count: dict[tuple[int, int, int, int], int] = {}
+        for ci in range(final_hexes.shape[0]):
+            for face_local in _HEX_FACES:
+                v = tuple(int(final_hexes[ci, k]) for k in face_local)
+                key = tuple(sorted(v))
+                face_owner_count[key] = face_owner_count.get(key, 0) + 1
+        bnd_tris: list[list[int]] = []
+        for ci in range(final_hexes.shape[0]):
+            for face_local in _HEX_FACES:
+                v = [int(final_hexes[ci, k]) for k in face_local]
+                key = tuple(sorted(v))
+                if face_owner_count[key] == 1:
+                    bnd_tris.append([v[0], v[1], v[2]])
+                    bnd_tris.append([v[0], v[2], v[3]])
+        if bnd_tris:
+            B_tri = np.asarray(bnd_tris, dtype=np.int64)
+            bbox_diag = float(np.linalg.norm(V.max(axis=0) - V.min(axis=0))) + 1e-30
+            in_unit, in_off, in_area = _triangle_planes_and_areas(V, F)
+            bn_unit, bn_off, bn_area = _triangle_planes_and_areas(final_pts, B_tri)
+            in_groups = _group_by_plane(
+                in_unit, in_off,
+                normal_tol=5e-2, offset_rel_tol=5e-3, bbox_diag=bbox_diag,
+            )
+            bn_groups = _group_by_plane(
+                bn_unit, bn_off,
+                normal_tol=5e-2, offset_rel_tol=5e-3, bbox_diag=bbox_diag,
+            )
+            n_in = len(in_groups)
+            n_covered = 0
+            total_in_area = 0.0
+            total_match_area = 0.0
+            for k_g, idxs in in_groups.items():
+                a_in = float(in_area[idxs].sum())
+                total_in_area += a_in
+                if k_g in bn_groups:
+                    a_b = float(bn_area[bn_groups[k_g]].sum())
+                    if a_in > 0 and abs(a_b - a_in) / a_in <= 0.10:
+                        n_covered += 1
+                        total_match_area += a_in
+                    else:
+                        ratio = min(a_b, a_in) / max(a_in, 1e-30)
+                        total_match_area += ratio * a_in
+            plane_cov = n_covered / max(n_in, 1) if n_in else 1.0
+            plane_area = (
+                total_match_area / total_in_area if total_in_area > 0 else 1.0
+            )
+    except Exception as exc:
+        log.debug("native_hex_plane_cov_skipped", reason=str(exc))
+
     return NativeHexResult(
         success=True,
         elapsed=time.perf_counter() - t0,
@@ -299,6 +391,14 @@ def generate_native_hex(
         message=(
             f"native_hex OK — cells={_n_kept}, "
             f"points={stats['num_points']}, grid=({nx},{ny},{nz}), "
-            f"fill={_fill:.1%}, target_edge={h:.4g}"
+            f"fill={_fill:.1%}, target_edge={h:.4g}, grade={grade}"
         ),
+        quality_grade=grade,
+        max_non_orthogonality_deg=float(max_no),
+        mean_non_orthogonality_deg=float(mean_no),
+        max_skewness=float(max_sk),
+        mean_skewness=float(mean_sk),
+        max_aspect=float(max_asp),
+        plane_coverage=float(plane_cov),
+        plane_area_coverage=float(plane_area),
     )
