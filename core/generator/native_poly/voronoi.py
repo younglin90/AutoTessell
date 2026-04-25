@@ -160,7 +160,17 @@ def generate_native_poly_voronoi(
     복잡 형상에서 기본 seed 가 부족해 region 0 이 나오는 케이스 자동 회복.
     """
     if auto_escalate:
-        last_result: NativePolyResult | None = None
+        # GG1 (beta1750) — best-of-N 평가:
+        #   1) voronoi 단순 (escalate 까지)
+        #   2) hex fallback 항상 평가
+        # 최고 score 채택. cube/sphere/cyl 처럼 단순 형상은 hex 가 quality
+        # 우세 → 채택. voronoi 가 cells>>1 인 경우엔 score 비교 후 결정.
+        def _grade_score(grade: str) -> float:
+            return {"A": 4.0, "B": 3.0, "C": 2.0, "D": 1.0}.get(grade, 0.0)
+
+        candidates: list[tuple[float, NativePolyResult, str]] = []
+
+        # voronoi escalate.
         cur_seed = int(seed_density)
         for attempt in range(int(auto_escalate_max)):
             r_attempt = _generate_native_poly_voronoi_inner(
@@ -169,29 +179,66 @@ def generate_native_poly_voronoi(
                 seed_density=cur_seed,
                 n_lloyd=n_lloyd,
             )
-            # cells > 2 만 valid result (단일 cell 은 의미 없음).
             if r_attempt.success and r_attempt.n_cells > 2:
-                return r_attempt
-            last_result = r_attempt
+                candidates.append(
+                    (_grade_score(r_attempt.quality_grade), r_attempt, f"voronoi(sd={cur_seed})"),
+                )
+                break
             cur_seed = max(int(cur_seed * 1.5), cur_seed + 4)
-        # FF1 (beta1730) — voronoi base 모두 fail → native_hex 결과를
-        # polyhedral 로 변환해 fallback.
+
+        # hex fallback 후보.
         try:
+            tmp_case = case_dir.parent / (case_dir.name + "_hex_cand")
+            tmp_case.mkdir(parents=True, exist_ok=True)
             r_hex = _hex_to_poly_fallback(
-                vertices, faces, case_dir,
-                seed_density=int(seed_density),
+                vertices, faces, tmp_case, seed_density=int(seed_density),
             )
             if r_hex.success and r_hex.n_cells > 2:
-                log.info(
-                    "native_poly_hex_fallback",
-                    cells=r_hex.n_cells, grade=r_hex.quality_grade,
+                candidates.append(
+                    (_grade_score(r_hex.quality_grade), r_hex, "hex_fallback"),
                 )
-                return r_hex
         except Exception as exc:
-            log.debug("native_poly_hex_fallback_skipped", reason=str(exc))
-        return last_result if last_result is not None else NativePolyResult(
-            False, 0.0, message="auto_escalate 모든 시도 실패",
+            log.debug("native_poly_hex_cand_skipped", reason=str(exc))
+
+        if not candidates:
+            return NativePolyResult(
+                False, 0.0, message="poly best-of-N 모든 후보 실패",
+            )
+
+        # score 최대 (tie-break: cell 수 많은 것).
+        candidates.sort(key=lambda t: (t[0], t[1].n_cells), reverse=True)
+        best_score, best_result, best_label = candidates[0]
+        log.info(
+            "native_poly_best_of_n",
+            chosen=best_label,
+            grade=best_result.quality_grade,
+            cells=best_result.n_cells,
+            n_candidates=len(candidates),
         )
+        # voronoi 가 chosen 이면 case_dir 가 이미 그 결과로 채워짐.
+        # hex fallback 이 chosen 이면 voronoi 결과를 hex 결과로 덮어 써야.
+        if best_label.startswith("hex"):
+            try:
+                import shutil as _sh
+                # voronoi case_dir 의 polyMesh 를 hex case 로 교체.
+                if (tmp_case / "constant" / "polyMesh").exists():
+                    if (case_dir / "constant" / "polyMesh").exists():
+                        _sh.rmtree(case_dir / "constant" / "polyMesh")
+                    (case_dir / "constant").mkdir(parents=True, exist_ok=True)
+                    _sh.copytree(
+                        tmp_case / "constant" / "polyMesh",
+                        case_dir / "constant" / "polyMesh",
+                    )
+                _sh.rmtree(tmp_case, ignore_errors=True)
+            except Exception as exc:
+                log.warning("native_poly_hex_swap_failed", reason=str(exc))
+        else:
+            try:
+                import shutil as _sh
+                _sh.rmtree(tmp_case, ignore_errors=True)
+            except Exception:
+                pass
+        return best_result
     return _generate_native_poly_voronoi_inner(
         vertices, faces, case_dir,
         target_edge_length=target_edge_length,
