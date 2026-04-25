@@ -169,10 +169,26 @@ def generate_native_poly_voronoi(
                 seed_density=cur_seed,
                 n_lloyd=n_lloyd,
             )
-            if r_attempt.success and r_attempt.n_cells > 0:
+            # cells > 2 만 valid result (단일 cell 은 의미 없음).
+            if r_attempt.success and r_attempt.n_cells > 2:
                 return r_attempt
             last_result = r_attempt
             cur_seed = max(int(cur_seed * 1.5), cur_seed + 4)
+        # FF1 (beta1730) — voronoi base 모두 fail → native_hex 결과를
+        # polyhedral 로 변환해 fallback.
+        try:
+            r_hex = _hex_to_poly_fallback(
+                vertices, faces, case_dir,
+                seed_density=int(seed_density),
+            )
+            if r_hex.success and r_hex.n_cells > 2:
+                log.info(
+                    "native_poly_hex_fallback",
+                    cells=r_hex.n_cells, grade=r_hex.quality_grade,
+                )
+                return r_hex
+        except Exception as exc:
+            log.debug("native_poly_hex_fallback_skipped", reason=str(exc))
         return last_result if last_result is not None else NativePolyResult(
             False, 0.0, message="auto_escalate 모든 시도 실패",
         )
@@ -180,6 +196,59 @@ def generate_native_poly_voronoi(
         vertices, faces, case_dir,
         target_edge_length=target_edge_length,
         seed_density=seed_density, n_lloyd=n_lloyd,
+    )
+
+
+def _hex_to_poly_fallback(
+    vertices: np.ndarray, faces: np.ndarray, case_dir: Path,
+    *, seed_density: int = 12,
+) -> NativePolyResult:
+    """FF1 (beta1730) — voronoi base 가 fail 한 형상에서 native_hex 결과를
+    polyhedral 표현으로 변환해 fallback.
+
+    각 hex cell 을 6 quad face polyhedron 으로 그대로 사용. native_hex 가
+    grade A 인 형상 (cube/sphere/cyl/bracket/gear) 에서 polyhedral grade A
+    보장.
+    """
+    import time as _time
+    from core.generator.native_hex.mesher import (
+        generate_native_hex, _HEX_FACES,
+    )
+
+    t0 = _time.perf_counter()
+    r_hex = generate_native_hex(
+        vertices, faces, case_dir,
+        seed_density=int(seed_density),
+        snap_boundary=True, snap_iterations=2,
+        max_cells_per_axis=40,
+    )
+    if not r_hex.success:
+        return NativePolyResult(
+            False, _time.perf_counter() - t0,
+            message=f"hex fallback fail: {r_hex.message[:80]}",
+        )
+
+    # hex cell → polyhedral cell (6 quad face).
+    # native_hex 가 이미 polyMesh 를 case_dir 에 썼으므로 그대로 두고 메트릭만
+    # 측정. result 의 grade / quality 도 hex 와 동일.
+    return NativePolyResult(
+        success=True,
+        elapsed=_time.perf_counter() - t0,
+        n_cells=int(r_hex.n_cells),
+        n_points=int(r_hex.n_points),
+        n_faces=int(r_hex.n_faces),
+        message=(
+            f"native_poly_hex_fallback OK — cells={r_hex.n_cells}, "
+            f"hex grade={r_hex.quality_grade}"
+        ),
+        quality_grade=r_hex.quality_grade,
+        max_non_orthogonality_deg=float(r_hex.max_non_orthogonality_deg),
+        mean_non_orthogonality_deg=float(r_hex.mean_non_orthogonality_deg),
+        max_skewness=float(r_hex.max_skewness),
+        mean_skewness=float(r_hex.mean_skewness),
+        avg_faces_per_cell=6.0,
+        plane_coverage=float(r_hex.plane_coverage),
+        plane_area_coverage=float(r_hex.plane_area_coverage),
     )
 
 
