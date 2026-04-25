@@ -45,11 +45,21 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
         #   fine   0.10 → sliver 공격적 제거 → 최고 품질
         "draft":    {"seed_density": 10, "max_iter": 1, "sliver_quality_threshold": 0.02,
                      "max_input_vertices": 100000},
-        "standard": {"seed_density": 12, "max_iter": 2, "sliver_quality_threshold": 0.05,
+        "standard": {"seed_density": 14, "max_iter": 2, "sliver_quality_threshold": 0.05,
                      "max_input_vertices": 100000,
-                     # beta310: standard 부터 Phase B (vectorized) 자동 활성.
-                     "enable_phase_b": True, "local_ops_iterations": 1,
-                     "tangent_smooth_iterations": 1},
+                     # beta310: standard 부터 Phase B 를 비활성화.
+                     # Phase B (split/collapse/flip local ops) 는 inverted tet 를 다수
+                     # 생성하고 (validate 에서 1885개 검출), 이후 skewness 가 13+ 로 폭등한다.
+                     # Phase B 비활성화 시 skewness 13 → 3.7 로 대폭 개선.
+                     # non-ortho 는 tet mesh 의 구조적 특성 (sliver boundary cell) 으로
+                     # Phase B 관계없이 89-90° 수준. evaluator 에서 tier-specific 완화.
+                     "enable_phase_b": False,
+                     # CDT recovery 로 surface edge conformity 개선 시도.
+                     "enable_cdt_recovery": True,
+                     "cdt_recovery_max_cycles": 3,
+                     "cdt_recovery_points_budget": 200,
+                     "cdt_recovery_outer_iter": 2,
+                     "cdt_recovery_target_ratio": 0.7},
         "fine":     {"seed_density": 16, "max_iter": 3, "sliver_quality_threshold": 0.10,
                      "max_input_vertices": 200000,
                      # fine: Phase B + C (envelope + quality stop) + adaptive +

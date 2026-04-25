@@ -62,6 +62,92 @@ def _tet_edges(tets: np.ndarray) -> set[tuple[int, int]]:
     return s
 
 
+def check_edge_recovery_chained(
+    V_surf: np.ndarray, F_surf: np.ndarray,
+    pts: np.ndarray, tets: np.ndarray,
+    *, snap_tol: float = 1e-6,
+) -> "CDTCheckResult":
+    """beta1450 (T1) — chain-based edge recovery 검사.
+
+    surface edge (u, v) 가 다음 중 하나면 recovered:
+        (a) (u, v) 가 tet edge 로 직접 존재.
+        (b) u-v 선분 위에 놓인 다른 점 w 들이 있어, (u, w_1), (w_1, w_2),
+            ..., (w_k, v) 가 모두 tet edge 로 존재 (segment chain).
+
+    (b) 검사: u-v 선분 위 (snap_tol 이내) 에 있는 모든 점들의 매개변수 t 를
+    정렬, 인접 segment 가 모두 tet edge 면 chain 성립.
+    """
+    V_surf = np.asarray(V_surf, dtype=np.float64)
+    F_surf = np.asarray(F_surf, dtype=np.int64)
+    pts = np.asarray(pts, dtype=np.float64)
+    tets = np.asarray(tets, dtype=np.int64)
+
+    # 모든 surface edge.
+    surf_edges: set[tuple[int, int]] = set()
+    for ti in range(F_surf.shape[0]):
+        a, b, c = int(F_surf[ti, 0]), int(F_surf[ti, 1]), int(F_surf[ti, 2])
+        for u, v in ((a, b), (b, c), (c, a)):
+            surf_edges.add((u, v) if u < v else (v, u))
+
+    tet_edges = _tet_edges(tets)
+
+    missing: list[tuple[int, int]] = []
+    for (u, v) in surf_edges:
+        if (u, v) in tet_edges:
+            continue
+        # chain 검사: u-v 선분 위 점들 (snap_tol 이내) 의 인덱스 + t 파라미터.
+        if pts.shape[0] == 0:
+            missing.append((u, v))
+            continue
+        a = V_surf[u] if u < V_surf.shape[0] else pts[u]
+        b = V_surf[v] if v < V_surf.shape[0] else pts[v]
+        d = b - a
+        d_norm = float(np.linalg.norm(d))
+        if d_norm < 1e-30:
+            continue
+        d_unit = d / d_norm
+        rel = pts - a                                       # (N, 3)
+        t_vals = rel @ d_unit                               # 매개변수.
+        proj = t_vals[:, None] * d_unit + a
+        residual = np.linalg.norm(pts - proj, axis=1)
+        on_seg = (residual < snap_tol) & (t_vals > -snap_tol) & (t_vals < d_norm + snap_tol)
+        if not on_seg.any():
+            missing.append((u, v))
+            continue
+        chain_pts = np.where(on_seg)[0]
+        # u, v 자체도 포함 (있으면).
+        ts = t_vals[chain_pts]
+        order = np.argsort(ts)
+        chain_sorted = chain_pts[order]
+        # u 가 시작인지 v 가 끝인지 확인 — 정렬된 chain 의 첫/끝이 u/v 와 일치해야.
+        first = int(chain_sorted[0])
+        last = int(chain_sorted[-1])
+        if first != u and first != v:
+            missing.append((u, v))
+            continue
+        if last != u and last != v:
+            missing.append((u, v))
+            continue
+        # 인접 segment 가 모두 tet edge?
+        ok = True
+        for i in range(len(chain_sorted) - 1):
+            p, q = int(chain_sorted[i]), int(chain_sorted[i + 1])
+            key = (p, q) if p < q else (q, p)
+            if key not in tet_edges:
+                ok = False
+                break
+        if not ok:
+            missing.append((u, v))
+
+    n_present = len(surf_edges) - len(missing)
+    return CDTCheckResult(
+        n_surface_edges=len(surf_edges),
+        n_present_as_tet_edges=n_present,
+        n_missing=len(missing),
+        missing_edges=missing,
+    )
+
+
 def cdt_ratio(result: "CDTCheckResult") -> float:
     """beta1120 (R156) — edge 회복률 (0.0~1.0)."""
     if result.n_surface_edges == 0:

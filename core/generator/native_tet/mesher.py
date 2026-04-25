@@ -1006,11 +1006,16 @@ def generate_native_tet(
     haus_rel = -1.0
     try:
         from core.generator.native_tet.cdt_check import (
-            check_edge_recovery, cdt_ratio as _cdt_ratio,
+            check_edge_recovery, check_edge_recovery_chained,
+            cdt_ratio as _cdt_ratio,
         )
         from core.generator.native_tet.hausdorff import hausdorff_vs_input
 
-        cdt_r = check_edge_recovery(F, final_tets)
+        # T1 — chain-based 검사 (subdivided edge 도 회복으로 인정).
+        try:
+            cdt_r = check_edge_recovery_chained(V, F, final_pts, final_tets)
+        except Exception:
+            cdt_r = check_edge_recovery(F, final_tets)
         cdt_ratio_val = float(_cdt_ratio(cdt_r))
 
         haus = hausdorff_vs_input(
