@@ -1000,6 +1000,27 @@ def generate_native_tet(
     except Exception:
         pass
 
+    # beta1460 (T2) — 입력 surface vertex 가 결과 mesh 의 같은 좌표를 유지하는지
+    # 강제 보정. final_pts 의 [0:n_surface] 가 V 와 일치해야 hausdorff 측정이
+    # 의미 있음. 일부 path (Phase A smooth) 가 surface vertex 위치를 살짝 옮길
+    # 수 있으니 명시적으로 복원.
+    try:
+        n_surface_in = int(V.shape[0])
+        if (
+            final_pts.shape[0] >= n_surface_in
+            and not np.allclose(final_pts[:n_surface_in], V, atol=1e-9)
+        ):
+            log.info(
+                "native_tet_surface_snap_restore",
+                max_diff=float(
+                    np.linalg.norm(final_pts[:n_surface_in] - V, axis=1).max()
+                ),
+            )
+            final_pts = final_pts.copy()
+            final_pts[:n_surface_in] = V
+    except Exception:
+        pass
+
     # beta1420 (Q4) — 통합 PASS gate 산출 (cdt_ratio + hausdorff + quality).
     grade = "?"
     cdt_ratio_val = -1.0
