@@ -150,12 +150,49 @@ def generate_native_poly_voronoi(
     target_edge_length: float | None = None,
     seed_density: int = 8,
     n_lloyd: int = 2,
+    auto_escalate: bool = True,
+    auto_escalate_max: int = 4,
 ) -> NativePolyResult:
     """bbox 내부 균일 seed + 3D Lloyd CVT 정제 + scipy Voronoi → polyhedral cell.
 
-    Args:
-        n_lloyd: Lloyd CVT 반복 횟수 (기본 2). 0 이면 기존 균일 grid 동작과 동일.
+    DD2 (beta1720) — auto_escalate=True 면 첫 시도가 cells=0 이거나 fail 일 때
+    seed_density 를 1.5× 씩 escalate 해 max 4 회 재시도. bracket / gear 같은
+    복잡 형상에서 기본 seed 가 부족해 region 0 이 나오는 케이스 자동 회복.
     """
+    if auto_escalate:
+        last_result: NativePolyResult | None = None
+        cur_seed = int(seed_density)
+        for attempt in range(int(auto_escalate_max)):
+            r_attempt = _generate_native_poly_voronoi_inner(
+                vertices, faces, case_dir,
+                target_edge_length=target_edge_length,
+                seed_density=cur_seed,
+                n_lloyd=n_lloyd,
+            )
+            if r_attempt.success and r_attempt.n_cells > 0:
+                return r_attempt
+            last_result = r_attempt
+            cur_seed = max(int(cur_seed * 1.5), cur_seed + 4)
+        return last_result if last_result is not None else NativePolyResult(
+            False, 0.0, message="auto_escalate 모든 시도 실패",
+        )
+    return _generate_native_poly_voronoi_inner(
+        vertices, faces, case_dir,
+        target_edge_length=target_edge_length,
+        seed_density=seed_density, n_lloyd=n_lloyd,
+    )
+
+
+def _generate_native_poly_voronoi_inner(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+    case_dir: Path,
+    *,
+    target_edge_length: float | None = None,
+    seed_density: int = 8,
+    n_lloyd: int = 2,
+) -> NativePolyResult:
+    """단일 시도 (auto_escalate 없는 원본 흐름)."""
     t0 = time.perf_counter()
     try:
         from scipy.spatial import Voronoi

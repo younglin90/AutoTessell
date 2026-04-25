@@ -350,8 +350,8 @@ def poly_quality_grade(report: PolyQualityReport) -> str:
         C: max_no < 75°, max_skew < 4.0
         D: 그 외 / 빈 mesh.
     """
-    # 빈 mesh 는 무조건 D.
-    if report.n_cells == 0:
+    # 빈 mesh 또는 단일 cell 은 무조건 D (의미 있는 mesh 아님).
+    if report.n_cells <= 2:
         return "D"
     if report.max_non_orthogonality_deg < 40.0 and report.max_skewness < 0.5:
         return "A"
