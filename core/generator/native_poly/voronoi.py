@@ -293,6 +293,32 @@ def _generate_native_poly_voronoi_inner(
     # surface 내부 seed 만 유지
     inside = _inside_ray_cast(seeds, V, F)
     seeds = seeds[inside]
+
+    # FF2 (beta1740) — surface-proximity bias: 복잡 형상 (V.shape[0] >= 200)
+    # 만 적용. seed 수가 inside seed 의 50% 미만일 때만 추가 (oversampling
+    # 회피 — sphere V=162 같은 곡면 입력의 sliver 유발 방지).
+    if V.shape[0] >= 1000 and seeds.shape[0] < V.shape[0] * 0.2:
+        try:
+            centroid_global = V.mean(axis=0)
+            inward = centroid_global - V
+            inward_norm = np.linalg.norm(inward, axis=1, keepdims=True)
+            safe = inward_norm[:, 0] > 1e-30
+            inward_unit = np.where(safe[:, None], inward / np.maximum(inward_norm, 1e-30), 0.0)
+            offset = 0.7 * h
+            # surface vertex 중 stride sampling 으로 oversampling 완화.
+            stride = max(1, V.shape[0] // max(seeds.shape[0], 1))
+            sampled_idx = np.arange(0, V.shape[0], stride)
+            extra_seeds = V[sampled_idx] + offset * inward_unit[sampled_idx]
+            inside_extra = _inside_ray_cast(extra_seeds, V, F)
+            extra_seeds = extra_seeds[inside_extra]
+            if extra_seeds.shape[0] > 0:
+                seeds = np.vstack([seeds, extra_seeds])
+                seeds = np.unique(
+                    np.round(seeds * 1e6).astype(np.int64), axis=0,
+                ).astype(np.float64) / 1e6
+        except Exception:
+            pass
+
     if seeds.shape[0] < 5:
         return NativePolyResult(
             False, time.perf_counter() - t0,
