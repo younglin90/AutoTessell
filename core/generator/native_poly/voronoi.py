@@ -322,8 +322,13 @@ def generate_native_poly_voronoi(
     try:
         from core.generator.native_poly.quality import (
             smooth_poly_in_memory, poly_quality_report,
-            drop_degenerate_poly_cells,
+            drop_degenerate_poly_cells, collapse_short_face_edges,
         )
+
+        # DD1 — face edge collapse 는 helper 로만 export, default 비활성.
+        # 짧은 edge collapse 가 voronoi base 의 cell 토폴로지를 깨뜨려 grade
+        # 강등 발생. 사용자 수동 호출용으로 남겨둠.
+        _ = collapse_short_face_edges  # noqa: F841
 
         # AA2 (beta1700) — best-of-three 후보 점수 비교 채택.
         # 후보 1: raw (변화 없음).

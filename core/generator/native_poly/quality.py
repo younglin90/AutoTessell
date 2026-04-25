@@ -126,6 +126,91 @@ def poly_quality_report(
     )
 
 
+def collapse_short_face_edges(
+    pts: np.ndarray,
+    cells: list[list[list[int]]],
+    *,
+    rel_tol: float = 1e-2,
+) -> tuple[np.ndarray, list[list[list[int]]], int]:
+    """DD1 (beta1710) — face polygon 의 짧은 edge 를 endpoints 평균 vertex 로 merge.
+
+    bbox_diag × rel_tol 보다 짧은 edge 의 두 vertex 를 같은 좌표로 통합 +
+    face vertex list 에서 중복 제거. cube cell 의 1e-4 단위 sliver edge
+    제거에 효과적.
+
+    Returns: (new_pts, new_cells, n_collapsed_edges).
+    """
+    pts = np.asarray(pts, dtype=np.float64).copy()
+    if not cells or pts.size == 0:
+        return pts, cells, 0
+    bbox = pts.max(axis=0) - pts.min(axis=0)
+    bbox_diag = float(np.linalg.norm(bbox)) + 1e-30
+    tol = bbox_diag * float(rel_tol)
+
+    # union-find 으로 짧은 edge 의 vertex 통합.
+    n = pts.shape[0]
+    parent = np.arange(n, dtype=np.int64)
+
+    def _find(x: int) -> int:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = int(parent[x])
+        return x
+
+    def _union(a: int, b: int) -> None:
+        ra = _find(a); rb = _find(b)
+        if ra != rb:
+            parent[max(ra, rb)] = min(ra, rb)
+
+    n_collapsed = 0
+    for cell_faces in cells:
+        for f in cell_faces:
+            for i in range(len(f)):
+                a = int(f[i]); b = int(f[(i + 1) % len(f)])
+                if a == b:
+                    continue
+                d = float(np.linalg.norm(pts[a] - pts[b]))
+                if d < tol:
+                    if _find(a) != _find(b):
+                        _union(a, b)
+                        n_collapsed += 1
+
+    if n_collapsed == 0:
+        return pts, cells, 0
+
+    # 각 root vertex 에 좌표 평균 부여.
+    roots = np.array([_find(i) for i in range(n)], dtype=np.int64)
+    new_pts = pts.copy()
+    sums = np.zeros_like(pts)
+    counts = np.zeros(n, dtype=np.int64)
+    np.add.at(sums, roots, pts)
+    np.add.at(counts, roots, 1)
+    safe = counts > 0
+    new_pts[safe] = sums[safe] / counts[safe, None]
+    # non-root vertex 는 root 좌표 사용.
+    new_pts = new_pts[roots]
+
+    # face vertex list 재매핑 + 중복 인접 제거.
+    new_cells: list[list[list[int]]] = []
+    for cell_faces in cells:
+        new_cell_faces: list[list[int]] = []
+        for f in cell_faces:
+            mapped = [int(roots[v]) for v in f]
+            # adjacent dedup.
+            cleaned: list[int] = []
+            for vi in mapped:
+                if not cleaned or cleaned[-1] != vi:
+                    cleaned.append(vi)
+            if len(cleaned) >= 2 and cleaned[-1] == cleaned[0]:
+                cleaned.pop()
+            if len(cleaned) >= 3:
+                new_cell_faces.append(cleaned)
+        if new_cell_faces:
+            new_cells.append(new_cell_faces)
+
+    return new_pts, new_cells, n_collapsed
+
+
 def smooth_poly_in_memory(
     pts: np.ndarray,
     cells: list[list[list[int]]],
