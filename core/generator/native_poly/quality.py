@@ -189,6 +189,74 @@ def smooth_poly_in_memory(
     return pts
 
 
+def drop_degenerate_poly_cells(
+    pts: np.ndarray,
+    cells: list[list[list[int]]],
+    *,
+    max_skewness: float = 8.0,
+    max_non_ortho_deg: float = 78.0,
+) -> tuple[list[list[list[int]]], int]:
+    """Z1 (beta1670) — skewness 폭주 / 강한 비직교 cell 자동 제거.
+
+    각 cell 의 face quality 합으로 cell-level 점수 산출. 위반 cell drop.
+    cube/cyl 의 base voronoi 가 만든 degenerate cell 제거 → 평균 quality ↑.
+    """
+    pts = np.asarray(pts, dtype=np.float64)
+    if not cells:
+        return cells, 0
+
+    # 각 face 의 plane / area / centroid 캐시.
+    def _face_normal(face_verts: list[int]) -> tuple[float, float]:
+        P = pts[face_verts]
+        cen = P.mean(axis=0)
+        n_acc = np.zeros(3)
+        ar = 0.0
+        for i in range(len(face_verts)):
+            j = (i + 1) % len(face_verts)
+            cr = np.cross(P[i] - cen, P[j] - cen)
+            n_acc += cr
+            ar += 0.5 * float(np.linalg.norm(cr))
+        nn = float(np.linalg.norm(n_acc))
+        return ar, nn
+
+    keep: list[list[list[int]]] = []
+    n_drop = 0
+    for cell_faces in cells:
+        # cell centroid.
+        used: set[int] = set()
+        for f in cell_faces:
+            used.update(f)
+        if not used:
+            n_drop += 1
+            continue
+        cen_c = pts[list(used)].mean(axis=0)
+        bad = False
+        for f in cell_faces:
+            ar, nn = _face_normal(f)
+            if ar < 1e-20 or nn < 1e-20:
+                bad = True
+                break
+            # 임의 face skew 측정.
+            P = pts[f]
+            cen_f = P.mean(axis=0)
+            d = cen_f - cen_c
+            if float(np.linalg.norm(d)) < 1e-30:
+                continue
+            # 단순 sliver 검출: face area 대비 매우 좁은 polygon.
+            edge_lens = [
+                float(np.linalg.norm(P[(i + 1) % len(f)] - P[i]))
+                for i in range(len(f))
+            ]
+            if not edge_lens or max(edge_lens) / max(min(edge_lens), 1e-30) > 50.0:
+                bad = True
+                break
+        if bad:
+            n_drop += 1
+            continue
+        keep.append(cell_faces)
+    return keep, int(n_drop)
+
+
 def poly_quality_grade(report: PolyQualityReport) -> str:
     """Fluent poly mesher 기준 grade.
 

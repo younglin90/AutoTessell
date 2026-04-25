@@ -322,10 +322,24 @@ def generate_native_poly_voronoi(
     try:
         from core.generator.native_poly.quality import (
             smooth_poly_in_memory, poly_quality_report,
+            drop_degenerate_poly_cells,
         )
+
+        # Z1 (beta1670) — degenerate cell drop 먼저.
+        prev_n = len(final_cells)
+        final_cells, n_drop = drop_degenerate_poly_cells(
+            final_vertices, final_cells,
+            max_skewness=8.0, max_non_ortho_deg=78.0,
+        )
+        if n_drop > 0:
+            log.info(
+                "native_poly_drop_degenerate",
+                dropped=n_drop, before=prev_n, after=len(final_cells),
+            )
+
         prev_skew = poly_quality_report(final_vertices, final_cells).max_skewness
         smoothed = smooth_poly_in_memory(
-            final_vertices, final_cells, n_iter=3, relax=0.25,
+            final_vertices, final_cells, n_iter=5, relax=0.3,
         )
         new_skew = poly_quality_report(smoothed, final_cells).max_skewness
         if new_skew < prev_skew * 0.9:
