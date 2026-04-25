@@ -36,6 +36,15 @@ class NativePolyResult:
     n_points: int = 0
     n_faces: int = 0
     message: str = ""
+    # Y1 (beta1650) — Fluent poly mesher 비교 메트릭.
+    quality_grade: str = "?"
+    max_non_orthogonality_deg: float = -1.0
+    mean_non_orthogonality_deg: float = -1.0
+    max_skewness: float = -1.0
+    mean_skewness: float = -1.0
+    avg_faces_per_cell: float = -1.0
+    plane_coverage: float = -1.0
+    plane_area_coverage: float = -1.0
 
 
 from core.utils.geometry import inside_winding_number as _inside_ray_cast
@@ -316,6 +325,86 @@ def generate_native_poly_voronoi(
             message=f"polyMesh 쓰기 실패: {exc}",
         )
 
+    # Y1 (beta1650) — Fluent poly mesher 비교 메트릭.
+    grade = "?"
+    max_no = -1.0; mean_no = -1.0
+    max_sk = -1.0; mean_sk = -1.0
+    avg_fpc = -1.0
+    plane_cov = -1.0; plane_area = -1.0
+    try:
+        from core.generator.native_poly.quality import (
+            poly_quality_report, poly_quality_grade,
+        )
+        q = poly_quality_report(final_vertices, final_cells)
+        grade = poly_quality_grade(q)
+        max_no = q.max_non_orthogonality_deg
+        mean_no = q.mean_non_orthogonality_deg
+        max_sk = q.max_skewness
+        mean_sk = q.mean_skewness
+        avg_fpc = q.avg_faces_per_cell
+        log.info(
+            "native_poly_quality_gate",
+            grade=grade,
+            max_non_ortho=round(max_no, 2),
+            mean_non_ortho=round(mean_no, 2),
+            max_skew=round(max_sk, 3),
+            avg_fpc=round(avg_fpc, 2),
+        )
+    except Exception as exc:
+        log.debug("native_poly_quality_skipped", reason=str(exc))
+
+    # plane_coverage — boundary face triangulated 후 측정.
+    try:
+        from core.generator.native_tet.plane_coverage import (
+            _triangle_planes_and_areas, _group_by_plane,
+        )
+        # boundary face = 1-owner face.
+        face_owner: dict[tuple[int, ...], int] = {}
+        for cell_faces in final_cells:
+            for f in cell_faces:
+                k = tuple(sorted(f))
+                face_owner[k] = face_owner.get(k, 0) + 1
+        bnd_tris: list[list[int]] = []
+        for cell_faces in final_cells:
+            for f in cell_faces:
+                k = tuple(sorted(f))
+                if face_owner[k] == 1 and len(f) >= 3:
+                    # fan triangulation.
+                    for i in range(1, len(f) - 1):
+                        bnd_tris.append([f[0], f[i], f[i + 1]])
+        if bnd_tris:
+            B_tri = np.asarray(bnd_tris, dtype=np.int64)
+            bbox_diag = float(np.linalg.norm(V.max(axis=0) - V.min(axis=0))) + 1e-30
+            in_unit, in_off, in_area = _triangle_planes_and_areas(V, F)
+            bn_unit, bn_off, bn_area = _triangle_planes_and_areas(final_vertices, B_tri)
+            in_groups = _group_by_plane(
+                in_unit, in_off, normal_tol=5e-2, offset_rel_tol=5e-3, bbox_diag=bbox_diag,
+            )
+            bn_groups = _group_by_plane(
+                bn_unit, bn_off, normal_tol=5e-2, offset_rel_tol=5e-3, bbox_diag=bbox_diag,
+            )
+            n_in = len(in_groups)
+            n_covered = 0
+            total_in_area = 0.0
+            total_match_area = 0.0
+            for k_g, idxs in in_groups.items():
+                a_in = float(in_area[idxs].sum())
+                total_in_area += a_in
+                if k_g in bn_groups:
+                    a_b = float(bn_area[bn_groups[k_g]].sum())
+                    if a_in > 0 and abs(a_b - a_in) / a_in <= 0.10:
+                        n_covered += 1
+                        total_match_area += a_in
+                    else:
+                        ratio = min(a_b, a_in) / max(a_in, 1e-30)
+                        total_match_area += ratio * a_in
+            plane_cov = n_covered / max(n_in, 1) if n_in else 1.0
+            plane_area = (
+                total_match_area / total_in_area if total_in_area > 0 else 1.0
+            )
+    except Exception as exc:
+        log.debug("native_poly_plane_cov_skipped", reason=str(exc))
+
     return NativePolyResult(
         success=True,
         elapsed=time.perf_counter() - t0,
@@ -324,6 +413,14 @@ def generate_native_poly_voronoi(
         n_faces=int(stats["num_faces"]),
         message=(
             f"native_poly_voronoi OK — cells={stats['num_cells']}, "
-            f"points={stats['num_points']}, seeds={n_real}"
+            f"points={stats['num_points']}, seeds={n_real}, grade={grade}"
         ),
+        quality_grade=grade,
+        max_non_orthogonality_deg=float(max_no),
+        mean_non_orthogonality_deg=float(mean_no),
+        max_skewness=float(max_sk),
+        mean_skewness=float(mean_sk),
+        avg_faces_per_cell=float(avg_fpc),
+        plane_coverage=float(plane_cov),
+        plane_area_coverage=float(plane_area),
     )

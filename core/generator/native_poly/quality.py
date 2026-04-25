@@ -1,0 +1,143 @@
+"""Y1 — native_poly 결과의 cell quality 측정.
+
+polyhedral cell mesh (cell = list of face polygon) 에 대해 OpenFOAM
+checkMesh 와 동일한 non-orthogonality / skewness 측정. Fluent poly mesher
+와 비교 가능한 메트릭.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+
+
+@dataclass
+class PolyQualityReport:
+    n_cells: int
+    n_faces: int
+    avg_faces_per_cell: float
+    max_non_orthogonality_deg: float
+    mean_non_orthogonality_deg: float
+    p95_non_orthogonality_deg: float
+    max_skewness: float
+    mean_skewness: float
+
+
+def _polygon_normal_centroid_area(
+    pts: np.ndarray, vert_ids: list[int],
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """N-gon polygon → unit normal, centroid, area (fan triangulation)."""
+    P = pts[vert_ids]
+    cen = P.mean(axis=0)
+    n_acc = np.zeros(3, dtype=np.float64)
+    area = 0.0
+    for i in range(len(vert_ids)):
+        j = (i + 1) % len(vert_ids)
+        e1 = P[i] - cen
+        e2 = P[j] - cen
+        cr = np.cross(e1, e2)
+        n_acc += cr
+        area += 0.5 * float(np.linalg.norm(cr))
+    norm = float(np.linalg.norm(n_acc))
+    if norm < 1e-30:
+        return np.zeros(3), cen, 0.0
+    return n_acc / norm, cen, area
+
+
+def _cell_centroid(pts: np.ndarray, faces: list[list[int]]) -> np.ndarray:
+    used = set()
+    for f in faces:
+        used.update(f)
+    if not used:
+        return np.zeros(3)
+    return pts[list(used)].mean(axis=0)
+
+
+def poly_quality_report(
+    pts: np.ndarray, cells: list[list[list[int]]],
+) -> PolyQualityReport:
+    """polyhedral mesh → OpenFOAM-style quality.
+
+    Args:
+        pts: (N, 3) 정점.
+        cells: 각 cell 의 face list. face = list[int] vertex idx.
+    """
+    pts = np.asarray(pts, dtype=np.float64)
+    n_cells = len(cells)
+    if n_cells == 0:
+        return PolyQualityReport(0, 0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+
+    # 각 cell centroid + face → owner cells.
+    cell_centroids = np.zeros((n_cells, 3), dtype=np.float64)
+    for ci, cell_faces in enumerate(cells):
+        cell_centroids[ci] = _cell_centroid(pts, cell_faces)
+
+    face_dict: dict[tuple[int, ...], list[tuple[int, int]]] = {}
+    n_faces_total = 0
+    n_total_face_inst = 0
+    for ci, cell_faces in enumerate(cells):
+        for fi, vert_ids in enumerate(cell_faces):
+            n_total_face_inst += 1
+            key = tuple(sorted(vert_ids))
+            face_dict.setdefault(key, []).append((ci, fi))
+
+    n_faces_total = len(face_dict)
+    avg_fpc = n_total_face_inst / max(n_cells, 1)
+
+    non_orths: list[float] = []
+    skews: list[float] = []
+    for key, owners in face_dict.items():
+        if len(owners) != 2:
+            continue
+        (ca, fi_a), (cb, _fi_b) = owners
+        verts = list(cells[ca][fi_a])
+        unit_n, cen, area = _polygon_normal_centroid_area(pts, verts)
+        if area < 1e-30:
+            continue
+        d = cell_centroids[cb] - cell_centroids[ca]
+        d_norm = float(np.linalg.norm(d))
+        if d_norm < 1e-30:
+            continue
+        d_unit = d / d_norm
+        cos_a = float(np.clip(abs(np.dot(d_unit, unit_n)), 0.0, 1.0))
+        non_orths.append(float(np.degrees(np.arccos(cos_a))))
+        denom = float(np.dot(d_unit, unit_n))
+        if abs(denom) < 1e-30:
+            continue
+        t = float(np.dot(cen - cell_centroids[ca], unit_n)) / denom
+        intersect = cell_centroids[ca] + t * d_unit
+        skew_d = float(np.linalg.norm(intersect - cen))
+        skews.append(skew_d / np.sqrt(max(area, 1e-30)))
+
+    if not non_orths:
+        non_orths = [0.0]
+    if not skews:
+        skews = [0.0]
+
+    return PolyQualityReport(
+        n_cells=int(n_cells),
+        n_faces=int(n_faces_total),
+        avg_faces_per_cell=float(avg_fpc),
+        max_non_orthogonality_deg=float(np.max(non_orths)),
+        mean_non_orthogonality_deg=float(np.mean(non_orths)),
+        p95_non_orthogonality_deg=float(np.percentile(non_orths, 95)),
+        max_skewness=float(np.max(skews)),
+        mean_skewness=float(np.mean(skews)),
+    )
+
+
+def poly_quality_grade(report: PolyQualityReport) -> str:
+    """Fluent poly mesher 기준 grade.
+
+        A: max_no < 40°, max_skew < 0.5  (Fluent typical)
+        B: max_no < 60°, max_skew < 1.5
+        C: max_no < 75°, max_skew < 4.0
+        D: 그 외.
+    """
+    if report.max_non_orthogonality_deg < 40.0 and report.max_skewness < 0.5:
+        return "A"
+    if report.max_non_orthogonality_deg < 60.0 and report.max_skewness < 1.5:
+        return "B"
+    if report.max_non_orthogonality_deg < 75.0 and report.max_skewness < 4.0:
+        return "C"
+    return "D"
