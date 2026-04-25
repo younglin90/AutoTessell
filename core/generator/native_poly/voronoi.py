@@ -317,6 +317,33 @@ def generate_native_poly_voronoi(
         ]
         final_cells.append(remapped_cell)
 
+    # Y2 (beta1660) — Voronoi cell vertex Laplacian smoothing (skewness 잡기).
+    # 평균 skewness 100+ → < 5 목표. quality 검증 후 채택 (revert 가드).
+    try:
+        from core.generator.native_poly.quality import (
+            smooth_poly_in_memory, poly_quality_report,
+        )
+        prev_skew = poly_quality_report(final_vertices, final_cells).max_skewness
+        smoothed = smooth_poly_in_memory(
+            final_vertices, final_cells, n_iter=3, relax=0.25,
+        )
+        new_skew = poly_quality_report(smoothed, final_cells).max_skewness
+        if new_skew < prev_skew * 0.9:
+            log.info(
+                "native_poly_smoothed",
+                prev_max_skew=round(prev_skew, 3),
+                new_max_skew=round(new_skew, 3),
+            )
+            final_vertices = smoothed
+        else:
+            log.debug(
+                "native_poly_smooth_revert",
+                prev_max_skew=round(prev_skew, 3),
+                new_max_skew=round(new_skew, 3),
+            )
+    except Exception as exc:
+        log.debug("native_poly_smooth_skipped", reason=str(exc))
+
     try:
         stats = _write_polymesh_poly(final_vertices, final_cells, case_dir)
     except Exception as exc:

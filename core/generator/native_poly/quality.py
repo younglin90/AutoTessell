@@ -126,6 +126,69 @@ def poly_quality_report(
     )
 
 
+def smooth_poly_in_memory(
+    pts: np.ndarray,
+    cells: list[list[list[int]]],
+    *,
+    n_iter: int = 3,
+    relax: float = 0.25,
+    lock_vertex_ids: np.ndarray | None = None,
+) -> np.ndarray:
+    """Y2 (beta1660) — polyhedral cell vertex Laplacian (in-memory).
+
+    각 vertex 를 인접한 vertex (같은 face 의 다른 vertex) 의 평균 위치로
+    relax 이동. boundary vertex (lock_vertex_ids 또는 1-owner face vertex)
+    는 고정.
+
+    skewness 폭주 (cube/cyl 의 100+ skew) 를 잡는 핵심 단계.
+    """
+    pts = np.asarray(pts, dtype=np.float64).copy()
+    n = pts.shape[0]
+    if n == 0 or not cells:
+        return pts
+
+    # face owner 카운트 → boundary vertex 식별.
+    face_owner: dict[tuple[int, ...], int] = {}
+    for cell_faces in cells:
+        for f in cell_faces:
+            k = tuple(sorted(f))
+            face_owner[k] = face_owner.get(k, 0) + 1
+    boundary_v: set[int] = set()
+    for cell_faces in cells:
+        for f in cell_faces:
+            k = tuple(sorted(f))
+            if face_owner[k] == 1:
+                boundary_v.update(f)
+
+    locked = np.zeros(n, dtype=bool)
+    for vi in boundary_v:
+        if 0 <= vi < n:
+            locked[vi] = True
+    if lock_vertex_ids is not None and len(lock_vertex_ids) > 0:
+        locked[np.asarray(lock_vertex_ids, dtype=np.int64)] = True
+
+    # vertex → 인접 vertex set (face 안의 다른 vertex).
+    nbrs: list[set[int]] = [set() for _ in range(n)]
+    for cell_faces in cells:
+        for f in cell_faces:
+            for vi in f:
+                if 0 <= vi < n:
+                    nbrs[vi].update(int(x) for x in f if int(x) != vi)
+
+    for _ in range(int(n_iter)):
+        new_pts = pts.copy()
+        for vi in range(n):
+            if locked[vi]:
+                continue
+            ngs = nbrs[vi]
+            if not ngs:
+                continue
+            cen = pts[list(ngs)].mean(axis=0)
+            new_pts[vi] = pts[vi] + float(relax) * (cen - pts[vi])
+        pts = new_pts
+    return pts
+
+
 def poly_quality_grade(report: PolyQualityReport) -> str:
     """Fluent poly mesher 기준 grade.
 
