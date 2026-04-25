@@ -337,24 +337,28 @@ def generate_native_poly_voronoi(
                 dropped=n_drop, before=prev_n, after=len(final_cells),
             )
 
+        # AA1 (beta1680) — n_iter 8 + 큰 relax + 단계별 best 채택.
         prev_skew = poly_quality_report(final_vertices, final_cells).max_skewness
-        smoothed = smooth_poly_in_memory(
-            final_vertices, final_cells, n_iter=5, relax=0.3,
-        )
-        new_skew = poly_quality_report(smoothed, final_cells).max_skewness
-        if new_skew < prev_skew * 0.9:
+        best_pts = final_vertices
+        best_skew = prev_skew
+        cur_pts = final_vertices
+        for _it_block in range(4):   # 2 iter × 4 block.
+            cur_pts = smooth_poly_in_memory(
+                cur_pts, final_cells, n_iter=2, relax=0.35,
+            )
+            cur_skew = poly_quality_report(cur_pts, final_cells).max_skewness
+            if cur_skew < best_skew:
+                best_skew = cur_skew
+                best_pts = cur_pts.copy()
+            else:
+                break   # divergence 시 중단.
+        if best_skew < prev_skew * 0.95:
             log.info(
                 "native_poly_smoothed",
                 prev_max_skew=round(prev_skew, 3),
-                new_max_skew=round(new_skew, 3),
+                new_max_skew=round(best_skew, 3),
             )
-            final_vertices = smoothed
-        else:
-            log.debug(
-                "native_poly_smooth_revert",
-                prev_max_skew=round(prev_skew, 3),
-                new_max_skew=round(new_skew, 3),
-            )
+            final_vertices = best_pts
     except Exception as exc:
         log.debug("native_poly_smooth_skipped", reason=str(exc))
 
