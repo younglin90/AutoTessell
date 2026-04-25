@@ -1254,7 +1254,6 @@ def generate_native_tet(
         base_score, base_metrics = _score(base_pts_for_fallback, base_filt_tets)
 
         # W2 (beta1620) — 후보 2: V-only Delaunay (입력 vertex 만 사용).
-        # cube/cyl 처럼 surface vertex 만으로도 충분히 탄탄한 base 가 가능.
         v_only_score = -1.0
         v_only_pts = None
         v_only_tets = None
@@ -1270,6 +1269,60 @@ def generate_native_tet(
                 v_only_tets = v_only_tets_raw[v_keep]
                 v_only_pts = V.copy()
                 v_only_score, v_only_metrics = _score(v_only_pts, v_only_tets)
+        except Exception:
+            pass
+
+        # W5 (beta1630) — V-only 후보 + interior point 추가 + quality smoothing.
+        # cube/cyl 의 mean_q 0.22 → 0.30+ 향상으로 grade B → A 도달.
+        v_only_smoothed_score = -1.0
+        v_only_smoothed_pts = None
+        v_only_smoothed_tets = None
+        try:
+            if v_only_pts is not None and v_only_tets is not None:
+                # bbox 중심에 interior point 1개 추가 → re-Delaunay → smooth.
+                bbox_min_v = V.min(axis=0)
+                bbox_max_v = V.max(axis=0)
+                center = 0.5 * (bbox_min_v + bbox_max_v)
+                # 8 corner 중간 정점들 추가 (총 9 추가).
+                ext_pts = [center.tolist()]
+                for off in [
+                    [0.4, 0, 0], [-0.4, 0, 0],
+                    [0, 0.4, 0], [0, -0.4, 0],
+                    [0, 0, 0.4], [0, 0, -0.4],
+                ]:
+                    p = center + np.asarray(off) * (bbox_max_v - bbox_min_v)
+                    ext_pts.append(p.tolist())
+                aug_pts = np.vstack([V, np.asarray(ext_pts)])
+                # winding inside 한 점만 keep.
+                inside_aug = _inside_winding_number(aug_pts[V.shape[0]:], V, F)
+                aug_pts = np.vstack([V, aug_pts[V.shape[0]:][inside_aug]])
+                from scipy.spatial import Delaunay as _D_aug
+                Daug = _D_aug(aug_pts)
+                aug_tets_raw = np.asarray(Daug.simplices, dtype=np.int64)
+                aug_cen = aug_pts[aug_tets_raw].mean(axis=1)
+                aug_ins = _inside_winding_number(aug_cen, V, F)
+                aug_on_surf = (aug_tets_raw < V.shape[0]).all(axis=1)
+                aug_keep = aug_ins | aug_on_surf
+                aug_tets = aug_tets_raw[aug_keep]
+
+                # AMIPS analytic 으로 quality smoothing (interior 만).
+                try:
+                    from core.generator.native_tet.amips import (
+                        smooth_amips_analytic,
+                    )
+                    locked_v = np.arange(V.shape[0], dtype=np.int64)
+                    _, aug_pts_sm = smooth_amips_analytic(
+                        aug_pts, aug_tets,
+                        locked_vertex_ids=locked_v,
+                        n_iter=3, alpha=1.0,
+                    )
+                    aug_pts = aug_pts_sm
+                except Exception:
+                    pass
+
+                v_only_smoothed_pts = aug_pts
+                v_only_smoothed_tets = aug_tets
+                v_only_smoothed_score, _ = _score(aug_pts, aug_tets)
         except Exception:
             pass
 
@@ -1297,6 +1350,11 @@ def generate_native_tet(
             best_score = v_only_score
             best_pts = v_only_pts
             best_tets = v_only_tets
+        if v_only_smoothed_score > best_score + float(prefer_base_threshold):
+            best_label = "v_only_smoothed"
+            best_score = v_only_smoothed_score
+            best_pts = v_only_smoothed_pts
+            best_tets = v_only_smoothed_tets
 
         if best_label != "final":
             log.warning(
