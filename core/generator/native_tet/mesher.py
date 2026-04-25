@@ -1024,17 +1024,45 @@ def generate_native_tet(
                 degenerate=vr.n_degenerate,
             )
 
-    # Round 73-74: extreme sliver 제거 (파라미터 노출).
+    # Round 73-74: extreme sliver 제거 (파라미터 노출). V5 — surface-aware revert.
     if enable_phase_a:
         try:
             from core.generator.native_tet.validate import drop_extreme_slivers
+            from core.generator.native_tet.plane_coverage import (
+                plane_coverage as _pc_pre,
+            )
+
+            prev_tets_drop = final_tets.copy()
+            try:
+                prev_area_drop = float(
+                    _pc_pre(V, F, final_pts, prev_tets_drop).area_coverage
+                )
+            except Exception:
+                prev_area_drop = -1.0
 
             final_tets, n_drop = drop_extreme_slivers(
                 final_pts, final_tets,
                 min_dihedral_deg=float(sliver_drop_min_dihedral_deg),
                 min_aspect_regular=float(sliver_drop_max_aspect),
             )
-            if n_drop > 0:
+
+            try:
+                new_area_drop = float(
+                    _pc_pre(V, F, final_pts, final_tets).area_coverage
+                )
+            except Exception:
+                new_area_drop = prev_area_drop
+            if (
+                prev_area_drop > 0
+                and new_area_drop + 0.05 < prev_area_drop
+            ):
+                log.warning(
+                    "native_tet_drop_slivers_revert",
+                    prev_area=round(prev_area_drop, 3),
+                    new_area=round(new_area_drop, 3),
+                )
+                final_tets = prev_tets_drop
+            elif n_drop > 0:
                 log.info("native_tet_drop_slivers", dropped=n_drop)
         except Exception as exc:
             log.debug("native_tet_drop_slivers_skipped", reason=str(exc))
