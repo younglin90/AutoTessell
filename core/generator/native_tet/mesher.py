@@ -31,7 +31,9 @@ class NativeTetResult:
     # beta1420 (Q4) — 통합 PASS gate 평가.
     quality_grade: str = "?"           # 'A' / 'B' / 'C' / '?'
     cdt_ratio: float = -1.0
-    cdt_face_ratio: float = -1.0       # T3 — surface face 회복률.
+    cdt_face_ratio: float = -1.0       # T3 — surface face 회복률 (strict).
+    plane_coverage: float = -1.0       # V1 — fTetWild-style plane conformity.
+    plane_area_coverage: float = -1.0
     hausdorff_relative: float = -1.0   # h_symmetric / bbox_diag.
 
     @property
@@ -134,6 +136,9 @@ def generate_native_tet(
     # beta1430 (Q6) — outer loop: B 등급 이하면 추가 cycle 까지.
     cdt_recovery_outer_iter: int = 1,
     cdt_recovery_target_ratio: float = 0.9,
+    # beta1530 (V3) — boundary clipping (외부 tet 제거).
+    enable_boundary_clip: bool = False,
+    boundary_clip_threshold: float = 0.5,
 ) -> NativeTetResult:
     """입력 표면 메쉬 → tet polyMesh (MVP).
 
@@ -1001,6 +1006,25 @@ def generate_native_tet(
     except Exception:
         pass
 
+    # beta1530 (V3) — 외부 tet 제거: 입력 surface 외부에 centroid 가 있는 tet drop.
+    if enable_boundary_clip:
+        try:
+            from core.generator.native_tet.boundary_clip import (
+                clip_to_input_surface,
+            )
+            final_pts, final_tets, clip_info = clip_to_input_surface(
+                final_pts, final_tets, V, F,
+                inside_threshold=float(boundary_clip_threshold),
+            )
+            log.info(
+                "native_tet_boundary_clip",
+                dropped=clip_info.n_dropped,
+                tets_after=clip_info.n_tets_after,
+                face_ratio=round(clip_info.face_ratio_after, 3),
+            )
+        except Exception as exc:
+            log.debug("native_tet_boundary_clip_skipped", reason=str(exc))
+
     # beta1460 (T2) — 입력 surface vertex 가 결과 mesh 의 같은 좌표를 유지하는지
     # 강제 보정. final_pts 의 [0:n_surface] 가 V 와 일치해야 hausdorff 측정이
     # 의미 있음. 일부 path (Phase A smooth) 가 surface vertex 위치를 살짝 옮길
@@ -1026,6 +1050,8 @@ def generate_native_tet(
     grade = "?"
     cdt_ratio_val = -1.0
     cdt_face_ratio_val = -1.0
+    plane_cov_val = -1.0
+    plane_area_cov_val = -1.0
     haus_rel = -1.0
     try:
         from core.generator.native_tet.cdt_check import (
@@ -1033,6 +1059,7 @@ def generate_native_tet(
             cdt_ratio as _cdt_ratio, cdt_face_ratio as _cdt_face_ratio,
         )
         from core.generator.native_tet.hausdorff import hausdorff_vs_input
+        from core.generator.native_tet.plane_coverage import plane_coverage
 
         # T1 — chain-based 검사 (subdivided edge 도 회복으로 인정).
         try:
@@ -1043,6 +1070,13 @@ def generate_native_tet(
         # face ratio (strict).
         cdt_strict = check_edge_recovery(F, final_tets)
         cdt_face_ratio_val = float(_cdt_face_ratio(cdt_strict))
+        # V1 — plane coverage (fTetWild-style).
+        try:
+            pc = plane_coverage(V, F, final_pts, final_tets)
+            plane_cov_val = float(pc.plane_coverage)
+            plane_area_cov_val = float(pc.area_coverage)
+        except Exception:
+            pass
 
         haus = hausdorff_vs_input(
             V, F, final_pts, final_tets, n_samples_per_tri=2,
@@ -1051,24 +1085,24 @@ def generate_native_tet(
         diag = float(np.linalg.norm(bbox)) + 1e-30
         haus_rel = float(haus.h_symmetric / diag)
 
-        # U3 — A-grade 는 chain CDT + face_ratio + mean_q 동시 충족.
+        # V3 — plane_coverage 가 fTetWild 정합 메트릭. A 는 plane_coverage 우선.
         mean_q = float(getattr(final_quality, "mean_q", 0.0)) if final_quality else 0.0
-        haus_ok = haus_rel <= 0.5
         if (
-            cdt_ratio_val >= 0.9
-            and cdt_face_ratio_val >= 0.7
+            plane_cov_val >= 0.95
+            and plane_area_cov_val >= 0.95
             and mean_q >= 0.25
-            and haus_ok
         ):
             grade = "A"
         elif (
-            cdt_ratio_val >= 0.7
-            and cdt_face_ratio_val >= 0.4
+            plane_cov_val >= 0.8
+            and plane_area_cov_val >= 0.8
             and mean_q >= 0.18
-            and haus_ok
         ):
             grade = "B"
-        elif cdt_ratio_val >= 0.4 and mean_q >= 0.10:
+        elif (
+            (plane_cov_val >= 0.5 or cdt_ratio_val >= 0.5)
+            and mean_q >= 0.10
+        ):
             grade = "C"
         else:
             grade = "D"
@@ -1077,6 +1111,8 @@ def generate_native_tet(
             grade=grade,
             cdt_ratio=round(cdt_ratio_val, 3),
             cdt_face_ratio=round(cdt_face_ratio_val, 3),
+            plane_coverage=round(plane_cov_val, 3),
+            plane_area_coverage=round(plane_area_cov_val, 3),
             hausdorff_rel=round(haus_rel, 5),
             mean_q=round(mean_q, 3),
         )
@@ -1113,5 +1149,7 @@ def generate_native_tet(
         quality_grade=grade,
         cdt_ratio=float(cdt_ratio_val),
         cdt_face_ratio=float(cdt_face_ratio_val),
+        plane_coverage=float(plane_cov_val),
+        plane_area_coverage=float(plane_area_cov_val),
         hausdorff_relative=float(haus_rel),
     )

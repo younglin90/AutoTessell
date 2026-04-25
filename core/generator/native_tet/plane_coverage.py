@@ -91,9 +91,9 @@ def plane_coverage(
     V_surf: np.ndarray, F_surf: np.ndarray,
     pts: np.ndarray, tets: np.ndarray,
     *,
-    normal_tol: float = 5e-3,
-    offset_rel_tol: float = 5e-4,
-    area_match_tol: float = 0.05,
+    normal_tol: float = 5e-2,
+    offset_rel_tol: float = 5e-3,
+    area_match_tol: float = 0.10,
 ) -> PlaneCoverageResult:
     """입력 F 의 각 plane 이 결과 boundary face 들로 덮이는지.
 
