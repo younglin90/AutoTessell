@@ -113,6 +113,28 @@ def run_cdt_recovery(
     except Exception:
         pass
 
+    # (a2) Q2 cavity re-triangulation — surface-aligned diagonal 선택.
+    try:
+        from core.generator.native_tet.cavity_retri import (
+            cavity_retri_for_missing_edges,
+        )
+        r_cur = check_edge_recovery(F_surf, tets)
+        if r_cur.n_missing > 0:
+            tets_before = tets.copy()
+            tets_new, retri_info = cavity_retri_for_missing_edges(
+                pts, tets, r_cur.missing_edges,
+            )
+            r_try = check_edge_recovery(F_surf, tets_new)
+            if r_try.n_missing < r_cur.n_missing:
+                tets = tets_new
+                cycles_done = max(cycles_done, 1)
+            elif retri_info.n_recovered > 0:
+                # 같거나 더 많아지면 revert (보수).
+                tets = tets_before
+                reverted += 1
+    except Exception:
+        pass
+
     # (b) insertion-기반 cycle 반복.
     for cycle in range(1, int(max_cycles) + 1):
         r_cur = check_edge_recovery(F_surf, tets)
