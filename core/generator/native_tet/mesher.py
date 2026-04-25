@@ -564,10 +564,21 @@ def generate_native_tet(
     centroids = all_pts[tets].mean(axis=1)
     inside_tet = _inside_winding_number(centroids, V, F)
 
-    # 3b) Phase A2 — boundary-aware sliver filter.
+    # 3b) Phase A2 — boundary-aware sliver filter. V6 — surface-area revert.
     q_thresh = max(0.0, float(sliver_quality_threshold))
     if enable_phase_a:
         from core.generator.native_tet.filter import filter_slivers
+        from core.generator.native_tet.plane_coverage import (
+            plane_coverage as _pc_pre_filter,
+        )
+
+        # 사전 area (filter 전).
+        try:
+            prev_area_filter = float(
+                _pc_pre_filter(V, F, all_pts, tets).area_coverage
+            )
+        except Exception:
+            prev_area_filter = -1.0
 
         fr = filter_slivers(
             tets, all_pts, inside_tet,
@@ -577,15 +588,36 @@ def generate_native_tet(
             protect_boundary_faces=protect_boundary_faces,
         )
         keep_mask = fr.keep_mask
-        log.info(
-            "native_tet_sliver_filter_phase_a",
-            kept=int(keep_mask.sum()),
-            dropped_total=fr.n_dropped,
-            interior_dropped=fr.n_interior_dropped,
-            boundary_protected=fr.n_boundary_protected,
-            q_thresh_interior=fr.q_thresh_interior,
-            q_thresh_boundary=fr.q_thresh_boundary,
-        )
+
+        # filter 적용 후 area 측정.
+        try:
+            new_area_filter = float(
+                _pc_pre_filter(V, F, all_pts, tets[keep_mask]).area_coverage
+            )
+        except Exception:
+            new_area_filter = prev_area_filter
+        if (
+            prev_area_filter > 0
+            and new_area_filter + 0.05 < prev_area_filter
+        ):
+            log.warning(
+                "native_tet_sliver_filter_revert",
+                prev_area=round(prev_area_filter, 3),
+                new_area=round(new_area_filter, 3),
+                reason="filter_slivers 가 surface plane 깨뜨림",
+            )
+            # 보수: inside_tet 만 keep, sliver drop 안 함.
+            keep_mask = inside_tet.copy()
+        else:
+            log.info(
+                "native_tet_sliver_filter_phase_a",
+                kept=int(keep_mask.sum()),
+                dropped_total=fr.n_dropped,
+                interior_dropped=fr.n_interior_dropped,
+                boundary_protected=fr.n_boundary_protected,
+                q_thresh_interior=fr.q_thresh_interior,
+                q_thresh_boundary=fr.q_thresh_boundary,
+            )
     else:
         # legacy: 일괄 q_thresh 적용.
         v = all_pts[tets]
