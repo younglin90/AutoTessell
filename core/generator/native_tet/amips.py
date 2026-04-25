@@ -72,6 +72,27 @@ def _one_ring_energy(
     return float(e.sum())
 
 
+def _amips_local_energy(
+    pts: np.ndarray, tet_rows: np.ndarray, alpha: float,
+) -> tuple[float, bool]:
+    """1-ring tet 의 합 energy + 모든 부피 양수 여부.
+
+    tet_rows: (k, 4) — vertex 의 1-ring tet vertex index.
+    """
+    if tet_rows.shape[0] == 0:
+        return 0.0, True
+    v = pts[tet_rows]
+    vol6 = np.einsum(
+        "ij,ij->i",
+        v[:, 1] - v[:, 0],
+        np.cross(v[:, 2] - v[:, 0], v[:, 3] - v[:, 0]),
+    )
+    if (vol6 <= 1e-20).any():
+        return float("inf"), False
+    e = _tet_amips_energy(v[:, 0], v[:, 1], v[:, 2], v[:, 3], alpha)
+    return float(e.sum()), True
+
+
 def smooth_amips(
     pts: np.ndarray,
     tets: np.ndarray,
@@ -94,6 +115,16 @@ def smooth_amips(
              accept. 아니면 step /= 2.
         4) step < step_min 이면 skip.
     """
+    """Q1 (beta1390) — 1-ring restricted + vectorized 3-axis finite-diff.
+
+    핵심 가속:
+      - vertex i 의 1-ring tet 만 numpy slice 로 가져와 evaluation.
+      - gradient 의 3축 forward/backward 6 evaluation 을 1-ring tet 에 한정.
+      - global energy 합산은 시작/종료 시 1번씩만 (중간엔 local 만).
+      - line-search 가 fail 하면 1-ring 에 손대지 않고 즉시 skip.
+
+    finite-diff 자체 유지 (analytic gradient 는 별도 라운드).
+    """
     pts = np.asarray(pts, dtype=np.float64).copy()
     tets = np.asarray(tets, dtype=np.int64)
     n = pts.shape[0]
@@ -104,54 +135,56 @@ def smooth_amips(
     if locked_vertex_ids is not None and len(locked_vertex_ids) > 0:
         locked_mask[np.asarray(locked_vertex_ids, dtype=np.int64)] = True
 
-    # vertex → 1-ring tet index 리스트.
-    v2t: list[list[int]] = [[] for _ in range(n)]
+    # 1-ring tet index — np.add.at 으로 호환 빌드.
+    counts = np.zeros(n, dtype=np.int64)
+    for k in range(4):
+        np.add.at(counts, tets[:, k], 1)
+    offsets = np.concatenate([[0], np.cumsum(counts)])
+    flat = np.empty(int(counts.sum()), dtype=np.int64)
+    cursor = offsets[:-1].copy()
     for ti in range(tets.shape[0]):
         for k in range(4):
-            v2t[int(tets[ti, k])].append(ti)
+            v = int(tets[ti, k])
+            flat[cursor[v]] = ti
+            cursor[v] += 1
 
-    def _energy_incident(vi: int) -> tuple[float, bool]:
-        inc = v2t[vi]
-        if not inc:
+    def _incident_tets(vi: int) -> np.ndarray:
+        return flat[offsets[vi]:offsets[vi + 1]]
+
+    def _energy_local(vi: int) -> tuple[float, bool]:
+        inc = _incident_tets(vi)
+        if inc.size == 0:
             return 0.0, True
-        t = tets[inc]
-        v = pts[t]
-        # volume sign 체크 — 하나라도 <=0 이면 invalid.
-        vol6 = np.einsum(
-            "ij,ij->i",
-            v[:, 1] - v[:, 0],
-            np.cross(v[:, 2] - v[:, 0], v[:, 3] - v[:, 0]),
-        )
-        if (vol6 <= 1e-20).any():
-            return float("inf"), False
-        e = _tet_amips_energy(v[:, 0], v[:, 1], v[:, 2], v[:, 3], alpha)
-        return float(e.sum()), True
+        return _amips_local_energy(pts, tets[inc], alpha)
 
-    e_before = 0.0
-    for vi in range(n):
-        eb, _ = _energy_incident(vi)
-        if np.isfinite(eb):
-            e_before += eb
+    # 전역 energy (시작/종료 1회).
+    v_all = pts[tets]
+    e_all_before = _tet_amips_energy(
+        v_all[:, 0], v_all[:, 1], v_all[:, 2], v_all[:, 3], alpha,
+    )
+    e_before = float(e_all_before[np.isfinite(e_all_before)].sum())
 
     max_disp = 0.0
     moved = 0
     for _ in range(int(n_iter)):
         for vi in range(n):
-            if locked_mask[vi]:
+            if locked_mask[vi] or counts[vi] == 0:
                 continue
-            e0, ok0 = _energy_incident(vi)
+            e0, ok0 = _energy_local(vi)
             if not ok0 or not np.isfinite(e0):
                 continue
 
-            # finite-diff gradient.
             orig = pts[vi].copy()
             grad = np.zeros(3, dtype=np.float64)
             for ax in range(3):
                 pts[vi, ax] = orig[ax] + grad_eps
-                eplus, _ = _energy_incident(vi)
+                eplus, _ = _energy_local(vi)
                 pts[vi, ax] = orig[ax] - grad_eps
-                eminus, _ = _energy_incident(vi)
+                eminus, _ = _energy_local(vi)
                 pts[vi, ax] = orig[ax]
+                if not (np.isfinite(eplus) and np.isfinite(eminus)):
+                    grad = np.zeros(3, dtype=np.float64)
+                    break
                 grad[ax] = (eplus - eminus) / (2.0 * grad_eps)
 
             gnorm = float(np.linalg.norm(grad))
@@ -163,7 +196,7 @@ def smooth_amips(
             improved = False
             while step >= step_min:
                 pts[vi] = orig + step * direction
-                e1, ok1 = _energy_incident(vi)
+                e1, ok1 = _energy_local(vi)
                 if ok1 and np.isfinite(e1) and e1 < e0 - 1e-20:
                     improved = True
                     disp = float(np.linalg.norm(step * direction))
@@ -175,11 +208,11 @@ def smooth_amips(
             if not improved:
                 pts[vi] = orig
 
-    e_after = 0.0
-    for vi in range(n):
-        ea, _ = _energy_incident(vi)
-        if np.isfinite(ea):
-            e_after += ea
+    v_all2 = pts[tets]
+    e_all_after = _tet_amips_energy(
+        v_all2[:, 0], v_all2[:, 1], v_all2[:, 2], v_all2[:, 3], alpha,
+    )
+    e_after = float(e_all_after[np.isfinite(e_all_after)].sum())
 
     return AMIPSResult(
         n_iter=int(n_iter),
