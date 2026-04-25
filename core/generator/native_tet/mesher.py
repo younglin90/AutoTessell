@@ -1241,11 +1241,37 @@ def generate_native_tet(
 
         final_score, final_metrics = _score(final_pts, final_tets)
 
-        # 후보 1: base + inside winding filter.
+        # 후보 1: base + inside winding filter (+ surface-vertex tet 강제 keep).
         base_centroids = base_pts_for_fallback[base_tets_for_fallback].mean(axis=1)
         base_inside = _inside_winding_number(base_centroids, V, F)
+        try:
+            n_surface_in = int(V.shape[0])
+            on_surface = (base_tets_for_fallback < n_surface_in).all(axis=1)
+            base_inside = base_inside | on_surface
+        except Exception:
+            pass
         base_filt_tets = base_tets_for_fallback[base_inside]
         base_score, base_metrics = _score(base_pts_for_fallback, base_filt_tets)
+
+        # W2 (beta1620) — 후보 2: V-only Delaunay (입력 vertex 만 사용).
+        # cube/cyl 처럼 surface vertex 만으로도 충분히 탄탄한 base 가 가능.
+        v_only_score = -1.0
+        v_only_pts = None
+        v_only_tets = None
+        try:
+            from scipy.spatial import Delaunay as _D_v
+            if V.shape[0] >= 4:
+                Dv = _D_v(V)
+                v_only_tets_raw = np.asarray(Dv.simplices, dtype=np.int64)
+                v_cen = V[v_only_tets_raw].mean(axis=1)
+                v_ins = _inside_winding_number(v_cen, V, F)
+                v_on_surf = (v_only_tets_raw < V.shape[0]).all(axis=1)
+                v_keep = v_ins | v_on_surf
+                v_only_tets = v_only_tets_raw[v_keep]
+                v_only_pts = V.copy()
+                v_only_score, v_only_metrics = _score(v_only_pts, v_only_tets)
+        except Exception:
+            pass
 
         log.info(
             "native_tet_best_of_candidates",
@@ -1253,16 +1279,34 @@ def generate_native_tet(
             final_metrics=tuple(round(x, 3) for x in final_metrics),
             base_score=round(base_score, 3),
             base_metrics=tuple(round(x, 3) for x in base_metrics),
+            v_only_score=round(v_only_score, 3) if v_only_score >= 0 else -1,
         )
 
-        if base_score > final_score + float(prefer_base_threshold):
+        # 3 후보 중 최고 score.
+        best_label = "final"
+        best_score = final_score
+        best_pts = final_pts
+        best_tets = final_tets
+        if base_score > best_score + float(prefer_base_threshold):
+            best_label = "base"
+            best_score = base_score
+            best_pts = base_pts_for_fallback
+            best_tets = base_filt_tets
+        if v_only_score > best_score + float(prefer_base_threshold):
+            best_label = "v_only"
+            best_score = v_only_score
+            best_pts = v_only_pts
+            best_tets = v_only_tets
+
+        if best_label != "final":
             log.warning(
-                "native_tet_best_of_picks_base",
-                base_score=round(base_score, 3),
+                "native_tet_best_of_picks_alt",
+                pick=best_label,
+                score=round(best_score, 3),
                 final_score=round(final_score, 3),
             )
-            final_pts = base_pts_for_fallback
-            final_tets = base_filt_tets
+            final_pts = best_pts
+            final_tets = best_tets
     except Exception as exc:
         log.debug("native_tet_best_of_skipped", reason=str(exc))
 
