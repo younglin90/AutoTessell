@@ -655,12 +655,42 @@ def generate_native_tet(
             corner_new_ids = corner_new_ids[corner_new_ids >= 0]
             corner_new_ids_array = corner_new_ids
 
+        # V4 (beta1540) — smooth 가 surface plane 을 깨뜨리면 revert.
+        prev_pts_smooth = final_pts.copy()
+        try:
+            from core.generator.native_tet.plane_coverage import (
+                plane_coverage as _pc_pre,
+            )
+            prev_area_smooth = float(
+                _pc_pre(V, F, final_pts, final_tets).area_coverage
+            )
+        except Exception:
+            prev_area_smooth = -1.0
+
         sr = smooth_interior(
             final_pts, final_tets,
             locked_vertex_ids=np.asarray(locked_new, dtype=np.int64),
             n_iter=int(smooth_iterations),
             relax=float(smooth_relax),
         )
+
+        try:
+            new_area_smooth = float(
+                _pc_pre(V, F, final_pts, final_tets).area_coverage
+            )
+        except Exception:
+            new_area_smooth = prev_area_smooth
+        if (
+            prev_area_smooth > 0
+            and new_area_smooth + 0.05 < prev_area_smooth
+        ):
+            log.warning(
+                "native_tet_smooth_revert",
+                prev_area=round(prev_area_smooth, 3),
+                new_area=round(new_area_smooth, 3),
+                reason="surface plane coverage 가 smooth 후 떨어짐",
+            )
+            final_pts = prev_pts_smooth
         log.info(
             "native_tet_smooth",
             n_iter=sr.n_iter,
@@ -955,11 +985,38 @@ def generate_native_tet(
                 log.debug("native_tet_amips_skipped", reason=str(exc))
 
     # 4d) Round 10 — inverted tet 안전판 (local op 반복 후 numerical edge).
+    # V4 (beta1540) — surface-aware swap revert: fix_inverted 후 plane_area
+    # coverage 가 5%+ 떨어지면 swap 결과를 버린다 (inverted tet 그대로 둔다).
     if enable_phase_a:
         from core.generator.native_tet.validate import fix_inverted_tets
 
+        prev_tets = final_tets.copy()
+        try:
+            from core.generator.native_tet.plane_coverage import plane_coverage as _pc
+
+            prev_area = float(_pc(V, F, final_pts, prev_tets).area_coverage)
+        except Exception:
+            prev_area = -1.0
+
         final_tets, vr = fix_inverted_tets(final_pts, final_tets)
-        if vr.n_inverted_before > 0 or vr.n_degenerate > 0:
+
+        # surface plane area 가 깨졌는지 확인.
+        try:
+            new_area = float(_pc(V, F, final_pts, final_tets).area_coverage)
+        except Exception:
+            new_area = prev_area
+        if (
+            prev_area > 0 and new_area >= 0
+            and new_area + 0.05 < prev_area
+        ):
+            log.warning(
+                "native_tet_validate_revert",
+                prev_area=round(prev_area, 3),
+                new_area=round(new_area, 3),
+                reason="fix_inverted swap broke surface plane coverage",
+            )
+            final_tets = prev_tets
+        elif vr.n_inverted_before > 0 or vr.n_degenerate > 0:
             log.info(
                 "native_tet_validate",
                 n_inverted=vr.n_inverted_before,
