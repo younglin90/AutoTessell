@@ -129,6 +129,9 @@ def generate_native_tet(
     chunked_delaunay_threshold: int = 30000,
     enable_chunked_delaunay: bool = True,
     chunked_n_div: int = 2,
+    # V2 (beta1580) — Steiner edge midpoint 사전 삽입.
+    enable_edge_steiner: bool = False,
+    edge_steiner_count: int = 1,
     # beta1370 — CDT recovery 통합 (P1).
     enable_cdt_recovery: bool = False,
     cdt_recovery_max_cycles: int = 3,
@@ -250,6 +253,40 @@ def generate_native_tet(
         grid = grid[inside_mask]
 
     all_pts = np.vstack([V, grid]) if grid.shape[0] else V.copy()
+
+    # V2 (beta1580) — Steiner edge midpoint 사전 삽입.
+    # 입력 F 의 각 edge midpoint 를 점으로 추가하면 Delaunay 결과 surface
+    # face 분할이 입력과 더 일치한다 (chained CDT 회복률 ↑).
+    if enable_edge_steiner and F.shape[0] > 0:
+        try:
+            from core.generator.native_tet.cdt_check import _tet_edges  # noqa
+            surf_edges_set: set[tuple[int, int]] = set()
+            for ti in range(F.shape[0]):
+                a, b, c = (int(x) for x in F[ti])
+                for u, vv in ((a, b), (b, c), (c, a)):
+                    surf_edges_set.add((u, vv) if u < vv else (vv, u))
+            extras: list[list[float]] = []
+            n_per = max(1, int(edge_steiner_count))
+            for (u, vv) in surf_edges_set:
+                a = V[u]; b = V[vv]
+                for k in range(1, n_per + 1):
+                    t = k / (n_per + 1)
+                    p = a + t * (b - a)
+                    d = np.linalg.norm(all_pts - p, axis=1).min() \
+                        if all_pts.shape[0] else 1.0
+                    if d > 1e-7:
+                        extras.append(p.tolist())
+            if extras:
+                all_pts = np.vstack(
+                    [all_pts, np.asarray(extras, dtype=np.float64)],
+                )
+                log.info(
+                    "native_tet_steiner_edges",
+                    n_steiner=len(extras), n_surface_edges=len(surf_edges_set),
+                )
+        except Exception as exc:
+            log.debug("native_tet_steiner_skipped", reason=str(exc))
+
     log.info("native_tet_seed", n_points=all_pts.shape[0], n_grid_inside=grid.shape[0])
 
     # 2) Delaunay (Phase A3: missing triangle 감지 후 시드 추가 재시도).
