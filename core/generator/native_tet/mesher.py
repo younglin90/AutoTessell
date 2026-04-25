@@ -1206,28 +1206,56 @@ def generate_native_tet(
     except Exception:
         pass
 
-    # V8 (beta1570) — final 결과가 base Delaunay 보다 surface area 가 떨어지면 fallback.
+    # W3 (beta1600) — Best-of-two: final vs base+inside 후보 중 점수 최대 채택.
+    # 점수 = area*0.5 + cdt_chain*0.3 + mq*0.2 (단순 가중).
     try:
-        final_area_check = float(
-            _pc_base(V, F, final_pts, final_tets).area_coverage
+        from core.generator.native_tet.cdt_check import (
+            check_edge_recovery_chained, cdt_ratio as _cdt_ratio_w3,
         )
-        if (
-            base_area_for_fallback > 0
-            and final_area_check + 0.20 < base_area_for_fallback
-        ):
+        from core.generator.native_tet.quality import snapshot as _qsnap_w3
+
+        def _score(p_arr, t_arr):
+            try:
+                pc_v = float(_pc_base(V, F, p_arr, t_arr).area_coverage)
+            except Exception:
+                pc_v = 0.0
+            try:
+                cdt_v = float(_cdt_ratio_w3(check_edge_recovery_chained(V, F, p_arr, t_arr)))
+            except Exception:
+                cdt_v = 0.0
+            try:
+                snap = _qsnap_w3(p_arr, t_arr)
+                mq_v = float(getattr(snap, "mean_q", 0.0))
+            except Exception:
+                mq_v = 0.0
+            return 0.5 * pc_v + 0.3 * cdt_v + 0.2 * mq_v, (pc_v, cdt_v, mq_v)
+
+        final_score, final_metrics = _score(final_pts, final_tets)
+
+        # 후보 1: base + inside winding filter.
+        base_centroids = base_pts_for_fallback[base_tets_for_fallback].mean(axis=1)
+        base_inside = _inside_winding_number(base_centroids, V, F)
+        base_filt_tets = base_tets_for_fallback[base_inside]
+        base_score, base_metrics = _score(base_pts_for_fallback, base_filt_tets)
+
+        log.info(
+            "native_tet_best_of_candidates",
+            final_score=round(final_score, 3),
+            final_metrics=tuple(round(x, 3) for x in final_metrics),
+            base_score=round(base_score, 3),
+            base_metrics=tuple(round(x, 3) for x in base_metrics),
+        )
+
+        if base_score > final_score + 0.02:
             log.warning(
-                "native_tet_final_fallback_to_base",
-                final_area=round(final_area_check, 3),
-                base_area=round(base_area_for_fallback, 3),
-                reason="post-pipeline 결과가 base Delaunay 보다 surface 깎임",
+                "native_tet_best_of_picks_base",
+                base_score=round(base_score, 3),
+                final_score=round(final_score, 3),
             )
-            # base 결과 + inside winding filter 만 적용한 fallback.
-            base_centroids = base_pts_for_fallback[base_tets_for_fallback].mean(axis=1)
-            base_inside = _inside_winding_number(base_centroids, V, F)
             final_pts = base_pts_for_fallback
-            final_tets = base_tets_for_fallback[base_inside]
+            final_tets = base_filt_tets
     except Exception as exc:
-        log.debug("native_tet_final_fallback_skipped", reason=str(exc))
+        log.debug("native_tet_best_of_skipped", reason=str(exc))
 
     # beta1530 (V3) — 외부 tet 제거: 입력 surface 외부에 centroid 가 있는 tet drop.
     if enable_boundary_clip:
