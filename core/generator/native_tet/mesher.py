@@ -880,6 +880,17 @@ def generate_native_tet(
             prev_pts = final_pts.copy()
             prev_tets = final_tets.copy()
 
+            # V7 (beta1590) — Phase B iteration 시작 시 surface area 캐시.
+            try:
+                from core.generator.native_tet.plane_coverage import (
+                    plane_coverage as _pc_phb,
+                )
+                prev_area_phb = float(
+                    _pc_phb(V, F, prev_pts, prev_tets).area_coverage
+                )
+            except Exception:
+                prev_area_phb = -1.0
+
             # Round 66: split 에도 surface edge 보호.
             _split_surf_edges: set[tuple[int, int]] = set()
             for _ti in range(F.shape[0]):
@@ -943,6 +954,27 @@ def generate_native_tet(
                 protected_faces=surf_face_set,
                 protected_edges=surf_edge_set,
             )
+
+            # V7 (beta1590) — Phase B iteration 후 surface area 검증.
+            try:
+                new_area_phb = float(
+                    _pc_phb(V, F, final_pts, final_tets).area_coverage
+                )
+            except Exception:
+                new_area_phb = prev_area_phb
+            if (
+                prev_area_phb > 0
+                and new_area_phb + 0.05 < prev_area_phb
+            ):
+                log.warning(
+                    "native_tet_phase_b_revert",
+                    iter=loop_idx,
+                    prev_area=round(prev_area_phb, 3),
+                    new_area=round(new_area_phb, 3),
+                )
+                final_pts = prev_pts
+                final_tets = prev_tets
+                break
 
             # 사용 안 된 vertex 제거 (surface vertex 는 보호).
             before_pts = final_pts.shape[0]
