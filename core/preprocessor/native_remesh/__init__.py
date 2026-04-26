@@ -25,6 +25,7 @@ from core.preprocessor.native_remesh.cvt import lloyd_cvt
 from core.preprocessor.native_remesh.isotropic import isotropic_remesh
 
 _UUU1_SI_DETECT = True
+_UUU3_REPAIR_CANDIDATES = False
 
 
 def _detect_self_intersections(V: np.ndarray, F: np.ndarray) -> np.ndarray:
@@ -130,4 +131,27 @@ def _moller_tri_tri(t1: np.ndarray, t2: np.ndarray) -> bool:
     return hi1 >= lo2 - _EPS and hi2 >= lo1 - _EPS
 
 
-__all__ = ["isotropic_remesh", "lloyd_cvt", "_UUU1_SI_DETECT", "_detect_self_intersections"]
+def _si_repair_candidates(V: np.ndarray, F: np.ndarray, si_pairs: np.ndarray) -> list[dict]:
+    """SI face pair → repair candidate 분류.
+    공유 vertex 0 → {"op":"split","faces":[i,j]}.
+    공유 vertex ≥1 → {"op":"merge","faces":[i,j],"shared":k}.
+    호출 site 없음 (UUU4 에서 활성)."""
+    candidates: list[dict] = []
+    for pair in si_pairs:
+        i, j = int(pair[0]), int(pair[1])
+        shared = np.intersect1d(F[i], F[j])
+        if len(shared) == 0:
+            candidates.append({"op": "split", "faces": [i, j]})
+        else:
+            candidates.append({"op": "merge", "faces": [i, j], "shared": int(shared[0])})
+    return candidates
+
+
+__all__ = [
+    "isotropic_remesh",
+    "lloyd_cvt",
+    "_UUU1_SI_DETECT",
+    "_detect_self_intersections",
+    "_UUU3_REPAIR_CANDIDATES",
+    "_si_repair_candidates",
+]
