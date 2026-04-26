@@ -38,6 +38,12 @@ from core.utils.polymesh_reader import (
 
 log = get_logger(__name__)
 
+# TET_LAYERS — 2-layer geometric BL extrusion (cfMesh nLayers=2 default, 1.2× growth).
+# Mirrors POL_LAYERS pattern (R91). Each wall face → chain of 2 prism wedges;
+# each wedge → 3 sub-tets. TET_BL1 guards applied per layer; chain truncated at
+# first rejected layer. Default ON.
+_TET_LAYERS_N: int = 2
+
 
 @dataclass
 class TetSubdivResult:
@@ -235,6 +241,132 @@ def subdivide_prism_layers_to_tet(
             False, time.perf_counter() - t0,
             message="prism vertex pair 추출 실패 — subdivision 불가",
         )
+
+    # TET_LAYERS — multi-layer geometric BL extrusion (cfMesh nLayers=2 mirror of POL_LAYERS R91).
+    # For layers 2..N: geometrically extrude the inner triangle of each accepted prism inward,
+    # apply TET_BL1 guards per layer, truncate chain at first rejected layer.
+    # Uses _geometric_layer_thickness (BL2, 1.2× growth ratio).
+    #
+    # Implementation: accumulate synthetic prism_pairs for layers 2..N as additional entries
+    # keyed by virtual IDs (offset from n_cells). Layer vertex coordinates are stored in an
+    # extended points array; virtual cell IDs use a dedicated counter.
+    _n_layers_added = 1  # layer 1 from existing prism cells
+    _per_fid_layers: dict[int, int] = {cid: 1 for cid in prism_pairs}
+
+    if _TET_LAYERS_N >= 2 and prism_pairs:
+        try:
+            from core.layers.native_bl import _geometric_layer_thickness as _glt  # noqa: PLC0415
+            # First thickness = mean lateral edge length of layer-1 prisms.
+            _lat_edges: list[float] = []
+            for _cid0, (_o0, _i0) in prism_pairs.items():
+                for _k0 in range(3):
+                    _lat_edges.append(float(np.linalg.norm(
+                        points[_i0[_k0]] - points[_o0[_k0]]
+                    )))
+            _first_t = float(np.mean(_lat_edges)) if _lat_edges else 0.01
+            _layer_ts = _glt(_first_t, _TET_LAYERS_N, growth_ratio=1.2)
+            # layer 0 thickness = _layer_ts[0] (approx. same as layer-1 prism height).
+            # layer 1 thickness = _layer_ts[1] (= first_t * 1.2).
+
+            # Extended points list (we may append new vertices).
+            _pts_list: list[np.ndarray] = list(points)
+            # Virtual cell counter — starts after n_cells to avoid collision with real IDs.
+            _vcell_counter = n_cells + len(prism_pairs) * 10  # safe offset
+
+            for _li in range(1, _TET_LAYERS_N):
+                _step_li = float(_layer_ts[_li])
+                _n_acc_li = 0
+                _n_rej_asp_li = 0
+                _n_rej_col_li = 0
+                _new_layer_pairs: dict[int, tuple[list[int], list[int]]] = {}
+
+                for _cid_prev, (_o_prev, _i_prev) in list(prism_pairs.items()):
+                    if _per_fid_layers.get(_cid_prev, 1) < _li:
+                        continue  # this face already truncated at earlier layer
+                    # Inner tri of layer _li-1 becomes outer of layer _li.
+                    _outer_li = list(_i_prev)
+                    # Extrude inward: compute per-vertex inward normal from lateral direction.
+                    _outer_pts_li = np.array([_pts_list[v] for v in _outer_li])
+                    # Inward direction: mean of (inner - outer) from layer-1 prism.
+                    _o_prev_pts = np.array([_pts_list[v] for v in _o_prev])
+                    _i_prev_pts = np.array([_pts_list[v] for v in _i_prev])
+                    _lat_vecs = _i_prev_pts - _o_prev_pts  # shape (3,3)
+                    _lat_norms = np.linalg.norm(_lat_vecs, axis=1, keepdims=True)
+                    _lat_dirs = _lat_vecs / np.maximum(_lat_norms, 1e-30)
+                    # New inner vertices = outer_li + inward_dir * step_li
+                    _inner_pts_li = _outer_pts_li + _lat_dirs * _step_li
+
+                    # TET_BL1 guard 1 — aspect ratio
+                    _edges_li: list[float] = []
+                    for _k in range(3):
+                        _k2 = (_k + 1) % 3
+                        _edges_li.append(float(np.linalg.norm(_outer_pts_li[_k2] - _outer_pts_li[_k])))
+                        _edges_li.append(float(np.linalg.norm(_inner_pts_li[_k2] - _inner_pts_li[_k])))
+                        _edges_li.append(float(np.linalg.norm(_inner_pts_li[_k] - _outer_pts_li[_k])))
+                    _min_e_li = min(_edges_li) if _edges_li else 1.0
+                    _max_e_li = max(_edges_li) if _edges_li else 1.0
+                    _aspect_li = _max_e_li / (_min_e_li + 1e-30)
+                    if _aspect_li > 50.0:
+                        _n_rej_asp_li += 1
+                        log.debug("tet_layers_prism_rejected_aspect",
+                                  layer=_li + 1, cell=_cid_prev, aspect=round(_aspect_li, 2))
+                        continue
+
+                    # TET_BL1 guard 2 — collision check (bounding-sphere approx)
+                    _top_c_li = _inner_pts_li.mean(axis=0)
+                    _local_r_li = (_max_e_li * 0.5) if _max_e_li > 0 else 1e-6
+                    _collision_li = any(
+                        bool(np.linalg.norm(_top_c_li - _tc) < _local_r_li)
+                        for _tc in _tet_centroids
+                    )
+                    if _collision_li:
+                        _n_rej_col_li += 1
+                        log.debug("tet_layers_prism_rejected_collision",
+                                  layer=_li + 1, cell=_cid_prev)
+                        continue
+
+                    # Accepted: add new vertices to extended points list.
+                    _inner_ids_li: list[int] = []
+                    for _ip in _inner_pts_li:
+                        _inner_ids_li.append(len(_pts_list))
+                        _pts_list.append(_ip)
+
+                    # Register synthetic prism pair under virtual cell ID.
+                    _vid = _vcell_counter
+                    _vcell_counter += 1
+                    _new_layer_pairs[_vid] = (_outer_li, _inner_ids_li)
+                    _per_fid_layers[_cid_prev] = _li + 1
+                    _n_acc_li += 1
+
+                log.info(
+                    "tet_layers_layer_added",
+                    layer=_li + 1,
+                    n_accepted=_n_acc_li,
+                    n_rejected_aspect=_n_rej_asp_li,
+                    n_rejected_collision=_n_rej_col_li,
+                    step=round(_step_li, 6),
+                )
+                if _n_acc_li == 0:
+                    log.info("tet_layers_layer_truncated", layer=_li + 1, reason="no_prisms_accepted")
+                    break
+                prism_pairs.update(_new_layer_pairs)
+                _n_layers_added = _li + 1
+
+            # Update points array with any new vertices.
+            if len(_pts_list) > len(points):
+                points = np.array(_pts_list, dtype=np.float64)
+        except Exception as _tle:
+            log.info("tet_layers_skipped", reason=str(_tle)[:120])
+
+    _avg_layers = (
+        float(np.mean(list(_per_fid_layers.values()))) if _per_fid_layers else 1.0
+    )
+    log.info(
+        "tet_layers_summary",
+        n_layers_max=_n_layers_added,
+        avg_n_layers=round(_avg_layers, 2),
+        n_total_prism_pairs=len(prism_pairs),
+    )
 
     # 3) tet 리스트 생성: 각 prism → 3 tet (vertex sets)
     # OpenFOAM polyMesh 는 cell 을 face 로 정의하지만, 여기서는 "tet cell index"
