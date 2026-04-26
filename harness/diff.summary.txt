@@ -1,4 +1,4 @@
-file: core/generator/native_tet/stellar.py
-functions: _orient_tet (new), split_sliver_longest_edge (VVV12), split_anisotropic_tet_edges (VVV13)
-lines_added: 18
+file: core/generator/native_tet/mesher.py
+functions: generate_native_tet (BSP_ORIENT_FIX insertion after final_pts/final_tets construction)
+lines_added: 6
 lines_removed: 0

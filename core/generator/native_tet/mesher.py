@@ -909,6 +909,13 @@ def generate_native_tet(
     final_tets = remap[kept].astype(np.int64)
     final_pts = all_pts[used].copy()
 
+    # BSP_ORIENT_FIX (beta2160) — front-load orientation normalize right after BSP
+    # boundary recovery so ALL downstream post-passes work on correctly oriented tets.
+    # R105 VAL3 showed ~562 neg-vol tets/fid baseline here; fix them before Phase A.
+    from core.generator.native_tet.stellar import validate_and_fix_orientations as _vaf_bsp  # noqa: PLC0415
+    final_tets, _n_flipped_bsp, _n_degen_bsp = _vaf_bsp(final_pts, final_tets)
+    log.info("native_tet_bsp_orient_fix", n_flipped=int(_n_flipped_bsp), n_degenerate=int(_n_degen_bsp))
+
     # 4b) Phase A1 + A4 — feature 잠금 + interior Laplacian smoothing.
     # Round 7: feature corner 를 실제 locked set 에 포함.
     feature_info = None

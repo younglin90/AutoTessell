@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2159,
+  "beta": 2160,
   "max_round": 1000,
-  "round": 106,
+  "round": 107,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,13 +26,14 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 99.2,
+  "last_bench_time": 100.0,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "BSP_ORIENT_FIX",
     "HEX_BL_TANGENT",
     "POL_BL_TANGENT",
     "POL_LAYERS",
@@ -52,5 +53,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "VVV12_ORIENT_FIX — _orient_tet() helper added to stellar.py; applied to VVV12 split_sliver_longest_edge and VVV13 split_anisotropic_tet_edges sub-tet construction; eliminates ~73 wrong-orient tets/fid; 22/22 tests PASS, bench 99.7s (beta2159, R106)"
+  "plan_archive": "BSP_ORIENT_FIX — validate_and_fix_orientations inserted immediately after final_pts/final_tets construction (post-BSP, pre-Phase-A); n_flipped_bsp ~562→0, VAL1 final n_flipped 74→0; worst_mq 0.127 unchanged; 22/22 tests PASS, bench 100.0s (beta2160, R107)"
 }
