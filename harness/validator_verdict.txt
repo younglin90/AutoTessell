@@ -1,3 +1,3 @@
 PASS
 
-beta2086 (R24 QQQ3): BL collision detection vectorize (np.einsum + max_pairs=200), 58.8s, tet C/D stable.
+beta2087 (R25 QQQ4): BL local thickness skeleton (_local_thickness_factor helper, default OFF), 58.8s, tet C/D stable.
