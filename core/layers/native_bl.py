@@ -47,6 +47,25 @@ from core.utils.polymesh_reader import (
 
 log = get_logger(__name__)
 
+# ---------------------------------------------------------------------------
+# QQQ1 — Garimella 2003 §3 front-collision (default OFF, skeleton only)
+# ---------------------------------------------------------------------------
+
+_BL_QQQ1_FRONT_COLLISION = False
+
+
+def _check_prism_front_collision(
+    front_normals: np.ndarray,
+    front_points: np.ndarray,
+    step: int,
+) -> bool:
+    """Garimella 2003 §3 참고: advancing layer front-collision 검사 스켈레톤.
+
+    현재 _BL_QQQ1_FRONT_COLLISION=False 이므로 호출되지 않음.
+    QQQ2 카드에서 실제 충돌 검사 로직을 구현 예정.
+    """
+    raise NotImplementedError("QQQ2 에서 구현 예정")
+
 
 # ---------------------------------------------------------------------------
 # Configuration
