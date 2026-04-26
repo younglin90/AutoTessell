@@ -1,2 +1,2 @@
-PASS
-Regression PASS (35/35), bench 57.8s (≤68.88s), poly A=5/5, voronoi chosen 2x, hex/tet stable. PPP3 merged.
+VERDICT: PASS
+Round 18 — PPP5 native_poly surface clipping activated. Regression 35/35 PASS. Bench 58.7s < 864s. Poly A=5 maintained. voronoi_clipped chosen 4x. hex+BL/poly+BL 0 fail.

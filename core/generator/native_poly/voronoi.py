@@ -28,7 +28,7 @@ from core.utils.logging import get_logger
 log = get_logger(__name__)
 
 # PPP4 skeleton — clipping default OFF
-_NATIVE_POLY_PPP4_ENABLE: bool = False  # PPP4 skeleton — clipping default OFF
+_NATIVE_POLY_PPP4_ENABLE: bool = True  # PPP5 — clipping activated
 
 
 def _clip_voronoi_cell_by_surface(
@@ -294,6 +294,25 @@ def generate_native_poly_voronoi(
         except Exception as exc:
             log.warning("native_poly_ppp2_skipped", reason=str(exc)[:120])
 
+        # PPP5 — voronoi_clipped 후보 (type_priority=3, highest).
+        try:
+            r_clipped = _generate_native_poly_voronoi_inner(
+                vertices, faces, case_dir,
+                target_edge_length=target_edge_length,
+                seed_density=cur_seed, n_lloyd=n_lloyd, lp_p=2.0,
+                clip_boundary=True,
+            )
+            if r_clipped.success and r_clipped.n_cells > 2:
+                candidates.append((
+                    _grade_score(r_clipped.quality_grade) + _VORONOI_BONUS,
+                    3,  # voronoi_clipped — highest priority
+                    r_clipped.n_cells,
+                    r_clipped,
+                    f"voronoi_clipped(sd={cur_seed})",
+                ))
+        except Exception as exc:
+            log.warning("native_poly_ppp5_skipped", reason=str(exc)[:120])
+
         # hex fallback 후보.
         try:
             tmp_case = case_dir.parent / (case_dir.name + "_hex_cand")
@@ -450,6 +469,7 @@ def _generate_native_poly_voronoi_inner(
     seed_density: int = 8,
     n_lloyd: int = 2,
     lp_p: float = 2.0,
+    clip_boundary: bool = False,
 ) -> NativePolyResult:
     """단일 시도 (auto_escalate 없는 원본 흐름)."""
     t0 = time.perf_counter()
@@ -589,6 +609,37 @@ def _generate_native_poly_voronoi_inner(
             False, time.perf_counter() - t0,
             message="유지 region 0 — target_edge_length 완화 필요",
         )
+
+    # PPP5 — boundary cell clipping (clip_boundary=True 시).
+    # boundary cell: region 의 vertex 중 1개 이상이 surface 외부에 있는 cell.
+    if clip_boundary and _NATIVE_POLY_PPP4_ENABLE:
+        max_cells_clip = 50
+        clipped_count = 0
+        new_vor_vertices = vor_vertices.copy()
+        for pi in keep_region_indices:
+            if clipped_count >= max_cells_clip:
+                break
+            r_idx = region_of_point[pi]
+            region = vor.regions[r_idx]
+            cell_v = vor_vertices[region]
+            inside_mask = _inside_ray_cast(cell_v, V, F)
+            if inside_mask.all():
+                continue  # fully inside — no clip needed
+            try:
+                clipped = _clip_voronoi_cell_by_surface(cell_v, V, F)
+                if clipped is cell_v or len(clipped) < 4:
+                    continue  # degenerate or unchanged — skip
+                # remap clipped vertices back into vor_vertices array
+                base = len(new_vor_vertices)
+                new_vor_vertices = np.vstack([new_vor_vertices, clipped])
+                new_idx = list(range(base, base + len(clipped)))
+                vor.regions[r_idx] = new_idx
+                clipped_count += 1
+            except Exception as exc:
+                log.warning("native_poly_ppp5_skipped", reason=str(exc)[:120])
+        if clipped_count:
+            vor_vertices = new_vor_vertices
+            log.info("native_poly_ppp5_clipped", n_cells_clipped=clipped_count)
 
     # 각 region 의 face 추출 — scipy Voronoi 의 ridge 구조 활용.
     # vor.ridge_points[ri] = (seed_a, seed_b): 두 seed 사이의 ridge (공유 face)
