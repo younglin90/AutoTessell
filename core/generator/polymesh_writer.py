@@ -22,7 +22,7 @@ No external tools (OpenFOAM, meshio) are required.
 from __future__ import annotations
 
 import os
-from collections import defaultdict
+from collections import defaultdict, deque
 from pathlib import Path
 from typing import Sequence
 
@@ -36,6 +36,95 @@ logger = get_logger(__name__)
 # PMW1 — coplanar internal-face merge
 # ---------------------------------------------------------------------------
 _PMW1_OFF = os.environ.get("AUTO_TESSELL_PMW1_OFF", "").strip().lower() in ("1", "true", "yes")
+
+# ---------------------------------------------------------------------------
+# PMW2 — automatic boundary patch labeling by feature dihedral
+# ---------------------------------------------------------------------------
+_PMW2_OFF = os.environ.get("AUTO_TESSELL_PMW2_OFF", "").strip().lower() in ("1", "true", "yes")
+
+
+def _segment_boundary_by_features(
+    all_faces: list[list[int]],
+    pts: np.ndarray,
+    n_internal: int,
+    *,
+    dihedral_deg: float = 30.0,
+) -> list[tuple[str, list[int]]]:
+    """BFS flood-fill boundary patches separated by feature dihedral angle.
+
+    Boundary faces are those at indices n_internal..len(all_faces)-1.
+    Adjacent boundary faces (sharing an edge) with dihedral < dihedral_deg
+    are grouped into the same patch.
+
+    Returns list of (patch_name, [absolute_face_indices]) sorted by first index.
+    Naming: wall_0, wall_1, ... (wall_0 is the largest group).
+    """
+    n_bnd = len(all_faces) - n_internal
+    if n_bnd <= 0:
+        return []
+
+    cos_tol = np.cos(np.radians(dihedral_deg))
+
+    # Precompute normals for boundary faces
+    bnd_normals: list[np.ndarray] = []
+    for fi in range(n_internal, len(all_faces)):
+        bnd_normals.append(_face_normal(all_faces[fi], pts))
+
+    # Build edge → boundary face local indices adjacency
+    # edge key: frozenset of two vertex indices (undirected)
+    edge_to_bfaces: dict[tuple[int, int], list[int]] = defaultdict(list)
+    for li in range(n_bnd):
+        verts = all_faces[n_internal + li]
+        nv = len(verts)
+        for k in range(nv):
+            u, v = verts[k], verts[(k + 1) % nv]
+            edge_key = (min(u, v), max(u, v))
+            edge_to_bfaces[edge_key].append(li)
+
+    # Build adjacency list (local indices within boundary faces)
+    adj: list[list[int]] = [[] for _ in range(n_bnd)]
+    for edge_key, bfaces in edge_to_bfaces.items():
+        if len(bfaces) == 2:
+            la, lb = bfaces[0], bfaces[1]
+            dot = float(np.dot(bnd_normals[la], bnd_normals[lb]))
+            # same patch if normals nearly parallel (small dihedral = close to 180 face angle)
+            if dot > cos_tol:
+                adj[la].append(lb)
+                adj[lb].append(la)
+
+    # BFS flood-fill
+    visited = [False] * n_bnd
+    groups: list[list[int]] = []
+    for start in range(n_bnd):
+        if visited[start]:
+            continue
+        group: list[int] = []
+        q: deque[int] = deque([start])
+        visited[start] = True
+        while q:
+            li = q.popleft()
+            group.append(li)
+            for nb in adj[li]:
+                if not visited[nb]:
+                    visited[nb] = True
+                    q.append(nb)
+        groups.append(group)
+
+    # Sort groups by first absolute face index
+    groups.sort(key=lambda g: n_internal + min(g))
+
+    patches: list[tuple[str, list[int]]] = []
+    for idx, group in enumerate(groups):
+        abs_indices = [n_internal + li for li in group]
+        patches.append((f"wall_{idx}", abs_indices))
+
+    logger.info(
+        "polymesh_writer_patches",
+        n_boundary_faces=n_bnd,
+        n_patches=len(patches),
+        patch_sizes=[len(p[1]) for p in patches],
+    )
+    return patches
 
 
 def _face_normal(verts: list[int], pts: np.ndarray) -> np.ndarray:
@@ -398,17 +487,46 @@ def write_generic_polymesh(
         np.array(final_nbr, dtype=np.int64),
         "neighbour",
     )
-    _write_boundary(
-        poly_dir / "boundary",
-        [
+    # PMW2 — auto boundary patch segmentation by feature dihedral
+    n_bnd = len(final_faces) - n_internal
+    _pmw2_active = (
+        not _PMW2_OFF
+        and n_bnd > 100
+    )
+    if _pmw2_active:
+        patches = _segment_boundary_by_features(
+            final_faces, vertices_arr, n_internal, dihedral_deg=30.0
+        )
+        # only replace single-patch path if multiple patches detected
+        if len(patches) > 1:
+            boundary_entries = [
+                {
+                    "name": pname,
+                    "type": patch_type,
+                    "nFaces": len(pidxs),
+                    "startFace": pidxs[0],
+                }
+                for pname, pidxs in patches
+            ]
+        else:
+            boundary_entries = [
+                {
+                    "name": patch_name,
+                    "type": patch_type,
+                    "nFaces": n_bnd,
+                    "startFace": n_internal,
+                }
+            ]
+    else:
+        boundary_entries = [
             {
                 "name": patch_name,
                 "type": patch_type,
-                "nFaces": len(boundary_faces),
+                "nFaces": n_bnd,
                 "startFace": n_internal,
             }
-        ],
-    )
+        ]
+    _write_boundary(poly_dir / "boundary", boundary_entries)
 
     return {
         "num_cells": len(cell_faces),
