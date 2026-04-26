@@ -21,6 +21,7 @@
 | R14   | PPP1 | poly  | PASS    | =0.0  | Lp CVT 스켈레톤 (lp_p=2.0 default), poly grade A=5/5, tet metric stable |
 | R15   | PPP2 | poly  | PASS    | =0.0  | Lp weighted centroid + voronoi(p=4) best-of-N candidate, poly A=5/5, bench 57.4s |
 | R16   | PPP3 | poly  | PASS    | =0.0  | Voronoi +0.5 bonus score, voronoi(p=4)>voronoi(p=2)>hex_fallback 우선순위, bench 57.8s, chosen 2회 |
+| R17   | PPP4 | poly  | PASS    | =0.0  | Surface clipping skeleton (Yan & Wonka 2014 시퀀스 #1, Sutherland-Hodgman variant), default OFF, poly A=5/5, bench 57.6s |
 
 # AVOID (4회 reject 됨)
 - smooth_amips_analytic / smooth_amips_multistage 호출 BSP 직후 (HHH1/III1/JJJ1 — worst-mq 악화 패턴). 동일 함수/위치 재시도 금지.

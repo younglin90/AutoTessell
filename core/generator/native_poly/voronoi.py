@@ -27,6 +27,73 @@ from core.utils.logging import get_logger
 
 log = get_logger(__name__)
 
+# PPP4 skeleton — clipping default OFF
+_NATIVE_POLY_PPP4_ENABLE: bool = False  # PPP4 skeleton — clipping default OFF
+
+
+def _clip_voronoi_cell_by_surface(
+    cell_verts: np.ndarray,
+    V_surf: np.ndarray,
+    F_surf: np.ndarray,
+) -> np.ndarray:
+    """Sutherland-Hodgman 3D variant — clip a convex Voronoi cell against each
+    surface triangle's supporting half-space.
+
+    Parameters
+    ----------
+    cell_verts : (N, 3) float64  — convex hull vertices of one Voronoi cell.
+    V_surf     : (Mv, 3) float64 — surface mesh vertices.
+    F_surf     : (Mf, 3) int     — surface triangle face indices.
+
+    Returns
+    -------
+    clipped : (K, 3) float64 — clipped point set (convex hull of intersection).
+              Returns cell_verts unchanged when _NATIVE_POLY_PPP4_ENABLE is False
+              (skeleton mode) or when F_surf is empty.
+
+    Notes
+    -----
+    Skeleton only — caller not yet wired (PPP4).  PPP5 will activate via
+    `_NATIVE_POLY_PPP4_ENABLE` and integrate into the cell-extraction loop.
+    """
+    if not _NATIVE_POLY_PPP4_ENABLE or len(F_surf) == 0:
+        return cell_verts
+
+    pts = cell_verts.copy()
+
+    for tri in F_surf:
+        v0, v1, v2 = V_surf[tri[0]], V_surf[tri[1]], V_surf[tri[2]]
+        n = np.cross(v1 - v0, v2 - v0)
+        n_len = np.linalg.norm(n)
+        if n_len < 1e-14:
+            continue
+        n = n / n_len
+        d = np.dot(n, v0)
+
+        # keep points on the inside (dot >= d) — half-space defined by triangle plane
+        inside_mask = np.dot(pts, n) >= d
+        if inside_mask.all():
+            continue
+        if not inside_mask.any():
+            return cell_verts  # degenerate clip → return original (safe fallback)
+
+        # intersect each edge that crosses the plane
+        new_pts: list[np.ndarray] = []
+        for p in pts[inside_mask]:
+            new_pts.append(p)
+        n_pts = len(pts)
+        for i in range(n_pts):
+            a, b = pts[i], pts[(i + 1) % n_pts]
+            da, db = np.dot(a, n) - d, np.dot(b, n) - d
+            if (da >= 0) != (db >= 0):
+                t = da / (da - db)
+                new_pts.append(a + t * (b - a))
+        if len(new_pts) < 4:
+            return cell_verts  # degenerate — safe fallback
+        pts = np.array(new_pts, dtype=np.float64)
+
+    return pts
+
 
 @dataclass
 class NativePolyResult:
