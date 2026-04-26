@@ -1,8 +1,8 @@
 {
   "target_engine": "poly",
-  "beta": 2139,
+  "beta": 2140,
   "max_round": 1000,
-  "round": 86,
+  "round": 87,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,25 +26,25 @@
   "last_mq": {
     "tet_worst": 0.095
   },
-  "last_bench_time": 79.5,
+  "last_bench_time": 81.5,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
-    "BL2",
     "POL_BL1",
     "TET_BL1",
     "HEX_BL1",
     "PMW1",
     "HEX_QUALITY1",
-    "POL_QUALITY1"
+    "POL_QUALITY1",
+    "PRE3"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "POL_QUALITY1 — native_poly clipped cell volume conservation guard"
+  "plan_archive": "PRE3 — native_tet input CVT remesh on high edge-ratio (Botsch 2004 gated)"
 }

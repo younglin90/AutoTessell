@@ -332,6 +332,48 @@ def generate_native_tet(
     except Exception as exc:
         log.debug("native_tet_sliver_merge_skipped", reason=str(exc))
 
+    # PRE3 (beta2140) — input CVT isotropic remesh on high edge-length-ratio.
+    # Botsch & Kobbelt 2004 isotropic remesh — gated by edge_length_ratio > 100
+    # or n_faces > 200 000. Default ON; set AUTO_TESSELL_PRE3_OFF=1 to disable.
+    import os as _os
+    if not _os.environ.get("AUTO_TESSELL_PRE3_OFF") and F.shape[0] >= 100:
+        try:
+            _pre3_edges = np.concatenate([
+                V[F[:, 0]] - V[F[:, 1]],
+                V[F[:, 1]] - V[F[:, 2]],
+                V[F[:, 2]] - V[F[:, 0]],
+            ], axis=0)
+            _pre3_lens = np.linalg.norm(_pre3_edges, axis=1)
+            _pre3_lens = _pre3_lens[_pre3_lens > 0]
+            _pre3_ratio = float(_pre3_lens.max() / _pre3_lens.min()) if len(_pre3_lens) > 0 else 0.0
+            _pre3_nf = int(F.shape[0])
+            if _pre3_ratio > 100.0 or _pre3_nf > 200_000:
+                from core.preprocessor.native_remesh import isotropic_remesh
+                _pre3_bmin = V.min(axis=0); _pre3_bmax = V.max(axis=0)
+                _pre3_diag = float(np.linalg.norm(_pre3_bmax - _pre3_bmin))
+                _pre3_target = _pre3_diag / 100.0
+                V_pre3, F_pre3 = isotropic_remesh(V, F, target_edge_length=_pre3_target)
+                # Guard: skip if remesh explodes face count (> 2× original) to
+                # prevent tet recovery loop slowdown on already-dense inputs.
+                if F_pre3.shape[0] > _pre3_nf * 2:
+                    log.debug(
+                        "native_tet_pre3_remesh_skipped_facecount",
+                        faces_before=_pre3_nf,
+                        faces_after=int(F_pre3.shape[0]),
+                    )
+                else:
+                    V = V_pre3.astype(np.float64)
+                    F = F_pre3.astype(np.int64)
+                    log.info(
+                        "native_tet_pre3_remesh",
+                        edge_length_ratio=round(_pre3_ratio, 2),
+                        faces_before=_pre3_nf,
+                        faces_after=int(F.shape[0]),
+                        target_edge_length=round(_pre3_target, 6),
+                    )
+        except Exception as _pre3_exc:
+            log.warning("pre3_remesh_failed", reason=str(_pre3_exc))
+
     # beta77: large input guardrail — scipy.Delaunay 가 100k+ vertex 에서 OOM.
     cap = max(1, int(max_input_vertices))
     if V.shape[0] > cap:

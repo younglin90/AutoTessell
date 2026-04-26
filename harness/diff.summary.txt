@@ -1,4 +1,4 @@
-file: core/generator/native_poly/voronoi.py
-functions: _generate_native_poly_voronoi_inner (PPP5 clipping block)
-lines_added: 40
-lines_removed: 6
+file: core/generator/native_tet/mesher.py
+functions: generate_native_tet (PRE3 block after PRE1 sliver merge)
+lines_added: 36
+lines_removed: 0
