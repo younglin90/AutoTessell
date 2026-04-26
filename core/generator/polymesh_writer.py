@@ -21,6 +21,7 @@ No external tools (OpenFOAM, meshio) are required.
 
 from __future__ import annotations
 
+import os
 from collections import defaultdict
 from pathlib import Path
 from typing import Sequence
@@ -30,6 +31,148 @@ import numpy as np
 from core.utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+# ---------------------------------------------------------------------------
+# PMW1 — coplanar internal-face merge
+# ---------------------------------------------------------------------------
+_PMW1_OFF = os.environ.get("AUTO_TESSELL_PMW1_OFF", "").strip().lower() in ("1", "true", "yes")
+
+
+def _face_normal(verts: list[int], pts: np.ndarray) -> np.ndarray:
+    """Newell normal for polygon (robust for n-gons)."""
+    n = np.zeros(3, dtype=np.float64)
+    nv = len(verts)
+    for i in range(nv):
+        a = pts[verts[i]]
+        b = pts[verts[(i + 1) % nv]]
+        n[0] += (a[1] - b[1]) * (a[2] + b[2])
+        n[1] += (a[2] - b[2]) * (a[0] + b[0])
+        n[2] += (a[0] - b[0]) * (a[1] + b[1])
+    norm = np.linalg.norm(n)
+    if norm < 1e-30:
+        return n
+    return n / norm
+
+
+def _merge_two_faces(fa: list[int], fb: list[int]) -> list[int] | None:
+    """Merge two polygons sharing exactly one edge into one polygon.
+
+    Returns the merged vertex loop or None if they don't share a suitable edge.
+    The shared edge must appear in opposite orientations (fa: u→v, fb: v→u).
+    """
+    # Build edge sets for fast lookup
+    edges_b: dict[tuple[int, int], int] = {}
+    nb = len(fb)
+    for i in range(nb):
+        u, v = fb[i], fb[(i + 1) % nb]
+        edges_b[(u, v)] = i
+
+    na = len(fa)
+    for ia in range(na):
+        u, v = fa[ia], fa[(ia + 1) % na]
+        # Shared edge in fb must appear reversed: (v, u)
+        if (v, u) in edges_b:
+            ib = edges_b[(v, u)]
+            # Build merged polygon:
+            # fa: ..., fa[ia], (shared u), fa[ia+1], ...
+            # fb: ..., fb[ib+1], ... (skip shared v→u edge)
+            merged: list[int] = []
+            # Add all of fa except the edge u→v (skip v = fa[(ia+1)%na])
+            for k in range(na - 1):
+                merged.append(fa[(ia + 1 + k) % na])
+            # Add all of fb except the reverse edge v→u (skip u = fb[ib])
+            for k in range(nb - 1):
+                merged.append(fb[(ib + 1 + k) % nb])
+            # Remove consecutive duplicates
+            result: list[int] = []
+            for vtx in merged:
+                if not result or result[-1] != vtx:
+                    result.append(vtx)
+            if result and result[0] == result[-1]:
+                result.pop()
+            if len(result) < 3:
+                return None
+            return result
+    return None
+
+
+def _merge_coplanar_faces(
+    faces: list[list[int]],
+    owner: list[int],
+    neighbour: list[int],
+    pts: np.ndarray,
+    *,
+    normal_tol_deg: float = 2.0,
+) -> tuple[list[list[int]], list[int], list[int]]:
+    """Merge coplanar internal faces sharing an edge within the same (owner, neighbour) pair.
+
+    Only touches internal faces (those with a neighbour). Boundary faces (appended
+    after) are not passed to this function.
+
+    Returns updated (faces, owner, neighbour) lists (same length or shorter).
+    """
+    cos_tol = np.cos(np.radians(normal_tol_deg))
+    n_int = len(owner)  # == len(neighbour) == number of internal faces
+
+    # Group internal faces by (owner, neighbour) cell pair
+    pair_groups: dict[tuple[int, int], list[int]] = defaultdict(list)
+    for fi in range(n_int):
+        pair_groups[(owner[fi], neighbour[fi])].append(fi)
+
+    keep: list[bool] = [True] * n_int
+    merged_faces: dict[int, list[int]] = {}  # fi → new face verts (replaces faces[fi])
+
+    for (ow, nb_), fi_list in pair_groups.items():
+        if len(fi_list) < 2:
+            continue
+        # Compute normals once
+        normals = {fi: _face_normal(faces[fi], pts) for fi in fi_list}
+        # Greedy merge: try to merge pairs with similar normals
+        changed = True
+        active = list(fi_list)
+        # We work on a local list; merged faces replace index of first face
+        local_faces: dict[int, list[int]] = {fi: list(faces[fi]) for fi in active}
+        local_normals: dict[int, np.ndarray] = {fi: normals[fi] for fi in active}
+
+        while changed:
+            changed = False
+            for i in range(len(active)):
+                fi = active[i]
+                if not keep[fi]:
+                    continue
+                for j in range(i + 1, len(active)):
+                    fj = active[j]
+                    if not keep[fj]:
+                        continue
+                    ni = local_normals[fi]
+                    nj = local_normals[fj]
+                    dot = float(np.dot(ni, nj))
+                    if dot < cos_tol:
+                        continue
+                    merged = _merge_two_faces(local_faces[fi], local_faces[fj])
+                    if merged is None:
+                        continue
+                    # Accept merge: fi absorbs fj
+                    local_faces[fi] = merged
+                    local_normals[fi] = _face_normal(merged, pts)
+                    keep[fj] = False
+                    merged_faces[fi] = merged
+                    changed = True
+                    break
+                if changed:
+                    break
+
+    # Rebuild output lists
+    out_faces: list[list[int]] = []
+    out_owner: list[int] = []
+    out_nbr: list[int] = []
+    for fi in range(n_int):
+        if not keep[fi]:
+            continue
+        out_faces.append(merged_faces.get(fi, faces[fi]))
+        out_owner.append(owner[fi])
+        out_nbr.append(neighbour[fi])
+    return out_faces, out_owner, out_nbr
 
 # FoamFile header template
 _FOAM_HEADER = """\
@@ -213,14 +356,28 @@ def write_generic_polymesh(
     )
     bnd_order = sorted(range(len(boundary_faces)), key=lambda i: boundary_owner[i])
 
-    n_internal = len(int_order)
-    final_faces = [internal_faces[i] for i in int_order] + [
-        boundary_faces[i] for i in bnd_order
-    ]
-    final_owner = [internal_owner[i] for i in int_order] + [
-        boundary_owner[i] for i in bnd_order
-    ]
-    final_nbr = [internal_nbr[i] for i in int_order]
+    # PMW1 — coplanar internal-face merge (before write)
+    sorted_int_faces = [internal_faces[i] for i in int_order]
+    sorted_int_owner = [internal_owner[i] for i in int_order]
+    sorted_int_nbr = [internal_nbr[i] for i in int_order]
+
+    _n_int_before = len(sorted_int_faces)
+    if not _PMW1_OFF and _n_int_before >= 100:
+        sorted_int_faces, sorted_int_owner, sorted_int_nbr = _merge_coplanar_faces(
+            sorted_int_faces, sorted_int_owner, sorted_int_nbr, vertices_arr
+        )
+        _n_int_after = len(sorted_int_faces)
+        logger.info(
+            "polymesh_writer_face_merge",
+            before=_n_int_before,
+            after=_n_int_after,
+            reduced=_n_int_before - _n_int_after,
+        )
+
+    n_internal = len(sorted_int_faces)
+    final_faces = sorted_int_faces + [boundary_faces[i] for i in bnd_order]
+    final_owner = sorted_int_owner + [boundary_owner[i] for i in bnd_order]
+    final_nbr = sorted_int_nbr
 
     n_faces = len(final_faces)
     owner_note = (
