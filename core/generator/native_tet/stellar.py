@@ -207,6 +207,136 @@ def insert_steiner_flip14(
     return pts_out, tets_out, n_inserted
 
 
+def split_sliver_longest_edge(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    sliver_ratio: float = 1e-3,
+    min_quality_improvement: float = 1e-3,
+    max_splits: int = 20,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """VVV12 — sliver tet detection + targeted longest-edge midpoint split.
+
+    For each tet: sliver_score = |V| / L_max^3.  If sliver_score < sliver_ratio,
+    find longest edge (i,j), compute midpoint m, split ALL tets incident to that
+    edge into 2 sub-tets each (1→2 per tet).  Accept only if q_new_min ≥
+    q_old_min + min_quality_improvement over all affected tets; else revert.
+
+    Returns (pts_out, tets_out, n_split).
+    """
+    n_tets = tets.shape[0]
+    if n_tets == 0:
+        return pts, tets, 0
+
+    def _vol_and_lmax(p: np.ndarray, tet: np.ndarray) -> tuple[float, float, int, int]:
+        """Return (abs_vol, l_max, edge_i, edge_j) for tet."""
+        a, b, c, d = p[tet[0]], p[tet[1]], p[tet[2]], p[tet[3]]
+        e0, e1, e2 = b - a, c - a, d - a
+        vol = abs(float(np.dot(e0, np.cross(e1, e2)))) / 6.0
+        verts = [a, b, c, d]
+        pairs = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
+        best_l = -1.0
+        best_i = best_j = 0
+        for pi, pj in pairs:
+            l = float(np.dot(verts[pi] - verts[pj], verts[pi] - verts[pj]))
+            if l > best_l:
+                best_l = l
+                best_i, best_j = pi, pj
+        return vol, float(best_l ** 0.5), tet[best_i], tet[best_j]
+
+    # Detect slivers.
+    sliver_edges: list[tuple[int, int]] = []
+    seen_edges: set[tuple[int, int]] = set()
+    for ti in range(n_tets):
+        vol, lmax, ei, ej = _vol_and_lmax(pts, tets[ti])
+        if lmax < 1e-15:
+            continue
+        score = vol / (lmax ** 3)
+        if score < sliver_ratio:
+            u, v = (ei, ej) if ei < ej else (ej, ei)
+            if (u, v) not in seen_edges:
+                seen_edges.add((u, v))
+                sliver_edges.append((u, v))
+
+    n_sliver_detected = len(sliver_edges)
+
+    pts_list = list(pts)
+    tets_list = list(tets)
+    n_split = 0
+
+    for edge_i, edge_j in sliver_edges:
+        if n_split >= max_splits:
+            break
+
+        # Find all tets incident to this edge.
+        incident: list[int] = []
+        for ti, tet in enumerate(tets_list):
+            tet_set = set(int(v) for v in tet)
+            if edge_i in tet_set and edge_j in tet_set:
+                incident.append(ti)
+
+        if not incident:
+            continue
+
+        # Compute q_old_min over all incident tets.
+        pts_arr = np.array(pts_list)
+        q_old = min(_tet_quality(pts_arr, np.array(tets_list[ti])) for ti in incident)
+
+        # Midpoint m.
+        m = 0.5 * (pts_arr[edge_i] + pts_arr[edge_j])
+        m_idx = len(pts_list)
+        pts_list.append(m)
+        pts_arr_new = np.array(pts_list)
+
+        # Split each incident tet: replace edge_i with m AND edge_j with m.
+        new_tets: list[np.ndarray] = []
+        for ti in incident:
+            tet = list(int(v) for v in tets_list[ti])
+            # Sub-tet 1: replace edge_i with m_idx.
+            st1 = [m_idx if v == edge_i else v for v in tet]
+            # Sub-tet 2: replace edge_j with m_idx.
+            st2 = [m_idx if v == edge_j else v for v in tet]
+            new_tets.append(np.array(st1, dtype=tets.dtype))
+            new_tets.append(np.array(st2, dtype=tets.dtype))
+
+        # Compute q_new_min.
+        q_new = min(_tet_quality(pts_arr_new, nt) for nt in new_tets)
+
+        if q_new >= q_old + min_quality_improvement:
+            # Accept: replace incident tets (reverse order to preserve indices).
+            for idx, ti in enumerate(sorted(incident, reverse=True)):
+                tets_list[ti] = new_tets[2 * (len(incident) - 1 - idx)]
+            for idx, ti in enumerate(incident):
+                tets_list.append(new_tets[2 * idx + 1])
+            n_split += 1
+        else:
+            # Revert: pop midpoint.
+            pts_list.pop()
+
+    pts_out = np.array(pts_list)
+    tets_out = np.array(tets_list, dtype=tets.dtype)
+    return pts_out, tets_out, n_split
+
+
+# expose sliver detection count for logging
+def _count_slivers(pts: np.ndarray, tets: np.ndarray, sliver_ratio: float = 1e-3) -> int:
+    """Count sliver tets by V/L_max^3 < sliver_ratio."""
+    count = 0
+    for i in range(tets.shape[0]):
+        a, b, c, d = pts[tets[i, 0]], pts[tets[i, 1]], pts[tets[i, 2]], pts[tets[i, 3]]
+        e0, e1, e2 = b - a, c - a, d - a
+        vol = abs(float(np.dot(e0, np.cross(e1, e2)))) / 6.0
+        verts = [a, b, c, d]
+        pairs = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
+        lmax = max(float(np.dot(verts[pi] - verts[pj], verts[pi] - verts[pj])) ** 0.5
+                   for pi, pj in pairs)
+        if lmax < 1e-15:
+            continue
+        if vol / (lmax ** 3) < sliver_ratio:
+            count += 1
+    return count
+
+
 def lookahead_2flip_chain(
     pts: np.ndarray,
     tets: np.ndarray,

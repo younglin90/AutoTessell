@@ -2558,6 +2558,43 @@ def generate_native_tet(
         except Exception as exc:
             log.warning("native_tet_vvv11_skipped", reason=str(exc)[:120])
 
+    # VVV12 — sliver tet detection + longest-edge midpoint split (V/L³ < 1e-3)
+    if not os.environ.get("AUTO_TESSELL_VVV12_OFF"):
+        try:
+            if final_tets.shape[0] < 500:
+                log.info("vvv12_skipped_small_mesh", n_tets=int(final_tets.shape[0]))
+            else:
+                from core.generator.native_tet.stellar import (  # noqa: PLC0415
+                    split_sliver_longest_edge as _ssl,
+                    _count_slivers as _cs,
+                )
+                from core.generator.native_tet.quality import snapshot as _qsnap712  # noqa: PLC0415
+                _pre712 = _qsnap712(final_pts, final_tets)
+                _n_sliver_pre = _cs(final_pts, final_tets)
+                _pts712, _tets712, _n712 = _ssl(
+                    final_pts, final_tets,
+                    sliver_ratio=1e-3,
+                    min_quality_improvement=1e-3,
+                    max_splits=20,
+                )
+                _post712 = _qsnap712(_pts712, _tets712)
+                _acc712 = (
+                    _post712.min_q >= _pre712.min_q - 1e-6
+                    and _post712.mean_q >= _pre712.mean_q - 1e-3
+                )
+                if _acc712:
+                    final_pts, final_tets = _pts712, _tets712
+                log.info(
+                    "native_tet_sliver_split",
+                    n_sliver_detected=int(_n_sliver_pre),
+                    n_split=int(_n712),
+                    pre_min=float(_pre712.min_q),
+                    post_min=float(_post712.min_q),
+                    accepted=bool(_acc712),
+                )
+        except Exception as exc:
+            log.warning("native_tet_vvv12_skipped", reason=str(exc)[:120])
+
     # beta1530 (V3) — 외부 tet 제거: 입력 surface 외부에 centroid 가 있는 tet drop.
     if enable_boundary_clip:
         try:
