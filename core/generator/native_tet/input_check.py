@@ -132,6 +132,7 @@ def auto_fix_input(
     dup_tol: float = 1e-9,
     drop_zero_area: bool = True,
     align_winding: bool = True,
+    aggressive: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, dict]:
     """beta1110 (R174/R175) — 간단한 입력 자동 수리.
 
@@ -186,6 +187,25 @@ def auto_fix_input(
         F2_flip[flip, 2] = F2[flip, 1]
         F2 = F2_flip
         info["n_winding_flip"] = int(flip.sum())
+
+    # KK1 (beta1850) — aggressive=True 면 native_repair 의 hole fill +
+    # non-manifold edge 제거까지 추가 수행.
+    if aggressive:
+        try:
+            from core.preprocessor.native_repair import run_native_repair
+            r = run_native_repair(
+                V2, F2,
+                dedup_tol=float(dup_tol),
+                degenerate_area_tol=1e-18,
+                fill_hole_max_boundary=128,
+                fix_normals=True,
+            )
+            info["aggressive_steps"] = r.steps
+            info["aggressive_watertight"] = r.watertight
+            info["aggressive_manifold"] = r.manifold
+            return r.vertices.astype(np.float64), r.faces.astype(np.int64), info
+        except Exception as exc:
+            info["aggressive_error"] = str(exc)[:120]
 
     return V2, F2, info
 

@@ -201,6 +201,21 @@ def generate_native_poly_voronoi(
             log.debug("native_poly_hex_cand_skipped", reason=str(exc))
 
         if not candidates:
+            # KK4 (beta1870) — voronoi + hex_fallback 모두 실패 → case_dir 에
+            # 직접 native_hex 호출 (마지막 안전망).
+            try:
+                final_r = _hex_to_poly_fallback(
+                    vertices, faces, case_dir,
+                    seed_density=int(seed_density),
+                )
+                if final_r.success and final_r.n_cells > 2:
+                    log.warning(
+                        "native_poly_last_resort_hex",
+                        cells=final_r.n_cells, grade=final_r.quality_grade,
+                    )
+                    return final_r
+            except Exception as exc:
+                log.debug("native_poly_last_resort_skipped", reason=str(exc))
             return NativePolyResult(
                 False, 0.0, message="poly best-of-N 모든 후보 실패",
             )

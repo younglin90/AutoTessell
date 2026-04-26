@@ -199,22 +199,30 @@ def generate_native_tet(
 
         chk = check_input(V, F)
         # JJ1 (beta1800) — 자동 입력 수리: dedup + zero-area drop + winding align.
+        # KK1 (beta1850) — chk 가 비-watertight 또는 non-manifold 감지 시 aggressive=True.
         if enable_auto_fix_input:
             try:
                 from core.generator.native_tet.input_check import auto_fix_input
+                aggressive = False
+                if chk is not None:
+                    if chk.n_boundary_edges > 0 or chk.n_nonmanifold_edges > 0:
+                        aggressive = True
                 V_fix, F_fix, fix_info = auto_fix_input(
                     V, F, dup_tol=1e-9, drop_zero_area=True, align_winding=True,
+                    aggressive=aggressive,
                 )
                 if (
                     fix_info.get("n_dedup", 0)
                     or fix_info.get("n_zero_area_drop", 0)
                     or fix_info.get("n_winding_flip", 0)
+                    or aggressive
                 ):
                     log.info(
                         "native_tet_auto_fix",
                         n_dedup=int(fix_info.get("n_dedup", 0)),
                         n_zero_area=int(fix_info.get("n_zero_area_drop", 0)),
                         n_winding_flip=int(fix_info.get("n_winding_flip", 0)),
+                        aggressive=bool(aggressive),
                     )
                     V = V_fix.astype(np.float64)
                     F = F_fix.astype(np.int64)
@@ -1100,17 +1108,37 @@ def generate_native_tet(
             )
 
         # beta1350 — AMIPS energy-based interior smoothing (P2).
+        # KK2 (beta1860) — hard mesh (mean_q < 0.15) 자동 감지 시 multistage.
         if enable_amips_smooth and final_tets.shape[0] > 0:
             try:
-                from core.generator.native_tet.amips import smooth_amips
-
-                # surface vertex 는 lock.
-                ar, new_pts_amips = smooth_amips(
-                    final_pts, final_tets,
-                    locked_vertex_ids=surface_new_ids2,
-                    n_iter=int(amips_iterations),
-                    alpha=float(amips_alpha),
+                from core.generator.native_tet.amips import (
+                    smooth_amips, smooth_amips_multistage,
                 )
+                from core.generator.native_tet.quality import snapshot as _qsnap
+
+                use_multistage = False
+                try:
+                    pre_q = _qsnap(final_pts, final_tets)
+                    if float(pre_q.mean_q) < 0.15:
+                        use_multistage = True
+                except Exception:
+                    pass
+
+                if use_multistage:
+                    ar, new_pts_amips = smooth_amips_multistage(
+                        final_pts, final_tets,
+                        locked_vertex_ids=surface_new_ids2,
+                        alphas=(0.5, 1.0, 2.0),
+                        n_iter_per=1,
+                    )
+                    log.info("native_tet_amips_multistage", e_before=round(ar.energy_before, 3), e_after=round(ar.energy_after, 3))
+                else:
+                    ar, new_pts_amips = smooth_amips(
+                        final_pts, final_tets,
+                        locked_vertex_ids=surface_new_ids2,
+                        n_iter=int(amips_iterations),
+                        alpha=float(amips_alpha),
+                    )
                 if ar.energy_after <= ar.energy_before * 1.05:
                     final_pts = new_pts_amips
                     log.info(

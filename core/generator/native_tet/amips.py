@@ -263,6 +263,42 @@ def smooth_amips_analytic(
     ), pts
 
 
+def smooth_amips_multistage(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    locked_vertex_ids: np.ndarray | None = None,
+    alphas: tuple[float, ...] = (0.5, 1.0, 2.0),
+    n_iter_per: int = 1,
+    step_init: float = 0.1,
+) -> tuple["AMIPSResult", np.ndarray]:
+    """KK2 (beta1860) — multi-stage alpha 진행 AMIPS smoothing.
+
+    각 alpha 마다 smooth_amips_analytic 1 iter (default). 점진적으로 sliver
+    energy weight 강화. 단일 alpha=1.0 보다 hard mesh 의 sliver 회피 성능 ↑.
+
+    Args:
+        alphas: stage 별 alpha 값. tuple 또는 list.
+        n_iter_per: 각 stage 의 inner n_iter (default 1).
+
+    Returns:
+        (마지막 stage 의 AMIPSResult, 최종 pts).
+    """
+    pts_cur = np.asarray(pts, dtype=np.float64).copy()
+    last_result: AMIPSResult | None = None
+    for a in alphas:
+        last_result, pts_cur = smooth_amips_analytic(
+            pts_cur, tets,
+            locked_vertex_ids=locked_vertex_ids,
+            n_iter=int(n_iter_per),
+            alpha=float(a),
+            step_init=float(step_init),
+        )
+    if last_result is None:
+        last_result = AMIPSResult(0, 0, 0.0, 0.0, 0.0)
+    return last_result, pts_cur
+
+
 def smooth_amips(
     pts: np.ndarray,
     tets: np.ndarray,
