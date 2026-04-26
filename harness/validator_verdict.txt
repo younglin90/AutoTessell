@@ -1,3 +1,3 @@
 PASS
 
-R40 UUU2: self-intersect detect flag=True, log-only. Regression 35/35 PASS, bench 57.0s, tet C/D=2/3 stable, mq=0.082 stable, beta2099 committed.
+Round 49 — UUU6 (beta2107) native_tet face split: regression 35/35, bench 58.0s (stable), tet C/D stable, worst=0.082, n_si=0 no-op.
