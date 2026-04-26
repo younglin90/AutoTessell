@@ -820,7 +820,7 @@ def _generate_native_poly_voronoi_inner(
         _n_cells_pre = len(final_cells)
         final_vertices, final_cells = _extrude_prism_layer(
             _wall_adj, final_vertices, final_cells, cell_owner_seed,
-            V, F, step=bbox_diag * 0.005, max_extrude=100,
+            V, F, step=bbox_diag * 0.005 * 0.95, max_extrude=100,  # TTT7c stitch margin
         )
         n_prism_added = len(final_cells) - _n_cells_pre
         log.info("ttt4_poly_bl_extruded", n_added=n_prism_added)
