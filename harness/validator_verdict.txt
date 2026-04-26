@@ -1,2 +1,3 @@
-VERDICT: PASS
-Round 18 — PPP5 native_poly surface clipping activated. Regression 35/35 PASS. Bench 58.7s < 864s. Poly A=5 maintained. voronoi_clipped chosen 4x. hex+BL/poly+BL 0 fail.
+PASS
+
+beta2086 (R24 QQQ3): BL collision detection vectorize (np.einsum + max_pairs=200), 58.8s, tet C/D stable.

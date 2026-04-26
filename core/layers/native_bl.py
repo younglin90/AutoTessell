@@ -52,6 +52,22 @@ log = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 _BL_QQQ1_FRONT_COLLISION = True
+_BL_QQQ4_LOCAL_THICKNESS = False
+
+
+def _local_thickness_factor(
+    collision_mask: np.ndarray,
+    n_vertices: int,
+    thin_factor: float = 0.5,
+) -> np.ndarray:
+    """Loseille & Löhner 2013 §4 참고: local thickness adaptation (QQQ4 스켈레톤).
+
+    collision_mask True 인 vertex 는 thin_factor, 나머지는 1.0.
+    반환 shape (n_vertices,) per-vertex factor.
+    """
+    factors = np.ones(n_vertices, dtype=np.float64)
+    factors[collision_mask] = thin_factor
+    return factors
 
 
 def _check_prism_front_collision(
