@@ -354,19 +354,30 @@ def split_sliver_longest_edge(
                 best_i, best_j = pi, pj
         return vol, float(best_l ** 0.5), tet[best_i], tet[best_j]
 
-    # Detect slivers.
+    # Detect slivers — PERF5: vectorized numpy screening.
+    verts_all = pts[tets]  # (N, 4, 3)
+    e0 = verts_all[:, 1] - verts_all[:, 0]
+    e1 = verts_all[:, 2] - verts_all[:, 0]
+    e2 = verts_all[:, 3] - verts_all[:, 0]
+    V_all = np.einsum('ij,ij->i', np.cross(e0, e1), e2) / 6.0
+    _e_pairs = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
+    edge_lengths_all = np.stack(
+        [np.linalg.norm(verts_all[:, j] - verts_all[:, i], axis=1) for i, j in _e_pairs],
+        axis=1,
+    )  # (N, 6)
+    L_max_all = edge_lengths_all.max(axis=1)  # (N,)
+    sliver_score_all = np.abs(V_all) / np.maximum(L_max_all ** 3, 1e-12)
+    candidate_tis = np.where((L_max_all >= 1e-15) & (sliver_score_all < sliver_ratio))[0]
+
+    # Collect unique longest edges for candidate tets.
     sliver_edges: list[tuple[int, int]] = []
     seen_edges: set[tuple[int, int]] = set()
-    for ti in range(n_tets):
-        vol, lmax, ei, ej = _vol_and_lmax(pts, tets[ti])
-        if lmax < 1e-15:
-            continue
-        score = vol / (lmax ** 3)
-        if score < sliver_ratio:
-            u, v = (ei, ej) if ei < ej else (ej, ei)
-            if (u, v) not in seen_edges:
-                seen_edges.add((u, v))
-                sliver_edges.append((u, v))
+    for ti in candidate_tis:
+        _vol, _lmax, ei, ej = _vol_and_lmax(pts, tets[ti])
+        u, v = (ei, ej) if ei < ej else (ej, ei)
+        if (u, v) not in seen_edges:
+            seen_edges.add((u, v))
+            sliver_edges.append((u, v))
 
     n_sliver_detected = len(sliver_edges)
 
