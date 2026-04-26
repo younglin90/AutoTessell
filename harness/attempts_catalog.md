@@ -38,3 +38,4 @@
 | R31   | SSS2  | tet   | FAIL    | -0.027 | Envelope-bounded relocation (fTetWild §3.5 시퀀스 #2), worst mq 0.082→0.055 (n_relocated=792, revert 2회), gate 강화 필요 |
 | R32 | SSS3 | tet | FAIL | -0.027 | worst mq destabilized, need stronger guard or skip envelope relocation |
 | R33 | TTT1 | poly | PASS | =0.0 | BL wall-adjacent helper skeleton (Garimella 2003 시퀀스 #1), default OFF, poly A=5/5, bench 59.7s (stable) |
+| R35 | TTT2b | poly | PASS | =0.0 | BL wall-adjacent helper 호출 활성 (시그니처 일관 재시도 #1), _find_wall_adjacent_cells(3 arg) 정확 호출, poly A=5/5, bench 59.1s (stable), n_wall_adj 255~778 |
