@@ -1091,6 +1091,8 @@ def _build_edge_to_wall_faces(
 def generate_native_bl(
     case_dir: Path,
     config: BLConfig | None = None,
+    *,
+    engine_tag: str = "generic",
 ) -> NativeBLResult:
     """polyMesh 에 native BL prism layer 삽입 (Phase 2 완성).
 
@@ -1765,6 +1767,17 @@ def generate_native_bl(
                 n_moved=_n_tang_moved,
                 n_wall_verts=len(wall_vert_indices),
             )
+            # HEX_BL_TANGENT (beta2156) — hex-specific alias log for 3-engine parity.
+            # hex+BL shares the same native_bl.py path as tet+BL (R100). This log
+            # confirms hex top-layer tangential smoothing is active (engine_tag="hex").
+            if engine_tag == "hex":
+                log.info(
+                    "hex_bl_tangent_smooth",
+                    component="native_bl",
+                    phase="beta2156",
+                    n_moved=_n_tang_moved,
+                    n_wall_verts=len(wall_vert_indices),
+                )
         except Exception as _tang_exc:
             log.warning("native_bl_tangent_smooth_skipped", reason=str(_tang_exc)[:120])
 

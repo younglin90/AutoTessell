@@ -29,7 +29,7 @@ if str(_REPO_ROOT) not in sys.path:
 # worker functions (top-level — pickleable)
 # ---------------------------------------------------------------------------
 
-def _try_bl(case_dir, n_layers: int = 3) -> dict:
+def _try_bl(case_dir, n_layers: int = 3, engine_tag: str = "generic") -> dict:
     try:
         from core.layers.native_bl import generate_native_bl, BLConfig
         cfg = BLConfig(
@@ -39,7 +39,7 @@ def _try_bl(case_dir, n_layers: int = 3) -> dict:
             collision_safety=True,
             feature_lock=True,
         )
-        r = generate_native_bl(case_dir, cfg)
+        r = generate_native_bl(case_dir, cfg, engine_tag=engine_tag)
         return {
             "bl_success": bool(r.success),
             "bl_n_prism_cells": int(r.n_prism_cells),
@@ -52,17 +52,19 @@ def _try_bl(case_dir, n_layers: int = 3) -> dict:
         return {"bl_success": False, "bl_exc": str(exc)[:120]}
 
 
-def _worker_run(file_path: str, engine: str, with_bl: bool) -> dict:
-    """단일 (mesh, engine, BL) 측정 — ProcessPool worker 진입점."""
+def _worker_run(payload: tuple) -> dict:
+    """단일 (V, F, engine, with_bl) 측정 — ProcessPool worker.
+
+    main 에서 V/F 미리 로드해 numpy bytes 로 전달. worker 에서 thingi10k
+    init 안 함 (process 죽는 원인).
+    """
+    V_bytes, V_shape, F_bytes, F_shape, engine, with_bl = payload
     sys.path.insert(0, str(_REPO_ROOT))
     import warnings as _w
     _w.filterwarnings("ignore")
-    import thingi10k
 
-    thingi10k.init(variant="npz")
-    V, F = thingi10k.load_file(file_path)
-    V = V.astype(np.float64)
-    F = F.astype(np.int64)
+    V = np.frombuffer(V_bytes, dtype=np.float64).reshape(V_shape)
+    F = np.frombuffer(F_bytes, dtype=np.int64).reshape(F_shape)
 
     out: dict = {"engine": engine, "with_bl": with_bl}
 
@@ -136,7 +138,8 @@ def _worker_run(file_path: str, engine: str, with_bl: bool) -> dict:
             out["elapsed"] = round(time.perf_counter() - t0, 2)
 
             if with_bl and out.get("success"):
-                out.update(_try_bl(case, n_layers=2 if engine == "tet" else 3))
+                out.update(_try_bl(case, n_layers=2 if engine == "tet" else 3,
+                                   engine_tag=engine))
 
         except Exception as exc:
             out["success"] = False
@@ -147,11 +150,16 @@ def _worker_run(file_path: str, engine: str, with_bl: bool) -> dict:
 
 
 def _pick_hard(n: int = 5) -> list[dict]:
+    """beta1800 — 측정 가능한 크기 (≤ 3000 face) 의 hard mesh 선별.
+
+    Thingi10K 의 self-intersecting + non-manifold mesh 중 face <= 3000
+    인 것만 → bench 가 합리적 시간 안에 끝나도록.
+    """
     import thingi10k
     thingi10k.init(variant="npz")
     ds = thingi10k.dataset(
         self_intersecting=True, manifold=False,
-        num_facets=(5000, 30000),
+        num_facets=(500, 3000),
     )
     out = []
     for i, row in enumerate(ds):
@@ -181,12 +189,25 @@ def main():
               f"closed={info['closed']}", flush=True)
     print(flush=True)
 
+    # main 에서 V/F 미리 로드 (worker 에서 thingi10k init 호출 시 segfault).
+    import thingi10k as _t10k
+    loaded: dict[int, tuple[np.ndarray, np.ndarray]] = {}
+    for info in meshes:
+        V, F = _t10k.load_file(info["file_path"])
+        loaded[info["file_id"]] = (
+            V.astype(np.float64), F.astype(np.int64),
+        )
+
     # 30 jobs.
     jobs = []
     for info in meshes:
+        V, F = loaded[info["file_id"]]
+        V_bytes = V.tobytes(); V_shape = V.shape
+        F_bytes = F.tobytes(); F_shape = F.shape
         for engine in ("tet", "hex", "poly"):
             for bl in (False, True):
-                jobs.append((info, engine, bl))
+                jobs.append((info, engine, bl,
+                             (V_bytes, V_shape, F_bytes, F_shape, engine, bl)))
 
     n_workers = min(4, max(1, (os.cpu_count() or 1) // 2))
     per_cell_timeout = 90.0  # 60s 보다 약간 여유.
@@ -198,8 +219,8 @@ def main():
 
     with ProcessPoolExecutor(max_workers=n_workers) as pool:
         future_map = {}
-        for (info, engine, bl) in jobs:
-            fut = pool.submit(_worker_run, info["file_path"], engine, bl)
+        for (info, engine, bl, payload) in jobs:
+            fut = pool.submit(_worker_run, payload)
             future_map[fut] = (info, engine, bl)
 
         for fut in as_completed(future_map.keys(), timeout=None):

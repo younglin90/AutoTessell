@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2155,
+  "beta": 2156,
   "max_round": 1000,
-  "round": 102,
+  "round": 103,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -33,6 +33,7 @@
     "poly"
   ],
   "recent_cards": [
+    "HEX_BL_TANGENT",
     "POL_BL_TANGENT",
     "POL_LAYERS",
     "POL_BL1",
@@ -50,5 +51,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "POL_BL_TANGENT — poly+BL top-layer tangential Laplacian smoothing (cfMesh BLSmoothing 3-engine parity), new code path (poly extrudes own prisms, R100 does not cover), n_moved up to 11 per fid (beta2155, R102)"
+  "plan_archive": "HEX_BL_TANGENT — hex+BL top-layer tangential smoothing verified (shared native_bl.py path, R100 covers hex), engine_tag='hex' alias log added (hex_bl_tangent_smooth), 3-engine BL tangent parity confirmed (beta2156, R103)"
 }
