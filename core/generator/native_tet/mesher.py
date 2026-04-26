@@ -1680,6 +1680,32 @@ def generate_native_tet(
                                      mq_after=round(float(post_q_c2b.mean_q), 3))
             except Exception as exc:
                 log.debug("native_tet_flip_cycle2_skipped", reason=str(exc))
+
+            # VV1 (beta1990) — flip 2-cycle 후 AMIPS interior smoothing 1 회
+            # 더. sliver 깬 새 connectivity 에서 vertex 위치 미세 조정으로
+            # mq 추가 향상.
+            try:
+                pre_q_v = _qsnap_flip(final_pts, final_tets)
+                if float(pre_q_v.mean_q) < 0.30:
+                    from core.generator.native_tet.amips import smooth_amips_analytic
+                    try:
+                        lock_ids_v = surface_new_ids2  # type: ignore[name-defined]
+                    except NameError:
+                        lock_ids_v = np.arange(int(n_surface_in), dtype=np.int64)
+                    ar_v, new_pts_v = smooth_amips_analytic(
+                        final_pts, final_tets,
+                        locked_vertex_ids=lock_ids_v,
+                        n_iter=1, alpha=1.0,
+                    )
+                    if ar_v.energy_after <= ar_v.energy_before * 1.05:
+                        post_q_v = _qsnap_flip(new_pts_v, final_tets)
+                        if float(post_q_v.mean_q) >= float(pre_q_v.mean_q) * 0.99:
+                            final_pts = new_pts_v
+                            log.info("native_tet_amips_post_flip",
+                                     mq_before=round(float(pre_q_v.mean_q), 3),
+                                     mq_after=round(float(post_q_v.mean_q), 3))
+            except Exception as exc:
+                log.debug("native_tet_amips_post_flip_skipped", reason=str(exc))
     except Exception as exc:
         log.debug("native_tet_flip_23_skipped", reason=str(exc))
 
