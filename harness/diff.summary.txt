@@ -1,4 +1,4 @@
-file: core/layers/tet_bl_subdivide.py
-functions: subdivide_prism_layers_to_tet, _TET_LAYERS_N (module constant)
-lines_added: 88
+file: core/layers/native_bl.py
+functions: generate_native_bl (HEX_LAYERS post-prism-pass per-face guard block), _HEX_LAYERS_N (module constant)
+lines_added: 80
 lines_removed: 0

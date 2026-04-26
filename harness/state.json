@@ -1,8 +1,8 @@
 {
   "target_engine": "poly",
-  "beta": 2145,
+  "beta": 2146,
   "max_round": 1000,
-  "round": 92,
+  "round": 93,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -48,5 +48,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "TET_LAYERS — native_tet+BL 2-layer geometric extrusion (mirror POL_LAYERS, cfMesh nLayers=2)"
+  "plan_archive": "HEX_LAYERS — native_hex+BL 2-layer geometric extrusion (3-engine BL multi-layer parity, cfMesh nLayers=2)"
 }

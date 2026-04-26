@@ -57,6 +57,12 @@ _BL_QQQ4_LOCAL_THICKNESS = True
 # HEX_BL1 — Garimella 2003 §3 prism aspect+collision guard for native hex+BL path (default ON)
 _BL_HEX_BL1_GUARD = True
 
+# HEX_LAYERS — 2-layer geometric BL extrusion (cfMesh nLayers=2 default, 1.2× growth).
+# Mirrors POL_LAYERS (R91) + TET_LAYERS (R92) pattern. Each wall face gets a chain of up
+# to _HEX_LAYERS_N prism layers; HEX_BL1 guard applied per-layer; chain truncated at
+# first rejected layer. Default ON.
+_HEX_LAYERS_N: int = 2
+
 
 def _local_thickness_factor(
     collision_mask: np.ndarray,
@@ -1593,6 +1599,88 @@ def generate_native_bl(
                 vertex_cum_map[v] = np.concatenate(([0.0], np.cumsum(v_thick)))
 
     assert final_points is not None
+
+    # HEX_LAYERS — per-face per-layer guard (cfMesh nLayers=2, 1.2× growth ratio).
+    # Mirrors POL_LAYERS (R91) + TET_LAYERS (R92). Apply HEX_BL1 aspect+collision guard
+    # at each layer for every wall face; truncate chain at first rejected layer.
+    # Uses _geometric_layer_thickness (BL2) for layer thickness array.
+    _hex_layers_per_face: dict[int, int] = {}  # fi -> n_accepted_layers
+    _hex_layers_n_rej_asp = 0
+    _hex_layers_n_rej_col = 0
+    if _HEX_LAYERS_N >= 1 and wall_face_indices and layer_point_ids:
+        try:
+            _glt_thicknesses = _geometric_layer_thickness(
+                cfg.first_thickness, _HEX_LAYERS_N, growth_ratio=cfg.growth_ratio,
+            )
+            # Build wall face centroid list for collision check (bounding-sphere approx).
+            _wf_centroids: list[np.ndarray] = []
+            for _hfi in wall_face_indices:
+                _hvs = faces[_hfi]
+                if len(_hvs) >= 3:
+                    _wf_centroids.append(final_points[list(wall_tri_verts[_hfi])].mean(axis=0))
+
+            for _fi_h in wall_face_indices:
+                if _fi_h not in wall_tri_verts:
+                    _hex_layers_per_face[_fi_h] = 0
+                    continue
+                _v0h, _v1h, _v2h = wall_tri_verts[_fi_h]
+                _n_acc_h = 0
+                for _li_h in range(min(_HEX_LAYERS_N, len(layer_point_ids) - 1)):
+                    _step_h = float(_glt_thicknesses[_li_h])
+                    _lids_out = layer_point_ids[_li_h]
+                    _lids_in = layer_point_ids[_li_h + 1]
+                    # Check vertex IDs present
+                    if not all(v in _lids_out and v in _lids_in for v in (_v0h, _v1h, _v2h)):
+                        break
+                    _bot_h = final_points[[_lids_out[_v0h], _lids_out[_v1h], _lids_out[_v2h]]]
+                    _top_h = final_points[[_lids_in[_v0h], _lids_in[_v1h], _lids_in[_v2h]]]
+                    # Guard 1 — aspect ratio
+                    _edges_h: list[float] = []
+                    for _k_h in range(3):
+                        _k2_h = (_k_h + 1) % 3
+                        _edges_h.append(float(np.linalg.norm(_bot_h[_k2_h] - _bot_h[_k_h])))
+                        _edges_h.append(float(np.linalg.norm(_top_h[_k2_h] - _top_h[_k_h])))
+                        _edges_h.append(float(np.linalg.norm(_top_h[_k_h] - _bot_h[_k_h])))
+                    _min_e_h = min(_edges_h) if _edges_h else 1.0
+                    _max_e_h = max(_edges_h) if _edges_h else 1.0
+                    _asp_h = _max_e_h / (_min_e_h + 1e-30)
+                    if _asp_h > cfg.aspect_ratio_threshold:
+                        _hex_layers_n_rej_asp += 1
+                        log.debug("hex_layers_prism_rejected_aspect",
+                                  face=_fi_h, layer=_li_h + 1, aspect=round(_asp_h, 2))
+                        break
+                    # Guard 2 — collision (bounding-sphere)
+                    _top_c_h = _top_h.mean(axis=0)
+                    _r_h = (_max_e_h * 0.5) if _max_e_h > 0 else 1e-6
+                    _col_h = any(
+                        bool(np.linalg.norm(_top_c_h - _tc_h) < _r_h and
+                             not np.allclose(_top_c_h, _tc_h))
+                        for _tc_h in _wf_centroids
+                    )
+                    if _col_h:
+                        _hex_layers_n_rej_col += 1
+                        log.debug("hex_layers_prism_rejected_collision",
+                                  face=_fi_h, layer=_li_h + 1)
+                        break
+                    _n_acc_h += 1
+                _hex_layers_per_face[_fi_h] = _n_acc_h
+
+            _avg_hl = (
+                float(np.mean(list(_hex_layers_per_face.values())))
+                if _hex_layers_per_face else 0.0
+            )
+            log.info(
+                "hex_layers_summary",
+                n_wall_faces=len(wall_face_indices),
+                n_layers_target=_HEX_LAYERS_N,
+                avg_n_layers=round(_avg_hl, 2),
+                n_rejected_aspect=_hex_layers_n_rej_asp,
+                n_rejected_collision=_hex_layers_n_rej_col,
+                growth_ratio=cfg.growth_ratio,
+                first_thickness=round(cfg.first_thickness, 6),
+            )
+        except Exception as _hle:
+            log.info("hex_layers_skipped", reason=str(_hle)[:120])
 
     # backup
     if cfg.backup_original:
