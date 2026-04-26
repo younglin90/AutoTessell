@@ -63,9 +63,12 @@ def _clip_voronoi_cell_by_surface(
 
     for tri in F_surf:
         v0, v1, v2 = V_surf[tri[0]], V_surf[tri[1]], V_surf[tri[2]]
-        n = np.cross(v1 - v0, v2 - v0)
+        e1, e2 = v1 - v0, v2 - v0
+        n = np.cross(e1, e2)
         n_len = np.linalg.norm(n)
-        if n_len < 1e-14:
+        # PPP6 degenerate guard: skip near-zero normal or near-zero area plane
+        area = 0.5 * n_len
+        if n_len < 1e-12 or area < 1e-14:
             continue
         n = n / n_len
         d = np.dot(n, v0)
@@ -89,6 +92,7 @@ def _clip_voronoi_cell_by_surface(
                 t = da / (da - db)
                 new_pts.append(a + t * (b - a))
         if len(new_pts) < 4:
+            log.warning("native_poly_ppp6_skipped", reason="clip reduced vertices below 4")
             return cell_verts  # degenerate — safe fallback
         pts = np.array(new_pts, dtype=np.float64)
 
@@ -613,7 +617,7 @@ def _generate_native_poly_voronoi_inner(
     # PPP5 — boundary cell clipping (clip_boundary=True 시).
     # boundary cell: region 의 vertex 중 1개 이상이 surface 외부에 있는 cell.
     if clip_boundary and _NATIVE_POLY_PPP4_ENABLE:
-        max_cells_clip = 50
+        max_cells_clip = 200
         clipped_count = 0
         new_vor_vertices = vor_vertices.copy()
         for pi in keep_region_indices:
@@ -636,7 +640,7 @@ def _generate_native_poly_voronoi_inner(
                 vor.regions[r_idx] = new_idx
                 clipped_count += 1
             except Exception as exc:
-                log.warning("native_poly_ppp5_skipped", reason=str(exc)[:120])
+                log.warning("native_poly_ppp6_skipped", reason=str(exc)[:120])
         if clipped_count:
             vor_vertices = new_vor_vertices
             log.info("native_poly_ppp5_clipped", n_cells_clipped=clipped_count)
