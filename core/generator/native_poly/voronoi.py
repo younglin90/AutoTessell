@@ -173,6 +173,25 @@ def _write_polymesh_poly(
     return write_generic_polymesh(vertices, cells, case_dir)
 
 
+_TTT3_POLY_BL_EXTRUDE_ENABLE = False  # 본 카드: 스켈레톤만, default OFF.
+
+def _extrude_prism_layer(
+    wall_cells: set[int],
+    vertices: "np.ndarray",         # (V,3) kept voronoi vertices (final_vertices)
+    cells: list[list[list[int]]],   # cells[i] = list of faces; face = list[int vidx]
+    cell_owner_seed: list[int],     # cells[i] 의 seed point index (== keep_region_indices[i])
+    surface_V: "np.ndarray",        # (Vs,3)
+    surface_F: "np.ndarray",        # (Fs,3) wall 삼각형
+    step: float,
+    max_extrude: int = 20,
+) -> tuple["np.ndarray", list[list[list[int]]]]:
+    """wall-adj cell 의 boundary face 1 개당 prism 1 셀 추가.
+
+    Returns: (new_vertices, new_cells) — 기존 + 신규 prism append.
+    """
+    return vertices, cells
+
+
 def _ccw_sort_face_vertices(
     vertices: np.ndarray, verts_idx: list[int],
 ) -> list[int]:
@@ -739,6 +758,13 @@ def _generate_native_poly_voronoi_inner(
             _ccw_sort_face_vertices(final_vertices, f) for f in remapped_cell
         ]
         final_cells.append(remapped_cell)
+
+    if _TTT3_POLY_BL_EXTRUDE_ENABLE and _wall_adj:
+        bbox_diag = float(np.linalg.norm(V.max(0) - V.min(0)))
+        final_vertices, final_cells = _extrude_prism_layer(
+            _wall_adj, final_vertices, final_cells, cell_owner_seed,
+            V, F, step=bbox_diag * 0.005, max_extrude=20,
+        )
 
     # Y2 (beta1660) — Voronoi cell vertex Laplacian smoothing (skewness 잡기).
     # 평균 skewness 100+ → < 5 목표. quality 검증 후 채택 (revert 가드).

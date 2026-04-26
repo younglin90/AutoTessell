@@ -39,3 +39,4 @@
 | R32 | SSS3 | tet | FAIL | -0.027 | worst mq destabilized, need stronger guard or skip envelope relocation |
 | R33 | TTT1 | poly | PASS | =0.0 | BL wall-adjacent helper skeleton (Garimella 2003 시퀀스 #1), default OFF, poly A=5/5, bench 59.7s (stable) |
 | R35 | TTT2b | poly | PASS | =0.0 | BL wall-adjacent helper 호출 활성 (시그니처 일관 재시도 #1), _find_wall_adjacent_cells(3 arg) 정확 호출, poly A=5/5, bench 59.1s (stable), n_wall_adj 255~778 |
+| R36 | TTT3 | poly | PASS | =0.0 | BL extrude prism helper skeleton (Garimella 2003 시퀀스 #3), default OFF, poly A=5/5, bench 58.7s (-0.4s), prism extrude BL 구조 준비 |
