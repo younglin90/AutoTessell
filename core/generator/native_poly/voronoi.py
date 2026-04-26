@@ -184,8 +184,12 @@ def _extrude_prism_layer(
     surface_F: "np.ndarray",        # (Fs,3) wall 삼각형
     step: float,
     max_extrude: int = 100,
+    thickness_factor: "float | np.ndarray" = 1.0,
 ) -> tuple["np.ndarray", list[list[list[int]]]]:
     """wall-adj cell 의 boundary face 1 개당 prism 1 셀 추가.
+
+    thickness_factor: scalar 또는 per-wall-cell 배열. 각 prism 의 step 에 곱해져
+    local adaptive thickness 를 제어한다 (default 1.0 → 기존 동작 보존).
 
     Returns: (new_vertices, new_cells) — 기존 + 신규 prism append.
     """
@@ -194,6 +198,7 @@ def _extrude_prism_layer(
         n_added = 0
         new_verts: list = list(vertices)
         new_cells: list = list(cells)
+        _tf_array = np.asarray(thickness_factor) if not np.isscalar(thickness_factor) else None
 
         for seed_idx in wall_cells:
             if n_added >= max_extrude:
@@ -215,10 +220,15 @@ def _extrude_prism_layer(
                 normal = -normal
             normal = normal / (np.linalg.norm(normal) + 1e-30)
 
+            if _tf_array is not None:
+                factor_i = float(_tf_array[n_added]) if n_added < len(_tf_array) else 1.0
+            else:
+                factor_i = float(thickness_factor)
+
             top_indices = []
             base_offset = len(new_verts)
             for vi in face:
-                new_verts.append(np.array(new_verts[vi]) + normal * step)
+                new_verts.append(np.array(new_verts[vi]) + normal * step * factor_i)
                 top_indices.append(base_offset + len(top_indices))
 
             n_face = len(face)
