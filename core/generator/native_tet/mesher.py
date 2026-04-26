@@ -2439,6 +2439,40 @@ def generate_native_tet(
         except Exception as exc:
             log.warning("native_tet_vvv8_skipped", reason=str(exc)[:120])
 
+    # VVV9 — flip-1-4 Steiner insertion (non-Delaunay, fTetWild §3.4 simplified)
+    if not os.environ.get("AUTO_TESSELL_VVV9_OFF"):
+        try:
+            if final_tets.shape[0] < 500:
+                log.info("vvv9_skipped_small_mesh", n_tets=int(final_tets.shape[0]))
+            else:
+                from core.generator.native_tet.stellar import insert_steiner_flip14 as _isf14  # noqa: PLC0415
+                from core.generator.native_tet.quality import snapshot as _qsnap79  # noqa: PLC0415
+                _pre79 = _qsnap79(final_pts, final_tets)
+                _pre79_n = final_tets.shape[0]
+                _pts79, _tets79, _n79 = _isf14(
+                    final_pts, final_tets,
+                    top_k=5,
+                    min_quality_improvement=1e-3,
+                    max_inserts=10,
+                )
+                _post79 = _qsnap79(_pts79, _tets79)
+                _acc79 = (
+                    _post79.min_q >= _pre79.min_q - 1e-6
+                    and _post79.mean_q >= _pre79.mean_q - 1e-3
+                    and _pre79_n <= _tets79.shape[0] <= _pre79_n + 4 * 10
+                )
+                if _acc79:
+                    final_pts, final_tets = _pts79, _tets79
+                log.info(
+                    "native_tet_steiner_flip14",
+                    n_inserted=int(_n79),
+                    pre_min=float(_pre79.min_q),
+                    post_min=float(_post79.min_q),
+                    accepted=bool(_acc79),
+                )
+        except Exception as exc:
+            log.warning("native_tet_vvv9_skipped", reason=str(exc)[:120])
+
     # beta1530 (V3) — 외부 tet 제거: 입력 surface 외부에 centroid 가 있는 tet drop.
     if enable_boundary_clip:
         try:

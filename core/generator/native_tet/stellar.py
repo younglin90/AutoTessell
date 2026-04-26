@@ -128,3 +128,78 @@ def _apply_op_queue(
 
     n_applied = n32 + n44
     return pts, tets_44, n_applied
+
+
+def insert_steiner_flip14(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    top_k: int = 5,
+    min_quality_improvement: float = 1e-3,
+    max_inserts: int = 10,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """VVV9 — non-Delaunay 1→4 flip Steiner insertion (fTetWild §3.4 simplified).
+
+    For each of the top_k worst tets, compute centroid, split into 4 sub-tets,
+    accept only if min quality strictly improves.  No scipy Delaunay rebuild.
+
+    Returns (pts_out, tets_out, n_inserted).
+    """
+    n_tets = tets.shape[0]
+    if n_tets == 0:
+        return pts, tets, 0
+
+    # Compute quality for all tets.
+    qualities = np.array([_tet_quality(pts, tets[i]) for i in range(n_tets)], dtype=np.float64)
+
+    # Pick top_k worst (ascending quality → smallest first).
+    worst_indices = np.argsort(qualities)[: top_k]
+
+    pts_list = list(pts)
+    tets_list = list(tets)
+    n_inserted = 0
+    # Track which tet indices have been invalidated by prior insertions.
+    invalidated: set[int] = set()
+
+    for ti in worst_indices:
+        if n_inserted >= max_inserts:
+            break
+        if ti in invalidated:
+            continue
+
+        tet = tets_list[ti]
+        a, b, c, d = int(tet[0]), int(tet[1]), int(tet[2]), int(tet[3])
+        pa, pb, pc, pd = pts_list[a], pts_list[b], pts_list[c], pts_list[d]
+
+        q_old = _tet_quality(np.array(pts_list), np.array([a, b, c, d]))
+
+        # Steiner point = centroid of the 4 vertices.
+        centroid = (pa + pb + pc + pd) / 4.0
+
+        N = len(pts_list)
+        pts_list.append(centroid)
+
+        sub_tets = [
+            np.array([a, b, c, N], dtype=tets.dtype),
+            np.array([a, b, N, d], dtype=tets.dtype),
+            np.array([a, N, c, d], dtype=tets.dtype),
+            np.array([N, b, c, d], dtype=tets.dtype),
+        ]
+
+        pts_arr_tmp = np.array(pts_list)
+        q_news = [_tet_quality(pts_arr_tmp, st) for st in sub_tets]
+        q_new_min = min(q_news)
+
+        if q_new_min >= q_old + min_quality_improvement:
+            # Accept: replace old tet with 4 sub-tets.
+            tets_list[ti] = sub_tets[0]
+            tets_list.extend(sub_tets[1:])
+            invalidated.add(ti)
+            n_inserted += 1
+        else:
+            # Revert: pop the appended vertex.
+            pts_list.pop()
+
+    pts_out = np.array(pts_list)
+    tets_out = np.array(tets_list, dtype=tets.dtype)
+    return pts_out, tets_out, n_inserted
