@@ -459,33 +459,47 @@ def split_anisotropic_tet_edges(
     if n_tets == 0:
         return pts, tets, 0
 
+    # PERF2: vectorized AR screening (replaces per-tet Python loop).
+    _PAIR_I = np.array([0, 0, 0, 1, 1, 2], dtype=np.intp)
+    _PAIR_J = np.array([1, 2, 3, 2, 3, 3], dtype=np.intp)
     _PAIRS = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
 
-    def _edge_stats(p: np.ndarray, tet: np.ndarray) -> tuple[float, float, int, int]:
-        """Return (ar, longest_edge_len, ei, ej) for tet vertices."""
-        verts = [p[tet[k]] for k in range(4)]
-        lengths = [float(np.dot(verts[pi] - verts[pj], verts[pi] - verts[pj])) ** 0.5
-                   for pi, pj in _PAIRS]
-        l_max = max(lengths)
-        l_min = min(lengths)
-        ar = l_max / l_min if l_min > 1e-15 else float("inf")
-        best_idx = int(np.argmax(lengths))
-        pi, pj = _PAIRS[best_idx]
-        return ar, l_max, int(tet[pi]), int(tet[pj])
+    # --- vectorized screening ---
+    verts_all = pts[tets]  # (N,4,3)
+    # 6 edge lengths for all tets
+    edge_vecs = verts_all[:, _PAIR_J] - verts_all[:, _PAIR_I]  # (N,6,3)
+    edge_lens = np.sqrt((edge_vecs ** 2).sum(axis=2))           # (N,6)
+    l_max = edge_lens.max(axis=1)
+    l_min = edge_lens.min(axis=1)
+    ar_all = l_max / np.maximum(l_min, 1e-12)
 
-    # Detect anisotropic candidates.
+    # quality for all tets (vectorized mean-ratio, matches _tet_quality exactly)
+    a = verts_all[:, 0]; b = verts_all[:, 1]
+    c = verts_all[:, 2]; d = verts_all[:, 3]
+    e0 = b - a; e1 = c - a; e2 = d - a
+    # vol6 = dot(e0, cross(e1,e2)) — scalar triple product
+    vol6 = (np.cross(e1, e2) * e0).sum(axis=1)
+    # l_sq = sum of all 6 squared edge lengths
+    l_sq = ((e0**2).sum(1) + (e1**2).sum(1) + (e2**2).sum(1)
+            + ((b-c)**2).sum(1) + ((b-d)**2).sum(1) + ((c-d)**2).sum(1))
+    vol = np.abs(vol6) / 6.0
+    q_all = np.where(l_sq > 1e-30, 12.0 * (3.0 * vol) ** (2.0/3.0) / l_sq, 0.0)
+    q_all = np.clip(q_all, 0.0, 1.0)
+
+    mask = (ar_all > ar_threshold) & (q_all < 0.3)
+    cand_indices = np.where(mask)[0]
+
+    # build aniso_edges from candidates (longest edge per tet)
     aniso_edges: list[tuple[int, int]] = []
     seen_edges: set[tuple[int, int]] = set()
-    for ti in range(n_tets):
-        q = _tet_quality(pts, tets[ti])
-        if q >= 0.3:
-            continue
-        ar, _lmax, ei, ej = _edge_stats(pts, tets[ti])
-        if ar > ar_threshold:
-            u, v = (ei, ej) if ei < ej else (ej, ei)
-            if (u, v) not in seen_edges:
-                seen_edges.add((u, v))
-                aniso_edges.append((u, v))
+    for ti in cand_indices:
+        best_pair = int(np.argmax(edge_lens[ti]))
+        pi, pj = _PAIRS[best_pair]
+        ei, ej = int(tets[ti, pi]), int(tets[ti, pj])
+        u, v = (ei, ej) if ei < ej else (ej, ei)
+        if (u, v) not in seen_edges:
+            seen_edges.add((u, v))
+            aniso_edges.append((u, v))
 
     pts_list = list(pts)
     tets_list = list(tets)

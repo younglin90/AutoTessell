@@ -1,4 +1,4 @@
-file: core/generator/native_tet/mesher.py
-functions: generate_native_tet (post-pass blocks: BSP_ORIENT_FIX, VVV3b, VVV5b, VVV6, VVV7, VVV8, VVV9, VVV10, VVV11, VVV12, VVV13, VVV14, TET_QUALITY1, VAL1)
-lines_added: 29
-lines_removed: 0
+file: core/generator/native_tet/stellar.py
+functions: split_anisotropic_tet_edges
+lines_added: 28
+lines_removed: 17

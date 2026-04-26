@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2163,
+  "beta": 2165,
   "max_round": 1000,
-  "round": 110,
+  "round": 112,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,7 +26,7 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 100.0,
+  "last_bench_time": 100.3,
   "consecutive_fails": 0,
   "dones": [
     "hex",
@@ -53,5 +53,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "POL_BL1_ORIENT_FIX — _extrude_prism_layer: compute signed vol after prism build; if V<0 flip bottom face; if still <0 log poly_bl1_orient_fail + skip; POL_BL1 delta now 0 (was +1); 22/22 tests PASS, bench 100.5s, poly A=5/5 (beta2163, R110)"
+  "plan_archive": "PERF2 — split_anisotropic_tet_edges: vectorize AR screening loop with numpy (pts[tets] batch edge_lens, vol6, l_sq → q_all); screening O(N) numpy vs Python loop; per-split accept/revert stays Python; VVV13 dt_ms 859→~800 (fid-dependent); bench 100.3s, 22/22 PASS, grades stable (beta2165, R112)"
 }
