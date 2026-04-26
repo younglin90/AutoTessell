@@ -51,3 +51,4 @@
 | R45 | WWW2 | hex | PASS | =0.0 | octree 2:1 balance 활성 (Marechal 2009 시퀀스 #2), _WWW1_OCTREE_BALANCE=True + node helper 26-이웃 재통과, hex A=5/5 stable, bench 57.5s |
 | R46 | TTT6 | poly | PASS | =0.0 | BL thickness_factor skeleton (Loseille 2013 시퀀스 #6), default 1.0 (default OFF), poly A=5/5 stable, bench 58.6s |
 | R48 | TTT7c | poly | PASS | -0.6s | BL step ×0.95 보수 축소 (stitch margin), poly A=5/5 stable, bench 58.0s, prism 156~1584 |
+| R49 | UUU6 | tet | PASS | =0.0 | face split helper 활성 (Hu 2018 §3.1 시퀀스 #6), _UUU5_FACE_SPLIT=True + max_split=20 guard, tet C/D stable, bench 58.0s (no-op, n_si=0) |

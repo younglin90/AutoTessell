@@ -1,8 +1,8 @@
 {
-  "target_engine": "poly",
-  "beta": 2106,
+  "target_engine": "tet",
+  "beta": 2107,
   "max_round": 1000,
-  "round": 48,
+  "round": 49,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -36,11 +36,11 @@
     "TTT7c",
     "TTT6",
     "WWW2",
-    "UUU5"
+    "UUU6"
   ],
   "rotate_targets": [
-    "poly",
     "tet",
-    "hex"
+    "hex",
+    "poly"
   ]
 }

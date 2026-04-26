@@ -26,7 +26,7 @@ from core.preprocessor.native_remesh.isotropic import isotropic_remesh
 
 _UUU1_SI_DETECT = True
 _UUU3_REPAIR_CANDIDATES = True
-_UUU5_FACE_SPLIT = False
+_UUU5_FACE_SPLIT = True  # UUU6 (beta2107) — 활성, mesher 호출부에서 try/except 가드
 
 
 def _detect_self_intersections(V: np.ndarray, F: np.ndarray) -> np.ndarray:

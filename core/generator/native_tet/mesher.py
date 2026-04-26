@@ -194,7 +194,11 @@ def generate_native_tet(
     _prog("start", 0.0, n_verts=V.shape[0], n_faces=F.shape[0])
 
     # UUU2 (beta2099) — self-intersect 탐지 활성 (식별만).
-    from core.preprocessor.native_remesh import _UUU1_SI_DETECT, _detect_self_intersections, _UUU3_REPAIR_CANDIDATES, _si_repair_candidates
+    from core.preprocessor.native_remesh import (
+        _UUU1_SI_DETECT, _detect_self_intersections,
+        _UUU3_REPAIR_CANDIDATES, _si_repair_candidates,
+        _UUU5_FACE_SPLIT, _apply_face_split,
+    )
     try:
         if _UUU1_SI_DETECT:
             si_pairs = _detect_self_intersections(V, F)
@@ -205,6 +209,15 @@ def generate_native_tet(
                 n_merge = sum(1 for c in cands if c["op"] == "merge")
                 log.info("native_tet_uuu4_candidates",
                          n_candidates=len(cands), n_split=n_split, n_merge=n_merge)
+                # UUU6 (beta2107) — face split 실제 적용 (단조 가드 try/except).
+                if _UUU5_FACE_SPLIT and len(cands) > 0:
+                    try:
+                        V_cand, F_cand, n_split = _apply_face_split(V, F, cands, max_split=20)
+                        if n_split > 0:
+                            V, F = V_cand, F_cand
+                            log.info("native_tet_uuu6_face_split_applied", n_split=int(n_split))
+                    except Exception as exc:
+                        log.debug("native_tet_uuu6_face_split_skipped", reason=str(exc))
     except Exception as exc:
         log.debug("native_tet_uuu2_si_detect_skipped", reason=str(exc))
 
