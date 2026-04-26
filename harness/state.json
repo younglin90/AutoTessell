@@ -1,8 +1,8 @@
 {
-  "target_engine": "tet",
-  "beta": 2121,
+  "target_engine": "poly",
+  "beta": 2123,
   "max_round": 1000,
-  "round": 68,
+  "round": 70,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -24,24 +24,24 @@
     }
   },
   "last_mq": {
-    "tet_worst": 0.082
+    "tet_worst": 0.076
   },
-  "last_bench_time": 68.2,
+  "last_bench_time": 67.0,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
-    "TTT9",
     "VVV5b",
     "VVV6",
-    "VVV7"
+    "VVV7",
+    "PPP10"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "VVV7 — native_tet interior Laplacian smoothing strict per-vert guard (top-K worst-tet, ≥2-ring boundary)"
+  "plan_archive": "PPP10 — native_poly feature-aware seed injection (Yan & Wonka 2014 §3 feature-conformal Voronoi)"
 }

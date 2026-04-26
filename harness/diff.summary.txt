@@ -1,9 +1,4 @@
-file: core/generator/native_tet/laplacian.py (new)
-functions: smooth_interior_laplacian
-lines_added: 160
-lines_removed: 0
-
-file: core/generator/native_tet/mesher.py
-functions: generate_mesh (VVV7 wiring block)
-lines_added: 34
+file: core/generator/native_poly/voronoi.py
+functions: _inject_feature_seeds (new), _generate_native_poly_voronoi_inner (augmented)
+lines_added: 73
 lines_removed: 0

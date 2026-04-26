@@ -332,6 +332,92 @@ def _ccw_sort_face_vertices(
     return [int(verts_idx[k]) for k in order]
 
 
+def _inject_feature_seeds(
+    surface_pts: np.ndarray,
+    surface_faces: np.ndarray,
+    *,
+    dihedral_deg: float = 30.0,
+    max_seeds: int = 200,
+) -> np.ndarray:
+    """PPP10 — Yan & Wonka 2014 §3 feature-conformal Voronoi seed injection.
+
+    Compute per-edge dihedral angles between adjacent face pairs. For edges
+    with dihedral > dihedral_deg (sharp features), sample points along the
+    edge proportional to edge length. Returns (M, 3) feature seed array.
+
+    Parameters
+    ----------
+    surface_pts  : (V, 3) surface vertex positions.
+    surface_faces: (F, 3) surface triangle indices.
+    dihedral_deg : threshold in degrees; edges sharper than this get seeds.
+    max_seeds    : total injection cap (algorithmic, not a tunable per fid).
+
+    Returns
+    -------
+    np.ndarray (M, 3) — feature seeds to concatenate with interior seeds.
+                        Empty (0, 3) if no sharp edges found.
+    """
+    V = np.asarray(surface_pts, dtype=np.float64)
+    F = np.asarray(surface_faces, dtype=np.int64)
+    if V.size == 0 or F.size == 0 or max_seeds <= 0:
+        return np.empty((0, 3), dtype=np.float64)
+
+    # build edge → face adjacency
+    edge_to_faces: dict[tuple[int, int], list[int]] = {}
+    for fi, tri in enumerate(F):
+        for k in range(3):
+            a, b = int(tri[k]), int(tri[(k + 1) % 3])
+            key = (min(a, b), max(a, b))
+            edge_to_faces.setdefault(key, []).append(fi)
+
+    # compute face normals
+    e1 = V[F[:, 1]] - V[F[:, 0]]
+    e2 = V[F[:, 2]] - V[F[:, 0]]
+    normals = np.cross(e1, e2)
+    nlen = np.linalg.norm(normals, axis=1, keepdims=True)
+    safe = (nlen[:, 0] > 1e-12)
+    normals[safe] /= nlen[safe]
+
+    cos_thresh = np.cos(np.deg2rad(dihedral_deg))
+
+    feature_pts: list[np.ndarray] = []
+    total = 0
+
+    for (a, b), face_list in edge_to_faces.items():
+        if len(face_list) != 2:
+            continue  # boundary or non-manifold edge
+        fi, fj = face_list
+        if not (safe[fi] and safe[fj]):
+            continue
+        cos_d = float(np.dot(normals[fi], normals[fj]))
+        # dihedral > dihedral_deg ↔ cos < cos_thresh (angle measured between normals)
+        if cos_d >= cos_thresh:
+            continue  # not a sharp edge
+
+        pa, pb = V[a], V[b]
+        edge_len = float(np.linalg.norm(pb - pa))
+        if edge_len < 1e-12:
+            continue
+
+        # number of samples proportional to edge length; at least 1
+        bbox_diag = float(np.linalg.norm(V.max(axis=0) - V.min(axis=0))) + 1e-30
+        n_sample = max(1, int(round(edge_len / (bbox_diag / 20.0))))
+        n_sample = min(n_sample, max_seeds - total)
+        if n_sample <= 0:
+            break
+
+        ts = np.linspace(0.0, 1.0, n_sample + 2)[1:-1]  # exclude endpoints
+        pts = pa[None, :] + ts[:, None] * (pb - pa)[None, :]
+        feature_pts.append(pts)
+        total += n_sample
+        if total >= max_seeds:
+            break
+
+    if not feature_pts:
+        return np.empty((0, 3), dtype=np.float64)
+    return np.vstack(feature_pts)
+
+
 def _lloyd_3d_iteration(
     seeds: np.ndarray,
     V: np.ndarray,
@@ -722,6 +808,24 @@ def _generate_native_poly_voronoi_inner(
                 ).astype(np.float64) / 1e6
         except Exception:
             pass
+
+    # PPP10 — feature-conformal seed injection (Yan & Wonka 2014 §3).
+    # Sharp surface edges produce aligned Voronoi seeds → better conformity.
+    try:
+        feat_seeds = _inject_feature_seeds(V, F, dihedral_deg=30.0, max_seeds=200)
+        if feat_seeds.shape[0] > 0:
+            # keep only interior feature seeds
+            feat_inside = _inside_ray_cast(feat_seeds, V, F)
+            feat_seeds = feat_seeds[feat_inside]
+            if feat_seeds.shape[0] > 0:
+                seeds = np.vstack([seeds, feat_seeds])
+                log.info(
+                    "native_poly_ppp10_feature_seeds",
+                    n_feature=int(feat_seeds.shape[0]),
+                    n_total=int(seeds.shape[0]),
+                )
+    except Exception as exc:
+        log.debug("native_poly_ppp10_skipped", reason=str(exc)[:120])
 
     if seeds.shape[0] < 5:
         return NativePolyResult(
