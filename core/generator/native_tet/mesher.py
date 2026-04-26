@@ -1842,6 +1842,64 @@ def generate_native_tet(
                     log.info("native_tet_post_bsp_flip_32", n_flips=int(n_e2),
                              mq_before=round(float(pre_q_e2.mean_q), 3),
                              mq_after=round(float(post_q_e2.mean_q), 3))
+            # KKK1 (beta2073) — flip-only sliver removal cycle (BSP 후, vertex 위치 불변).
+            # flip_23 pass.
+            try:
+                from core.generator.native_tet.flip import flip_edges_44 as _f44_k
+                _pre_k1 = _qsnap_eee(final_pts, final_tets)
+                _new_tets_k1, _n_k1 = _f23_e(
+                    final_pts, final_tets,
+                    min_quality_improvement=1e-3, max_flips=1500,
+                )
+                _post_k1 = _qsnap_eee(final_pts, _new_tets_k1)
+                if (
+                    float(_post_k1.min_q) >= float(_pre_k1.min_q) * 0.99
+                    and float(_post_k1.mean_q) >= float(_pre_k1.mean_q) * 0.99
+                ):
+                    final_tets = _new_tets_k1
+                else:
+                    _n_k1 = 0
+                # flip_32 pass.
+                _pre_k2 = _qsnap_eee(final_pts, final_tets)
+                _new_tets_k2, _n_k2 = _f32_e(
+                    final_pts, final_tets,
+                    min_quality_improvement=1e-3, max_flips=1000,
+                )
+                _post_k2 = _qsnap_eee(final_pts, _new_tets_k2)
+                if (
+                    float(_post_k2.min_q) >= float(_pre_k2.min_q) * 0.99
+                    and float(_post_k2.mean_q) >= float(_pre_k2.mean_q) * 0.99
+                ):
+                    final_tets = _new_tets_k2
+                else:
+                    _n_k2 = 0
+                # flip_44 pass.
+                _pre_k3 = _qsnap_eee(final_pts, final_tets)
+                _new_tets_k3, _n_k3 = _f44_k(
+                    final_pts, final_tets,
+                    min_quality_improvement=1e-3, max_flips=1000,
+                )
+                _post_k3 = _qsnap_eee(final_pts, _new_tets_k3)
+                if (
+                    float(_post_k3.min_q) >= float(_pre_k3.min_q) * 0.99
+                    and float(_post_k3.mean_q) >= float(_pre_k3.mean_q) * 0.99
+                ):
+                    final_tets = _new_tets_k3
+                else:
+                    _n_k3 = 0
+                _final_k = _qsnap_eee(final_pts, final_tets)
+                log.info(
+                    "native_tet_kkk1",
+                    n_flips_23=int(_n_k1),
+                    n_flips_32=int(_n_k2),
+                    n_flips_44=int(_n_k3),
+                    mq_before=round(float(_pre_k1.mean_q), 3),
+                    mq_after=round(float(_final_k.mean_q), 3),
+                    min_q_before=round(float(_pre_k1.min_q), 4),
+                    min_q_after=round(float(_final_k.min_q), 4),
+                )
+            except Exception as exc:
+                log.warning("native_tet_kkk1_skipped", reason=str(exc)[:120])
     except Exception as exc:
         log.debug("native_tet_post_bsp_pass_skipped", reason=str(exc))
 

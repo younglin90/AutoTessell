@@ -1,0 +1,47 @@
+  fid= 100027 hex       : grade=A cells=2 t=0.13s no=0.0° sk=0.0
+  fid= 100027 hex+BL    : grade=A cells=2 t=0.12s no=0.0° sk=0.0 BL=OK prism=72
+  fid= 100027 poly      : grade=A cells=78 t=0.14s no=43.3° sk=0.19
+  fid= 100027 poly+BL   : grade=A cells=78 t=0.14s no=43.3° sk=0.19 BL=OK prism=1584
+2026-04-26 16:02:01 [info     ] native_tet_kkk1                min_q_after=0.0 min_q_before=0.0 mq_after=0.058 mq_before=0.056 n_flips_23=10 n_flips_32=0 n_flips_44=0
+2026-04-26 16:02:01 [info     ] native_tet_kkk1                min_q_after=0.0 min_q_before=0.0 mq_after=0.058 mq_before=0.056 n_flips_23=10 n_flips_32=0 n_flips_44=0
+  fid= 100027 tet       : grade=D cells=1791 t=9.19s mq=0.082
+  fid= 100030 hex       : grade=A cells=266 t=0.29s no=39.6° sk=0.21
+  fid= 100027 tet+BL    : grade=D cells=1791 t=9.36s mq=0.082 BL=OK prism=4248
+  fid= 100030 hex+BL    : grade=A cells=266 t=0.3s no=39.6° sk=0.21 BL=OK prism=2676
+2026-04-26 16:02:09 [info     ] native_tet_kkk1                min_q_after=0.0 min_q_before=0.0 mq_after=0.066 mq_before=0.066 n_flips_23=44 n_flips_32=3 n_flips_44=7
+2026-04-26 16:02:09 [info     ] native_tet_kkk1                min_q_after=0.0 min_q_before=0.0 mq_after=0.066 mq_before=0.066 n_flips_23=44 n_flips_32=3 n_flips_44=7
+  fid= 100030 poly      : grade=A cells=142 t=1.26s no=41.1° sk=0.14
+  fid= 100030 poly+BL   : grade=A cells=142 t=1.24s no=41.1° sk=0.14 BL=OK prism=1644
+2026-04-26 16:02:12 [info     ] native_tet_kkk1                min_q_after=0.0 min_q_before=0.0 mq_after=0.055 mq_before=0.054 n_flips_23=3 n_flips_32=0 n_flips_44=1
+2026-04-26 16:02:13 [info     ] native_tet_kkk1                min_q_after=0.0 min_q_before=0.0 mq_after=0.055 mq_before=0.054 n_flips_23=3 n_flips_32=0 n_flips_44=1
+  fid= 100040 tet       : grade=D cells=4710 t=8.4s mq=0.055
+  fid= 100040 hex       : grade=A cells=38 t=0.04s no=36.5° sk=0.2
+  fid= 100040 hex+BL    : grade=A cells=38 t=0.04s no=36.5° sk=0.2 BL=OK prism=756
+  fid= 100040 poly      : grade=A cells=12 t=0.36s no=41.8° sk=0.14
+  fid= 100040 poly+BL   : grade=A cells=12 t=0.37s no=41.8° sk=0.14 BL=OK prism=288
+  fid= 100040 tet+BL    : grade=D cells=4710 t=8.37s mq=0.055 BL=OK prism=5844
+2026-04-26 16:02:25 [info     ] native_tet_kkk1                min_q_after=0.0066 min_q_before=0.0066 mq_after=0.236 mq_before=0.236 n_flips_23=6 n_flips_32=0 n_flips_44=0
+2026-04-26 16:02:26 [info     ] native_tet_kkk1                min_q_after=0.0066 min_q_before=0.0066 mq_after=0.236 mq_before=0.236 n_flips_23=6 n_flips_32=0 n_flips_44=0
+  fid= 100030 tet       : grade=D cells=11979 t=28.97s mq=0.095
+  fid=1004826 hex       : grade=A cells=60 t=0.06s no=22.4° sk=0.11
+  fid=1004826 hex+BL    : grade=A cells=60 t=0.06s no=22.4° sk=0.11 BL=OK prism=960
+  fid=1004826 poly      : grade=A cells=38 t=1.95s no=20.3° sk=0.14
+  fid=1004826 poly+BL   : grade=A cells=38 t=1.74s no=20.3° sk=0.14 BL=OK prism=636
+  fid= 100030 tet+BL    : grade=D cells=11979 t=29.02s mq=0.095 BL=OK prism=12820
+  fid=1004826 tet       : grade=C cells=3033 t=15.88s mq=0.208
+  fid= 101085 hex       : grade=A cells=28 t=0.03s no=16.2° sk=0.14
+  fid= 101085 hex+BL    : grade=A cells=28 t=0.03s no=16.2° sk=0.14 BL=OK prism=612
+  fid= 101085 poly      : grade=A cells=22 t=0.79s no=22.3° sk=0.11
+  fid=1004826 tet+BL    : grade=C cells=3033 t=16.19s mq=0.208 BL=OK prism=2416
+  fid= 101085 poly+BL   : grade=A cells=22 t=0.57s no=22.3° sk=0.11 BL=OK prism=492
+2026-04-26 16:02:42 [info     ] native_tet_kkk1                min_q_after=0.0 min_q_before=0.0 mq_after=0.076 mq_before=0.076 n_flips_23=122 n_flips_32=8 n_flips_44=8
+2026-04-26 16:02:43 [info     ] native_tet_kkk1                min_q_after=0.0 min_q_before=0.0 mq_after=0.076 mq_before=0.076 n_flips_23=122 n_flips_32=8 n_flips_44=8
+  fid= 101085 tet       : grade=C cells=9897 t=17.64s mq=0.127
+  fid= 101085 tet+BL    : grade=C cells=9897 t=17.43s mq=0.127 BL=OK prism=8840
+total time: 54.8s
+  hex +BL : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 5}
+  hex raw : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 0}
+  poly+BL : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 5}
+  polyraw : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 0}
+  tet +BL : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 0, 'B': 0, 'C': 2, 'D': 3, 'bl_ok': 5}
+  tet raw : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 0, 'B': 0, 'C': 2, 'D': 3, 'bl_ok': 0}

@@ -1,0 +1,44 @@
+{
+  "target_engine": "tet",
+  "beta": 2073,
+  "max_round": 1000,
+  "round": 3,
+  "last_grade": {
+    "tet": {
+      "A": 0,
+      "B": 0,
+      "C": 2,
+      "D": 3
+    },
+    "hex": {
+      "A": 5,
+      "B": 0,
+      "C": 0,
+      "D": 0
+    },
+    "poly": {
+      "A": 5,
+      "B": 0,
+      "C": 0,
+      "D": 0
+    }
+  },
+  "last_mq": {
+    "tet_worst": 0.076,
+    "tet_best": 0.236
+  },
+  "last_bench_time": 54.8,
+  "consecutive_fails": 0,
+  "dones": [
+    "hex",
+    "poly"
+  ],
+  "recent_cards": [
+    "EEE1",
+    "FFF1",
+    "KKK1"
+  ],
+  "rotate_targets": [
+    "tet"
+  ]
+}
