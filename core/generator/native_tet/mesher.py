@@ -1515,6 +1515,46 @@ def generate_native_tet(
     except Exception as exc:
         log.debug("native_tet_best_of_skipped", reason=str(exc))
 
+    # NN1 (beta1910) — sliver post-removal pass: 짧은 edge collapse 로
+    # sliver tet 직접 제거. fTetWild §3.4 의 sliver removal 핵심 단계.
+    # mean_q < 0.20 이면 1 회 적용. surface vertex lock.
+    try:
+        from core.generator.native_tet.quality import snapshot as _qsnap_pre
+        pre_q = _qsnap_pre(final_pts, final_tets)
+        if float(pre_q.mean_q) < 0.20 and final_tets.shape[0] > 100:
+            from core.generator.native_tet.local_ops import collapse_short_edges
+            n_v_pre = int(final_pts.shape[0])
+            n_t_pre = int(final_tets.shape[0])
+            # surface vertex lock — surface_new_ids2 가 일부 경로에서 미정의.
+            try:
+                lock_ids = surface_new_ids2  # type: ignore[name-defined]
+            except NameError:
+                # fallback: 입력 표면 vertex (V) 의 첫 n_surface_in 개 ID lock.
+                lock_ids = np.arange(int(n_surface_in), dtype=np.int64)
+            new_pts, new_tets, n_c = collapse_short_edges(
+                final_pts, final_tets,
+                target_edge=float(target_edge_length),
+                ratio=0.7,
+                locked_vertices=lock_ids,
+                max_collapses=4000,
+            )
+            if n_c > 0 and new_tets.shape[0] > 50:
+                post_q = _qsnap_pre(new_pts, new_tets)
+                # mean_q 가 단조 향상한 경우만 수용.
+                if float(post_q.mean_q) > float(pre_q.mean_q) * 0.99:
+                    final_pts = new_pts
+                    final_tets = new_tets
+                    log.info(
+                        "native_tet_sliver_post_collapse",
+                        n_collapsed=int(n_c),
+                        v_before=n_v_pre, v_after=int(new_pts.shape[0]),
+                        t_before=n_t_pre, t_after=int(new_tets.shape[0]),
+                        mq_before=round(float(pre_q.mean_q), 3),
+                        mq_after=round(float(post_q.mean_q), 3),
+                    )
+    except Exception as exc:
+        log.debug("native_tet_sliver_post_skipped", reason=str(exc))
+
     # beta1530 (V3) — 외부 tet 제거: 입력 surface 외부에 centroid 가 있는 tet drop.
     if enable_boundary_clip:
         try:
