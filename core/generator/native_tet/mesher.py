@@ -1755,6 +1755,58 @@ def generate_native_tet(
     except Exception as exc:
         log.debug("native_tet_flip_23_skipped", reason=str(exc))
 
+    # DDD1 (beta2040) — BSP triangle insertion pass: missing surface triangle
+    # 강제 회복. fTetWild §3.3 의 핵심 envelope 정합 단계.
+    # missing_face_indices 직접 계산 (input F 중 final_tets 안에 없는 face).
+    try:
+        from core.generator.native_tet.bsp_insert import bsp_insert_triangles_batch as _bsp_batch
+        # final_tets 의 모든 canonical face set.
+        if final_tets.size > 0 and F.size > 0:
+            tf = np.stack(
+                [final_tets[:, [0, 1, 2]], final_tets[:, [0, 1, 3]],
+                 final_tets[:, [0, 2, 3]], final_tets[:, [1, 2, 3]]], axis=1,
+            ).reshape(-1, 3)
+            tf = np.sort(tf, axis=1)
+            tf_set = {(int(a), int(b), int(c)) for a, b, c in tf}
+            # input F 의 triangle (input vertex indexing — final_pts 의 처음 n_surface_in 와 매칭).
+            n_surf_v = min(int(n_surface_in), int(final_pts.shape[0]))
+            Fs = np.sort(F, axis=1)
+            missing = []
+            for i in range(F.shape[0]):
+                a, b, c = int(Fs[i, 0]), int(Fs[i, 1]), int(Fs[i, 2])
+                if a >= n_surf_v or b >= n_surf_v or c >= n_surf_v:
+                    continue
+                if (a, b, c) not in tf_set:
+                    missing.append(i)
+        else:
+            missing = []
+        if len(missing) > 0 and len(missing) < 500:
+            n_v_pre_b = int(final_pts.shape[0])
+            n_t_pre_b = int(final_tets.shape[0])
+            new_pts_b, new_tets_b, bsp_r = _bsp_batch(
+                final_pts, final_tets, V, F,
+                np.asarray(missing, dtype=np.int64),
+                max_inserts=300,
+            )
+            n_recovered = int(bsp_r.n_missing_before - bsp_r.n_missing_after)
+            if (
+                new_tets_b.shape[0] > 50
+                and n_recovered > 0
+            ):
+                final_pts = new_pts_b
+                final_tets = new_tets_b
+                log.info(
+                    "native_tet_bsp_insert",
+                    missing_before=int(bsp_r.n_missing_before),
+                    missing_after=int(bsp_r.n_missing_after),
+                    n_recovered=int(n_recovered),
+                    n_inserted_points=int(bsp_r.n_inserted_points),
+                    v_before=n_v_pre_b, v_after=int(new_pts_b.shape[0]),
+                    t_before=n_t_pre_b, t_after=int(new_tets_b.shape[0]),
+                )
+    except Exception as exc:
+        log.debug("native_tet_bsp_insert_skipped", reason=str(exc))
+
     # beta1530 (V3) — 외부 tet 제거: 입력 surface 외부에 centroid 가 있는 tet drop.
     if enable_boundary_clip:
         try:
