@@ -1,8 +1,8 @@
 {
   "target_engine": "hex",
-  "beta": 2134,
+  "beta": 2135,
   "max_round": 1000,
-  "round": 81,
+  "round": 82,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -45,5 +45,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "HEX_BL1 — native_hex+BL prism aspect+collision guard (3-engine unified Garimella 2003)"
+  "plan_archive": "WWW8 — native_hex feature-driven octree refinement (snappyHexMesh featureLevel +1)"
 }

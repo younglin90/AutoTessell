@@ -37,6 +37,10 @@ _WWW3_SURFACE_REFINE: bool = True
 # WWW5: octree cell templating 스켈레톤 (Marechal 2009 §4) — default OFF
 _WWW5_TEMPLATING: bool = True
 
+# WWW8: feature-driven octree refinement — default ON
+# env AUTO_TESSELL_WWW8_OFF=1 to disable.
+_WWW8_FEATURE_REFINE: bool = True
+
 # WWW5: 26 cell type → pre-defined hex subdivision 패턴 (WWW6 에서 채울 자리)
 _TEMPLATE_PATTERNS: dict[str, list] = {}
 
@@ -444,6 +448,106 @@ def _build_nlevel_cells(
 
 
 # --------------------------------------------------------------------------
+# WWW8: feature-driven octree refinement (snappyHexMesh featureLevel +1 style)
+# --------------------------------------------------------------------------
+
+def _segment_intersects_aabb(
+    A: np.ndarray, B: np.ndarray,
+    lo: np.ndarray, hi: np.ndarray,
+) -> bool:
+    """Test if line segment AB intersects axis-aligned bounding box [lo, hi].
+
+    Uses the slab method (Amy Williams 2005).
+    Returns True if segment overlaps the AABB.
+    """
+    inv_d = np.where(np.abs(B - A) > 1e-30, 1.0 / (B - A), 1e30)
+    t0 = (lo - A) * inv_d
+    t1 = (hi - A) * inv_d
+    t_min = np.minimum(t0, t1)
+    t_max = np.maximum(t0, t1)
+    t_enter = float(t_min.max())
+    t_exit = float(t_max.min())
+    return t_enter <= t_exit + 1e-9 and t_exit >= -1e-9 and t_enter <= 1.0 + 1e-9
+
+
+def _refine_at_features(
+    level_3d: np.ndarray,
+    fine_inside_3d: np.ndarray,
+    fine_pts_xs: np.ndarray,
+    fine_pts_ys: np.ndarray,
+    fine_pts_zs: np.ndarray,
+    feature_segs: np.ndarray,
+    n_lev: int,
+    *,
+    max_extra_levels: int = 1,
+) -> tuple[np.ndarray, int]:
+    """WWW8 — bump level_3d +1 wherever a feature edge segment intersects a cell AABB.
+
+    Args:
+        level_3d: (nfx, nfy, nfz) int8 target-level grid (modified in-place copy).
+        fine_inside_3d: (nfx, nfy, nfz) bool.
+        fine_pts_xs/ys/zs: 1-D coordinate arrays for fine grid vertices (size nfx+1/nfy+1/nfz+1).
+        feature_segs: (M, 2, 3) feature edge segment endpoints.
+        n_lev: maximum allowed level (cap).
+        max_extra_levels: how many extra levels to add (default 1).
+
+    Returns:
+        (updated level_3d, n_refined) — n_refined = number of cells bumped.
+    """
+    import os  # noqa: PLC0415
+    if os.environ.get("AUTO_TESSELL_WWW8_OFF", "").strip().lower() in ("1", "true", "yes"):
+        return level_3d, 0
+
+    if feature_segs.shape[0] == 0:
+        return level_3d, 0
+
+    out = level_3d.copy()
+    nfx, nfy, nfz = out.shape
+    seg_A = feature_segs[:, 0, :]  # (M, 3)
+    seg_B = feature_segs[:, 1, :]  # (M, 3)
+
+    # Coarse filter: for each segment, find candidate cells via bounding box overlap
+    # We iterate segments and test cells in the AABB of the segment.
+    n_refined = 0
+    max_lev_cap = int(n_lev)
+
+    for si in range(feature_segs.shape[0]):
+        sa = seg_A[si]
+        sb = seg_B[si]
+        seg_lo = np.minimum(sa, sb)
+        seg_hi = np.maximum(sa, sb)
+
+        # Find cell index range that overlaps the segment bounding box
+        # xs[i] <= x < xs[i+1] for cell i
+        i0 = max(0, int(np.searchsorted(fine_pts_xs, seg_lo[0], side="left")) - 1)
+        i1 = min(nfx - 1, int(np.searchsorted(fine_pts_xs, seg_hi[0], side="right")))
+        j0 = max(0, int(np.searchsorted(fine_pts_ys, seg_lo[1], side="left")) - 1)
+        j1 = min(nfy - 1, int(np.searchsorted(fine_pts_ys, seg_hi[1], side="right")))
+        k0 = max(0, int(np.searchsorted(fine_pts_zs, seg_lo[2], side="left")) - 1)
+        k1 = min(nfz - 1, int(np.searchsorted(fine_pts_zs, seg_hi[2], side="right")))
+
+        for i in range(i0, i1 + 1):
+            for j in range(j0, j1 + 1):
+                for k in range(k0, k1 + 1):
+                    if not fine_inside_3d[i, j, k]:
+                        continue
+                    cell_lo = np.array([
+                        fine_pts_xs[i], fine_pts_ys[j], fine_pts_zs[k],
+                    ], dtype=np.float64)
+                    cell_hi = np.array([
+                        fine_pts_xs[i + 1], fine_pts_ys[j + 1], fine_pts_zs[k + 1],
+                    ], dtype=np.float64)
+                    if _segment_intersects_aabb(sa, sb, cell_lo, cell_hi):
+                        cur = int(out[i, j, k])
+                        new_lev = min(cur + max_extra_levels, max_lev_cap)
+                        if new_lev > cur:
+                            out[i, j, k] = np.int8(new_lev)
+                            n_refined += 1
+
+    return out, n_refined
+
+
+# --------------------------------------------------------------------------
 # 공개 API
 # --------------------------------------------------------------------------
 
@@ -565,6 +669,33 @@ def build_octree_hex_cells(
 
     # Outside cell 은 level=0 으로 유지 (나중에 skip 됨)
     level_3d[~fine_inside_3d] = 0
+
+    # WWW8: feature-driven refinement — bump cells intersected by feature edges
+    if _WWW8_FEATURE_REFINE:
+        try:
+            from core.generator.native_hex.snap import (  # noqa: PLC0415
+                _extract_feature_edge_segments,
+            )
+            feat_segs = _extract_feature_edge_segments(
+                surface_V, surface_F, feature_angle_deg=30.0,
+            )
+            n_feat = int(feat_segs.shape[0])
+            if n_feat == 0:
+                log.info("www8_no_features", n_feat=0)
+            else:
+                level_3d, n_www8_refined = _refine_at_features(
+                    level_3d, fine_inside_3d,
+                    xs, ys, zs,
+                    feat_segs, n_lev,
+                    max_extra_levels=1,
+                )
+                log.info(
+                    "native_hex_feature_refine",
+                    n_feature_segs=n_feat,
+                    n_refined=n_www8_refined,
+                )
+        except Exception as exc:
+            log.warning("www8_feature_refine_failed", error=str(exc))
 
     # 2:1 균형 조건 적용
     if n_lev > 1:

@@ -1,4 +1,4 @@
-file: core/layers/native_bl.py
-functions: _hex_bl1_prism_guard, generate_native_bl (guard call injection)
-lines_added: 95
+file: core/generator/native_hex/octree.py
+functions: _segment_intersects_aabb, _refine_at_features, build_octree_hex_cells (wiring)
+lines_added: 101
 lines_removed: 0
