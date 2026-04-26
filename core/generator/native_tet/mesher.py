@@ -1699,6 +1699,31 @@ def generate_native_tet(
                             log.info("native_tet_flip_23_c3", n_flips=int(n_c3),
                                      mq_before=round(float(pre_q_c3.mean_q), 3),
                                      mq_after=round(float(post_q_c3.mean_q), 3))
+                    # BBB1 (beta2030) — cycle 3 의 flip_32 + cycle 2 의 flip_44.
+                    pre_q_c3b = _qsnap_flip(final_pts, final_tets)
+                    new_tets_c3b, n_c3b = flip_edges_32(
+                        final_pts, final_tets,
+                        min_quality_improvement=1e-3, max_flips=1000,
+                    )
+                    if n_c3b > 0 and new_tets_c3b.shape[0] > 50:
+                        post_q_c3b = _qsnap_flip(final_pts, new_tets_c3b)
+                        if float(post_q_c3b.mean_q) >= float(pre_q_c3b.mean_q) * 0.99:
+                            final_tets = new_tets_c3b
+                            log.info("native_tet_flip_32_c3", n_flips=int(n_c3b),
+                                     mq_before=round(float(pre_q_c3b.mean_q), 3),
+                                     mq_after=round(float(post_q_c3b.mean_q), 3))
+                    pre_q_44b = _qsnap_flip(final_pts, final_tets)
+                    new_tets_44b, n_44b = flip_edges_44(
+                        final_pts, final_tets,
+                        min_quality_improvement=1e-3, max_flips=1000,
+                    )
+                    if n_44b > 0 and new_tets_44b.shape[0] > 50:
+                        post_q_44b = _qsnap_flip(final_pts, new_tets_44b)
+                        if float(post_q_44b.mean_q) >= float(pre_q_44b.mean_q) * 0.99:
+                            final_tets = new_tets_44b
+                            log.info("native_tet_flip_44_c2", n_flips=int(n_44b),
+                                     mq_before=round(float(pre_q_44b.mean_q), 3),
+                                     mq_after=round(float(post_q_44b.mean_q), 3))
             except Exception as exc:
                 log.debug("native_tet_flip_cycle3_skipped", reason=str(exc))
 
