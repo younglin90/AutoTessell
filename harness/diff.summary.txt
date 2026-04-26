@@ -1,4 +1,4 @@
-file: core/generator/native_poly/voronoi.py
-functions: _extrude_prism_layer
-lines_added: 37
-lines_removed: 1
+file: core/generator/native_tet/mesher.py
+functions: generate_native_tet (post-pass blocks: BSP_ORIENT_FIX, VVV3b, VVV5b, VVV6, VVV7, VVV8, VVV9, VVV10, VVV11, VVV12, VVV13, VVV14, TET_QUALITY1, VAL1)
+lines_added: 29
+lines_removed: 0
