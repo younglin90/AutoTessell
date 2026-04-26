@@ -479,6 +479,151 @@ def _prism_aspect_ratio_stats(
     return n_degenerate, float(max_ratio)
 
 
+# BL_TANGENT_SMOOTH (beta2153) — tangential Laplacian of prism outer-face verts,
+# projected back along the local extrusion direction (cfMesh BLSmoothing style).
+# Improves prism layer tangential uniformity without disturbing layer thickness.
+# Default ON; disable via env AUTO_TESSELL_BL_TANG_OFF=1.
+import os as _os
+_BL_TANG_SMOOTH_ON: bool = _os.environ.get("AUTO_TESSELL_BL_TANG_OFF", "0") != "1"
+
+
+def _smooth_top_layer_tangential(
+    fp: np.ndarray,
+    wall_vert_indices: list[int],
+    wall_tri_verts: dict[int, tuple[int, int, int]],
+    wall_face_indices: list[int],
+    layer_point_ids: list[dict[int, int]],
+    num_layers: int,
+    *,
+    top_k: int = 20,
+    n_iter: int = 1,
+    min_aspect_improve: float = 1e-3,
+) -> tuple[np.ndarray, int]:
+    """BL_TANGENT_SMOOTH: tangential Laplacian of outermost prism-layer verts.
+
+    For each outer-face vertex v (lp_ids[0][wall_vert]):
+      - candidate = centroid of 1-ring top-layer neighbors (top-layer verts only).
+      - Project candidate onto the tangential plane perpendicular to the extrusion
+        direction (p_top - p_base) — preserves layer thickness.
+      - STRICT GUARD: post.max_aspect over incident prisms < pre.max_aspect - threshold.
+        Else revert.
+
+    Returns (fp_modified, n_moved).
+    """
+    if num_layers < 1 or not wall_vert_indices or not wall_face_indices:
+        return fp, 0
+
+    fp = fp.copy()
+
+    # ── 1. Build wall-vert adjacency (shared edge in wall triangles) ─────────
+    # top-layer vertex idx for each wall vert
+    top_id: dict[int, int] = {}   # wall_vert -> point index in fp (outer layer)
+    base_id: dict[int, int] = {}  # wall_vert -> point index in fp (inner/wall layer)
+    lids_top = layer_point_ids[0]
+    lids_base = layer_point_ids[num_layers]
+    for v in wall_vert_indices:
+        if v in lids_top and v in lids_base:
+            top_id[v] = lids_top[v]
+            base_id[v] = lids_base[v]
+
+    if not top_id:
+        return fp, 0
+
+    # Build edge adjacency among wall verts (share a tri edge)
+    adj: dict[int, set[int]] = {v: set() for v in top_id}
+    for fi in wall_face_indices:
+        if fi not in wall_tri_verts:
+            continue
+        verts = wall_tri_verts[fi]
+        for i in range(3):
+            va, vb = verts[i], verts[(i + 1) % 3]
+            if va in adj and vb in adj:
+                adj[va].add(vb)
+                adj[vb].add(va)
+
+    # ── 2. Prism → wall-vert map (incident faces per wall vert) ──────────────
+    vert_faces: dict[int, list[int]] = {v: [] for v in top_id}
+    for fi in wall_face_indices:
+        if fi not in wall_tri_verts:
+            continue
+        for v in wall_tri_verts[fi]:
+            if v in vert_faces:
+                vert_faces[v].append(fi)
+
+    # ── 3. Helper: max aspect ratio over prisms incident to wall vert v ──────
+    def _max_aspect_for_vert(v: int) -> float:
+        best = 0.0
+        for fi in vert_faces.get(v, []):
+            if fi not in wall_tri_verts:
+                continue
+            v0, v1, v2 = wall_tri_verts[fi]
+            for li in range(num_layers):
+                l_out = layer_point_ids[li]
+                l_in = layer_point_ids[li + 1]
+                if not all(x in l_out and x in l_in for x in (v0, v1, v2)):
+                    continue
+                o0, o1, o2 = fp[l_out[v0]], fp[l_out[v1]], fp[l_out[v2]]
+                i0, i1, i2 = fp[l_in[v0]], fp[l_in[v1]], fp[l_in[v2]]
+                e_out = max(
+                    float(np.linalg.norm(o1 - o0)),
+                    float(np.linalg.norm(o2 - o1)),
+                    float(np.linalg.norm(o0 - o2)),
+                )
+                h = min(
+                    float(np.linalg.norm(i0 - o0)),
+                    float(np.linalg.norm(i1 - o1)),
+                    float(np.linalg.norm(i2 - o2)),
+                )
+                ar = e_out / (h + 1e-30)
+                if ar > best:
+                    best = ar
+        return best
+
+    # ── 4. Pick top-K worst-aspect verts as candidates ───────────────────────
+    aspects = {v: _max_aspect_for_vert(v) for v in top_id}
+    sorted_verts = sorted(aspects, key=lambda v: aspects[v], reverse=True)
+    k = min(top_k, len(sorted_verts))
+    candidates = set(sorted_verts[:k])
+
+    # ── 5. Per-vertex tangential Laplacian + strict guard ────────────────────
+    n_moved = 0
+    for _it in range(n_iter):
+        for v in candidates:
+            nbs = adj.get(v, set())
+            if not nbs:
+                continue
+            # centroid of top-layer neighbor positions
+            nb_pts = np.array([fp[top_id[nb]] for nb in nbs if nb in top_id])
+            if len(nb_pts) == 0:
+                continue
+            centroid = nb_pts.mean(axis=0)
+
+            # extrusion direction: from base to top (outward)
+            p_top = fp[top_id[v]]
+            p_base = fp[base_id[v]]
+            extrusion_dir = p_top - p_base
+            extrusion_len = float(np.linalg.norm(extrusion_dir))
+            if extrusion_len < 1e-30:
+                continue
+            extrusion_hat = extrusion_dir / extrusion_len
+
+            # project centroid onto plane perpendicular to extrusion_hat, passing through p_top
+            delta = centroid - p_top
+            projected = p_top + delta - float(np.dot(delta, extrusion_hat)) * extrusion_hat
+
+            pre_aspect = _max_aspect_for_vert(v)
+            old_pos = fp[top_id[v]].copy()
+            fp[top_id[v]] = projected
+
+            post_aspect = _max_aspect_for_vert(v)
+            if post_aspect < pre_aspect - min_aspect_improve:
+                n_moved += 1  # accept
+            else:
+                fp[top_id[v]] = old_pos  # revert
+
+    return fp, n_moved
+
+
 def _geometric_layer_thickness(
     first_thickness: float | np.ndarray,
     n_layers: int,
@@ -1599,6 +1744,29 @@ def generate_native_bl(
                 vertex_cum_map[v] = np.concatenate(([0.0], np.cumsum(v_thick)))
 
     assert final_points is not None
+
+    # BL_TANGENT_SMOOTH (beta2153) — tangential Laplacian of outer prism-layer verts.
+    # Wired AFTER prism construction, BEFORE subdivision/finalization (cfMesh BLSmoothing).
+    _n_tang_moved = 0
+    if _BL_TANG_SMOOTH_ON and len(wall_vert_indices) >= 50 and layer_point_ids:
+        try:
+            final_points, _n_tang_moved = _smooth_top_layer_tangential(
+                final_points,
+                wall_vert_indices,
+                wall_tri_verts,
+                wall_face_indices,
+                layer_point_ids,
+                cfg.num_layers,
+            )
+            log.info(
+                "native_bl_tangent_smooth",
+                component="native_bl",
+                phase="beta2153",
+                n_moved=_n_tang_moved,
+                n_wall_verts=len(wall_vert_indices),
+            )
+        except Exception as _tang_exc:
+            log.warning("native_bl_tangent_smooth_skipped", reason=str(_tang_exc)[:120])
 
     # HEX_LAYERS — per-face per-layer guard (cfMesh nLayers=2, 1.2× growth ratio).
     # Mirrors POL_LAYERS (R91) + TET_LAYERS (R92). Apply HEX_BL1 aspect+collision guard
