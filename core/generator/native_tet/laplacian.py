@@ -160,6 +160,150 @@ def smooth_interior_laplacian(
     return pts, tets, n_moved
 
 
+# ── TET_QUALITY1 (beta2141) ────────────────────────────────────────────────────
+
+
+def _tet_face_nonortho(
+    pts: np.ndarray,
+    tet_a: np.ndarray,
+    tet_b: np.ndarray,
+    shared_face: tuple[int, int, int],
+) -> float:
+    """Non-orthogonality (degrees) between face normal and cell-cell vector."""
+    c0 = pts[tet_a].mean(axis=0)
+    c1 = pts[tet_b].mean(axis=0)
+    cc = c1 - c0
+    cc_len = float(np.linalg.norm(cc))
+    if cc_len < 1e-30:
+        return 0.0
+    a, b, c = pts[shared_face[0]], pts[shared_face[1]], pts[shared_face[2]]
+    n_vec = np.cross(b - a, c - a)
+    n_len = float(np.linalg.norm(n_vec))
+    if n_len < 1e-30:
+        return 0.0
+    cos_a = abs(float(np.dot(n_vec / n_len, cc / cc_len)))
+    cos_a = min(1.0, cos_a)
+    return float(np.degrees(np.arccos(cos_a)))
+
+
+def reduce_nonortho_tet(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    threshold_deg: float = 60.0,
+    top_k: int = 20,
+    min_improve_deg: float = 2.0,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """TET_QUALITY1: non-orthogonality local post-pass for tet meshes.
+
+    For internal faces with non-ortho > threshold_deg (top_k worst), nudge
+    incident face verts along the cell-cell vector projection (0.1x scale).
+    STRICT GUARD: revert if local max non-ortho does not decrease by at least
+    min_improve_deg.  Boundary faces are skipped.
+
+    Returns (pts_out, tets_unchanged, n_moved).
+    """
+    pts = np.array(pts, dtype=np.float64)
+    tets = np.asarray(tets, dtype=np.int64)
+    n_tets = tets.shape[0]
+    if n_tets == 0:
+        return pts, tets, 0
+
+    # ── 1. Build face -> owner tets ──────────────────────────────────────────
+    _TET_FACES = ((0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3))
+    face_owners: dict[tuple[int, int, int], list[int]] = {}
+    for ti in range(n_tets):
+        for fl in _TET_FACES:
+            key = tuple(sorted(int(tets[ti, k]) for k in fl))
+            face_owners.setdefault(key, []).append(ti)  # type: ignore[arg-type]
+
+    # ── 2. Collect internal faces with non-ortho > threshold ─────────────────
+    bad: list[tuple[float, tuple[int, int, int], int, int]] = []
+    seen: set[tuple[int, int, int]] = set()
+    for ti in range(n_tets):
+        for fl in _TET_FACES:
+            key2: tuple[int, int, int] = tuple(sorted(int(tets[ti, k]) for k in fl))  # type: ignore[assignment]
+            if key2 in seen:
+                continue
+            seen.add(key2)
+            owners = face_owners.get(key2, [])
+            if len(owners) < 2:
+                continue  # boundary face
+            ang = _tet_face_nonortho(pts, tets[owners[0]], tets[owners[1]], key2)
+            if ang > threshold_deg:
+                bad.append((ang, key2, owners[0], owners[1]))
+
+    if not bad:
+        return pts, tets, 0
+
+    bad.sort(key=lambda t: t[0], reverse=True)
+    bad = bad[:top_k]
+
+    # ── 3. Helper: local max non-ortho over faces incident to two tet cells ──
+    def _local_max_no(ti0: int, ti1: int) -> float:
+        incident: set[tuple[int, int, int]] = set()
+        for ci in (ti0, ti1):
+            for fl in _TET_FACES:
+                k2: tuple[int, int, int] = tuple(sorted(int(tets[ci, k]) for k in fl))  # type: ignore[assignment]
+                incident.add(k2)
+        vals = []
+        for k2 in incident:
+            ow = face_owners.get(k2, [])
+            if len(ow) == 2:
+                vals.append(_tet_face_nonortho(pts, tets[ow[0]], tets[ow[1]], k2))
+        return max(vals) if vals else 0.0
+
+    all_bad_keys = {entry[1] for entry in bad}
+    pre_global_max = max(e[0] for e in bad)
+
+    # ── 4. Per-face nudge with strict guard ───────────────────────────────────
+    n_moved = 0
+    for _ang_pre, face_key, ci0, ci1 in bad:
+        c0 = pts[tets[ci0]].mean(axis=0)
+        c1 = pts[tets[ci1]].mean(axis=0)
+        cc = c1 - c0
+        cc_len = float(np.linalg.norm(cc))
+        if cc_len < 1e-30:
+            continue
+
+        fvp = pts[list(face_key)]
+        n_vec = np.cross(fvp[1] - fvp[0], fvp[2] - fvp[0])
+        n_len = float(np.linalg.norm(n_vec))
+        if n_len < 1e-30:
+            continue
+        n_hat = n_vec / n_len
+        proj = float(np.dot(cc / cc_len, n_hat))
+        delta = 0.1 * proj * n_hat * cc_len
+
+        pre_local = _local_max_no(ci0, ci1)
+
+        orig = {vi: pts[vi].copy() for vi in face_key}
+        for vi in face_key:
+            pts[vi] = pts[vi] + delta
+
+        post_local = _local_max_no(ci0, ci1)
+
+        # Triple monotone guard: local improves AND global does not regress.
+        post_global = max(
+            (
+                _tet_face_nonortho(pts, tets[fo[0]], tets[fo[1]], k2)
+                for k2 in all_bad_keys
+                if len((fo := face_owners.get(k2, []))) == 2
+            ),
+            default=0.0,
+        )
+
+        if (post_local <= pre_local - min_improve_deg
+                and post_global <= pre_global_max):
+            n_moved += 1
+            pre_global_max = post_global
+        else:
+            for vi, p in orig.items():
+                pts[vi] = p
+
+    return pts, tets, n_moved
+
+
 def _point_to_triangle_distance(p: np.ndarray, tri_pts: np.ndarray) -> tuple[float, np.ndarray]:
     """Closest point on triangle to p. tri_pts shape (3,3)."""
     a, b, c = tri_pts[0], tri_pts[1], tri_pts[2]

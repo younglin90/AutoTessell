@@ -1,8 +1,8 @@
 {
   "target_engine": "poly",
-  "beta": 2140,
+  "beta": 2141,
   "max_round": 1000,
-  "round": 87,
+  "round": 88,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,7 +26,7 @@
   "last_mq": {
     "tet_worst": 0.095
   },
-  "last_bench_time": 81.5,
+  "last_bench_time": 81.9,
   "consecutive_fails": 0,
   "dones": [
     "hex",
@@ -39,12 +39,13 @@
     "PMW1",
     "HEX_QUALITY1",
     "POL_QUALITY1",
-    "PRE3"
+    "PRE3",
+    "TET_QUALITY1"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "PRE3 — native_tet input CVT remesh on high edge-ratio (Botsch 2004 gated)"
+  "plan_archive": "TET_QUALITY1 \u2014 native_tet non-ortho local post-pass (mirror HEX_QUALITY1 / snappy postSnap)"
 }

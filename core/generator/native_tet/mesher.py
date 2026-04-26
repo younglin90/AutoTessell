@@ -2637,6 +2637,40 @@ def generate_native_tet(
         except Exception as exc:
             log.warning("native_tet_vvv12_skipped", reason=str(exc)[:120])
 
+    # TET_QUALITY1 (beta2141) — non-ortho local post-pass (mirror HEX_QUALITY1).
+    # env AUTO_TESSELL_TET_QUALITY1_OFF disables. Default ON.
+    if (
+        final_tets.shape[0] >= 500
+        and not os.environ.get("AUTO_TESSELL_TET_QUALITY1_OFF")
+    ):
+        try:
+            from core.generator.native_tet.laplacian import (  # noqa: PLC0415
+                reduce_nonortho_tet as _rnt,
+            )
+            from core.generator.native_tet.quality import snapshot as _qsnap_tq1  # noqa: PLC0415
+            _pre_tq1 = _qsnap_tq1(final_pts, final_tets)
+            _pts_tq1, _tets_tq1, _n_tq1 = _rnt(final_pts, final_tets)
+            _post_tq1 = _qsnap_tq1(_pts_tq1, _tets_tq1)
+            # Triple monotone global revert: min_q must not drop.
+            if _post_tq1.min_q >= _pre_tq1.min_q - 1e-6:
+                final_pts, final_tets = _pts_tq1, _tets_tq1
+                log.info(
+                    "tet_quality_postpass",
+                    n_moved=int(_n_tq1),
+                    pre_min_q=round(float(_pre_tq1.min_q), 4),
+                    post_min_q=round(float(_post_tq1.min_q), 4),
+                )
+            else:
+                log.info(
+                    "tet_quality_postpass",
+                    n_moved=0,
+                    pre_min_q=round(float(_pre_tq1.min_q), 4),
+                    post_min_q=round(float(_post_tq1.min_q), 4),
+                    reverted=True,
+                )
+        except Exception as exc:
+            log.debug("native_tet_quality1_skipped", reason=str(exc)[:120])
+
     # beta1530 (V3) — 외부 tet 제거: 입력 surface 외부에 centroid 가 있는 tet drop.
     if enable_boundary_clip:
         try:
