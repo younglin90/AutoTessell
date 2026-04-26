@@ -228,6 +228,49 @@ def generate_native_tet(
                     F = F_fix.astype(np.int64)
             except Exception as exc:
                 log.debug("native_tet_auto_fix_skipped", reason=str(exc))
+
+            # MM1 (beta1900) — hard self-intersect input 의 사전 isotropic remesh.
+            # V > 500 + (boundary>0 또는 nonmanifold>0) 면 input 단순화로 sliver 격감.
+            try:
+                if (
+                    aggressive
+                    and V.shape[0] > 500
+                    and F.shape[0] > 1000
+                ):
+                    from core.preprocessor.native_remesh import isotropic_remesh
+                    # target_edge: 입력 평균 edge 의 ~ 1.2× — vertex 30-50% 감소 목표.
+                    e0 = V[F[:, 0]]; e1 = V[F[:, 1]]; e2 = V[F[:, 2]]
+                    elens = np.concatenate([
+                        np.linalg.norm(e1 - e0, axis=1),
+                        np.linalg.norm(e2 - e1, axis=1),
+                        np.linalg.norm(e0 - e2, axis=1),
+                    ])
+                    h_avg = float(np.median(elens)) if elens.size else 0.0
+                    if h_avg > 0:
+                        h_target = h_avg * 1.5
+                        V_rm, F_rm = isotropic_remesh(
+                            V, F, target_edge_length=h_target,
+                            n_iter=3, project_to_surface=True,
+                            feature_angle_deg=45.0, lock_features=True,
+                        )
+                        if (
+                            V_rm.shape[0] > 30
+                            and F_rm.shape[0] > 50
+                            and V_rm.shape[0] < V.shape[0]
+                        ):
+                            log.info(
+                                "native_tet_hard_pre_remesh",
+                                v_before=int(V.shape[0]),
+                                v_after=int(V_rm.shape[0]),
+                                f_before=int(F.shape[0]),
+                                f_after=int(F_rm.shape[0]),
+                                h_target=round(h_target, 5),
+                            )
+                            V = V_rm.astype(np.float64)
+                            F = F_rm.astype(np.int64)
+            except Exception as exc:
+                log.debug("native_tet_hard_pre_remesh_skipped", reason=str(exc))
+
         if chk.warnings:
             log.warning(
                 "native_tet_input_warnings",
@@ -279,12 +322,12 @@ def generate_native_tet(
 
     # LL1 (beta1880) — 입력 V 가 작으면 셀 폭증 방지 위해 target_edge 키움.
     # 11k vertex 입력에서 156k tet 폭증 → mean_q 0.12 sliver. cell 수
-    # ≈ V^1.5 정도가 적절 (Delaunay heuristic).
+    # ≈ V^1.25 정도가 fTetWild 비교 시 적절 (sliver 격감).
+    # MM1 (beta1900) — exponent 1.4 → 1.25 (cells 9897 → ~3700 for V=664).
     try:
         nv = int(V.shape[0])
         if nv > 200:
-            # n_target_cells = nv * 1.5 → target_edge = (vol / (0.118 * n))^(1/3).
-            n_target = int(nv ** 1.4)
+            n_target = int(nv ** 1.25)
             span = (bmax - bmin).prod()
             if span > 0 and n_target > 0:
                 te_cap = float((span / (0.118 * n_target)) ** (1.0 / 3.0))
