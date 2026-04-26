@@ -259,17 +259,45 @@ def generate_native_hex(
 
     # v0.4.0-beta22: optional boundary snap — hex vertex 를 STL surface 로 projection.
     # beta66: preserve_features 로 sharp corner 는 feature vertex 에 직접 snap.
+    # X2 (beta1830) — surface-aware revert: snap 후 quality 가 강한 악화면 revert.
     if snap_boundary:
         try:
             from core.generator.native_hex.snap import (  # noqa: PLC0415
                 snap_hex_boundary_to_surface,
             )
+            from core.generator.native_hex.quality import (  # noqa: PLC0415
+                hex_quality_report,
+            )
+
+            prev_pts_snap = final_pts.copy()
+            try:
+                prev_skew = hex_quality_report(
+                    final_pts, final_hexes
+                ).max_skewness
+            except Exception:
+                prev_skew = 0.0
+
             final_pts, snap_stats = snap_hex_boundary_to_surface(
                 final_pts, V, F, target_edge=h,
                 preserve_features=preserve_features,
                 feature_angle_deg=feature_angle_deg,
             )
             log.info("native_hex_boundary_snap_applied", **snap_stats)
+
+            # snap 후 quality 검증.
+            try:
+                new_skew = hex_quality_report(
+                    final_pts, final_hexes
+                ).max_skewness
+                if prev_skew >= 0 and new_skew > prev_skew + 4.0:
+                    log.warning(
+                        "native_hex_snap_revert",
+                        prev_skew=round(prev_skew, 3),
+                        new_skew=round(new_skew, 3),
+                    )
+                    final_pts = prev_pts_snap
+            except Exception:
+                pass
         except Exception as exc:
             log.warning("native_hex_boundary_snap_failed", error=str(exc))
 
