@@ -896,31 +896,32 @@ def _lloyd_3d_iteration(
             vor = Voronoi(seeds_inside)
         except Exception:
             break
-        new_seeds: list[np.ndarray] = []
+        # POL_PERF1 — vectorize centroid computation for lp_p==2.0 (common path).
+        # Classify regions: open (has -1 or empty) → keep seed; closed → compute centroid.
+        n_seeds = seeds_inside.shape[0]
+        new_seeds_arr = seeds_inside.copy()  # default: keep originals
+        n_regions = len(vor.regions)
         for si, region_idx in enumerate(vor.point_region):
-            if region_idx < 0 or region_idx >= len(vor.regions):
-                new_seeds.append(seeds_inside[si])
+            if region_idx < 0 or region_idx >= n_regions:
                 continue
             region = vor.regions[region_idx]
             if -1 in region or len(region) == 0:
-                # open cell → 원본 유지
-                new_seeds.append(seeds_inside[si])
+                continue  # keep seed (already in new_seeds_arr)
+            if lp_p == 2.0:
+                new_seeds_arr[si] = vor.vertices[region].mean(axis=0)
             else:
-                if lp_p == 2.0:
-                    centroid = vor.vertices[region].mean(axis=0)
-                else:
-                    try:
-                        vs = vor.vertices[region]
-                        d = np.linalg.norm(vs - seeds_inside[si], axis=1)
-                        w = np.power(np.maximum(d, 1e-12), lp_p - 2.0)
-                        centroid = (w[:, None] * vs).sum(axis=0) / w.sum()
-                        if not np.all(np.isfinite(centroid)):
-                            centroid = vs.mean(axis=0)
-                    except Exception as exc:
-                        log.warning("native_poly_ppp2_skipped", reason=str(exc)[:120])
-                        centroid = seeds_inside[si]
-                new_seeds.append(centroid)
-        seeds_inside = np.array(new_seeds, dtype=np.float64)
+                try:
+                    vs = vor.vertices[region]
+                    d = np.linalg.norm(vs - seeds_inside[si], axis=1)
+                    w = np.power(np.maximum(d, 1e-12), lp_p - 2.0)
+                    centroid = (w[:, None] * vs).sum(axis=0) / w.sum()
+                    if np.all(np.isfinite(centroid)):
+                        new_seeds_arr[si] = centroid
+                    else:
+                        new_seeds_arr[si] = vs.mean(axis=0)
+                except Exception as exc:
+                    log.warning("native_poly_ppp2_skipped", reason=str(exc)[:120])
+        seeds_inside = new_seeds_arr
         # inside 재필터
         inside_mask = _inside_ray_cast(seeds_inside, V, F)
         seeds_inside = seeds_inside[inside_mask]
