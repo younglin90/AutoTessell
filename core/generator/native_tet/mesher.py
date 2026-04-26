@@ -2258,6 +2258,23 @@ def generate_native_tet(
     except Exception as exc:
         log.debug("native_tet_post_bsp_pass_skipped", reason=str(exc))
 
+    # VVV2 — Stellar queue build (log only, no apply)
+    if os.environ.get("AUTO_TESSELL_VVV2_QUEUE", "1") != "0":
+        try:
+            from core.generator.native_tet.stellar import (
+                _VVV1_STELLAR_QUEUE, _build_op_queue,
+            )
+            if _VVV1_STELLAR_QUEUE:
+                _q = _build_op_queue(final_pts, final_tets)
+                _worst = float(_q[0]["quality"]) if _q else 0.0
+                log.info(
+                    "native_tet_stellar_queue",
+                    n_queue=len(_q),
+                    worst_q=_worst,
+                )
+        except Exception as exc:
+            log.warning("native_tet_vvv2_skipped", reason=str(exc)[:120])
+
     # beta1530 (V3) — 외부 tet 제거: 입력 surface 외부에 centroid 가 있는 tet drop.
     if enable_boundary_clip:
         try:

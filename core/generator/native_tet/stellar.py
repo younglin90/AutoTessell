@@ -7,7 +7,7 @@ from __future__ import annotations
 import numpy as np
 
 # VVV1: skeleton only — default OFF, no call path added
-_VVV1_STELLAR_QUEUE: bool = False
+_VVV1_STELLAR_QUEUE: bool = True
 
 
 def _tet_quality(pts: np.ndarray, tet: np.ndarray) -> float:

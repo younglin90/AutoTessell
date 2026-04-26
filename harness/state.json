@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2114,
+  "beta": 2115,
   "max_round": 1000,
-  "round": 56,
+  "round": 57,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -33,15 +33,15 @@
     "poly"
   ],
   "recent_cards": [
-    "WWW6",
     "UUU7",
     "TTT7c",
-    "VVV1"
+    "VVV1",
+    "VVV2"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "VVV1 — native_tet Stellar 4-op queue skeleton"
+  "plan_archive": "VVV2 — native_tet Stellar queue 활성 (build + log only)"
 }
