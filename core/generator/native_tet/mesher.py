@@ -1,6 +1,7 @@
 """native_tet MVP 메쉬 생성기."""
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -1956,6 +1957,26 @@ def generate_native_tet(
                     log.warning("native_tet_mmm1_skipped", reason=str(exc)[:120])
             except Exception as exc:
                 log.warning("native_tet_kkk1_skipped", reason=str(exc)[:120])
+        # NNN1 — Steiner dry-run sliver detection (TetWild §3.3, read-only)
+        if os.environ.get("AUTO_TESSELL_NNN1_DRYRUN", "1") != "0":
+            try:
+                from core.generator.native_tet.quality import tet_shape_quality
+                q_arr = tet_shape_quality(final_pts, final_tets)
+                sliver_mask = q_arr < 0.05
+                n_sliver = int(sliver_mask.sum())
+                try:
+                    _sliver_centroids = final_pts[final_tets[sliver_mask]].mean(axis=1)
+                    n_sliver_inside = int(envelope.contains_points(_sliver_centroids).sum())
+                except Exception:
+                    n_sliver_inside = n_sliver
+                log.info(
+                    "native_tet_nnn1_dry_run",
+                    n_sliver=n_sliver,
+                    n_sliver_inside=n_sliver_inside,
+                    threshold=0.05,
+                )
+            except Exception as exc:
+                log.warning("native_tet_nnn1_failed", reason=str(exc)[:200])
     except Exception as exc:
         log.debug("native_tet_post_bsp_pass_skipped", reason=str(exc))
 

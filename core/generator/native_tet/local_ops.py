@@ -18,6 +18,19 @@ from dataclasses import dataclass
 
 import numpy as np
 
+# Native C kernels — silent fallback if unavailable.
+try:
+    from core.generator.native_tet._native import (
+        build_edge_to_tets as _c_build_edge_to_tets,
+        edge_lengths_batch as _c_edge_lengths_batch,
+        is_available as _kernels_available,
+    )
+    _USE_C_KERNELS: bool = _kernels_available()
+except Exception:
+    _c_build_edge_to_tets = None  # type: ignore[assignment]
+    _c_edge_lengths_batch = None  # type: ignore[assignment]
+    _USE_C_KERNELS = False
+
 
 @dataclass
 class LocalOpResult:
@@ -62,11 +75,34 @@ def compact_unused_vertices(
 
 
 def _edge_lengths(pts: np.ndarray, tets: np.ndarray) -> dict[tuple[int, int], float]:
-    """vectorized: tet 배열 → unique edge list + length. dict 로 반환."""
+    """vectorized: tet 배열 → unique edge list + length. dict 로 반환.
+
+    C 커널 가능 시 build_edge_to_tets + edge_lengths_batch 사용 (더 빠름).
+    """
+    pts  = np.asarray(pts,  dtype=np.float64)
     tets = np.asarray(tets, dtype=np.int64)
     if tets.size == 0:
         return {}
-    # 6 edges per tet.
+
+    # --- C 경로: edge 추출 + unique + lengths ---
+    if _USE_C_KERNELS and _c_build_edge_to_tets is not None and _c_edge_lengths_batch is not None:
+        result = _c_build_edge_to_tets(tets)
+        if result is not None:
+            edges_all, _tet_idx = result
+            # unique (C 출력은 이미 정렬된 쌍이지만 중복이 있음)
+            struct = np.ascontiguousarray(edges_all).view(
+                np.dtype((np.void, edges_all.dtype.itemsize * 2))
+            )
+            _, idx = np.unique(struct, return_index=True)
+            uniq = edges_all[idx]
+            lens_arr = _c_edge_lengths_batch(pts, uniq)
+            if lens_arr is not None:
+                return {
+                    (int(uniq[i, 0]), int(uniq[i, 1])): float(lens_arr[i])
+                    for i in range(uniq.shape[0])
+                }
+
+    # --- Python/numpy 경로 (fallback) ---
     pairs = np.stack(
         [
             tets[:, [0, 1]], tets[:, [0, 2]], tets[:, [0, 3]],
@@ -74,9 +110,7 @@ def _edge_lengths(pts: np.ndarray, tets: np.ndarray) -> dict[tuple[int, int], fl
         ],
         axis=1,
     ).reshape(-1, 2)
-    # canonical (min, max).
     pairs.sort(axis=1)
-    # unique.
     struct = np.ascontiguousarray(pairs).view(
         np.dtype((np.void, pairs.dtype.itemsize * 2))
     )

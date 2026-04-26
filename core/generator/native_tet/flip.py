@@ -18,6 +18,23 @@ from dataclasses import dataclass
 
 import numpy as np
 
+# Native C kernels — silent fallback to Python if unavailable.
+try:
+    from core.generator.native_tet._native import (
+        tet_quality_batch as _c_quality_batch,
+        tet_signed_vol6_batch as _c_vol6_batch,
+        build_face_to_tets as _c_build_face_to_tets,
+        build_edge_to_tets as _c_build_edge_to_tets,
+        is_available as _kernels_available,
+    )
+    _USE_C_KERNELS: bool = _kernels_available()
+except Exception:
+    _c_quality_batch = None  # type: ignore[assignment]
+    _c_vol6_batch = None  # type: ignore[assignment]
+    _c_build_face_to_tets = None  # type: ignore[assignment]
+    _c_build_edge_to_tets = None  # type: ignore[assignment]
+    _USE_C_KERNELS = False
+
 
 @dataclass
 class FlipResult:
@@ -43,27 +60,158 @@ def _tet_signed_vol6(A, B, C, D) -> float:
 
 
 def _face_map_vectorized(tets: np.ndarray) -> dict[tuple[int, int, int], list[int]]:
-    """numpy 로 각 tet 의 4 face 를 한 번에 정렬 + Python dict 로 취합.
+    """numpy 로 각 tet 의 4 face 를 한 번에 정렬 + dict 취합.
 
-    전체 데이터 O(T) + Python 해시 insert.
+    C 커널 가능 시 build_face_to_tets 사용 (Python dict insert 제거),
+    아니면 기존 numpy + Python dict 경로.
     """
     tets = np.asarray(tets, dtype=np.int64)
     if tets.size == 0:
         return {}
-    T = tets.shape[0]
-    # 4 faces per tet: 각 opposite vertex 기준.
+
+    # --- C 경로 ---
+    if _USE_C_KERNELS and _c_build_face_to_tets is not None:
+        result = _c_build_face_to_tets(tets)
+        if result is not None:
+            face_arr, tet_idx, _slot = result
+            # face_arr: (n*4, 3), tet_idx: (n*4,)
+            # Use numpy-based grouping (argsort on encoded key) to avoid Python loop.
+            n = tets.shape[0]
+            max_id = int(tets.max()) + 1 if n > 0 else 1
+            key64 = (
+                face_arr[:, 0].astype(np.int64) * max_id * max_id
+                + face_arr[:, 1].astype(np.int64) * max_id
+                + face_arr[:, 2].astype(np.int64)
+            )
+            sort_order = np.argsort(key64, kind="stable")
+            sorted_keys = key64[sort_order]
+            sorted_ti   = tet_idx[sort_order]
+            # group boundaries via np.unique
+            uniq_keys, first_idx, counts = np.unique(
+                sorted_keys, return_index=True, return_counts=True,
+            )
+            m: dict[tuple[int, int, int], list[int]] = {}
+            fa_s = face_arr[sort_order]
+            for gi in range(uniq_keys.shape[0]):
+                s = int(first_idx[gi])
+                c = int(counts[gi])
+                row = fa_s[s]
+                k = (int(row[0]), int(row[1]), int(row[2]))
+                owners = sorted_ti[s: s + c].tolist()
+                m[k] = owners
+            return m
+
+    # --- Python 경로 (fallback) ---
     face_arr = np.stack(
         [tets[:, [1, 2, 3]], tets[:, [0, 2, 3]],
          tets[:, [0, 1, 3]], tets[:, [0, 1, 2]]],
         axis=1,
     ).reshape(-1, 3)
     face_arr.sort(axis=1)
-    m: dict[tuple[int, int, int], list[int]] = {}
+    m2: dict[tuple[int, int, int], list[int]] = {}
     for idx in range(face_arr.shape[0]):
         ti = idx // 4
         k = (int(face_arr[idx, 0]), int(face_arr[idx, 1]), int(face_arr[idx, 2]))
-        m.setdefault(k, []).append(ti)
-    return m
+        m2.setdefault(k, []).append(ti)
+    return m2
+
+
+# ---------------------------------------------------------------------------
+# Batch quality helpers — used in face_flip_pass to avoid per-tet Python loops
+# ---------------------------------------------------------------------------
+
+def _tet_quality_batch_arr(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
+    """Return quality array (n_tets,). Uses C if available, else numpy fallback."""
+    if _USE_C_KERNELS and _c_quality_batch is not None:
+        result = _c_quality_batch(pts, tets)
+        if result is not None:
+            return result
+
+    # numpy fallback (vectorized)
+    T = tets.shape[0]
+    if T == 0:
+        return np.zeros(0, dtype=np.float64)
+    A = pts[tets[:, 0]]
+    B = pts[tets[:, 1]]
+    C = pts[tets[:, 2]]
+    D = pts[tets[:, 3]]
+    BA = B - A; CA = C - A; DA = D - A
+    cr = np.cross(CA, DA)
+    vol6 = np.abs(np.einsum("ij,ij->i", BA, cr))
+    vol  = vol6 / 6.0
+    # 6 edge lengths
+    edges = np.stack([BA, CA, DA, B - C, B - D, C - D], axis=1)  # (T, 6, 3)
+    elens = np.linalg.norm(edges, axis=2)  # (T, 6)
+    emax  = elens.max(axis=1)               # (T,)
+    out = np.where(emax < 1e-30, 0.0, 8.48 * vol / (emax ** 3))
+    return out
+
+
+def _tet_signed_vol6_batch_arr(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
+    """Return signed vol*6 array (n_tets,). Uses C if available."""
+    if _USE_C_KERNELS and _c_vol6_batch is not None:
+        result = _c_vol6_batch(pts, tets)
+        if result is not None:
+            return result
+
+    # numpy fallback
+    if tets.shape[0] == 0:
+        return np.zeros(0, dtype=np.float64)
+    A = pts[tets[:, 0]]
+    B = pts[tets[:, 1]]
+    C = pts[tets[:, 2]]
+    D = pts[tets[:, 3]]
+    BA = B - A; CA = C - A; DA = D - A
+    cr = np.cross(CA, DA)
+    return np.einsum("ij,ij->i", BA, cr)
+
+
+def _edge_to_tets_map(T: np.ndarray) -> dict[tuple[int, int], list[int]]:
+    """6 edges per tet → dict edge→[tet_ids].  C kernel if available."""
+    if T.size == 0:
+        return {}
+
+    # --- C 경로 ---
+    if _USE_C_KERNELS and _c_build_edge_to_tets is not None:
+        result = _c_build_edge_to_tets(T)
+        if result is not None:
+            edges_arr, tet_idx_arr = result
+            # numpy-based grouping avoids Python dict insert loop.
+            n_v = int(T.max()) + 1 if T.size > 0 else 1
+            key64 = (
+                edges_arr[:, 0].astype(np.int64) * n_v
+                + edges_arr[:, 1].astype(np.int64)
+            )
+            sort_order = np.argsort(key64, kind="stable")
+            sorted_keys = key64[sort_order]
+            sorted_ti   = tet_idx_arr[sort_order]
+            uniq_keys, first_idx, counts = np.unique(
+                sorted_keys, return_index=True, return_counts=True,
+            )
+            m: dict[tuple[int, int], list[int]] = {}
+            ea_s = edges_arr[sort_order]
+            for gi in range(uniq_keys.shape[0]):
+                s = int(first_idx[gi])
+                c = int(counts[gi])
+                row = ea_s[s]
+                k = (int(row[0]), int(row[1]))
+                m[k] = sorted_ti[s: s + c].tolist()
+            return m
+
+    # --- Python/numpy 경로 (fallback) ---
+    pair_idx = np.array(
+        [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]], dtype=np.int64,
+    )
+    edges = np.stack(
+        [T[:, pair_idx[:, 0]], T[:, pair_idx[:, 1]]], axis=2,
+    ).reshape(-1, 2)
+    edges.sort(axis=1)
+    m2: dict[tuple[int, int], list[int]] = {}
+    for idx in range(edges.shape[0]):
+        ti = idx // 6
+        k = (int(edges[idx, 0]), int(edges[idx, 1]))
+        m2.setdefault(k, []).append(ti)
+    return m2
 
 
 def flip_faces_23(
@@ -216,27 +364,9 @@ def flip_edges_32(
     if tets.size == 0:
         return tets, 0
 
-    def _edge_to_tets_vec(T: np.ndarray) -> dict[tuple[int, int], list[int]]:
-        """numpy + dict 해시: 6 edges per tet 한 번에 추출."""
-        if T.size == 0:
-            return {}
-        pair_idx = np.array(
-            [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]], dtype=np.int64,
-        )
-        edges = np.stack(
-            [T[:, pair_idx[:, 0]], T[:, pair_idx[:, 1]]], axis=2,
-        ).reshape(-1, 2)
-        edges.sort(axis=1)
-        m: dict[tuple[int, int], list[int]] = {}
-        for idx in range(edges.shape[0]):
-            ti = idx // 6
-            k = (int(edges[idx, 0]), int(edges[idx, 1]))
-            m.setdefault(k, []).append(ti)
-        return m
-
     tets_list = tets.tolist()
     alive = np.ones(tets.shape[0], dtype=bool)
-    e2t = _edge_to_tets_vec(np.asarray(tets_list, dtype=np.int64))
+    e2t = _edge_to_tets_map(np.asarray(tets_list, dtype=np.int64))
     fmap = _face_map_vectorized(np.asarray(tets_list, dtype=np.int64))
 
     # boundary edge 는 한쪽 face 가 boundary (len(face owners)==1) 인 경우.
@@ -342,26 +472,9 @@ def flip_edges_44(
     if tets.size == 0:
         return tets, 0
 
-    def _edge_to_tets_vec(T: np.ndarray) -> dict[tuple[int, int], list[int]]:
-        if T.size == 0:
-            return {}
-        pair_idx = np.array(
-            [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]], dtype=np.int64,
-        )
-        edges = np.stack(
-            [T[:, pair_idx[:, 0]], T[:, pair_idx[:, 1]]], axis=2,
-        ).reshape(-1, 2)
-        edges.sort(axis=1)
-        m: dict[tuple[int, int], list[int]] = {}
-        for idx in range(edges.shape[0]):
-            ti = idx // 6
-            k = (int(edges[idx, 0]), int(edges[idx, 1]))
-            m.setdefault(k, []).append(ti)
-        return m
-
     tets_list = tets.tolist()
     alive = np.ones(tets.shape[0], dtype=bool)
-    e2t = _edge_to_tets_vec(np.asarray(tets_list, dtype=np.int64))
+    e2t = _edge_to_tets_map(np.asarray(tets_list, dtype=np.int64))
 
     # 간이 boundary edge 체크.
     fmap = _face_map_vectorized(np.asarray(tets_list, dtype=np.int64))
@@ -476,11 +589,9 @@ def face_flip_pass(
         return tets0, FlipResult(0, 0, 0, 0, 0.0, 0.0)
 
     def _min_quality(T: np.ndarray) -> float:
-        qs = [
-            _tet_quality(pts[T[i, 0]], pts[T[i, 1]], pts[T[i, 2]], pts[T[i, 3]])
-            for i in range(T.shape[0])
-        ]
-        return min(qs) if qs else 0.0
+        if T.shape[0] == 0:
+            return 0.0
+        return float(_tet_quality_batch_arr(pts, T).min())
 
     q_before = _min_quality(tets0)
     T = tets0
