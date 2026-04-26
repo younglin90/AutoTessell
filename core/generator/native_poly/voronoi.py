@@ -825,6 +825,35 @@ def _generate_native_poly_voronoi_inner(
         n_prism_added = len(final_cells) - _n_cells_pre
         log.info("ttt4_poly_bl_extruded", n_added=n_prism_added)
 
+        # TTT8 — 2nd BL layer (expansion ratio 1.5, Garimella 2003).
+        _fv_1st = final_vertices
+        _fc_1st = final_cells
+        try:
+            # 1st layer 의 extruded wall vertex 집합을 새 wall 로 재구성.
+            _n_orig_v = len(_fv_1st)
+            _wall_adj_2 = _find_wall_adjacent_cells(
+                list(range(len(final_cells) - n_prism_added, len(final_cells))),
+                {}, F,
+            )
+            if not _wall_adj_2:
+                # fallback: 1st-pass prism index 직접 사용.
+                _wall_adj_2 = list(range(len(final_cells) - n_prism_added, len(final_cells)))
+            _step_2 = bbox_diag * 0.005 * 0.95 * 1.5
+            _fv_2nd, _fc_2nd = _extrude_prism_layer(
+                _wall_adj_2, final_vertices, final_cells, cell_owner_seed,
+                V, F, step=_step_2, max_extrude=100,
+            )
+            n_prism_added_2 = len(_fc_2nd) - len(final_cells)
+            if n_prism_added_2 > 0 and len(_fc_2nd) > _n_cells_pre:
+                final_vertices, final_cells = _fv_2nd, _fc_2nd
+                log.info("ttt8_poly_bl_2nd_layer", n_added=n_prism_added_2, step=_step_2)
+            else:
+                log.info("ttt8_poly_bl_2nd_layer_skipped", reason="no_cells_added")
+        except Exception as _e:
+            # 2nd layer 실패 시 1st 결과로 revert (grade 가드).
+            final_vertices, final_cells = _fv_1st, _fc_1st
+            log.info("ttt8_poly_bl_2nd_layer_reverted", err=str(_e))
+
     # Y2 (beta1660) — Voronoi cell vertex Laplacian smoothing (skewness 잡기).
     # 평균 skewness 100+ → < 5 목표. quality 검증 후 채택 (revert 가드).
     try:

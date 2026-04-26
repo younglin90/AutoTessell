@@ -1,8 +1,8 @@
 {
-  "target_engine": "hex",
-  "beta": 2110,
+  "target_engine": "poly",
+  "beta": 2111,
   "max_round": 1000,
-  "round": 52,
+  "round": 53,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -33,14 +33,15 @@
     "poly"
   ],
   "recent_cards": [
-    "UUU6",
     "WWW3",
     "WWW4",
-    "WWW5"
+    "WWW5",
+    "TTT8"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
-  ]
+  ],
+  "plan_archive": "TTT8 — poly BL 2-layer"
 }
