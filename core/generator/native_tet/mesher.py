@@ -1898,6 +1898,62 @@ def generate_native_tet(
                     min_q_before=round(float(_pre_k1.min_q), 4),
                     min_q_after=round(float(_final_k.min_q), 4),
                 )
+                # MMM1 — flip cycle 2차 반복 (multi-pass, Joe 1995 §4).
+                try:
+                    _pre_m1 = _qsnap_eee(final_pts, final_tets)
+                    _new_tets_m1, _n_m1 = _f23_e(
+                        final_pts, final_tets,
+                        min_quality_improvement=1e-3, max_flips=1500,
+                    )
+                    _post_m1 = _qsnap_eee(final_pts, _new_tets_m1)
+                    if (
+                        float(_post_m1.min_q) >= float(_pre_m1.min_q) * 0.99
+                        and float(_post_m1.mean_q) >= float(_pre_m1.mean_q) * 0.99
+                    ):
+                        final_tets = _new_tets_m1
+                    else:
+                        _n_m1 = 0
+                    # flip_32 pass.
+                    _pre_m2 = _qsnap_eee(final_pts, final_tets)
+                    _new_tets_m2, _n_m2 = _f32_e(
+                        final_pts, final_tets,
+                        min_quality_improvement=1e-3, max_flips=1000,
+                    )
+                    _post_m2 = _qsnap_eee(final_pts, _new_tets_m2)
+                    if (
+                        float(_post_m2.min_q) >= float(_pre_m2.min_q) * 0.99
+                        and float(_post_m2.mean_q) >= float(_pre_m2.mean_q) * 0.99
+                    ):
+                        final_tets = _new_tets_m2
+                    else:
+                        _n_m2 = 0
+                    # flip_44 pass.
+                    _pre_m3 = _qsnap_eee(final_pts, final_tets)
+                    _new_tets_m3, _n_m3 = _f44_k(
+                        final_pts, final_tets,
+                        min_quality_improvement=1e-3, max_flips=1000,
+                    )
+                    _post_m3 = _qsnap_eee(final_pts, _new_tets_m3)
+                    if (
+                        float(_post_m3.min_q) >= float(_pre_m3.min_q) * 0.99
+                        and float(_post_m3.mean_q) >= float(_pre_m3.mean_q) * 0.99
+                    ):
+                        final_tets = _new_tets_m3
+                    else:
+                        _n_m3 = 0
+                    _final_m = _qsnap_eee(final_pts, final_tets)
+                    log.info(
+                        "native_tet_mmm1",
+                        n_flips_23=int(_n_m1),
+                        n_flips_32=int(_n_m2),
+                        n_flips_44=int(_n_m3),
+                        mq_before=round(float(_pre_m1.mean_q), 3),
+                        mq_after=round(float(_final_m.mean_q), 3),
+                        min_q_before=round(float(_pre_m1.min_q), 4),
+                        min_q_after=round(float(_final_m.min_q), 4),
+                    )
+                except Exception as exc:
+                    log.warning("native_tet_mmm1_skipped", reason=str(exc)[:120])
             except Exception as exc:
                 log.warning("native_tet_kkk1_skipped", reason=str(exc)[:120])
     except Exception as exc:

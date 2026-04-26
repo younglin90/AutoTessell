@@ -9,6 +9,9 @@
 | R2    | III1 | tet    | FAIL    | skip   | Parameter mismatch: lock_surface vs locked_vertex_ids |
 | R3    | JJJ1 | tet    | FAIL    | -0.021 | Single-stage α=1.0 worst still 0.076→0.055, best 0.236→0.208 |
 | R4    | KKK1 | tet    | PASS    | =0.0   | Flip-only post-BSP cycle, mq stable 0.076, tet grade C/D stable |
+| R5    | LLL1 | tet    | FAIL    | -0.021 | Sliver collapse worst-mq 0.076→0.055 (fid=100040), violates ≥0.071 guard |
+| R6    | MMM1 | tet    | PASS    | +0.001 | Flip cycle 2회 반복 (Joe 1995), tet worst=0.076 stable, best 0.236→0.237 |
 
-# AVOID (3회 reject 됨)
+# AVOID (4회 reject 됨)
 - smooth_amips_analytic / smooth_amips_multistage 호출 BSP 직후 (HHH1/III1/JJJ1 — worst-mq 악화 패턴). 동일 함수/위치 재시도 금지.
+- collapse_short_edges KKK1 flip 후 (LLL1 — 동일 worst-mq 악화 패턴 0.076→0.055). vertex relocation collapse 금지.
