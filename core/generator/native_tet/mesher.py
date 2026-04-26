@@ -1684,6 +1684,24 @@ def generate_native_tet(
             except Exception as exc:
                 log.debug("native_tet_flip_cycle2_skipped", reason=str(exc))
 
+            # AAA1 (beta2020) — flip cycle 3: 추가 잔여 sliver 노출.
+            try:
+                pre_q_c3 = _qsnap_flip(final_pts, final_tets)
+                if float(pre_q_c3.mean_q) < 0.30:
+                    new_tets_c3, n_c3 = flip_faces_23(
+                        final_pts, final_tets,
+                        min_quality_improvement=1e-3, max_flips=1500,
+                    )
+                    if n_c3 > 0 and new_tets_c3.shape[0] > 50:
+                        post_q_c3 = _qsnap_flip(final_pts, new_tets_c3)
+                        if float(post_q_c3.mean_q) >= float(pre_q_c3.mean_q) * 0.99:
+                            final_tets = new_tets_c3
+                            log.info("native_tet_flip_23_c3", n_flips=int(n_c3),
+                                     mq_before=round(float(pre_q_c3.mean_q), 3),
+                                     mq_after=round(float(post_q_c3.mean_q), 3))
+            except Exception as exc:
+                log.debug("native_tet_flip_cycle3_skipped", reason=str(exc))
+
             # VV1 (beta1990) — flip 2-cycle 후 AMIPS interior smoothing 1 회
             # 더. sliver 깬 새 connectivity 에서 vertex 위치 미세 조정으로
             # mq 추가 향상.
