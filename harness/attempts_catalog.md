@@ -14,6 +14,8 @@
 | R7    | NNN1 | tet    | FAIL    | -     | Missing `import os` in mesher.py line 1964 (dry-run skeleton bug) |
 | R8    | NNN1b | tet   | FAIL    | skip  | silent except: QualitySnapshot.q_per_tet 무 attribute (log 0건) |
 | R9    | NNN1c | tet   | PASS    | =0.0  | Steiner dry-run read-only (n_sliver=681/2808/810), mq 0.055 stable |
+| R10   | NNN2  | tet   | FAIL    | -     | QualitySnapshot dataclass subscript bug: ["min"] → .min_q 수정필요 |
+| R11   | NNN2b | tet   | PASS    | =0.0  | Steiner insertion (n_inserted=200@fid=100040), tet worst 0.055 stable, Δmq=+0.007 best |
 
 # AVOID (4회 reject 됨)
 - smooth_amips_analytic / smooth_amips_multistage 호출 BSP 직후 (HHH1/III1/JJJ1 — worst-mq 악화 패턴). 동일 함수/위치 재시도 금지.

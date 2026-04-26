@@ -1977,6 +1977,82 @@ def generate_native_tet(
                 )
             except Exception as exc:
                 log.warning("native_tet_nnn1_failed", reason=str(exc)[:200])
+        # NNN2b — Steiner circumcenter insertion (TetWild §3.3, envelope-validated)
+        if os.environ.get("AUTO_TESSELL_NNN2_INSERT", "1") != "0":
+            try:
+                from core.generator.native_tet.quality import tet_shape_quality
+                from scipy.spatial import Delaunay
+
+                pre_q_arr = tet_shape_quality(final_pts, final_tets)
+                pre_min = float(pre_q_arr.min())
+                pre_mean = float(pre_q_arr.mean())
+
+                sliver_mask = pre_q_arr < 0.05
+                n_worst = min(200, int(sliver_mask.sum()))
+                worst_idx = np.argsort(pre_q_arr)[:n_worst]
+
+                cands = []
+                for ti in worst_idx:
+                    tet_pts = final_pts[final_tets[ti]]  # (4, 3)
+                    try:
+                        # circumcenter via linear solve: 4×3 system
+                        A = 2.0 * (tet_pts[1:] - tet_pts[0])
+                        b = np.sum(tet_pts[1:] ** 2, axis=1) - np.sum(tet_pts[0] ** 2)
+                        cc = np.linalg.lstsq(A, b, rcond=None)[0]
+                    except Exception:
+                        cc = tet_pts.mean(axis=0)
+                    cands.append(cc)
+
+                if cands:
+                    cands = np.array(cands)
+                    try:
+                        mask_inside = envelope.contains_points(cands)
+                    except Exception:
+                        mask_inside = np.ones(len(cands), dtype=bool)
+
+                    if mask_inside.any():
+                        trial_pts = np.vstack([final_pts, cands[mask_inside]])
+                        new_tets = Delaunay(trial_pts).simplices
+
+                        # drop outside tets
+                        centroids = trial_pts[new_tets].mean(axis=1)
+                        try:
+                            keep = envelope.contains_points(centroids)
+                        except Exception:
+                            keep = np.ones(len(new_tets), dtype=bool)
+                        new_tets_inside = new_tets[keep]
+
+                        if len(new_tets_inside) > 0:
+                            post_q_arr = tet_shape_quality(trial_pts, new_tets_inside)
+                            if (
+                                post_q_arr.min() >= pre_min - 1e-12
+                                and post_q_arr.mean() >= pre_mean - 1e-12
+                            ):
+                                final_pts, final_tets = trial_pts, new_tets_inside
+                                n_inserted = int(mask_inside.sum())
+                            else:
+                                n_inserted = 0
+                                post_q_arr = pre_q_arr
+                        else:
+                            n_inserted = 0
+                            post_q_arr = pre_q_arr
+                    else:
+                        n_inserted = 0
+                        post_q_arr = pre_q_arr
+                else:
+                    n_inserted = 0
+                    post_q_arr = pre_q_arr
+
+                log.info(
+                    "native_tet_nnn2",
+                    n_inserted=n_inserted,
+                    pre_min=pre_min,
+                    post_min=float(post_q_arr.min()),
+                    pre_mean=pre_mean,
+                    post_mean=float(post_q_arr.mean()),
+                )
+            except Exception as exc:
+                log.warning("native_tet_nnn2_failed", reason=str(exc)[:200])
     except Exception as exc:
         log.debug("native_tet_post_bsp_pass_skipped", reason=str(exc))
 
