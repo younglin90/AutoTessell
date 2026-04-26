@@ -78,6 +78,120 @@ def _write_polymesh_hex(
     return write_generic_polymesh(vertices, cell_faces, case_dir)
 
 
+def _reduce_nonortho_post(
+    hex_pts: np.ndarray,
+    hex_cells: np.ndarray,
+    *,
+    threshold_deg: float = 60.0,
+    top_k: int = 20,
+    min_improve_deg: float = 2.0,
+) -> np.ndarray:
+    """HEX_QUALITY1: local vert re-snap to reduce non-orthogonality.
+
+    For each internal face with non-ortho > threshold_deg (top_k worst),
+    nudge the 4 face verts by 0.1 × cell-cell-vector projection.
+    STRICT GUARD: revert if max non-ortho over incident faces does not
+    improve by at least min_improve_deg.
+
+    Returns updated hex_pts (copy if any moves accepted).
+    """
+    pts = hex_pts.copy()
+    n_cells = hex_cells.shape[0]
+
+    # Build face → owner/neighbour cell index map.
+    face_map: dict[tuple[int, int, int, int], list[int]] = {}
+    for ci in range(n_cells):
+        for face_local in _HEX_FACES:
+            v = tuple(int(hex_cells[ci, k]) for k in face_local)
+            key = tuple(sorted(v))  # type: ignore[assignment]
+            face_map.setdefault(key, []).append(ci)  # type: ignore[arg-type]
+
+    def _face_nonortho(p: np.ndarray, v4: tuple[int, int, int, int]) -> float:
+        """Non-orthogonality of a quad face between its two owner cells."""
+        key = tuple(sorted(v4))  # type: ignore[assignment]
+        owners = face_map.get(key, [])  # type: ignore[arg-type]
+        if len(owners) < 2:
+            return 0.0  # boundary face — skip
+        c0 = p[hex_cells[owners[0]]].mean(axis=0)
+        c1 = p[hex_cells[owners[1]]].mean(axis=0)
+        cc = c1 - c0
+        cc_len = float(np.linalg.norm(cc))
+        if cc_len < 1e-30:
+            return 0.0
+        # face normal from the quad (v4 CCW order)
+        a, b, c, d = [p[x] for x in v4]
+        n_vec = np.cross(c - a, d - b)
+        n_len = float(np.linalg.norm(n_vec))
+        if n_len < 1e-30:
+            return 0.0
+        cos_a = abs(float(np.dot(n_vec / n_len, cc / cc_len)))
+        cos_a = min(1.0, cos_a)
+        return float(np.degrees(np.arccos(cos_a)))
+
+    # Collect internal faces and their non-ortho angles.
+    internal: list[tuple[float, tuple[int, int, int, int], int, int]] = []
+    for ci in range(n_cells):
+        for face_local in _HEX_FACES:
+            v4 = tuple(int(hex_cells[ci, k]) for k in face_local)
+            key = tuple(sorted(v4))  # type: ignore[assignment]
+            owners = face_map.get(key, [])  # type: ignore[arg-type]
+            if len(owners) == 2 and owners[0] == ci:  # process once per face
+                ang = _face_nonortho(pts, v4)  # type: ignore[arg-type]
+                if ang > threshold_deg:
+                    internal.append((ang, v4, owners[0], owners[1]))  # type: ignore[arg-type]
+
+    if not internal:
+        return pts  # nothing to do
+
+    # Sort worst first, take top_k.
+    internal.sort(key=lambda t: t[0], reverse=True)
+    internal = internal[:top_k]
+
+    n_moved = 0
+    for ang_pre, v4, ci0, ci1 in internal:
+        c0 = pts[hex_cells[ci0]].mean(axis=0)
+        c1 = pts[hex_cells[ci1]].mean(axis=0)
+        cc = c1 - c0
+        cc_len = float(np.linalg.norm(cc))
+        if cc_len < 1e-30:
+            continue
+
+        # face centroid & normal
+        face_verts = pts[list(v4)]
+        face_cen = face_verts.mean(axis=0)
+        n_vec = np.cross(face_verts[2] - face_verts[0], face_verts[3] - face_verts[1])
+        n_len = float(np.linalg.norm(n_vec))
+        if n_len < 1e-30:
+            continue
+        n_hat = n_vec / n_len
+        # projection of cc onto n_hat — nudge direction
+        proj = float(np.dot(cc / cc_len, n_hat))
+        delta = 0.1 * proj * n_hat * cc_len
+
+        # pre-incident non-ortho for guard
+        incident_faces: list[tuple[int, int, int, int]] = []
+        for ci in (ci0, ci1):
+            for fl in _HEX_FACES:
+                incident_faces.append(tuple(int(hex_cells[ci, k]) for k in fl))  # type: ignore[arg-type]
+        pre_max = max((_face_nonortho(pts, f) for f in incident_faces), default=0.0)
+
+        # Apply move
+        orig = {vi: pts[vi].copy() for vi in v4}
+        for vi in v4:
+            pts[vi] = pts[vi] + delta
+
+        post_max = max((_face_nonortho(pts, f) for f in incident_faces), default=0.0)
+        if post_max <= pre_max - min_improve_deg:
+            n_moved += 1
+        else:
+            # revert
+            for vi, p in orig.items():
+                pts[vi] = p
+
+    log.info("hex_quality_postpass", n_candidate=len(internal), n_moved=n_moved)
+    return pts
+
+
 def generate_native_hex(
     vertices: np.ndarray,
     faces: np.ndarray,
@@ -382,6 +496,18 @@ def generate_native_hex(
                 })
         except Exception as exc:
             log.debug("native_hex_www7_skipped", reason=str(exc))
+
+    # HEX_QUALITY1 (beta2137) — non-ortho local post-pass (snappyHexMesh postSnap analog).
+    # env AUTO_TESSELL_HEX_QUALITY1_OFF disables. Default ON.
+    import os as _os  # noqa: PLC0415
+    if (
+        final_hexes.shape[0] >= 50
+        and not _os.environ.get("AUTO_TESSELL_HEX_QUALITY1_OFF")
+    ):
+        try:
+            final_pts = _reduce_nonortho_post(final_pts, final_hexes)
+        except Exception as exc:
+            log.debug("native_hex_quality1_skipped", reason=str(exc))
 
     # 최소 system/controlDict + fvSchemes + fvSolution 생성 (checkMesh 가 요구).
     from core.generator.tier_layers_post import (  # noqa: PLC0415
