@@ -32,7 +32,7 @@ _NATIVE_POLY_PPP4_ENABLE: bool = True  # PPP5 — clipping activated
 
 # TTT1 — BL integration sequence skeleton (default OFF)
 # TTT1 → TTT2 prism layer insertion → TTT3 stitch
-_TTT1_POLY_BL_ENABLE: bool = False
+_TTT1_POLY_BL_ENABLE: bool = True
 
 
 def _find_wall_adjacent_cells(
@@ -654,6 +654,10 @@ def _generate_native_poly_voronoi_inner(
             False, time.perf_counter() - t0,
             message="유지 region 0 — target_edge_length 완화 필요",
         )
+
+    # TTT2b — wall-adjacent cell set 활성화
+    _wall_adj = _find_wall_adjacent_cells(seeds, vor.ridge_dict, F)
+    log.info("ttt2b_poly_bl_wall_adj", n_wall_adj=len(_wall_adj))
 
     # PPP5 — boundary cell clipping (clip_boundary=True 시).
     # boundary cell: region 의 vertex 중 1개 이상이 surface 외부에 있는 cell.

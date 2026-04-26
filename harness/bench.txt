@@ -1,34 +1,74 @@
   fid= 100027 hex       : grade=A cells=2 t=0.12s no=0.0° sk=0.0
-  fid= 100027 hex+BL    : grade=A cells=2 t=0.12s no=0.0° sk=0.0 BL=OK prism=72
-  fid= 100027 poly      : grade=A cells=78 t=0.46s no=43.3° sk=0.19
+  fid= 100027 hex+BL    : grade=A cells=2 t=0.13s no=0.0° sk=0.0 BL=OK prism=72
+2026-04-26 19:50:40 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=255
+2026-04-26 19:50:40 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=255
+2026-04-26 19:50:40 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=259
+2026-04-26 19:50:40 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=259
+  fid= 100027 poly      : grade=A cells=78 t=0.45s no=43.3° sk=0.19
   fid= 100027 poly+BL   : grade=A cells=78 t=0.45s no=43.3° sk=0.19 BL=OK prism=1584
-  fid= 100027 tet       : grade=D cells=1791 t=9.57s mq=0.082
-  fid= 100030 hex       : grade=A cells=266 t=0.3s no=39.6° sk=0.21
-  fid= 100027 tet+BL    : grade=D cells=1791 t=9.6s mq=0.082 BL=OK prism=4248
-  fid= 100030 hex+BL    : grade=A cells=266 t=0.32s no=39.6° sk=0.21 BL=OK prism=2676
-  fid= 100030 poly      : grade=A cells=6 t=2.86s no=3.3° sk=0.19
-  fid= 100030 poly+BL   : grade=A cells=6 t=2.89s no=3.3° sk=0.19 BL=OK prism=792
-  fid= 100040 tet       : grade=D cells=4710 t=4.36s mq=0.055
+  fid= 100027 tet       : grade=D cells=1791 t=9.54s mq=0.082
+  fid= 100030 hex       : grade=A cells=266 t=0.29s no=39.6° sk=0.21
+  fid= 100027 tet+BL    : grade=D cells=1791 t=9.5s mq=0.082 BL=OK prism=4248
+  fid= 100030 hex+BL    : grade=A cells=266 t=0.33s no=39.6° sk=0.21 BL=OK prism=2676
+2026-04-26 19:50:50 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=660
+2026-04-26 19:50:50 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=660
+2026-04-26 19:50:51 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=778
+2026-04-26 19:50:51 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=778
+2026-04-26 19:50:52 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=735
+2026-04-26 19:50:52 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=735
+2026-04-26 19:50:52 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=778
+2026-04-26 19:50:52 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=778
+  fid= 100030 poly      : grade=A cells=6 t=2.91s no=3.3° sk=0.19
+  fid= 100030 poly+BL   : grade=A cells=6 t=2.85s no=3.3° sk=0.19 BL=OK prism=792
+  fid= 100040 tet       : grade=D cells=4710 t=4.53s mq=0.055
   fid= 100040 hex       : grade=A cells=38 t=0.04s no=36.5° sk=0.2
   fid= 100040 hex+BL    : grade=A cells=38 t=0.04s no=36.5° sk=0.2 BL=OK prism=756
-  fid= 100040 poly      : grade=A cells=12 t=1.4s no=41.8° sk=0.14
-  fid= 100040 tet+BL    : grade=D cells=4710 t=4.36s mq=0.055 BL=OK prism=5844
-  fid= 100040 poly+BL   : grade=A cells=12 t=1.2s no=41.8° sk=0.14 BL=OK prism=288
-  fid= 100030 tet       : grade=D cells=11979 t=32.05s mq=0.095
+2026-04-26 19:50:58 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=387
+2026-04-26 19:50:58 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=405
+2026-04-26 19:50:58 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=441
+2026-04-26 19:50:59 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=492
+  fid= 100040 poly      : grade=A cells=12 t=1.22s no=41.8° sk=0.14
+  fid= 100040 tet+BL    : grade=D cells=4710 t=4.5s mq=0.055 BL=OK prism=5844
+2026-04-26 19:50:59 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=387
+2026-04-26 19:50:59 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=405
+2026-04-26 19:50:59 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=441
+2026-04-26 19:51:00 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=492
+  fid= 100040 poly+BL   : grade=A cells=12 t=1.19s no=41.8° sk=0.14 BL=OK prism=288
+  fid= 100030 tet       : grade=D cells=11979 t=31.77s mq=0.095
   fid=1004826 hex       : grade=A cells=60 t=0.06s no=22.4° sk=0.11
   fid=1004826 hex+BL    : grade=A cells=60 t=0.06s no=22.4° sk=0.11 BL=OK prism=960
-  fid=1004826 tet       : grade=C cells=3033 t=17.19s mq=0.208
-  fid=1004826 poly      : grade=A cells=38 t=4.16s no=20.3° sk=0.14
-  fid= 100030 tet+BL    : grade=D cells=11979 t=31.89s mq=0.095 BL=OK prism=12820
-  fid=1004826 tet+BL    : grade=C cells=3033 t=17.28s mq=0.208 BL=OK prism=2416
+2026-04-26 19:51:12 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=405
+2026-04-26 19:51:12 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=418
+2026-04-26 19:51:13 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=462
+2026-04-26 19:51:13 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=711
+2026-04-26 19:51:15 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=609
+2026-04-26 19:51:16 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=711
+  fid=1004826 tet       : grade=C cells=3033 t=17.1s mq=0.208
+2026-04-26 19:51:16 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=405
+2026-04-26 19:51:16 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=418
+2026-04-26 19:51:16 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=462
+  fid=1004826 poly      : grade=A cells=38 t=4.35s no=20.3° sk=0.14
+  fid= 100030 tet+BL    : grade=D cells=11979 t=31.69s mq=0.095 BL=OK prism=12820
+2026-04-26 19:51:17 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=711
+  fid=1004826 tet+BL    : grade=C cells=3033 t=17.19s mq=0.208 BL=OK prism=2416
   fid= 101085 hex       : grade=A cells=28 t=0.04s no=16.2° sk=0.14
   fid= 101085 hex+BL    : grade=A cells=28 t=0.03s no=16.2° sk=0.14 BL=OK prism=612
-  fid= 101085 poly      : grade=A cells=6 t=1.25s no=30.7° sk=0.44
-  fid= 101085 poly+BL   : grade=A cells=6 t=1.23s no=30.7° sk=0.44 BL=FAIL
-  fid=1004826 poly+BL   : grade=A cells=38 t=4.65s no=20.3° sk=0.14 BL=OK prism=636
-  fid= 101085 tet       : grade=C cells=9897 t=19.35s mq=0.127
-  fid= 101085 tet+BL    : grade=C cells=9897 t=19.16s mq=0.127 BL=OK prism=8840
-total time: 59.7s
+2026-04-26 19:51:18 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=673
+2026-04-26 19:51:18 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=706
+2026-04-26 19:51:18 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=609
+2026-04-26 19:51:19 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=696
+2026-04-26 19:51:19 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=706
+  fid= 101085 poly      : grade=A cells=6 t=1.26s no=30.7° sk=0.44
+2026-04-26 19:51:19 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=673
+2026-04-26 19:51:19 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=711
+2026-04-26 19:51:20 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=706
+2026-04-26 19:51:20 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=696
+2026-04-26 19:51:20 [info     ] ttt2b_poly_bl_wall_adj         n_wall_adj=706
+  fid=1004826 poly+BL   : grade=A cells=38 t=4.35s no=20.3° sk=0.14 BL=OK prism=636
+  fid= 101085 poly+BL   : grade=A cells=6 t=1.46s no=30.7° sk=0.44 BL=FAIL
+  fid= 101085 tet       : grade=C cells=9897 t=18.71s mq=0.127
+  fid= 101085 tet+BL    : grade=C cells=9897 t=18.71s mq=0.127 BL=OK prism=8840
+total time: 59.1s
   hex +BL : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 5}
   hex raw : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 0}
   poly+BL : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 4}
