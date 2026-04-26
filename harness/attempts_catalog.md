@@ -76,3 +76,4 @@
 | R65 | PPP9b-redo | poly | PASS | n/a | re-applied PPP9b after R64 false-FAIL (per-fid baseline confusion), continuous score tiebreak, chosen=voronoi_clipped=3, bench 59.2s |
 | R66 | VVV5b | tet | PASS | n_flip54=12+76+53+79=220 across fids | flip_edges_54 strict per-flip guard (Klingner 5-4), fid=100027 mq=0.082, fid=100030 mq=0.095, fid=100040 mq=0.055, bench 66.3s, BL fail=0, commit f56fe0f |
 | R77 | WWW7 | hex | PASS | n/a | feature edge snap (nFeatureSnapIter style), dihedral>30° segs, top_k=200, quality guard per-cell, hex A=5/5 stable, BL fail=0, bench 70.5s |
+| R116 | TET_TIMING2 | tet | OBS | n/a | post-PERF3/4 timing snapshot: top-3 = VVV13=7496ms, VVV12=5009ms, VVV10=3432ms (sum across 10 runs, bench 85.7s, 22/22 PASS) |

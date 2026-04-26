@@ -2,7 +2,7 @@
   "target_engine": "tet",
   "beta": 2168,
   "max_round": 1000,
-  "round": 115,
+  "round": 116,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,7 +26,7 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 85.6,
+  "last_bench_time": 85.7,
   "consecutive_fails": 0,
   "dones": [
     "hex",
@@ -54,5 +54,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "POL_PERF1 — vectorize Lloyd CVT centroid loop in _lloyd_3d_iteration: list-of-arrays→in-place np array update; bench 86.7s→85.6s; 22/22 PASS, poly A=5/5 (beta2168, R115)"
+  "plan_archive": "TET_TIMING2 (R116 OBS) — post-PERF3/4 timing snapshot: VVV13=7496ms, VVV12=5009ms, VVV10=3432ms (sum/10 runs); bench 85.7s; 22/22 PASS"
 }
