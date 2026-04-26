@@ -1,8 +1,8 @@
 {
   "target_engine": "poly",
-  "beta": 2116,
+  "beta": 2117,
   "max_round": 1000,
-  "round": 58,
+  "round": 59,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,7 +26,7 @@
   "last_mq": {
     "tet_worst": 0.082
   },
-  "last_bench_time": 59.4,
+  "last_bench_time": 59.3,
   "consecutive_fails": 0,
   "dones": [
     "hex",
@@ -43,5 +43,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "TTT9 — native_poly cell merge skeleton (polyDualMesh 시퀀스 #9)"
+  "plan_archive": "VVV3b \u2014 native_tet Stellar swap-only apply (Klingner 2008 \u00a73.2 \uc2dc\ud000\uc2a4 #3)"
 }

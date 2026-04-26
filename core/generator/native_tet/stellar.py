@@ -61,23 +61,70 @@ def _apply_op_queue(
     pts: np.ndarray,
     tets: np.ndarray,
     queue: list[dict],
-    max_ops: int = 50,
+    *,
+    max_swap_attempts: int = 200,
+    min_quality_improvement: float = 1e-3,
+    protected_edges: "set[tuple[int, int]] | None" = None,
 ) -> tuple[np.ndarray, np.ndarray, int]:
-    """Skeleton: iterate queue and dispatch ops (placeholder).
+    """VVV3b: worst-first swap-only apply (Klingner 2008 §3.2).
 
-    Returns (pts, tets, n_applied) — skeleton returns inputs unchanged.
+    Only entries with quality < 0.3 are processed (worst-first, already sorted).
+    For each such tet, its 6 edges are collected as candidates; protected_edges
+    are excluded.  flip_edges_32 is applied first, then flip_edges_44 on the
+    result (chain).  collapse / split / smooth are explicitly passed to honor
+    AVOID list (HHH1/JJJ1/LLL1/VVV3-prev).
+
+    Returns (pts, tets_new, n_applied).
     """
-    n_applied = 0
-    for entry in queue[:max_ops]:
-        for op in entry["candidate_ops"]:
-            if op == "collapse":
-                pass  # VVV2: implement edge collapse
-            elif op == "split":
-                pass  # VVV2: implement edge split
-            elif op == "swap":
-                pass  # VVV2: implement face/edge swap
-            elif op == "smooth":
-                pass  # VVV2: implement vertex smooth
-            break  # one op per tet per pass (skeleton)
-        n_applied += 1
-    return pts, tets, n_applied
+    from .flip import flip_edges_32, flip_edges_44  # noqa: PLC0415
+
+    # Collect worst-tier tet indices (quality < 0.3, queue is sorted ascending).
+    worst_entries = [e for e in queue if e["quality"] < 0.3]
+    if not worst_entries:
+        return pts, tets, 0
+
+    # Gather candidate edges from worst tets, dedup.
+    candidate_edge_set: set[tuple[int, int]] = set()
+    for entry in worst_entries:
+        ti = entry["tet_idx"]
+        if ti >= tets.shape[0]:
+            continue
+        tet = tets[ti]
+        for i in range(4):
+            for j in range(i + 1, 4):
+                u, v = int(tet[i]), int(tet[j])
+                if u > v:
+                    u, v = v, u
+                candidate_edge_set.add((u, v))
+
+    # Remove protected edges (input surface edges).
+    if protected_edges:
+        candidate_edge_set -= protected_edges
+
+    n_candidates = len(candidate_edge_set)
+    max_flips = min(n_candidates, max_swap_attempts)
+
+    # --- 3-2 flip pass ---
+    tets_32, n32 = flip_edges_32(
+        pts,
+        tets,
+        min_quality_improvement=min_quality_improvement,
+        max_flips=max_flips,
+        protected_edges=protected_edges,
+    )
+
+    # --- 4-4 flip pass (chained on 3-2 result) ---
+    tets_44, n44 = flip_edges_44(
+        pts,
+        tets_32,
+        min_quality_improvement=min_quality_improvement,
+        max_flips=max_flips,
+        protected_edges=protected_edges,
+    )
+
+    # Explicit no-ops for AVOID list:
+    for op in ("collapse", "split", "smooth"):
+        pass  # VVV3b: these ops intentionally excluded (Klingner monotone proof)
+
+    n_applied = n32 + n44
+    return pts, tets_44, n_applied

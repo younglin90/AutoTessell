@@ -1,2 +1,5 @@
-PASS — R55 WWW6 (native_hex templating log-only, beta2113).
-Regression 35/35 PASS. Bench 59.1s (≤720s). Hex A=5/5 stable, all grades unchanged, BL ok 5/5.
+PASS
+
+VVV3b Stellar swap-only apply (Klingner 2008 §3.2): triple monotone guard + worst-first 32/44 flips effective.
+tet C/D stable (2/3), hex/poly A=5/5. worst_mq=0.082 (no drift), mean_q stable. bench 59.3s ≤ 71.3s limit.
+native_tet_stellar_apply logged 8× with accepted=True (n_app=0 or 34), no regression. PASS.

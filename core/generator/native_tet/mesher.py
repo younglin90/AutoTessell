@@ -2258,12 +2258,15 @@ def generate_native_tet(
     except Exception as exc:
         log.debug("native_tet_post_bsp_pass_skipped", reason=str(exc))
 
-    # VVV2 — Stellar queue build (log only, no apply)
+    # VVV3b — Stellar queue build + swap-only apply (worst-first 32+44, triple monotone)
     if os.environ.get("AUTO_TESSELL_VVV2_QUEUE", "1") != "0":
         try:
             from core.generator.native_tet.stellar import (
-                _VVV1_STELLAR_QUEUE, _build_op_queue,
+                _VVV1_STELLAR_QUEUE,
+                _build_op_queue,
+                _apply_op_queue,
             )
+            from core.generator.native_tet.quality import snapshot as _qsnap  # noqa: PLC0415
             if _VVV1_STELLAR_QUEUE:
                 _q = _build_op_queue(final_pts, final_tets)
                 _worst = float(_q[0]["quality"]) if _q else 0.0
@@ -2271,6 +2274,32 @@ def generate_native_tet(
                     "native_tet_stellar_queue",
                     n_queue=len(_q),
                     worst_q=_worst,
+                )
+                # VVV3b: apply swap ops with triple monotone guard.
+                pre = _qsnap(final_pts, final_tets)
+                pre_n = final_tets.shape[0]
+                pts2, tets2, n_app = _apply_op_queue(
+                    final_pts,
+                    final_tets,
+                    _q,
+                    protected_edges=None,
+                )
+                post = _qsnap(pts2, tets2)
+                accepted = (
+                    post.min_q >= pre.min_q - 1e-6
+                    and post.mean_q >= pre.mean_q - 1e-3
+                    and tets2.shape[0] >= 0.95 * pre_n
+                )
+                if accepted:
+                    final_pts, final_tets = pts2, tets2
+                log.info(
+                    "native_tet_stellar_apply",
+                    n_app=int(n_app),
+                    pre_min=float(pre.min_q),
+                    post_min=float(post.min_q),
+                    pre_mean=float(pre.mean_q),
+                    post_mean=float(post.mean_q),
+                    accepted=bool(accepted),
                 )
         except Exception as exc:
             log.warning("native_tet_vvv2_skipped", reason=str(exc)[:120])
