@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2167,
+  "beta": 2168,
   "max_round": 1000,
-  "round": 114,
+  "round": 115,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,7 +26,7 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 86.7,
+  "last_bench_time": 85.6,
   "consecutive_fails": 0,
   "dones": [
     "hex",
@@ -54,5 +54,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "PERF4 — face→incident-tet adjacency cache: single-slot LRU compute_face_incident_tets_cached() mirrors PERF3; VVV14 (insert_face_centroid_steiner) reuses map instead of per-call O(N) rebuild; bench 85.9s→86.7s (noise); 22/22 PASS, grades stable (beta2167, R114)"
+  "plan_archive": "POL_PERF1 — vectorize Lloyd CVT centroid loop in _lloyd_3d_iteration: list-of-arrays→in-place np array update; bench 86.7s→85.6s; 22/22 PASS, poly A=5/5 (beta2168, R115)"
 }

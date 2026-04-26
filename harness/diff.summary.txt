@@ -1,4 +1,4 @@
-file: core/generator/native_tet/stellar.py
-functions: compute_face_incident_tets_cached, _invalidate_face_incident_cache, insert_face_centroid_steiner
-lines_added: 51
-lines_removed: 7
+file: core/generator/native_poly/voronoi.py
+functions: _lloyd_3d_iteration
+lines_added: 21
+lines_removed: 20
