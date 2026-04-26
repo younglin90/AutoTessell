@@ -93,6 +93,10 @@ def generate_native_hex(
     n_levels: int = 2,
     refinement_distance_factor: float = 2.0,
     snap_iterations: int = 0,
+    # X3 (beta1840) — snap 후 boundary vertex Laplacian smooth.
+    enable_post_smooth: bool = False,
+    post_smooth_iterations: int = 2,
+    post_smooth_relax: float = 0.3,
 ) -> NativeHexResult:
     """uniform hex grid 생성 + inside filter.
 
@@ -300,6 +304,68 @@ def generate_native_hex(
                 pass
         except Exception as exc:
             log.warning("native_hex_boundary_snap_failed", error=str(exc))
+
+    # X3 (beta1840) — boundary vertex Laplacian smooth (post-snap).
+    if enable_post_smooth and final_hexes.shape[0] > 0:
+        try:
+            from core.generator.native_hex.quality import (  # noqa: PLC0415
+                hex_quality_report,
+            )
+            # boundary vertex 식별 (1-owner face 의 vertex).
+            face_count: dict[tuple[int, int, int, int], int] = {}
+            for ci in range(final_hexes.shape[0]):
+                for face_local in _HEX_FACES:
+                    v = tuple(int(final_hexes[ci, k]) for k in face_local)
+                    key = tuple(sorted(v))
+                    face_count[key] = face_count.get(key, 0) + 1
+            boundary_v: set[int] = set()
+            for ci in range(final_hexes.shape[0]):
+                for face_local in _HEX_FACES:
+                    v = [int(final_hexes[ci, k]) for k in face_local]
+                    key = tuple(sorted(v))
+                    if face_count[key] == 1:
+                        boundary_v.update(v)
+            # vertex → 이웃 vertex (같은 hex 의 edge 인접).
+            edge_pairs = [(0,1),(1,2),(2,3),(3,0),(4,5),(5,6),(6,7),(7,4),
+                          (0,4),(1,5),(2,6),(3,7)]
+            n = final_pts.shape[0]
+            nbrs: list[set[int]] = [set() for _ in range(n)]
+            for ci in range(final_hexes.shape[0]):
+                for a, b in edge_pairs:
+                    va = int(final_hexes[ci, a]); vb = int(final_hexes[ci, b])
+                    nbrs[va].add(vb); nbrs[vb].add(va)
+            prev_pts_sm = final_pts.copy()
+            try:
+                prev_skew_sm = hex_quality_report(final_pts, final_hexes).max_skewness
+            except Exception:
+                prev_skew_sm = 0.0
+            for _ in range(int(post_smooth_iterations)):
+                new_pts = final_pts.copy()
+                for vi in boundary_v:
+                    if not nbrs[vi]:
+                        continue
+                    cen = final_pts[list(nbrs[vi])].mean(axis=0)
+                    new_pts[vi] = final_pts[vi] + float(post_smooth_relax) * (cen - final_pts[vi])
+                final_pts = new_pts
+            try:
+                new_skew_sm = hex_quality_report(final_pts, final_hexes).max_skewness
+                if new_skew_sm > prev_skew_sm + 2.0:
+                    log.warning(
+                        "native_hex_post_smooth_revert",
+                        prev=round(prev_skew_sm, 3), new=round(new_skew_sm, 3),
+                    )
+                    final_pts = prev_pts_sm
+                else:
+                    log.info(
+                        "native_hex_post_smooth",
+                        n_iter=int(post_smooth_iterations),
+                        n_bnd=int(len(boundary_v)),
+                        skew=round(new_skew_sm, 3),
+                    )
+            except Exception:
+                pass
+        except Exception as exc:
+            log.debug("native_hex_post_smooth_skipped", reason=str(exc))
 
     # 최소 system/controlDict + fvSchemes + fvSolution 생성 (checkMesh 가 요구).
     from core.generator.tier_layers_post import (  # noqa: PLC0415
