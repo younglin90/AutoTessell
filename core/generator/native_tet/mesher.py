@@ -1578,6 +1578,33 @@ def generate_native_tet(
     except Exception as exc:
         log.debug("native_tet_sliver_post_skipped", reason=str(exc))
 
+    # RR1 (beta1950) — 2-3 face flip pass: connectivity-only sliver 깨기.
+    # vertex 위치 변경 X (surface 보존), tet 재구성으로 min Q 향상.
+    try:
+        from core.generator.native_tet.quality import snapshot as _qsnap_flip
+        pre_q_f = _qsnap_flip(final_pts, final_tets)
+        if float(pre_q_f.mean_q) < 0.25 and final_tets.shape[0] > 100:
+            from core.generator.native_tet.flip import flip_faces_23
+            t_before = int(final_tets.shape[0])
+            new_tets_f, n_flips = flip_faces_23(
+                final_pts, final_tets,
+                min_quality_improvement=1e-3,
+                max_flips=3000,
+            )
+            if n_flips > 0 and new_tets_f.shape[0] > 50:
+                post_q_f = _qsnap_flip(final_pts, new_tets_f)
+                if float(post_q_f.mean_q) >= float(pre_q_f.mean_q) * 0.99:
+                    final_tets = new_tets_f
+                    log.info(
+                        "native_tet_flip_23",
+                        n_flips=int(n_flips),
+                        t_before=t_before, t_after=int(new_tets_f.shape[0]),
+                        mq_before=round(float(pre_q_f.mean_q), 3),
+                        mq_after=round(float(post_q_f.mean_q), 3),
+                    )
+    except Exception as exc:
+        log.debug("native_tet_flip_23_skipped", reason=str(exc))
+
     # beta1530 (V3) — 외부 tet 제거: 입력 surface 외부에 centroid 가 있는 tet drop.
     if enable_boundary_clip:
         try:
