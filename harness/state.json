@@ -1,8 +1,8 @@
 {
   "target_engine": "poly",
-  "beta": 2141,
+  "beta": 2143,
   "max_round": 1000,
-  "round": 88,
+  "round": 90,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,7 +26,7 @@
   "last_mq": {
     "tet_worst": 0.095
   },
-  "last_bench_time": 81.9,
+  "last_bench_time": 81.3,
   "consecutive_fails": 0,
   "dones": [
     "hex",
@@ -40,12 +40,13 @@
     "HEX_QUALITY1",
     "POL_QUALITY1",
     "PRE3",
-    "TET_QUALITY1"
+    "TET_QUALITY1",
+    "BL3"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "TET_QUALITY1 \u2014 native_tet non-ortho local post-pass (mirror HEX_QUALITY1 / snappy postSnap)"
+  "plan_archive": "BL3 — relative first-layer thickness uniformization (cfMesh relativeSizes / uniform y+)"
 }

@@ -1,9 +1,4 @@
-file: core/generator/native_tet/laplacian.py
-functions: _tet_face_nonortho, reduce_nonortho_tet
-lines_added: 118
-lines_removed: 0
-
-file: core/generator/native_tet/mesher.py
-functions: generate_native_tet (TET_QUALITY1 wiring block after VVV12)
-lines_added: 34
-lines_removed: 0
+file: core/layers/native_bl.py
+functions: _relative_first_thickness, generate_native_bl (BL1+BL3 wiring block)
+lines_added: 78
+lines_removed: 17

@@ -582,6 +582,56 @@ def _curvature_adaptive_thickness(
     return thickness
 
 
+def _relative_first_thickness(
+    surface_pts: np.ndarray,
+    surface_faces: list[list[int]],
+    wall_vert_indices: list[int],
+    *,
+    ratio: float = 0.3,
+) -> np.ndarray:
+    """BL3 — relative first-layer thickness (cfMesh ``relativeSizes true``).
+
+    For each wall vertex the first BL layer thickness is set to ``ratio`` times
+    the local mean edge length.  This ties layer thickness to local mesh density,
+    producing uniform y+ across the surface regardless of absolute element size.
+
+    Algorithm (clean-room, cfMesh BoundaryLayerOptimisation §relativeSizes):
+      1. Build vertex adjacency from wall faces.
+      2. local_mean_edge[v] = mean of incident edge lengths.
+      3. first_thickness[v]  = ratio * local_mean_edge[v].
+
+    Returns:
+        np.ndarray shape (len(wall_vert_indices),) — per-vertex first thickness.
+    """
+    if not wall_vert_indices or not surface_faces:
+        return np.zeros(len(wall_vert_indices), dtype=np.float64)
+
+    neighbours: dict[int, list[int]] = {v: [] for v in wall_vert_indices}
+    vert_set = set(wall_vert_indices)
+    for f in surface_faces:
+        if len(f) < 2:
+            continue
+        for ai in range(len(f)):
+            a = int(f[ai])
+            b = int(f[(ai + 1) % len(f)])
+            if a in neighbours:
+                neighbours[a].append(b)
+            if b in neighbours:
+                neighbours[b].append(a)
+
+    thickness = np.zeros(len(wall_vert_indices), dtype=np.float64)
+    for vi, v in enumerate(wall_vert_indices):
+        nbrs = neighbours[v]
+        if not nbrs:
+            thickness[vi] = 0.0
+            continue
+        pv = surface_pts[v]
+        edge_lens = [float(np.linalg.norm(surface_pts[nb] - pv)) for nb in nbrs]
+        local_mean = float(np.mean(edge_lens))
+        thickness[vi] = ratio * local_mean
+    return thickness
+
+
 def _detect_feature_vertices(
     points: np.ndarray,
     faces: list[list[int]],
@@ -1164,40 +1214,68 @@ def generate_native_bl(
             n_vertices=len(vertex_cum_map),
         )
 
-    # 4e) BL1 — curvature-adaptive per-vertex first thickness (default ON).
+    # 4e) BL1+BL3 — curvature-adaptive + relative first thickness (default ON).
     #     Only activates when user has NOT set per_vertex_first_thickness explicitly.
-    #     Computes per-vertex first layer thickness using local curvature + aspect cap.
+    #     BL1: curvature adaptive (cfMesh maxFirstLayerThickness aspect cap).
+    #     BL3: relative sizing — first_thickness = ratio × local_mean_edge (cfMesh
+    #          relativeSizes true), producing uniform y+ across mesh density changes.
+    #     Combined: take element-wise min(BL1, BL3) → conservative safe thickness.
     if not cfg.per_vertex_first_thickness and not use_per_vertex_cum:
         try:
+            wall_surface_faces = [faces[fi] for fi in wall_face_indices]
             adap_thick = _curvature_adaptive_thickness(
-                points, [faces[fi] for fi in wall_face_indices], wall_vert_indices,
+                points, wall_surface_faces, wall_vert_indices,
                 base_thickness=cfg.first_thickness,
                 max_aspect=cfg.aspect_ratio_threshold,
             )
+            # BL3: relative first thickness (ratio × local mean edge length)
+            rel_thick = _relative_first_thickness(
+                points, wall_surface_faces, wall_vert_indices,
+                ratio=0.3,
+            )
+            # Guard: if rel_thick is all-zero (degenerate mesh) skip BL3 combination
+            rel_valid = rel_thick.max() > 1e-30 if len(rel_thick) > 0 else False
+            if rel_valid:
+                # BL3 combines with BL1: take min → conservative thickness
+                combined_thick = np.minimum(adap_thick, rel_thick)
+                # Clamp: never below 1% of cfg.first_thickness (avoid near-zero collapse)
+                combined_thick = np.maximum(combined_thick, cfg.first_thickness * 0.01)
+                _rel_mean = float(rel_thick.mean())
+                _rel_min = float(rel_thick.min())
+                log.info(
+                    "native_bl_relative_thickness", component="native_bl", phase="BL3",
+                    ratio=0.3,
+                    mean_local_edge=round(_rel_mean / 0.3, 6),
+                    rel_thickness_min=round(_rel_min, 6),
+                    rel_thickness_mean=round(_rel_mean, 6),
+                )
+            else:
+                combined_thick = adap_thick
             # Apply global bbox/local safety scale already applied to thicknesses[0]
             global_scale = (
                 float(thicknesses[0]) / cfg.first_thickness
                 if cfg.first_thickness > 1e-30 else 1.0
             )
-            adap_thick *= global_scale
+            combined_thick *= global_scale
             use_per_vertex_cum = True
             for vi_bl1, v in enumerate(wall_vert_indices):
-                ft = float(adap_thick[vi_bl1])
+                ft = float(combined_thick[vi_bl1])
                 v_thick = np.array(
                     [ft * (cfg.growth_ratio ** i) for i in range(cfg.num_layers)],
                     dtype=np.float64,
                 )
                 v_thick *= vertex_scale.get(v, 1.0)
                 vertex_cum_map[v] = np.concatenate(([0.0], np.cumsum(v_thick)))
-            _adap_min = float(adap_thick.min())
-            _adap_max = float(adap_thick.max())
-            _adap_mean = float(adap_thick.mean())
+            _adap_min = float(combined_thick.min())
+            _adap_max = float(combined_thick.max())
+            _adap_mean = float(combined_thick.mean())
             log.info(
                 "native_bl_curvature_adaptive", component="native_bl", phase="BL1",
                 n_verts=len(wall_vert_indices),
                 thickness_min=round(_adap_min, 6),
                 thickness_max=round(_adap_max, 6),
                 thickness_mean=round(_adap_mean, 6),
+                bl3_relative_active=rel_valid,
             )
         except Exception as _bl1_exc:
             import logging as _lg
