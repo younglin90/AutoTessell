@@ -2404,6 +2404,41 @@ def generate_native_tet(
         except Exception as exc:
             log.warning("native_tet_vvv7_skipped", reason=str(exc)[:120])
 
+    # VVV8 — boundary Laplacian + envelope projection (Loseille 2013 §3.2)
+    if not os.environ.get("AUTO_TESSELL_VVV8_OFF"):
+        try:
+            if final_tets.shape[0] < 500:
+                log.info("vvv8_skipped_small_mesh", n_tets=int(final_tets.shape[0]))
+            else:
+                from core.generator.native_tet.laplacian import smooth_boundary_envelope as _sbe  # noqa: PLC0415
+                from core.generator.native_tet.quality import snapshot as _qsnap78  # noqa: PLC0415
+                _pre78 = _qsnap78(final_pts, final_tets)
+                _pre78_n = final_tets.shape[0]
+                _pts78, _tets78, _n78 = _sbe(
+                    final_pts, final_tets,
+                    V, F,
+                    top_k=20,
+                    n_iter=1,
+                    min_quality_improvement=1e-6,
+                )
+                _post78 = _qsnap78(_pts78, _tets78)
+                _acc78 = (
+                    _post78.min_q >= _pre78.min_q - 1e-6
+                    and _post78.mean_q >= _pre78.mean_q - 1e-3
+                    and _tets78.shape[0] == _pre78_n
+                )
+                if _acc78:
+                    final_pts, final_tets = _pts78, _tets78
+                log.info(
+                    "native_tet_smooth_boundary",
+                    n_moved=int(_n78),
+                    pre_min=float(_pre78.min_q),
+                    post_min=float(_post78.min_q),
+                    accepted=bool(_acc78),
+                )
+        except Exception as exc:
+            log.warning("native_tet_vvv8_skipped", reason=str(exc)[:120])
+
     # beta1530 (V3) — 외부 tet 제거: 입력 surface 외부에 centroid 가 있는 tet drop.
     if enable_boundary_clip:
         try:
