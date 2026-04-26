@@ -5,11 +5,59 @@ Klingner & Shewchuk 2008 §3.
 from __future__ import annotations
 
 import time
+from typing import Optional
 
 import numpy as np
 
 # VVV1: skeleton only — default OFF, no call path added
 _VVV1_STELLAR_QUEUE: bool = True
+
+# ---------------------------------------------------------------------------
+# PERF3 (beta2166) — edge→incident-tet adjacency cache (single-slot LRU).
+# Shared by VVV12 (split_sliver_longest_edge) and VVV13
+# (split_anisotropic_tet_edges).  Cache key = id(tets) + tets.shape hash;
+# one cache slot is sufficient because both passes are called sequentially.
+# ---------------------------------------------------------------------------
+_EDGE_INCIDENT_CACHE: Optional[tuple[int, int, dict[tuple[int, int], list[int]]]] = None
+
+
+def compute_edge_incident_tets_cached(
+    tets: np.ndarray,
+) -> dict[tuple[int, int], list[int]]:
+    """Return edge→[tet_idx] map for *tets*.  Single-slot LRU by tets id+shape.
+
+    Cache hit: O(1).  Cache miss: O(N_tets * 6) to build.
+    Invalidated whenever tets object changes (new array after split acceptance).
+    """
+    global _EDGE_INCIDENT_CACHE
+    key_id = id(tets)
+    key_shape = tets.shape[0]
+    if _EDGE_INCIDENT_CACHE is not None:
+        cached_id, cached_shape, cached_map = _EDGE_INCIDENT_CACHE
+        if cached_id == key_id and cached_shape == key_shape:
+            return cached_map
+    # Build map.
+    _PAIRS6 = ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3))
+    edge_map: dict[tuple[int, int], list[int]] = {}
+    for ti in range(tets.shape[0]):
+        t = tets[ti]
+        for pi, pj in _PAIRS6:
+            u, v = int(t[pi]), int(t[pj])
+            if u > v:
+                u, v = v, u
+            key = (u, v)
+            if key in edge_map:
+                edge_map[key].append(ti)
+            else:
+                edge_map[key] = [ti]
+    _EDGE_INCIDENT_CACHE = (key_id, key_shape, edge_map)
+    return edge_map
+
+
+def _invalidate_edge_incident_cache() -> None:
+    """Invalidate PERF3 cache (called after accepted split modifies tets_list)."""
+    global _EDGE_INCIDENT_CACHE
+    _EDGE_INCIDENT_CACHE = None
 
 
 def _orient_tet(pts_list: list, tet: list[int]) -> list[int]:
@@ -274,16 +322,17 @@ def split_sliver_longest_edge(
     tets_list = list(tets)
     n_split = 0
 
+    # PERF3: build/reuse edge→incident-tet map (shared with VVV13 via module cache).
+    edge_map = compute_edge_incident_tets_cached(tets)
+
     for edge_i, edge_j in sliver_edges:
         if n_split >= max_splits:
             break
 
-        # Find all tets incident to this edge.
-        incident: list[int] = []
-        for ti, tet in enumerate(tets_list):
-            tet_set = set(int(v) for v in tet)
-            if edge_i in tet_set and edge_j in tet_set:
-                incident.append(ti)
+        # Find all tets incident to this edge (use cached map).
+        u, v = (edge_i, edge_j) if edge_i < edge_j else (edge_j, edge_i)
+        incident: list[int] = [ti for ti in edge_map.get((u, v), [])
+                               if ti < len(tets_list)]
 
         if not incident:
             continue
@@ -322,6 +371,8 @@ def split_sliver_longest_edge(
             for idx, ti in enumerate(incident):
                 tets_list.append(new_tets[2 * idx + 1])
             n_split += 1
+            # PERF3: invalidate module cache (tets_list has changed).
+            _invalidate_edge_incident_cache()
         else:
             # Revert: pop midpoint.
             pts_list.pop()
@@ -505,16 +556,17 @@ def split_anisotropic_tet_edges(
     tets_list = list(tets)
     n_split = 0
 
+    # PERF3: build/reuse edge→incident-tet map (shared with VVV12 via module cache).
+    edge_map = compute_edge_incident_tets_cached(tets)
+
     for edge_i, edge_j in aniso_edges:
         if n_split >= max_splits:
             break
 
-        # Find all tets incident to this edge.
-        incident: list[int] = []
-        for ti, tet in enumerate(tets_list):
-            tet_set = set(int(v) for v in tet)
-            if edge_i in tet_set and edge_j in tet_set:
-                incident.append(ti)
+        # Find all tets incident to this edge (use cached map).
+        u, v = (edge_i, edge_j) if edge_i < edge_j else (edge_j, edge_i)
+        incident: list[int] = [ti for ti in edge_map.get((u, v), [])
+                               if ti < len(tets_list)]
 
         if not incident:
             continue
@@ -551,6 +603,8 @@ def split_anisotropic_tet_edges(
             for idx, ti in enumerate(incident):
                 tets_list.append(new_tets[2 * idx + 1])
             n_split += 1
+            # PERF3: invalidate module cache (tets_list has changed).
+            _invalidate_edge_incident_cache()
         else:
             # Revert.
             pts_list.pop()
