@@ -717,6 +717,48 @@ def generate_native_poly_voronoi(
     seed_density 를 1.5× 씩 escalate 해 max 4 회 재시도. bracket / gear 같은
     복잡 형상에서 기본 seed 가 부족해 region 0 이 나오는 케이스 자동 회복.
     """
+    # PRE3 (beta2149) — input CVT isotropic remesh on high edge-length-ratio.
+    # Botsch & Kobbelt 2004 isotropic remesh — gated by edge_length_ratio > 100
+    # or n_faces > 200 000. Default ON; set AUTO_TESSELL_PRE3_POLY_OFF=1 to disable.
+    import os as _os_poly
+    _V = np.asarray(vertices, dtype=np.float64)
+    _F = np.asarray(faces, dtype=np.int64)
+    if not _os_poly.environ.get("AUTO_TESSELL_PRE3_POLY_OFF") and _F.shape[0] >= 100:
+        try:
+            _pre3_edges = np.concatenate([
+                _V[_F[:, 0]] - _V[_F[:, 1]],
+                _V[_F[:, 1]] - _V[_F[:, 2]],
+                _V[_F[:, 2]] - _V[_F[:, 0]],
+            ], axis=0)
+            _pre3_lens = np.linalg.norm(_pre3_edges, axis=1)
+            _pre3_lens = _pre3_lens[_pre3_lens > 0]
+            _pre3_ratio = float(_pre3_lens.max() / _pre3_lens.min()) if len(_pre3_lens) > 0 else 0.0
+            _pre3_nf = int(_F.shape[0])
+            if _pre3_ratio > 100.0 or _pre3_nf > 200_000:
+                from core.preprocessor.native_remesh import isotropic_remesh
+                _pre3_bmin = _V.min(axis=0); _pre3_bmax = _V.max(axis=0)
+                _pre3_diag = float(np.linalg.norm(_pre3_bmax - _pre3_bmin))
+                _pre3_target = _pre3_diag / 100.0
+                V_pre3, F_pre3 = isotropic_remesh(_V, _F, target_edge_length=_pre3_target)
+                if F_pre3.shape[0] > _pre3_nf * 2:
+                    log.debug(
+                        "native_poly_pre3_remesh_skipped_facecount",
+                        faces_before=_pre3_nf,
+                        faces_after=int(F_pre3.shape[0]),
+                    )
+                else:
+                    vertices = V_pre3.astype(np.float64)
+                    faces = F_pre3.astype(np.int64)
+                    log.info(
+                        "native_poly_pre3_remesh",
+                        edge_length_ratio=round(_pre3_ratio, 2),
+                        faces_before=_pre3_nf,
+                        faces_after=int(faces.shape[0]),
+                        target_edge_length=round(_pre3_target, 6),
+                    )
+        except Exception as _pre3_exc:
+            log.warning("pre3_poly_remesh_failed", reason=str(_pre3_exc))
+
     if auto_escalate:
         # GG1 (beta1750) — best-of-N 평가:
         #   1) voronoi 단순 (escalate 까지)
