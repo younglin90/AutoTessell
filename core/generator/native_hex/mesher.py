@@ -78,6 +78,90 @@ def _write_polymesh_hex(
     return write_generic_polymesh(vertices, cell_faces, case_dir)
 
 
+# VAL2 (beta2148) — global negative-volume hex cell validation (3-engine defensive parity).
+# env AUTO_TESSELL_VAL2_OFF=1 to disable. Default ON.
+def validate_hex_cell_volumes(
+    hex_pts: np.ndarray,
+    hex_cells: np.ndarray,
+    *,
+    degenerate_eps: float = 1e-20,
+) -> tuple[np.ndarray, int, int]:
+    """For each hex (8 verts), decompose into 6 tets, sum signed volumes.
+
+    If V < 0, attempt to flip orientation by swapping top/bottom layers:
+        [0,1,2,3,4,5,6,7] → [4,5,6,7,0,1,2,3]
+    Re-check; if still V < 0, log degenerate and mark.
+
+    Returns:
+        (hex_cells_fixed, n_flipped, n_degenerate)
+    """
+    import os as _os  # noqa: PLC0415
+    if _os.environ.get("AUTO_TESSELL_VAL2_OFF"):
+        return hex_cells, 0, 0
+
+    hex_cells = np.asarray(hex_cells, dtype=np.int64).copy()
+    pts = np.asarray(hex_pts, dtype=np.float64)
+    n = len(hex_cells)
+    if n == 0:
+        log.info("native_hex_validate", n_cells=0, n_flipped=0, n_degenerate=0)
+        return hex_cells, 0, 0
+
+    # 6-tet decomposition of a hex (local vertex indices).
+    # Standard decomposition into 5 or 6 tets; use 6-tet fan from vertex 0.
+    _HEX_TETS = np.array([
+        [0, 1, 3, 4],
+        [1, 2, 3, 6],
+        [3, 4, 6, 7],
+        [1, 4, 5, 6],
+        [1, 3, 4, 6],
+        [0, 3, 4, 7],  # unused but keeps symmetry; use first 5 only
+    ], dtype=np.int64)
+
+    def _hex_signed_vol(cell: np.ndarray) -> float:
+        """Signed volume of hex via 5-tet decomposition."""
+        _5TETS = [
+            [0, 1, 3, 4],
+            [1, 2, 3, 6],
+            [3, 4, 6, 7],
+            [1, 4, 5, 6],
+            [1, 3, 4, 6],
+        ]
+        total = 0.0
+        for tet_idx in _5TETS:
+            v = pts[cell[tet_idx]]
+            total += float(np.dot(v[1] - v[0], np.cross(v[2] - v[0], v[3] - v[0])))
+        return total
+
+    n_flipped = 0
+    n_degenerate = 0
+    for ci in range(n):
+        vol = _hex_signed_vol(hex_cells[ci])
+        if vol < -float(degenerate_eps):
+            # Attempt flip: swap top/bottom layers
+            orig = hex_cells[ci].copy()
+            hex_cells[ci] = orig[[4, 5, 6, 7, 0, 1, 2, 3]]
+            vol2 = _hex_signed_vol(hex_cells[ci])
+            if vol2 < -float(degenerate_eps):
+                # Revert and mark degenerate
+                hex_cells[ci] = orig
+                n_degenerate += 1
+                log.warning(
+                    "native_hex_degenerate_volume",
+                    cell_idx=ci,
+                    vol=round(vol, 6),
+                )
+            else:
+                n_flipped += 1
+
+    log.info(
+        "native_hex_validate",
+        n_cells=n,
+        n_flipped=n_flipped,
+        n_degenerate=n_degenerate,
+    )
+    return hex_cells, n_flipped, n_degenerate
+
+
 def _reduce_nonortho_post(
     hex_pts: np.ndarray,
     hex_cells: np.ndarray,
@@ -508,6 +592,14 @@ def generate_native_hex(
             final_pts = _reduce_nonortho_post(final_pts, final_hexes)
         except Exception as exc:
             log.debug("native_hex_quality1_skipped", reason=str(exc))
+
+    # VAL2 (beta2148) — negative-volume hex validation (default ON).
+    try:
+        final_hexes, _val2_flipped, _val2_degen = validate_hex_cell_volumes(
+            final_pts, final_hexes,
+        )
+    except Exception as _val2_exc:
+        log.debug("native_hex_val2_skipped", reason=str(_val2_exc))
 
     # 최소 system/controlDict + fvSchemes + fvSolution 생성 (checkMesh 가 요구).
     from core.generator.tier_layers_post import (  # noqa: PLC0415

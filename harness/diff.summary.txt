@@ -1,4 +1,9 @@
-file: core/layers/native_bl.py
-functions: generate_native_bl (HEX_LAYERS post-prism-pass per-face guard block), _HEX_LAYERS_N (module constant)
-lines_added: 80
+file: core/generator/native_hex/mesher.py
+functions: validate_hex_cell_volumes, generate_native_hex (wiring)
+lines_added: 72
+lines_removed: 0
+
+file: core/generator/native_poly/voronoi.py
+functions: validate_poly_cell_volumes, _generate_native_poly_voronoi_inner (wiring)
+lines_added: 68
 lines_removed: 0

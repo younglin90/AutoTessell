@@ -162,6 +162,72 @@ class NativePolyResult:
 from core.utils.geometry import inside_winding_number as _inside_ray_cast
 
 
+# VAL2 (beta2148) — global negative-volume poly cell validation (3-engine defensive parity).
+# env AUTO_TESSELL_VAL2_OFF=1 to disable. Default ON.
+def validate_poly_cell_volumes(
+    cells: "list[list[list[int]]]",
+    points: np.ndarray,
+    *,
+    degenerate_eps: float = 1e-20,
+) -> tuple[int, int]:
+    """For each poly cell, tetrahedralize from centroid (fan over each face's triangles).
+
+    Sum signed volumes; if V < 0, log native_poly_degenerate_volume warning.
+    Cell-by-cell flipping for poly is complex — LOG ONLY (no auto-fix).
+    Returns (n_negative_volume, n_degenerate).
+    """
+    import os as _os  # noqa: PLC0415
+    if _os.environ.get("AUTO_TESSELL_VAL2_OFF"):
+        return 0, 0
+
+    pts = np.asarray(points, dtype=np.float64)
+    n_negative = 0
+    n_degenerate = 0
+    for ci, cell_faces in enumerate(cells):
+        # Gather all vertex indices in this cell.
+        cell_vidx: list[int] = []
+        for face in cell_faces:
+            cell_vidx.extend(face)
+        unique_vidx = list(dict.fromkeys(cell_vidx))
+        if len(unique_vidx) < 4:
+            n_degenerate += 1
+            continue
+        cell_verts = pts[unique_vidx]
+        centroid = cell_verts.mean(axis=0)
+        # Fan-triangulate each face and sum signed tet volumes from centroid.
+        total_vol = 0.0
+        for face in cell_faces:
+            if len(face) < 3:
+                continue
+            for k in range(1, len(face) - 1):
+                a = pts[face[0]]
+                b = pts[face[k]]
+                c = pts[face[k + 1]]
+                # signed vol6 = dot(b-centroid, cross(c-centroid, a-centroid))
+                # but use centroid-to-triangle tet: (centroid, a, b, c)
+                total_vol += float(np.dot(
+                    a - centroid,
+                    np.cross(b - centroid, c - centroid),
+                ))
+        if abs(total_vol) < float(degenerate_eps):
+            n_degenerate += 1
+        elif total_vol < 0.0:
+            n_negative += 1
+            log.warning(
+                "native_poly_degenerate_volume",
+                cell_idx=ci,
+                vol=round(total_vol, 6),
+            )
+
+    log.info(
+        "native_poly_validate",
+        n_cells=len(cells),
+        n_negative_volume=n_negative,
+        n_degenerate=n_degenerate,
+    )
+    return n_negative, n_degenerate
+
+
 def _write_polymesh_poly(
     vertices: np.ndarray,
     cells: list[list[list[int]]],  # cell 별 face (vertex index list)
@@ -1329,6 +1395,12 @@ def _generate_native_poly_voronoi_inner(
         # else: raw keep.
     except Exception as exc:
         log.debug("native_poly_smooth_skipped", reason=str(exc))
+
+    # VAL2 (beta2148) — negative-volume poly validation (default ON).
+    try:
+        validate_poly_cell_volumes(final_cells, final_vertices)
+    except Exception as _val2_exc:
+        log.debug("native_poly_val2_skipped", reason=str(_val2_exc))
 
     try:
         stats = _write_polymesh_poly(final_vertices, final_cells, case_dir)
