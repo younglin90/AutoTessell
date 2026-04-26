@@ -1780,13 +1780,14 @@ def generate_native_tet(
                     missing.append(i)
         else:
             missing = []
-        if len(missing) > 0 and len(missing) < 500:
+        # FFF1 (beta2060) — BSP insert 한계 확장: missing<1000, max_inserts=800.
+        if len(missing) > 0 and len(missing) < 1000:
             n_v_pre_b = int(final_pts.shape[0])
             n_t_pre_b = int(final_tets.shape[0])
             new_pts_b, new_tets_b, bsp_r = _bsp_batch(
                 final_pts, final_tets, V, F,
                 np.asarray(missing, dtype=np.int64),
-                max_inserts=300,
+                max_inserts=800,
             )
             n_recovered = int(bsp_r.n_missing_before - bsp_r.n_missing_after)
             if (
