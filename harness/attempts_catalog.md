@@ -27,6 +27,7 @@
 | R21   | QQQ1b | tet   | PASS    | =0.0  | BL prism collision skeleton (Garimella 2003 §3), default OFF, bench 59.2s, tet grade C/D stable |
 | R24   | QQQ3  | tet   | PASS    | =0.0  | BL collision vectorize (Garimella 2003 시퀀스 #2), np.einsum + max_pairs=200 guard, bench 58.8s (-0.4s), tet C/D stable, prism collision efficient |
 | R25   | QQQ4  | tet   | PASS    | =0.0  | BL local thickness skeleton (Loseille 2013 시퀀스 #3), default OFF, _local_thickness_factor helper, bench 58.8s (stable), tet C/D stable |
+| R27   | RRR1  | tet   | PASS    | =0.0  | Quality percentiles skeleton (Klingner 2008 시퀀스 #1), _quality_percentiles helper, default OFF, bench 59.4s (stable), tet C/D stable |
 
 # AVOID (4회 reject 됨)
 - smooth_amips_analytic / smooth_amips_multistage 호출 BSP 직후 (HHH1/III1/JJJ1 — worst-mq 악화 패턴). 동일 함수/위치 재시도 금지.

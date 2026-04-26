@@ -291,3 +291,39 @@ def should_stop(
         if max(recent) - min(recent) < improvement_eps:
             return True, "plateau"
     return False, ""
+
+
+# ---------------------------------------------------------------------------
+# RRR1 — quality histogram percentile helper (스켈레톤, default OFF)
+# ---------------------------------------------------------------------------
+
+_RRR1_QUALITY_HISTOGRAM: bool = False
+
+
+def _quality_percentiles(pts: np.ndarray, tets: np.ndarray) -> dict:
+    """Klingner 2008 §3.5 — quality histogram percentile helper.
+
+    Returns
+    -------
+    dict with keys "shape_q", "aspect", "min_dihedral_deg", each mapping to
+    a sub-dict {"p50", "p90", "p95", "p99"}.
+
+    Note: called only when _RRR1_QUALITY_HISTOGRAM is True (RRR2 에서 활성).
+    현재 호출 경로 없음 (스켈레톤).
+    """
+    pcts = [50, 90, 95, 99]
+
+    sq = tet_shape_quality(pts, tets)
+    asp = tet_aspect_ratio(pts, tets)
+    dih = tet_min_dihedral_deg(pts, tets)
+
+    def _pct_dict(arr: np.ndarray) -> dict:
+        vals = np.percentile(arr, pcts)
+        return {"p50": float(vals[0]), "p90": float(vals[1]),
+                "p95": float(vals[2]), "p99": float(vals[3])}
+
+    return {
+        "shape_q": _pct_dict(sq),
+        "aspect": _pct_dict(asp),
+        "min_dihedral_deg": _pct_dict(dih),
+    }
