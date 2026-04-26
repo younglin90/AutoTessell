@@ -1,4 +1,4 @@
-file: core/generator/native_hex/octree.py
-functions: _segment_intersects_aabb, _refine_at_features, build_octree_hex_cells (wiring)
-lines_added: 101
-lines_removed: 0
+file: core/generator/native_poly/voronoi.py
+functions: _generate_native_poly_voronoi_inner (PPP5 clipping block)
+lines_added: 40
+lines_removed: 6

@@ -1073,7 +1073,10 @@ def _generate_native_poly_voronoi_inner(
     if clip_boundary and _NATIVE_POLY_PPP4_ENABLE:
         max_cells_clip = 200
         clipped_count = 0
+        n_clipped_rejected = 0
         new_vor_vertices = vor_vertices.copy()
+        _clip_bbox_diag = float(np.linalg.norm(V.max(axis=0) - V.min(axis=0))) + 1e-30
+        _clip_min_abs_vol = (1e-9 * _clip_bbox_diag) ** 3
         for pi in keep_region_indices:
             if clipped_count >= max_cells_clip:
                 break
@@ -1087,6 +1090,31 @@ def _generate_native_poly_voronoi_inner(
                 clipped = _clip_voronoi_cell_by_surface(cell_v, V, F)
                 if clipped is cell_v or len(clipped) < 4:
                     continue  # degenerate or unchanged — skip
+                # POL_QUALITY1 — volume conservation guard after clipping.
+                # Tetrahedralize from centroid to detect near-zero / degenerate cells.
+                _cen = clipped.mean(axis=0)
+                _vol = 0.0
+                try:
+                    from scipy.spatial import ConvexHull  # noqa: PLC0415
+                    _hull = ConvexHull(clipped, qhull_options="QJ")
+                    _vol = abs(_hull.volume)
+                except Exception:
+                    # fallback: sum of signed tetrahedra from centroid
+                    for _k in range(len(clipped) - 2):
+                        _a = clipped[_k] - _cen
+                        _b = clipped[_k + 1] - _cen
+                        _c = clipped[_k + 2] - _cen
+                        _vol += abs(float(np.dot(_a, np.cross(_b, _c)))) / 6.0
+                _vol_ok = np.isfinite(_vol) and _vol >= _clip_min_abs_vol
+                if not _vol_ok:
+                    n_clipped_rejected += 1
+                    log.debug(
+                        "poly_cell_rejected_degenerate",
+                        cell_idx=int(pi),
+                        vol=float(_vol) if np.isfinite(_vol) else None,
+                        reason="near_zero_or_nan" if not np.isfinite(_vol) else "below_min_vol",
+                    )
+                    continue
                 # remap clipped vertices back into vor_vertices array
                 base = len(new_vor_vertices)
                 new_vor_vertices = np.vstack([new_vor_vertices, clipped])
@@ -1095,9 +1123,21 @@ def _generate_native_poly_voronoi_inner(
                 clipped_count += 1
             except Exception as exc:
                 log.warning("native_poly_ppp6_skipped", reason=str(exc)[:120])
+        if clipped_count or n_clipped_rejected:
+            log.info(
+                "native_poly_ppp5_clipped",
+                n_cells_clipped=clipped_count,
+                n_degenerate_rejected=n_clipped_rejected,
+            )
         if clipped_count:
             vor_vertices = new_vor_vertices
-            log.info("native_poly_ppp5_clipped", n_cells_clipped=clipped_count)
+        # POL_QUALITY1 — fallback if >50% of attempted clips were rejected.
+        if n_clipped_rejected > 0 and clipped_count == 0:
+            log.warning(
+                "native_poly_ppp5_clip_all_rejected",
+                n_rejected=n_clipped_rejected,
+                reason="falling back to non-clipped voronoi path",
+            )
 
     # 각 region 의 face 추출 — scipy Voronoi 의 ridge 구조 활용.
     # vor.ridge_points[ri] = (seed_a, seed_b): 두 seed 사이의 ridge (공유 face)

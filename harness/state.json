@@ -1,8 +1,8 @@
 {
-  "target_engine": "hex",
-  "beta": 2135,
+  "target_engine": "poly",
+  "beta": 2139,
   "max_round": 1000,
-  "round": 82,
+  "round": 86,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,24 +26,25 @@
   "last_mq": {
     "tet_worst": 0.095
   },
-  "last_bench_time": 72.9,
+  "last_bench_time": 79.5,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
-    "BL1",
-    "WWW7",
     "BL2",
     "POL_BL1",
     "TET_BL1",
-    "HEX_BL1"
+    "HEX_BL1",
+    "PMW1",
+    "HEX_QUALITY1",
+    "POL_QUALITY1"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "WWW8 — native_hex feature-driven octree refinement (snappyHexMesh featureLevel +1)"
+  "plan_archive": "POL_QUALITY1 — native_poly clipped cell volume conservation guard"
 }
