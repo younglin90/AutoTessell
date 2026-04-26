@@ -52,7 +52,7 @@ log = get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 _BL_QQQ1_FRONT_COLLISION = True
-_BL_QQQ4_LOCAL_THICKNESS = False
+_BL_QQQ4_LOCAL_THICKNESS = True
 
 
 def _local_thickness_factor(
@@ -949,6 +949,21 @@ def generate_native_bl(
         offset 으로 직접 사용 (per-vertex 두께 성장 곡선). 이미 vertex_scale 이
         적용된 값이므로 추가 scale 없음.
         """
+        if _BL_QQQ4_LOCAL_THICKNESS and _BL_QQQ1_FRONT_COLLISION:
+            try:
+                # vertex 단위 collision_mask: 인접 wall vertex 와 법선이 거의 반대(dot<-0.5)
+                wall_vn = np.array([vnorm[v] for v in wall_vert_indices])
+                dots_v = wall_vn @ wall_vn.T
+                np.fill_diagonal(dots_v, 0.0)
+                coll_v = (dots_v < -0.5).any(axis=1)  # shape (Nw,)
+                factors_w = _local_thickness_factor(coll_v, len(wall_vert_indices), thin_factor=0.5)
+                # vertex_scale_pass 와 merge (곱); local copy 로 caller 영향 차단
+                vertex_scale_pass = dict(vertex_scale_pass)
+                for vi_idx, v in enumerate(wall_vert_indices):
+                    vertex_scale_pass[v] = vertex_scale_pass.get(v, 1.0) * float(factors_w[vi_idx])
+            except Exception as _exc:
+                import logging as _lg
+                _lg.getLogger(__name__).warning("native_bl_qqq5_skipped reason=%s", str(_exc)[:120])
         # 5) 새 point 배열 구성
         new_pts = points.copy()
         wall_idx_arr_p = np.array(wall_vert_indices, dtype=np.int64)

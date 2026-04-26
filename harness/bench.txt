@@ -2,33 +2,33 @@
   fid= 100027 hex+BL    : grade=A cells=2 t=0.12s no=0.0° sk=0.0 BL=OK prism=72
   fid= 100027 poly      : grade=A cells=78 t=0.45s no=43.3° sk=0.19
   fid= 100027 poly+BL   : grade=A cells=78 t=0.45s no=43.3° sk=0.19 BL=OK prism=1584
-  fid= 100027 tet       : grade=D cells=1791 t=9.54s mq=0.082
+  fid= 100027 tet       : grade=D cells=1791 t=9.56s mq=0.082
   fid= 100030 hex       : grade=A cells=266 t=0.29s no=39.6° sk=0.21
-  fid= 100027 tet+BL    : grade=D cells=1791 t=9.51s mq=0.082 BL=OK prism=4248
-  fid= 100030 hex+BL    : grade=A cells=266 t=0.3s no=39.6° sk=0.21 BL=OK prism=2676
-  fid= 100030 poly      : grade=A cells=6 t=2.86s no=3.3° sk=0.19
-  fid= 100030 poly+BL   : grade=A cells=6 t=2.81s no=3.3° sk=0.19 BL=OK prism=792
-  fid= 100040 tet       : grade=D cells=4710 t=4.29s mq=0.055
+  fid= 100027 tet+BL    : grade=D cells=1791 t=9.57s mq=0.082 BL=OK prism=4248
+  fid= 100030 hex+BL    : grade=A cells=266 t=0.32s no=39.6° sk=0.21 BL=OK prism=2676
+  fid= 100030 poly      : grade=A cells=6 t=2.83s no=3.3° sk=0.19
+  fid= 100030 poly+BL   : grade=A cells=6 t=2.85s no=3.3° sk=0.19 BL=OK prism=792
+  fid= 100040 tet       : grade=D cells=4710 t=4.31s mq=0.055
   fid= 100040 hex       : grade=A cells=38 t=0.04s no=36.5° sk=0.2
   fid= 100040 hex+BL    : grade=A cells=38 t=0.04s no=36.5° sk=0.2 BL=OK prism=756
-  fid= 100040 poly      : grade=A cells=12 t=1.36s no=41.8° sk=0.14
-  fid= 100040 tet+BL    : grade=D cells=4710 t=4.29s mq=0.055 BL=OK prism=5844
-  fid= 100040 poly+BL   : grade=A cells=12 t=1.16s no=41.8° sk=0.14 BL=OK prism=288
+  fid= 100040 poly      : grade=A cells=12 t=1.37s no=41.8° sk=0.14
+  fid= 100040 tet+BL    : grade=D cells=4710 t=4.32s mq=0.055 BL=OK prism=5844
+  fid= 100040 poly+BL   : grade=A cells=12 t=1.19s no=41.8° sk=0.14 BL=OK prism=288
   fid= 100030 tet       : grade=D cells=11979 t=31.61s mq=0.095
   fid=1004826 hex       : grade=A cells=60 t=0.06s no=22.4° sk=0.11
   fid=1004826 hex+BL    : grade=A cells=60 t=0.06s no=22.4° sk=0.11 BL=OK prism=960
-  fid=1004826 tet       : grade=C cells=3033 t=16.98s mq=0.208
-  fid=1004826 poly      : grade=A cells=38 t=4.08s no=20.3° sk=0.14
-  fid= 100030 tet+BL    : grade=D cells=11979 t=31.65s mq=0.095 BL=OK prism=12820
-  fid=1004826 tet+BL    : grade=C cells=3033 t=16.99s mq=0.208 BL=OK prism=2416
+  fid=1004826 tet       : grade=C cells=3033 t=16.99s mq=0.208
+  fid=1004826 poly      : grade=A cells=38 t=4.09s no=20.3° sk=0.14
+  fid= 100030 tet+BL    : grade=D cells=11979 t=31.67s mq=0.095 BL=OK prism=12820
+  fid=1004826 tet+BL    : grade=C cells=3033 t=17.11s mq=0.208 BL=OK prism=2416
   fid= 101085 hex       : grade=A cells=28 t=0.04s no=16.2° sk=0.14
   fid= 101085 hex+BL    : grade=A cells=28 t=0.03s no=16.2° sk=0.14 BL=OK prism=612
-  fid= 101085 poly      : grade=A cells=6 t=1.23s no=30.7° sk=0.44
-  fid= 101085 poly+BL   : grade=A cells=6 t=1.25s no=30.7° sk=0.44 BL=FAIL
-  fid=1004826 poly+BL   : grade=A cells=38 t=4.28s no=20.3° sk=0.14 BL=OK prism=636
-  fid= 101085 tet       : grade=C cells=9897 t=18.92s mq=0.127
-  fid= 101085 tet+BL    : grade=C cells=9897 t=18.77s mq=0.127 BL=OK prism=8840
-total time: 58.8s
+  fid= 101085 poly      : grade=A cells=6 t=1.24s no=30.7° sk=0.44
+  fid=1004826 poly+BL   : grade=A cells=38 t=4.3s no=20.3° sk=0.14 BL=OK prism=636
+  fid= 101085 poly+BL   : grade=A cells=6 t=1.24s no=30.7° sk=0.44 BL=FAIL
+  fid= 101085 tet       : grade=C cells=9897 t=18.93s mq=0.127
+  fid= 101085 tet+BL    : grade=C cells=9897 t=18.81s mq=0.127 BL=OK prism=8840
+total time: 59.0s
   hex +BL : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 5}
   hex raw : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 0}
   poly+BL : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 4}
