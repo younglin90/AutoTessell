@@ -30,6 +30,47 @@ log = get_logger(__name__)
 # PPP4 skeleton — clipping default OFF
 _NATIVE_POLY_PPP4_ENABLE: bool = True  # PPP5 — clipping activated
 
+# TTT1 — BL integration sequence skeleton (default OFF)
+# TTT1 → TTT2 prism layer insertion → TTT3 stitch
+_TTT1_POLY_BL_ENABLE: bool = False
+
+
+def _find_wall_adjacent_cells(
+    points: "np.ndarray",
+    ridge_dict: dict,
+    surface_faces: "np.ndarray",
+) -> set:
+    """wall 면을 공유하는 voronoi cell 인덱스 set 반환.
+
+    BL 통합 시퀀스:
+        TTT1 (본 카드): wall-adjacent helper 스켈레톤 — 호출처 없음, default OFF.
+        TTT2: prism 층 삽입 — wall-adjacent cell 에 prism wedge 추가.
+        TTT3: stitch — prism / voronoi 경계 위상 결합.
+
+    Parameters
+    ----------
+    points:
+        voronoi seed point 좌표 배열 (N, 3).
+    ridge_dict:
+        {(i, j): ridge_vertices} — scipy Voronoi.ridge_dict 와 동일 구조.
+    surface_faces:
+        표면 삼각형 인덱스 배열 (M, 3) — wall 판별 기준.
+
+    Returns
+    -------
+    set[int]
+        wall 면에 인접한 voronoi cell (seed point) 인덱스 집합.
+    """
+    if not _TTT1_POLY_BL_ENABLE:
+        return set()
+
+    wall_adjacent: set = set()
+    for (i, j) in ridge_dict:
+        if i >= 0 and j >= 0:
+            wall_adjacent.add(i)
+            wall_adjacent.add(j)
+    return wall_adjacent
+
 
 def _clip_voronoi_cell_by_surface(
     cell_verts: np.ndarray,

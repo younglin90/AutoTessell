@@ -35,3 +35,6 @@
 # AVOID (4회 reject 됨)
 - smooth_amips_analytic / smooth_amips_multistage 호출 BSP 직후 (HHH1/III1/JJJ1 — worst-mq 악화 패턴). 동일 함수/위치 재시도 금지.
 - collapse_short_edges KKK1 flip 후 (LLL1 — 동일 worst-mq 악화 패턴 0.076→0.055). vertex relocation collapse 금지.
+| R31   | SSS2  | tet   | FAIL    | -0.027 | Envelope-bounded relocation (fTetWild §3.5 시퀀스 #2), worst mq 0.082→0.055 (n_relocated=792, revert 2회), gate 강화 필요 |
+| R32 | SSS3 | tet | FAIL | -0.027 | worst mq destabilized, need stronger guard or skip envelope relocation |
+| R33 | TTT1 | poly | PASS | =0.0 | BL wall-adjacent helper skeleton (Garimella 2003 시퀀스 #1), default OFF, poly A=5/5, bench 59.7s (stable) |
