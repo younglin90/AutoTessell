@@ -1,5 +1,4 @@
-PASS
+FAIL
 
-VVV3b Stellar swap-only apply (Klingner 2008 §3.2): triple monotone guard + worst-first 32/44 flips effective.
-tet C/D stable (2/3), hex/poly A=5/5. worst_mq=0.082 (no drift), mean_q stable. bench 59.3s ≤ 71.3s limit.
-native_tet_stellar_apply logged 8× with accepted=True (n_app=0 or 34), no regression. PASS.
+PPP9b continuous score tie-break (beta2118) — TET worst_mq regressed 0.082→0.055 on fid=100040.
+Voronoi scoring change unintended side effect on tet generation. Reverted. Bench 59.1s ✓, grades stable ✓, voronoi chosen=6 ✓, but worst_mq FAIL.

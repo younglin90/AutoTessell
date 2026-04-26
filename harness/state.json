@@ -27,7 +27,7 @@
     "tet_worst": 0.082
   },
   "last_bench_time": 59.3,
-  "consecutive_fails": 0,
+  "consecutive_fails": 2,
   "dones": [
     "hex",
     "poly"
