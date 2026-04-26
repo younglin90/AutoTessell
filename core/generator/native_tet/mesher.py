@@ -193,6 +193,15 @@ def generate_native_tet(
 
     _prog("start", 0.0, n_verts=V.shape[0], n_faces=F.shape[0])
 
+    # UUU2 (beta2099) — self-intersect 탐지 활성 (식별만).
+    from core.preprocessor.native_remesh import _UUU1_SI_DETECT, _detect_self_intersections
+    try:
+        if _UUU1_SI_DETECT:
+            si_pairs = _detect_self_intersections(V, F)
+            log.info("native_tet_uuu2_si_detect", n_si=int(len(si_pairs)))
+    except Exception as exc:
+        log.debug("native_tet_uuu2_si_detect_skipped", reason=str(exc))
+
     # beta420 — 입력 건강성 pre-check (경고만, 실행 계속).
     chk = None
     try:

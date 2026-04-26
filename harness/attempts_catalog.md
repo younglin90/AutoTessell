@@ -43,3 +43,4 @@
 | R37 | TTT4 | poly | PASS | =0.0 | BL extrude prism 활성 (Garimella 2003 시퀀스 #4), flag=True + SVD outward normal 계산, poly A=5/5, bench 58.1s (-0.6s), n_prism_added 2~6/fid, total 35 prisms extruded |
 | R38 | TTT5 | poly | PASS | =0.0 | BL extrude max_extrude 20→100 (Garimella 2003 시퀀스 #5), coverage 확장, poly A=5/5, bench 57.3s (-0.8s), n_prism_added total 234 |
 | R39 | UUU1 | tet | PASS | =0.0 | self-intersect detect skeleton (Hu 2018 §3.1 시퀀스 #1), default OFF, tet C/D stable, bench 57.6s |
+| R40 | UUU2 | tet | PASS | =0.0 | self-intersect detect 활성 (Hu 2018 §3.1 시퀀스 #2), flag=True + 1회 호출 @mesher line 196, log-only (cleanup 미적용), tet C/D stable, bench 57.0s, n_si=0 |

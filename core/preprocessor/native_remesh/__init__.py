@@ -24,7 +24,7 @@ import numpy as np
 from core.preprocessor.native_remesh.cvt import lloyd_cvt
 from core.preprocessor.native_remesh.isotropic import isotropic_remesh
 
-_UUU1_SI_DETECT = False
+_UUU1_SI_DETECT = True
 
 
 def _detect_self_intersections(V: np.ndarray, F: np.ndarray) -> np.ndarray:
