@@ -1,8 +1,8 @@
 {
   "target_engine": "poly",
-  "beta": 2148,
+  "beta": 2149,
   "max_round": 1000,
-  "round": 95,
+  "round": 96,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,7 +26,7 @@
   "last_mq": {
     "tet_worst": 0.095
   },
-  "last_bench_time": 81.2,
+  "last_bench_time": 88.2,
   "consecutive_fails": 0,
   "dones": [
     "hex",
@@ -41,7 +41,8 @@
     "HEX_QUALITY1",
     "POL_QUALITY1",
     "PRE3",
-    "TET_QUALITY1"
+    "TET_QUALITY1",
+    "PRE3_HEXPOLY"
   ],
   "rotate_targets": [
     "tet",
