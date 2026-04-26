@@ -1,3 +1,2 @@
 PASS
-
-R11 NNN2b: Steiner insertion (n_inserted=200@fid=100040), tet worst-mq 0.055 stable, bench 58.2s.
+Regression PASS (35/35), bench 57.8s (≤68.88s), poly A=5/5, voronoi chosen 2x, hex/tet stable. PPP3 merged.
