@@ -1584,7 +1584,9 @@ def generate_native_tet(
         from core.generator.native_tet.quality import snapshot as _qsnap_flip
         pre_q_f = _qsnap_flip(final_pts, final_tets)
         if float(pre_q_f.mean_q) < 0.25 and final_tets.shape[0] > 100:
-            from core.generator.native_tet.flip import flip_faces_23, flip_edges_32
+            from core.generator.native_tet.flip import (
+                flip_faces_23, flip_edges_32, flip_edges_44,
+            )
             t_before = int(final_tets.shape[0])
             # 2-3 face flip.
             new_tets_f, n_flips = flip_faces_23(
@@ -1625,6 +1627,28 @@ def generate_native_tet(
                         )
             except Exception as exc:
                 log.debug("native_tet_flip_32_skipped", reason=str(exc))
+            # TT1 (beta1970) — 4-4 edge flip: 내부 edge ring 재배치.
+            try:
+                pre_q_44 = _qsnap_flip(final_pts, final_tets)
+                t_pre_44 = int(final_tets.shape[0])
+                new_tets_44, n_44 = flip_edges_44(
+                    final_pts, final_tets,
+                    min_quality_improvement=1e-3,
+                    max_flips=2000,
+                )
+                if n_44 > 0 and new_tets_44.shape[0] > 50:
+                    post_q_44 = _qsnap_flip(final_pts, new_tets_44)
+                    if float(post_q_44.mean_q) >= float(pre_q_44.mean_q) * 0.99:
+                        final_tets = new_tets_44
+                        log.info(
+                            "native_tet_flip_44",
+                            n_flips=int(n_44),
+                            t_before=t_pre_44, t_after=int(new_tets_44.shape[0]),
+                            mq_before=round(float(pre_q_44.mean_q), 3),
+                            mq_after=round(float(post_q_44.mean_q), 3),
+                        )
+            except Exception as exc:
+                log.debug("native_tet_flip_44_skipped", reason=str(exc))
     except Exception as exc:
         log.debug("native_tet_flip_23_skipped", reason=str(exc))
 
