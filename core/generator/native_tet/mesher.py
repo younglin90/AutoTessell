@@ -1807,6 +1807,43 @@ def generate_native_tet(
     except Exception as exc:
         log.debug("native_tet_bsp_insert_skipped", reason=str(exc))
 
+    # EEE1 (beta2050) — BSP insert 후 flip + AMIPS post-pass: 새 Steiner
+    # vertex 로 인한 sliver 추가 처리.
+    try:
+        from core.generator.native_tet.quality import snapshot as _qsnap_eee
+        from core.generator.native_tet.flip import (
+            flip_faces_23 as _f23_e, flip_edges_32 as _f32_e,
+        )
+        pre_q_e1 = _qsnap_eee(final_pts, final_tets)
+        if float(pre_q_e1.mean_q) < 0.30 and final_tets.shape[0] > 100:
+            # flip_23 1회.
+            new_tets_e1, n_e1 = _f23_e(
+                final_pts, final_tets,
+                min_quality_improvement=1e-3, max_flips=1500,
+            )
+            if n_e1 > 0:
+                post_q_e1 = _qsnap_eee(final_pts, new_tets_e1)
+                if float(post_q_e1.mean_q) >= float(pre_q_e1.mean_q) * 0.99:
+                    final_tets = new_tets_e1
+                    log.info("native_tet_post_bsp_flip_23", n_flips=int(n_e1),
+                             mq_before=round(float(pre_q_e1.mean_q), 3),
+                             mq_after=round(float(post_q_e1.mean_q), 3))
+            # flip_32 1회.
+            pre_q_e2 = _qsnap_eee(final_pts, final_tets)
+            new_tets_e2, n_e2 = _f32_e(
+                final_pts, final_tets,
+                min_quality_improvement=1e-3, max_flips=1000,
+            )
+            if n_e2 > 0:
+                post_q_e2 = _qsnap_eee(final_pts, new_tets_e2)
+                if float(post_q_e2.mean_q) >= float(pre_q_e2.mean_q) * 0.99:
+                    final_tets = new_tets_e2
+                    log.info("native_tet_post_bsp_flip_32", n_flips=int(n_e2),
+                             mq_before=round(float(pre_q_e2.mean_q), 3),
+                             mq_after=round(float(post_q_e2.mean_q), 3))
+    except Exception as exc:
+        log.debug("native_tet_post_bsp_pass_skipped", reason=str(exc))
+
     # beta1530 (V3) — 외부 tet 제거: 입력 surface 외부에 centroid 가 있는 tet drop.
     if enable_boundary_clip:
         try:
