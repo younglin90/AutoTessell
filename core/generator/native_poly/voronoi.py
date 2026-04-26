@@ -429,11 +429,18 @@ def generate_native_poly_voronoi(
         def _grade_score(grade: str) -> float:
             return {"A": 4.0, "B": 3.0, "C": 2.0, "D": 1.0}.get(grade, 0.0)
 
-        # PPP3 — candidate tuple: (score+bonus, type_priority, n_cells, result, label)
+        # PPP9b — continuous quality tie-break score (Yu 2014 §4).
+        # lower = better: max_skew + max_non_ortho / 180.
+        def _quality_score_continuous(r: "NativePolyResult") -> float:
+            sk = r.max_skewness if r.max_skewness >= 0 else 999.0
+            no = r.max_non_orthogonality_deg if r.max_non_orthogonality_deg >= 0 else 999.0
+            return float(sk) + float(no) / 180.0
+
+        # PPP3 — candidate tuple: (score+bonus, -cont_score, type_priority, n_cells, result, label)
         # type_priority: voronoi(p=4)=2, voronoi(p=2)=1, hex_fallback=0
         # voronoi 류 +0.5 bonus (grade A 동률 시 voronoi 우선).
         _VORONOI_BONUS = 0.5
-        candidates: list[tuple[float, int, int, NativePolyResult, str]] = []
+        candidates: list[tuple[float, float, int, int, NativePolyResult, str]] = []
 
         # voronoi escalate.
         cur_seed = int(seed_density)
@@ -448,6 +455,7 @@ def generate_native_poly_voronoi(
                 candidates.append(
                     (
                         _grade_score(r_attempt.quality_grade) + _VORONOI_BONUS,
+                        -_quality_score_continuous(r_attempt),
                         1,  # voronoi(p=2)
                         r_attempt.n_cells,
                         r_attempt,
@@ -467,6 +475,7 @@ def generate_native_poly_voronoi(
             if r_p4.success and r_p4.n_cells > 2:
                 candidates.append((
                     _grade_score(r_p4.quality_grade) + _VORONOI_BONUS,
+                    -_quality_score_continuous(r_p4),
                     2,  # voronoi(p=4) — highest priority
                     r_p4.n_cells,
                     r_p4,
@@ -486,6 +495,7 @@ def generate_native_poly_voronoi(
             if r_clipped.success and r_clipped.n_cells > 2:
                 candidates.append((
                     _grade_score(r_clipped.quality_grade) + _VORONOI_BONUS,
+                    -_quality_score_continuous(r_clipped),
                     3,  # voronoi_clipped — highest priority
                     r_clipped.n_cells,
                     r_clipped,
@@ -505,6 +515,7 @@ def generate_native_poly_voronoi(
                 candidates.append(
                     (
                         _grade_score(r_hex.quality_grade),  # no bonus
+                        -_quality_score_continuous(r_hex),
                         0,  # hex_fallback — lowest priority
                         r_hex.n_cells,
                         r_hex,
@@ -537,16 +548,18 @@ def generate_native_poly_voronoi(
                 False, 0.0, message="poly best-of-N 모든 후보 실패",
             )
 
-        # PPP3 sort key: (score+bonus, type_priority, n_cells) 내림차순.
+        # PPP3/PPP9b sort key: (score+bonus, -cont_score, type_priority, n_cells) 내림차순.
         # voronoi(p=4) > voronoi(p=2) > hex_fallback (동점 시).
-        candidates.sort(key=lambda t: (t[0], t[1], t[2]), reverse=True)
-        best_score, _best_prio, _best_ncells, best_result, best_label = candidates[0]
+        # -cont_score: lower cont = better, reverse=True 에서 높은 -cont 가 앞 → lower-is-better 보존.
+        candidates.sort(key=lambda t: (t[0], t[1], t[2], t[3]), reverse=True)
+        best_score, _neg_cont, _best_prio, _best_ncells, best_result, best_label = candidates[0]
         log.info(
             "native_poly_best_of_n",
             chosen=best_label,
             grade=best_result.quality_grade,
             cells=best_result.n_cells,
             n_candidates=len(candidates),
+            cont_score=round(-candidates[0][1], 4),
         )
         # voronoi 가 chosen 이면 case_dir 가 이미 그 결과로 채워짐.
         # hex fallback 이 chosen 이면 voronoi 결과를 hex 결과로 덮어 써야.
