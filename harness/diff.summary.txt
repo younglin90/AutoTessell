@@ -1,9 +1,9 @@
-file: core/generator/native_tet/flip.py
-functions: flip_edges_76
-lines_added: 130
+file: core/generator/native_tet/laplacian.py (new)
+functions: smooth_interior_laplacian
+lines_added: 160
 lines_removed: 0
 
 file: core/generator/native_tet/mesher.py
-functions: generate_mesh (VVV6 wiring block)
-lines_added: 32
+functions: generate_mesh (VVV7 wiring block)
+lines_added: 34
 lines_removed: 0

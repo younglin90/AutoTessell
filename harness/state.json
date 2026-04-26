@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2120,
+  "beta": 2121,
   "max_round": 1000,
-  "round": 67,
+  "round": 68,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,22 +26,22 @@
   "last_mq": {
     "tet_worst": 0.082
   },
-  "last_bench_time": 68.3,
+  "last_bench_time": 68.2,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
-    "VVV2",
     "TTT9",
     "VVV5b",
-    "VVV6"
+    "VVV6",
+    "VVV7"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "VVV6 — native_tet flip_edges_76 strict per-flip guard (Klingner Table 1, 7-6 ring removal)"
+  "plan_archive": "VVV7 — native_tet interior Laplacian smoothing strict per-vert guard (top-K worst-tet, ≥2-ring boundary)"
 }
