@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2165,
+  "beta": 2166,
   "max_round": 1000,
-  "round": 112,
+  "round": 113,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,7 +26,7 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 100.3,
+  "last_bench_time": 85.9,
   "consecutive_fails": 0,
   "dones": [
     "hex",
@@ -46,12 +46,13 @@
     "POL_QUALITY1",
     "PRE3",
     "TET_QUALITY1",
-    "VVV13"
+    "VVV13",
+    "PERF3"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "PERF2 — split_anisotropic_tet_edges: vectorize AR screening loop with numpy (pts[tets] batch edge_lens, vol6, l_sq → q_all); screening O(N) numpy vs Python loop; per-split accept/revert stays Python; VVV13 dt_ms 859→~800 (fid-dependent); bench 100.3s, 22/22 PASS, grades stable (beta2165, R112)"
+  "plan_archive": "PERF3 — edge→incident-tet adjacency cache: single-slot LRU compute_edge_incident_tets_cached() built once from initial tets; VVV12 and VVV13 share cache across sequential calls; invalidated on accepted split; bench 100.3s→85.9s (-14.4s); 22/22 PASS, grades stable (beta2166, R113)"
 }

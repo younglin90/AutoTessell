@@ -1,4 +1,4 @@
 file: core/generator/native_tet/stellar.py
-functions: split_anisotropic_tet_edges
-lines_added: 28
-lines_removed: 17
+functions: compute_edge_incident_tets_cached, _invalidate_edge_incident_cache, split_sliver_longest_edge, split_anisotropic_tet_edges
+lines_added: 66
+lines_removed: 12
