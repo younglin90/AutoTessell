@@ -55,3 +55,4 @@
 | R50 | WWW3 | hex | PASS | =0.0 | surface refine skeleton (snappy castellated 시퀀스 #3), default OFF, hex A=5/5 stable, bench 58.3s |
 | R51 | WWW4 | hex | PASS | =0.0 | surface refine 활성 (snappy castellated 시퀀스 #4), _WWW3_SURFACE_REFINE=True + double-balance, hex A=5/5 stable, bench 58.4s (stable), no cell increase |
 | R52   | WWW5  | hex    | PASS    | =0.0  | octree cell templating skeleton (Marechal 2009 §4 시퀀스 #5), default OFF, bench 58.2s, hex grade A=5 stable |
+| R54   | UUU7  | tet    | PASS    | =0.0  | face split Laplacian cleanup (Hu 2018 §3.1 시퀀스 #7), 1-pass smoothing + envelope guard, tet C/D stable, bench 57.4s |

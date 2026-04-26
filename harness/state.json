@@ -1,8 +1,8 @@
 {
-  "target_engine": "poly",
-  "beta": 2111,
+  "target_engine": "tet",
+  "beta": 2112,
   "max_round": 1000,
-  "round": 53,
+  "round": 54,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,22 +26,22 @@
   "last_mq": {
     "tet_worst": 0.082
   },
-  "last_bench_time": 58.2,
+  "last_bench_time": 57.4,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
-    "WWW3",
     "WWW4",
     "WWW5",
-    "TTT8"
+    "TTT8",
+    "UUU7"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "TTT8 — poly BL 2-layer"
+  "plan_archive": "UUU7 — face split Laplacian cleanup"
 }

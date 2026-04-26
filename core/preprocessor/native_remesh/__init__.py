@@ -185,6 +185,8 @@ def _apply_face_split(
     replaced: set = set()
     n_split = 0
 
+    new_vertex_indices: list = []
+
     for op in split_ops:
         face_idx = op.get("face")
         if face_idx is None or face_idx in replaced:
@@ -198,6 +200,7 @@ def _apply_face_split(
         m_pos = (p0 + p1) * 0.5
         m_idx = len(V_new)
         V_new.append(m_pos)
+        new_vertex_indices.append(m_idx)
         # replace face with 2 new triangles
         # keep vertex not on split edge as third vertex
         third = c if (ea, eb) == (a, b) or (ea, eb) == (b, a) else (a if (ea, eb) in ((b, c), (c, b)) else b)
@@ -208,6 +211,34 @@ def _apply_face_split(
 
     V_out = np.array(V_new, dtype=V.dtype)
     F_out = np.array(F_list, dtype=F.dtype)
+
+    # 1-pass Laplacian cleanup for new vertices (UUU7)
+    hausdorff_tol = float(op.get("hausdorff_tol", 0.0)) if split_ops else 0.0
+    if new_vertex_indices:
+        # build adjacency for all vertices in V_out
+        n_verts = len(V_out)
+        adjacency: list = [set() for _ in range(n_verts)]
+        for tri in F_out:
+            i0, i1, i2 = int(tri[0]), int(tri[1]), int(tri[2])
+            adjacency[i0].add(i1); adjacency[i0].add(i2)
+            adjacency[i1].add(i0); adjacency[i1].add(i2)
+            adjacency[i2].add(i0); adjacency[i2].add(i1)
+
+        for m_idx in new_vertex_indices:
+            neighbors = adjacency[m_idx]
+            if not neighbors:
+                continue
+            orig_pos = V_out[m_idx].copy()
+            avg_pos = np.mean([V_out[nb] for nb in neighbors], axis=0)
+            # envelope guard: rollback if Hausdorff distance exceeded
+            if hausdorff_tol > 0.0:
+                dist = float(np.linalg.norm(avg_pos - orig_pos))
+                if dist <= hausdorff_tol:
+                    V_out[m_idx] = avg_pos
+                # else: keep orig_pos (rollback)
+            else:
+                V_out[m_idx] = avg_pos
+
     return V_out, F_out, n_split
 
 
