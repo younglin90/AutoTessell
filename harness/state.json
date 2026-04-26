@@ -1,8 +1,8 @@
 {
-  "target_engine": "tet",
-  "beta": 2115,
+  "target_engine": "poly",
+  "beta": 2116,
   "max_round": 1000,
-  "round": 57,
+  "round": 58,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,22 +26,22 @@
   "last_mq": {
     "tet_worst": 0.082
   },
-  "last_bench_time": 57.9,
+  "last_bench_time": 59.4,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
-    "UUU7",
     "TTT7c",
     "VVV1",
-    "VVV2"
+    "VVV2",
+    "TTT9"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "VVV2 — native_tet Stellar queue 활성 (build + log only)"
+  "plan_archive": "TTT9 — native_poly cell merge skeleton (polyDualMesh 시퀀스 #9)"
 }

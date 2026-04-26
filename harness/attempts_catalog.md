@@ -59,3 +59,4 @@
 | R55   | WWW6  | hex    | PASS    | =0.0  | octree templating 활성 (Marechal 2009 시퀀스 #6), _WWW5_TEMPLATING=True + type 식별 log only, hex A=5/5 stable, bench 59.1s |
 | R56   | VVV1  | tet    | PASS    | =0.0  | Stellar 4-op queue skeleton (Klingner 2008 §3 시퀀스 #1), default OFF, tet C/D stable, bench 57.9s |
 | R57   | VVV2  | tet    | PASS    | =0.0  | Stellar queue 활성 (Klingner 2008 §3 시퀀스 #2, log only), _VVV1_STELLAR_QUEUE=True, _build_op_queue 1 호출, tet C/D stable, bench 57.9s |
+| R58   | TTT9  | poly   | PASS    | =0.0  | polyDualMesh cell merge skeleton (시퀀스 #9), _TTT9_CELL_MERGE=False default OFF, poly A=5/5 stable, bench 59.4s |

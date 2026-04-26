@@ -175,6 +175,67 @@ def _write_polymesh_poly(
 
 _TTT3_POLY_BL_EXTRUDE_ENABLE = True  # TTT4: BL prism extrude 활성.
 
+# TTT9 — voronoi cell merging skeleton (default OFF, 호출 경로 없음)
+_TTT9_CELL_MERGE: bool = False
+
+
+def _find_merge_candidates(
+    cells: "list[list[list[int]]]",
+    quality_threshold: float = 0.2,
+) -> "list[tuple[int, int]]":
+    """quality 낮은 voronoi cell 의 merge candidate pair 를 반환한다.
+
+    quality score = (face 수 기반 volume proxy) / (최대 face span 기반 aspect proxy).
+    score < quality_threshold 인 cell 을 sliver 로 보고 face 를 공유하는
+    인접 cell 과의 pair (i, j) 리스트를 반환한다.
+
+    Parameters
+    ----------
+    cells:
+        cells[i] = list of faces; face = list of vertex indices (int).
+    quality_threshold:
+        score 가 이 값 미만이면 merge 후보로 분류.
+
+    Returns
+    -------
+    list[tuple[int, int]]
+        merge 대상 (low_quality_cell_idx, neighbor_cell_idx) pair 목록.
+        호출되지 않음 — skeleton only (TTT9 gate OFF).
+    """
+    n = len(cells)
+    # face vertex set → (cell_i, cell_j) adjacency
+    face_map: dict[frozenset, list[int]] = {}
+    for ci, faces in enumerate(cells):
+        for face in faces:
+            key = frozenset(face)
+            face_map.setdefault(key, []).append(ci)
+
+    # build adjacency list
+    adj: list[set[int]] = [set() for _ in range(n)]
+    for owners in face_map.values():
+        if len(owners) == 2:
+            a, b = owners
+            adj[a].add(b)
+            adj[b].add(a)
+
+    candidates: list[tuple[int, int]] = []
+    for ci, faces in enumerate(cells):
+        if not faces:
+            continue
+        # volume proxy: number of faces * avg face area (vertex count proxy)
+        total_verts = sum(len(f) for f in faces)
+        avg_verts = total_verts / len(faces)
+        # aspect proxy: max face vertex count (elongation indicator)
+        max_verts = max(len(f) for f in faces)
+        aspect = float(max_verts)
+        vol_proxy = float(avg_verts * len(faces))
+        score = vol_proxy / aspect if aspect > 0.0 else 0.0
+        if score < quality_threshold:
+            for nb in adj[ci]:
+                candidates.append((ci, nb))
+
+    return candidates
+
 def _extrude_prism_layer(
     wall_cells: set[int],
     vertices: "np.ndarray",         # (V,3) kept voronoi vertices (final_vertices)
