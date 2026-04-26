@@ -29,7 +29,7 @@ from core.utils.logging import get_logger
 log = get_logger(__name__)
 
 # WWW1: octree 2:1 balance 시퀀스 스켈레톤 (Marechal 2009 §3) — default OFF
-_WWW1_OCTREE_BALANCE: bool = False
+_WWW1_OCTREE_BALANCE: bool = True
 
 # --------------------------------------------------------------------------
 # 기본 인덱싱 유틸
@@ -513,6 +513,16 @@ def build_octree_hex_cells(
     # 2:1 균형 조건 적용
     if n_lev > 1:
         level_3d = _apply_2to1_balance(level_3d, n_lev)
+        if _WWW1_OCTREE_BALANCE and n_lev > 1:
+            _levels_dict = {
+                (int(i), int(j), int(k)): int(level_3d[i, j, k])
+                for i in range(nfx) for j in range(nfy) for k in range(nfz)
+                if fine_inside_3d[i, j, k] and level_3d[i, j, k] > 0
+            }
+            _balanced = _balance_octree_2to1_nodes(_levels_dict)
+            for (i, j, k), lv in _balanced.items():
+                if lv > level_3d[i, j, k]:
+                    level_3d[i, j, k] = np.int8(min(lv, n_lev))
 
     # N-level cell 및 face 생성
     cell_face_verts = _build_nlevel_cells(

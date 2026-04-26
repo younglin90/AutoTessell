@@ -48,3 +48,4 @@
 | R42 | UUU4 | tet | PASS | =0.0 | self-intersect repair candidates 활성 (Hu 2018 §3.1 시퀀스 #4), flag=True + 1회 호출 @mesher line 204, log-only (candidate 미적용), tet C/D stable, bench 57.4s, n_candidates=0 |
 | R43 | WWW1 | hex | PASS | =0.0 | octree 2:1 balance skeleton (Marechal 2009 시퀀스 #1), _balance_octree_2to1_nodes helper + _WWW1_OCTREE_BALANCE=False (default OFF), hex A=5/5 stable, bench 58.3s |
 | R44 | UUU5 | tet | PASS | =0.0 | face split helper skeleton (Hu 2018 §3.1 시퀀스 #5), _apply_face_split + _UUU5_FACE_SPLIT=False (default OFF), tet C/D stable, bench 57.4s |
+| R45 | WWW2 | hex | PASS | =0.0 | octree 2:1 balance 활성 (Marechal 2009 시퀀스 #2), _WWW1_OCTREE_BALANCE=True + node helper 26-이웃 재통과, hex A=5/5 stable, bench 57.5s |
