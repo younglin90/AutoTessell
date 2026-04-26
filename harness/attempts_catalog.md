@@ -61,3 +61,18 @@
 | R57   | VVV2  | tet    | PASS    | =0.0  | Stellar queue 활성 (Klingner 2008 §3 시퀀스 #2, log only), _VVV1_STELLAR_QUEUE=True, _build_op_queue 1 호출, tet C/D stable, bench 57.9s |
 | R58   | TTT9  | poly   | PASS    | =0.0  | polyDualMesh cell merge skeleton (시퀀스 #9), _TTT9_CELL_MERGE=False default OFF, poly A=5/5 stable, bench 59.4s |
 | R59   | VVV3b | tet    | PASS    | =0.0  | Stellar swap-only apply (32+44 worst-first), triple monotone guard, Klingner 2008 §3.2 시퀀스 #3, n_app=34 (fid=100030), accepted=True, tet C/D stable, bench 59.3s |
+| R60 | VVV4 | tet | FAIL | timeout | local cavity Steiner insert hang (>90s pytest), no time cap / top-K limit, reverted |
+| R61 | VVV4b | tet | FAIL | timeout | top-K + 0.2s budget still hung pytest >90s — guard not effective on test mesh size, reverted |
+| R62 | VVV5 | tet | FAIL | -0.027 | flip_edges_54 (Klingner Table 1, 5→4 ring removal), n_app=424, worst_mq 0.082→0.055 (threshold: ≥0.067), regressed |
+
+# AVOID (3 회 reject)
+- flip_edges_54 default-ON, post-VVV3b call without per-flip min_q strict guard (VVV5 — worst 0.082→0.055). 재시도 시 per-flip post.min ≥ pre.min_q 강제.
+- Steiner cavity insertion (VVV4 / VVV4b) — scipy Delaunay rebuild can not be wall-time bounded inside call. 신규 Steiner 카드 금지 until non-Delaunay 구현.
+| R63 | PPP9 | poly | FAIL | regression | n_lloyd default 2→4 broke test_native_poly_lloyd_signature_accepts_n_lloyd, also param sweep violation. continuous score 부분만 유지하려면 별도 카드. 전체 reverted |
+| R64 | PPP9b | poly | FAIL* | -0.027 | continuous tie-break score (Yu 2014 §4), chosen=voronoi=6 success, BUT validator reverted on tet worst_mq 0.082→0.055 — likely false-FAIL: card cannot affect tet (only voronoi.py touched), baseline fid confusion |
+
+# VALIDATOR-FIX REQUIRED
+- worst_mq baseline must be per-fid (not global min). 0.082 was fid=100030, 0.055 was fid=100040 — different test cases. Comparing post.fid=100040 worst vs pre.fid=100030 worst yields false regression. R65 planner must instruct validator to pin baseline by fid.
+| R65 | PPP9b-redo | poly | PASS | n/a | re-applied PPP9b after R64 false-FAIL (per-fid baseline confusion), continuous score tiebreak, chosen=voronoi_clipped=3, bench 59.2s |
+| R66 | VVV5b | tet | PASS | n_flip54=12+76+53+79=220 across fids | flip_edges_54 strict per-flip guard (Klingner 5-4), fid=100027 mq=0.082, fid=100030 mq=0.095, fid=100040 mq=0.055, bench 66.3s, BL fail=0, commit f56fe0f |
+| R77 | WWW7 | hex | PASS | n/a | feature edge snap (nFeatureSnapIter style), dihedral>30° segs, top_k=200, quality guard per-cell, hex A=5/5 stable, BL fail=0, bench 70.5s |

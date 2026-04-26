@@ -456,3 +456,243 @@ def snap_to_surface_iterative(
         "final_n_snapped": final_n_snapped,
         "max_displacement": max_displacement,
     }
+
+
+# ---------------------------------------------------------------------------
+# WWW7 (beta2130) — feature edge snap (snappyHexMesh nFeatureSnapIter style)
+# ---------------------------------------------------------------------------
+
+
+def _extract_feature_edge_segments(
+    surface_V: np.ndarray,
+    surface_F: np.ndarray,
+    feature_angle_deg: float = 30.0,
+) -> np.ndarray:
+    """Sharp dihedral edges → (M, 2, 3) segment endpoint array.
+
+    Edges whose adjacent face dihedral > feature_angle_deg are "feature edges."
+    Also includes boundary edges (open mesh).
+
+    Returns: float64 array shape (M, 2, 3). Empty (0,2,3) if none found.
+    """
+    if surface_V.size == 0 or surface_F.size == 0:
+        return np.zeros((0, 2, 3), dtype=np.float64)
+
+    sV = np.asarray(surface_V, dtype=np.float64)
+    sF = np.asarray(surface_F, dtype=np.int64)
+
+    # face normals
+    v0 = sV[sF[:, 0]]; v1 = sV[sF[:, 1]]; v2 = sV[sF[:, 2]]
+    nrm = np.cross(v1 - v0, v2 - v0)
+    nlen = np.linalg.norm(nrm, axis=1, keepdims=True)
+    nrm = np.where(nlen > 1e-30, nrm / np.where(nlen > 1e-30, nlen, 1.0), 0.0)
+
+    # build edge → face(s) map
+    edge_map: dict[tuple[int, int], list[int]] = {}
+    for fi in range(sF.shape[0]):
+        a, b, c = int(sF[fi, 0]), int(sF[fi, 1]), int(sF[fi, 2])
+        for x, y in ((a, b), (b, c), (c, a)):
+            key = (x, y) if x < y else (y, x)
+            edge_map.setdefault(key, []).append(fi)
+
+    cos_thresh = float(np.cos(np.deg2rad(feature_angle_deg)))
+    segs: list[tuple[np.ndarray, np.ndarray]] = []
+    for (a, b), fl in edge_map.items():
+        is_feature = False
+        if len(fl) == 1:
+            is_feature = True  # boundary edge
+        elif len(fl) == 2:
+            cos_a = float(np.clip(np.dot(nrm[fl[0]], nrm[fl[1]]), -1.0, 1.0))
+            if cos_a < cos_thresh:
+                is_feature = True
+        if is_feature:
+            segs.append((sV[a], sV[b]))
+
+    if not segs:
+        return np.zeros((0, 2, 3), dtype=np.float64)
+
+    seg_arr = np.array([[s[0], s[1]] for s in segs], dtype=np.float64)
+    return seg_arr  # (M, 2, 3)
+
+
+def _closest_point_on_segment(
+    P: np.ndarray, A: np.ndarray, B: np.ndarray,
+) -> tuple[np.ndarray, float]:
+    """Closest point on line segment AB to point P. Returns (pt, dist)."""
+    AB = B - A
+    len2 = float(AB @ AB)
+    if len2 < 1e-30:
+        d = float(np.linalg.norm(P - A))
+        return A.copy(), d
+    t = float(np.clip((P - A) @ AB / len2, 0.0, 1.0))
+    pt = A + t * AB
+    return pt, float(np.linalg.norm(P - pt))
+
+
+def snap_to_feature_edges(
+    hex_pts: np.ndarray,
+    hex_cells: np.ndarray,
+    surface_V: np.ndarray,
+    surface_F: np.ndarray,
+    *,
+    max_dist: float | None = None,
+    top_k: int = 200,
+    feature_angle_deg: float = 30.0,
+) -> tuple[np.ndarray, dict]:
+    """WWW7 — snap worst-aligned hex verts onto feature edges.
+
+    Algorithm (snappyHexMesh nFeatureSnapIter style):
+        1. Extract feature edges from surface (dihedral > feature_angle_deg).
+        2. For each hex vert, find nearest feature edge & closest point.
+        3. Select top_k verts with smallest distance to their nearest feature edge.
+        4. Move each candidate only if it does not worsen incident cell skewness.
+
+    Args:
+        hex_pts: (N, 3) hex mesh vertices.
+        hex_cells: (C, 8) hex cell vertex indices.
+        surface_V / surface_F: input surface for feature edge extraction.
+        max_dist: snap distance threshold. Default = 0.01 * bbox_diag.
+        top_k: maximum number of vertices to snap (worst-distance first).
+        feature_angle_deg: dihedral threshold for feature edge detection.
+
+    Returns:
+        (new_hex_pts, stats) where stats has n_snapped, n_rejected_quality, n_no_feature.
+    """
+    import os  # noqa: PLC0415
+    if os.environ.get("AUTO_TESSELL_WWW7_OFF", "").strip().lower() in ("1", "true", "yes"):
+        return np.asarray(hex_pts, dtype=np.float64).copy(), {
+            "n_snapped": 0, "n_rejected_quality": 0, "n_no_feature": 0, "skipped": "env_off",
+        }
+
+    work = np.asarray(hex_pts, dtype=np.float64).copy()
+    cells = np.asarray(hex_cells, dtype=np.int64)
+
+    stats: dict = {"n_snapped": 0, "n_rejected_quality": 0, "n_no_feature": 0}
+
+    if work.shape[0] < 100:
+        stats["skipped"] = "too_few_verts"
+        return work, stats
+
+    # Step 1 — extract feature edges
+    segs = _extract_feature_edge_segments(surface_V, surface_F, feature_angle_deg)
+    if segs.shape[0] == 0:
+        stats["n_no_feature"] = int(work.shape[0])
+        stats["skipped"] = "no_feature_edges"
+        return work, stats
+
+    # bbox_diag for default max_dist
+    bmin = work.min(axis=0); bmax = work.max(axis=0)
+    bbox_diag = float(np.linalg.norm(bmax - bmin)) + 1e-30
+    if max_dist is None or max_dist <= 0.0:
+        max_dist = 0.01 * bbox_diag
+
+    # Step 2 — for each vert, find nearest feature edge via segment midpoints KDTree
+    seg_A = segs[:, 0, :]  # (M, 3)
+    seg_B = segs[:, 1, :]  # (M, 3)
+    seg_mids = (seg_A + seg_B) / 2.0
+
+    # coarse filter: k nearest segment midpoints
+    k_coarse = min(4, segs.shape[0])
+    try:
+        from core.utils.kdtree import NumpyKDTree  # noqa: PLC0415
+        mid_tree = NumpyKDTree(seg_mids)
+    except Exception as exc:
+        log.warning("www7_kdtree_failed", error=str(exc))
+        return work, stats
+
+    # max seg half-length for search radius
+    half_lens = np.linalg.norm(seg_B - seg_A, axis=1) / 2.0
+    max_half = float(half_lens.max()) if half_lens.size > 0 else 0.0
+    search_r = max_dist + max_half + 1e-8
+
+    dists_coarse, nn_idx = mid_tree.query(work, k=k_coarse, distance_upper_bound=search_r)
+    if k_coarse == 1:
+        dists_coarse = dists_coarse[:, None]
+        nn_idx = nn_idx[:, None]
+
+    n_verts = work.shape[0]
+    best_dist = np.full(n_verts, np.inf)
+    best_snap = np.empty((n_verts, 3), dtype=np.float64)
+
+    for i in range(n_verts):
+        cand_segs = nn_idx[i]
+        cand_segs = cand_segs[cand_segs < segs.shape[0]]
+        if cand_segs.size == 0:
+            continue
+        P = work[i]
+        bd2 = np.inf
+        bp = None
+        for si in cand_segs:
+            pt, d = _closest_point_on_segment(P, seg_A[si], seg_B[si])
+            if d < bd2:
+                bd2 = d
+                bp = pt
+        if bp is not None and bd2 <= max_dist:
+            best_dist[i] = bd2
+            best_snap[i] = bp
+
+    # Step 3 — select top_k candidates (smallest dist, dist < max_dist)
+    eligible = np.where(best_dist < max_dist)[0]
+    if eligible.size == 0:
+        stats["n_no_feature"] = n_verts
+        return work, stats
+
+    if eligible.size > top_k:
+        order = np.argsort(best_dist[eligible])
+        eligible = eligible[order[:top_k]]
+
+    # Step 4 — build vert → incident cells map for quality guard
+    vert_cells: list[list[int]] = [[] for _ in range(n_verts)]
+    for ci in range(cells.shape[0]):
+        for vi in cells[ci]:
+            vert_cells[int(vi)].append(ci)
+
+    def _hex_skewness_cells(pts: np.ndarray, cids: list[int]) -> float:
+        """Approximate max skewness over a set of hex cells (centroid-based)."""
+        if not cids:
+            return 0.0
+        max_sk = 0.0
+        for ci in cids:
+            verts = pts[cells[ci]]  # (8, 3)
+            cen = verts.mean(axis=0)
+            # Face skewness: for each of 6 hex faces compute face centroid deviation
+            for face_local in _HEX_FACES_LOCAL:
+                fv = verts[list(face_local)]
+                fc = fv.mean(axis=0)
+                ec = cen  # cell centroid
+                # approximate: skewness ≈ |fc - ec| / cell_size
+                face_diag = float(np.linalg.norm(fv[2] - fv[0]))
+                if face_diag < 1e-30:
+                    continue
+                sk = float(np.linalg.norm(fc - ec)) / (face_diag + 1e-30)
+                if sk > max_sk:
+                    max_sk = sk
+        return max_sk
+
+    _HEX_FACES_LOCAL = (
+        (0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4),
+        (3, 7, 6, 2), (0, 4, 7, 3), (1, 2, 6, 5),
+    )
+
+    for vi in eligible:
+        inc = vert_cells[int(vi)]
+        if not inc:
+            continue
+        prev_sk = _hex_skewness_cells(work, inc)
+        orig = work[vi].copy()
+        work[vi] = best_snap[vi]
+        new_sk = _hex_skewness_cells(work, inc)
+        if new_sk > prev_sk + 1e-6:
+            work[vi] = orig  # revert
+            stats["n_rejected_quality"] += 1
+        else:
+            stats["n_snapped"] += 1
+
+    log.info(
+        "native_hex_www7_feature_snap",
+        n_feature_segs=int(segs.shape[0]),
+        n_eligible=int(eligible.size),
+        **{k: v for k, v in stats.items()},
+        max_dist=round(max_dist, 6),
+    )
+    return work, stats

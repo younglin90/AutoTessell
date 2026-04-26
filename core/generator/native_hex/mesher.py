@@ -367,6 +367,22 @@ def generate_native_hex(
         except Exception as exc:
             log.debug("native_hex_post_smooth_skipped", reason=str(exc))
 
+    # WWW7 (beta2130) — feature edge snap (default ON, env AUTO_TESSELL_WWW7_OFF disables).
+    if final_hexes.shape[0] > 0 and final_pts.shape[0] >= 100:
+        try:
+            from core.generator.native_hex.snap import snap_to_feature_edges  # noqa: PLC0415
+            final_pts, www7_stats = snap_to_feature_edges(
+                final_pts, final_hexes, V, F,
+                top_k=200,
+                feature_angle_deg=30.0,
+            )
+            if www7_stats.get("n_snapped", 0) > 0 or "skipped" not in www7_stats:
+                log.info("native_hex_www7_done", **{
+                    k: v for k, v in www7_stats.items()
+                })
+        except Exception as exc:
+            log.debug("native_hex_www7_skipped", reason=str(exc))
+
     # 최소 system/controlDict + fvSchemes + fvSolution 생성 (checkMesh 가 요구).
     from core.generator.tier_layers_post import (  # noqa: PLC0415
         _ensure_minimal_controldict, _write_minimal_fv_dicts,

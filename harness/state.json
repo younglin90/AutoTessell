@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2127,
+  "beta": 2130,
   "max_round": 1000,
-  "round": 74,
+  "round": 77,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,23 +26,24 @@
   "last_mq": {
     "tet_worst": 0.095
   },
-  "last_bench_time": 69.6,
+  "last_bench_time": 70.5,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
-    "VVV8",
     "VVV9",
     "VVV10",
     "VVV11",
-    "PRE1"
+    "PRE1",
+    "BL1",
+    "WWW7"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "PRE1 \u2014 native_tet input sliver triangle merge (BSP plateau escape via input pre-pass)"
+  "plan_archive": "WWW7 — native_hex feature edge snap (snappyHexMesh nFeatureSnapIter style)"
 }
