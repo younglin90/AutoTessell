@@ -1439,6 +1439,29 @@ def generate_native_tet(
                 ]:
                     p = center + np.asarray(off) * (bbox_max_v - bbox_min_v)
                     ext_pts.append(p.tolist())
+
+                # OO1 (beta1920) — hard mesh (V > 500) 에 internal seed grid
+                # 추가. surface vertex 비율 ↓ → 4-vertex sliver tet 격감.
+                # n_internal ≈ V × 0.15 (예: V=11k → 1650 internal).
+                try:
+                    nv_in = int(V.shape[0])
+                    if nv_in > 500:
+                        # bbox 내부 균일 grid: edge-cube 분할.
+                        n_internal_target = max(50, int(nv_in * 0.15))
+                        # n^3 ≥ n_internal_target → n = ceil(cbrt).
+                        n_axis = int(np.ceil(n_internal_target ** (1.0 / 3.0)))
+                        # 0.05 ~ 0.95 range (boundary 회피).
+                        ts = np.linspace(0.08, 0.92, n_axis)
+                        gx, gy, gz = np.meshgrid(ts, ts, ts, indexing="ij")
+                        grid_uvw = np.column_stack([gx.ravel(), gy.ravel(), gz.ravel()])
+                        grid_pts = bbox_min_v + grid_uvw * (bbox_max_v - bbox_min_v)
+                        # 작은 jitter 추가 (Delaunay degeneracy 회피).
+                        rng = np.random.default_rng(42)
+                        jitter = (rng.random(grid_pts.shape) - 0.5) * 1e-6 * float(np.linalg.norm(bbox_max_v - bbox_min_v))
+                        grid_pts = grid_pts + jitter
+                        ext_pts.extend(grid_pts.tolist())
+                except Exception:
+                    pass
                 aug_pts = np.vstack([V, np.asarray(ext_pts)])
                 # winding inside 한 점만 keep.
                 inside_aug = _inside_winding_number(aug_pts[V.shape[0]:], V, F)
