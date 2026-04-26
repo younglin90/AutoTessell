@@ -31,6 +31,9 @@ log = get_logger(__name__)
 # WWW1: octree 2:1 balance 시퀀스 스켈레톤 (Marechal 2009 §3) — default OFF
 _WWW1_OCTREE_BALANCE: bool = True
 
+# WWW3: surface 근접 cell refinement 스켈레톤 (snappy castellated 모티프) — default OFF
+_WWW3_SURFACE_REFINE: bool = False
+
 # --------------------------------------------------------------------------
 # 기본 인덱싱 유틸
 # --------------------------------------------------------------------------
@@ -630,3 +633,36 @@ def _balance_octree_2to1_nodes(
                     visited_in_queue.add(cell)
 
     return balanced
+
+
+def _refine_surface_adjacent_nodes(
+    nodes: dict,
+    V: np.ndarray,
+    F: np.ndarray,
+    max_refine: int = 20,
+) -> dict:
+    """WWW3 (beta2108) — surface 근접 cell level +1 (스켈레톤, default OFF).
+    snappy castellated 모티프: cell center 와 face centroid 거리 < cell_size 인 경우 refine.
+    활성 시 후속 _balance_octree_2to1_nodes 호출 필요. 호출 경로 없음 — 영향 없음.
+    """
+    if not _WWW3_SURFACE_REFINE:
+        return nodes
+
+    import numpy as _np
+
+    refined = dict(nodes)
+    face_centroids = V[F].mean(axis=1)  # (n_faces, 3)
+
+    refined_count = 0
+    for cell, lev in list(nodes.items()):
+        if refined_count >= max_refine:
+            break
+        # cell size: base_size / 2^lev (상대 단위, 비교는 정규화 불필요)
+        cell_size = 1.0 / (2 ** lev) if lev > 0 else 1.0
+        cx, cy, cz = [(c + 0.5) * cell_size for c in cell]
+        dists = _np.sqrt(((face_centroids - _np.array([cx, cy, cz])) ** 2).sum(axis=1))
+        if dists.min() < cell_size:
+            refined[cell] = lev + 1
+            refined_count += 1
+
+    return refined
