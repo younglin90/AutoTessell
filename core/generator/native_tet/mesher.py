@@ -2128,6 +2128,46 @@ def generate_native_tet(
                 )
             except Exception as exc:
                 log.warning("native_tet_nnn3_skipped", reason=str(exc)[:120])
+
+        # NNN4 — post-Steiner interior AMIPS smoothing (Klingner 2008 §3.5)
+        if os.environ.get("AUTO_TESSELL_NNN4_AMIPS", "1") != "0":
+            try:
+                from core.generator.native_tet.amips import smooth_amips_analytic
+                from core.generator.native_tet.quality import tet_shape_quality
+
+                n_surface_in = int(V.shape[0])
+                surface_lock_ids = np.arange(n_surface_in, dtype=np.int64)
+
+                pre_q = tet_shape_quality(final_pts, final_tets)
+                pre_min = float(pre_q.min())
+                pre_mean = float(pre_q.mean())
+
+                _res, smoothed_pts = smooth_amips_analytic(
+                    final_pts, final_tets,
+                    locked_vertex_ids=surface_lock_ids,
+                    n_iter=1,
+                    alpha=1.0,
+                )
+
+                post_q = tet_shape_quality(smoothed_pts, final_tets)
+                accepted = bool(
+                    post_q.min() >= pre_min - 1e-12
+                    and post_q.mean() >= pre_mean - 1e-12
+                )
+                if accepted:
+                    final_pts = smoothed_pts
+
+                log.info(
+                    "native_tet_nnn4_post_steiner_amips",
+                    pre_min=pre_min,
+                    post_min=float(post_q.min()),
+                    pre_mean=pre_mean,
+                    post_mean=float(post_q.mean()),
+                    accepted=accepted,
+                )
+            except Exception as exc:
+                log.warning("native_tet_nnn4_skipped", reason=str(exc)[:120])
+
     except Exception as exc:
         log.debug("native_tet_post_bsp_pass_skipped", reason=str(exc))
 
