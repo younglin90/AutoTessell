@@ -297,7 +297,7 @@ def should_stop(
 # RRR1 — quality histogram percentile helper (스켈레톤, default OFF)
 # ---------------------------------------------------------------------------
 
-_RRR1_QUALITY_HISTOGRAM: bool = False
+_RRR1_QUALITY_HISTOGRAM: bool = True
 
 
 def _quality_percentiles(pts: np.ndarray, tets: np.ndarray) -> dict:

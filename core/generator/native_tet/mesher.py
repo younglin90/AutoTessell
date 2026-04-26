@@ -2168,6 +2168,63 @@ def generate_native_tet(
             except Exception as exc:
                 log.warning("native_tet_nnn4_skipped", reason=str(exc)[:120])
 
+        # RRR2 — worst-percentile targeted AMIPS smoothing (Klingner 2008 §3.5)
+        if os.environ.get("AUTO_TESSELL_RRR2_TARGETED", "1") != "0":
+            try:
+                from core.generator.native_tet.quality import _RRR1_QUALITY_HISTOGRAM, tet_shape_quality
+                from core.generator.native_tet.amips import smooth_amips_analytic
+
+                if not _RRR1_QUALITY_HISTOGRAM:
+                    pass
+                else:
+                    q_per_tet = tet_shape_quality(final_pts, final_tets)
+                    p5 = float(np.percentile(q_per_tet, 5))
+
+                    if p5 >= 0.05:
+                        log.info("native_tet_rrr2_targeted_amips_skip", p5=p5, reason="p5>=0.05")
+                    else:
+                        worst_mask = q_per_tet < 0.05
+                        worst_v = np.unique(final_tets[worst_mask].ravel())
+
+                        n_surface_in = int(V.shape[0])
+                        is_surface = worst_v < n_surface_in
+                        free_v = worst_v[~is_surface]
+
+                        if free_v.size == 0:
+                            log.info("native_tet_rrr2_targeted_amips_skip", p5=p5, reason="no_free_interior_vertices")
+                        else:
+                            all_ids = np.arange(final_pts.shape[0], dtype=np.int64)
+                            lock_ids = np.setdiff1d(all_ids, free_v)
+
+                            pre_min = float(q_per_tet.min())
+                            pre_mean = float(q_per_tet.mean())
+
+                            _res, sm_pts = smooth_amips_analytic(
+                                final_pts, final_tets,
+                                locked_vertex_ids=lock_ids,
+                                n_iter=1,
+                                alpha=1.0,
+                            )
+
+                            post_q = tet_shape_quality(sm_pts, final_tets)
+                            accepted = bool(post_q.min() >= pre_min - 1e-12 and post_q.mean() >= pre_mean - 1e-12)
+                            if accepted:
+                                final_pts = sm_pts
+
+                            log.info(
+                                "native_tet_rrr2_targeted_amips",
+                                p5=p5,
+                                n_worst=int(worst_mask.sum()),
+                                n_free=int(free_v.size),
+                                pre_min=pre_min,
+                                post_min=float(post_q.min()),
+                                pre_mean=pre_mean,
+                                post_mean=float(post_q.mean()),
+                                accepted=accepted,
+                            )
+            except Exception as exc:
+                log.warning("native_tet_rrr2_skipped", reason=str(exc)[:120])
+
     except Exception as exc:
         log.debug("native_tet_post_bsp_pass_skipped", reason=str(exc))
 
