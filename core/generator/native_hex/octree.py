@@ -34,6 +34,41 @@ _WWW1_OCTREE_BALANCE: bool = True
 # WWW3: surface 근접 cell refinement 스켈레톤 (snappy castellated 모티프) — default OFF
 _WWW3_SURFACE_REFINE: bool = True
 
+# WWW5: octree cell templating 스켈레톤 (Marechal 2009 §4) — default OFF
+_WWW5_TEMPLATING: bool = False
+
+# WWW5: 26 cell type → pre-defined hex subdivision 패턴 (WWW6 에서 채울 자리)
+_TEMPLATE_PATTERNS: dict[str, list] = {}
+
+
+def _classify_cell_type(node: object, neighbors: dict) -> str:
+    """face neighbor level diff 기반 26 type 분류.
+
+    Args:
+        node: octree leaf node (level 속성 보유).
+        neighbors: face 방향 키('x+','x-','y+','y-','z+','z-') →
+                   인접 node 또는 None 인 dict.
+
+    Returns:
+        cell type 문자열 (e.g. 'uniform', 'f1', 'f2', ...).
+        현재 스켈레톤: level diff 가 없으면 'uniform',
+        face 마다 diff 비트를 조합한 6-bit key 반환.
+    """
+    node_level: int = getattr(node, "level", 0)
+    bits: list[int] = []
+    for face_key in ("x+", "x-", "y+", "y-", "z+", "z-"):
+        nb = neighbors.get(face_key)
+        if nb is None:
+            bits.append(0)
+        else:
+            diff = getattr(nb, "level", 0) - node_level
+            bits.append(1 if diff > 0 else 0)
+    code = sum(b << i for i, b in enumerate(bits))
+    if code == 0:
+        return "uniform"
+    return f"t{code:02d}"
+
+
 # --------------------------------------------------------------------------
 # 기본 인덱싱 유틸
 # --------------------------------------------------------------------------
