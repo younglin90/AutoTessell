@@ -1,8 +1,8 @@
 {
-  "target_engine": "poly",
-  "beta": 2123,
+  "target_engine": "tet",
+  "beta": 2125,
   "max_round": 1000,
-  "round": 70,
+  "round": 72,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -24,24 +24,24 @@
     }
   },
   "last_mq": {
-    "tet_worst": 0.076
+    "tet_worst": 0.055
   },
-  "last_bench_time": 67.0,
+  "last_bench_time": 69.1,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
-    "VVV5b",
-    "VVV6",
     "VVV7",
-    "PPP10"
+    "VVV8",
+    "VVV9",
+    "VVV10"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "PPP10 — native_poly feature-aware seed injection (Yan & Wonka 2014 §3 feature-conformal Voronoi)"
+  "plan_archive": "VVV10 — native_tet flip_face_23 strict per-flip guard (Klingner Table 1, 2→3 face flip)"
 }

@@ -2473,6 +2473,39 @@ def generate_native_tet(
         except Exception as exc:
             log.warning("native_tet_vvv9_skipped", reason=str(exc)[:120])
 
+    # VVV10 — flip_face_23 strict per-flip guard (Klingner Table 1: 2→3 face flip)
+    if not os.environ.get("AUTO_TESSELL_VVV10_OFF"):
+        try:
+            if final_tets.shape[0] < 500:
+                log.info("vvv10_skipped_small_mesh", n_tets=int(final_tets.shape[0]))
+            else:
+                from core.generator.native_tet.flip import flip_face_23 as _ff23  # noqa: PLC0415
+                from core.generator.native_tet.quality import snapshot as _qsnap710  # noqa: PLC0415
+                _pre710 = _qsnap710(final_pts, final_tets)
+                _pre710_n = final_tets.shape[0]
+                _pts710, _tets710, _n710 = _ff23(
+                    final_pts, final_tets,
+                    min_quality_improvement=1e-3,
+                    max_flips=200,
+                )
+                _post710 = _qsnap710(_pts710, _tets710)
+                _acc710 = (
+                    _post710.min_q >= _pre710.min_q - 1e-6
+                    and _post710.mean_q >= _pre710.mean_q - 1e-3
+                    and _pre710_n - 1 <= _tets710.shape[0] <= _pre710_n + 200
+                )
+                if _acc710:
+                    final_pts, final_tets = _pts710, _tets710
+                log.info(
+                    "native_tet_flip23",
+                    n_app=int(_n710),
+                    pre_min=float(_pre710.min_q),
+                    post_min=float(_post710.min_q),
+                    accepted=bool(_acc710),
+                )
+        except Exception as exc:
+            log.warning("native_tet_vvv10_skipped", reason=str(exc)[:120])
+
     # beta1530 (V3) — 외부 tet 제거: 입력 surface 외부에 centroid 가 있는 tet drop.
     if enable_boundary_clip:
         try:

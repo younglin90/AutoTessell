@@ -893,6 +893,130 @@ def flip_edges_76(
     return pts, out, n_flip
 
 
+def flip_face_23(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    min_quality_improvement: float = 1e-3,
+    max_flips: int = 200,
+    protected_faces: set[tuple[int, int, int]] | None = None,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """2-3 face flip (Klingner Table 1): 2 tet sharing a face → 3 tet sharing new edge.
+
+    For each interior face f={a,b,c} shared by exactly 2 tets {a,b,c,d} and {a,b,c,e},
+    replace with 3 tets {a,b,d,e}, {b,c,d,e}, {c,a,d,e} sharing new edge (d,e).
+
+    STRICT per-flip guard: accept iff q_new_min >= q_old_min + min_quality_improvement.
+    Convexity check: all 3 new tets must have positive volume.
+    Boundary faces (only 1 incident tet) are naturally skipped.
+
+    Returns: (pts_out, tets_out, n_applied)
+    """
+    pts = np.asarray(pts, dtype=np.float64)
+    tets = np.asarray(tets, dtype=np.int64).copy()
+    if tets.size == 0:
+        return pts, tets, 0
+
+    tets_list = tets.tolist()
+    alive = np.ones(tets.shape[0], dtype=bool)
+
+    # Build face → incident tet list
+    T = np.asarray(tets_list, dtype=np.int64)
+    face_arr = np.stack(
+        [T[:, [1, 2, 3]], T[:, [0, 2, 3]], T[:, [0, 1, 3]], T[:, [0, 1, 2]]],
+        axis=1,
+    ).reshape(-1, 3)
+    face_arr.sort(axis=1)
+    max_id = int(T.max()) + 1 if T.size else 1
+    key64 = (
+        face_arr[:, 0].astype(np.int64) * max_id * max_id
+        + face_arr[:, 1].astype(np.int64) * max_id
+        + face_arr[:, 2].astype(np.int64)
+    )
+    _, inv, counts = np.unique(key64, return_inverse=True, return_counts=True)
+    shared_face_groups = np.where(counts == 2)[0]
+
+    fmap_shared: list[tuple[tuple[int, int, int], int, int]] = []
+    if shared_face_groups.size > 0:
+        group_pos = np.argsort(inv)
+        boundaries = np.concatenate([[0], np.cumsum(counts)])
+        for gi in shared_face_groups.tolist():
+            s = int(boundaries[gi]); e = int(boundaries[gi + 1])
+            face_idxs = group_pos[s:e]
+            ti1 = int(face_idxs[0]) // 4
+            ti2 = int(face_idxs[1]) // 4
+            if ti1 == ti2:
+                continue
+            f0 = face_arr[face_idxs[0]]
+            fmap_shared.append(
+                ((int(f0[0]), int(f0[1]), int(f0[2])), ti1, ti2)
+            )
+
+    n_flip = 0
+    visited_faces: set[tuple[int, int, int]] = set()
+
+    for face, ti, tj in fmap_shared:
+        if n_flip >= max_flips:
+            break
+        if face in visited_faces:
+            continue
+        if protected_faces and face in protected_faces:
+            continue
+        if not (alive[ti] and alive[tj]):
+            continue
+        a, b, c = face
+        d_cands = [v for v in tets_list[ti] if v not in face]
+        e_cands = [v for v in tets_list[tj] if v not in face]
+        if len(d_cands) != 1 or len(e_cands) != 1:
+            continue
+        d = d_cands[0]; e = e_cands[0]
+        if d == e:
+            continue
+
+        # STRICT guard: q_old_min over 2 incident tets
+        q_old = min(
+            _tet_quality(pts[a], pts[b], pts[c], pts[d]),
+            _tet_quality(pts[a], pts[b], pts[c], pts[e]),
+        )
+
+        # New 3 tets sharing edge (d, e)
+        new_tets = [
+            (a, b, d, e),
+            (b, c, d, e),
+            (c, a, d, e),
+        ]
+        ok = True
+        q_new_min = 1.0
+        for nt in new_tets:
+            if len(set(nt)) != 4:
+                ok = False; break
+            vol6 = _tet_signed_vol6(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
+            if vol6 <= 1e-20:  # must be positive (convexity + orientation)
+                ok = False; break
+            q = _tet_quality(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
+            if q < q_new_min:
+                q_new_min = q
+        if not ok:
+            continue
+        # STRICT: accept only if improvement is sufficient
+        if q_new_min < q_old + float(min_quality_improvement):
+            continue
+
+        alive[ti] = False
+        alive[tj] = False
+        for nt in new_tets:
+            tets_list.append(list(nt))
+        n_flip += 1
+        visited_faces.add(face)
+
+    n_new = len(tets_list) - alive.shape[0]
+    if n_new > 0:
+        alive = np.concatenate([alive, np.ones(n_new, dtype=bool)])
+    tets_arr = np.asarray(tets_list, dtype=np.int64)
+    out = tets_arr[alive]
+    return pts, out, n_flip
+
+
 def face_flip_pass(
     pts: np.ndarray,
     tets: np.ndarray,
