@@ -552,6 +552,160 @@ def _count_anisotropic(
 
 
 # ---------------------------------------------------------------------------
+# VVV14 (beta2154) — face-centroid Steiner insertion (worst-face-fan, 1+1→6)
+# ---------------------------------------------------------------------------
+
+def insert_face_centroid_steiner(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    top_k: int = 5,
+    min_quality_improvement: float = 1e-3,
+    max_inserts: int = 10,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """VVV14 — face-centroid Steiner insertion for worst tets.
+
+    Different from VVV9 (cell-centroid → 4 sub-tets), VVV12 (longest-edge midpoint),
+    VVV13 (aniso edge midpoint).  VVV14 inserts at the centroid of the WORST FACE
+    of a worst tet, splitting both incident tets via the new vertex (1+1→6 sub-tets).
+
+    Algorithm:
+      1. Compute per-tet quality; pick top_k worst.
+      2. For each worst tet T=[a,b,c,d]:
+         - For each of T's 4 faces, compute face_badness = 1 / (face_area / circumradius).
+         - Pick worst face f_worst = {a,b,c}, opposite vert = d.
+         - Find the OTHER tet T' sharing f_worst (if any); skip if boundary face.
+         - Insert m = centroid(f_worst).
+         - Replace T  with 3 sub-tets: [a,b,m,d], [b,c,m,d], [c,a,m,d].
+         - Replace T' with 3 sub-tets using T''s opposite vert.
+         - STRICT GUARD: q_new_min >= q_old_min + min_quality_improvement; else revert.
+      3. Cap at max_inserts.
+
+    Returns (pts_out, tets_out, n_inserted).
+    """
+    n_tets = tets.shape[0]
+    if n_tets == 0:
+        return pts, tets, 0
+
+    _FACES = [(0, 1, 2, 3), (0, 1, 3, 2), (0, 2, 3, 1), (1, 2, 3, 0)]  # (a,b,c, opp)
+
+    def _face_badness(p: np.ndarray, va: np.ndarray, vb: np.ndarray, vc: np.ndarray) -> float:
+        """1 / (area / circumradius) of triangle — higher = worse."""
+        ab, ac = vb - va, vc - va
+        cross = np.cross(ab, ac)
+        area = float(np.linalg.norm(cross)) * 0.5
+        if area < 1e-30:
+            return 1e30
+        # Circumradius of triangle: R = |a||b||c| / (4*area)
+        la = float(np.linalg.norm(vb - vc))
+        lb = float(np.linalg.norm(va - vc))
+        lc = float(np.linalg.norm(va - vb))
+        R = la * lb * lc / (4.0 * area)
+        if R < 1e-30:
+            return 1e30
+        return R / area  # inverse of area/R
+
+    # Build face → tet adjacency for finding shared faces.
+    face_to_tets: dict[tuple[int, int, int], list[int]] = {}
+    for ti in range(n_tets):
+        tet = tets[ti]
+        for fi, fj, fk, _opp in _FACES:
+            key = tuple(sorted([int(tet[fi]), int(tet[fj]), int(tet[fk])]))
+            face_to_tets.setdefault(key, []).append(ti)  # type: ignore[arg-type]
+
+    qualities = np.array([_tet_quality(pts, tets[i]) for i in range(n_tets)], dtype=np.float64)
+    worst_indices = np.argsort(qualities)[: top_k]
+
+    pts_list = list(pts)
+    tets_list = [tets[i].copy() for i in range(n_tets)]
+    n_inserted = 0
+    invalidated: set[int] = set()
+
+    for ti in worst_indices:
+        if n_inserted >= max_inserts:
+            break
+        if ti in invalidated:
+            continue
+
+        tet = tets_list[ti]
+        verts = [int(tet[k]) for k in range(4)]
+
+        # Find worst face of this tet.
+        pts_arr = np.array(pts_list)
+        worst_face_idx = -1
+        worst_badness = -1.0
+        for fi, fj, fk, opp_local in _FACES:
+            va, vb, vc = pts_arr[verts[fi]], pts_arr[verts[fj]], pts_arr[verts[fk]]
+            bad = _face_badness(pts_arr, va, vb, vc)
+            if bad > worst_badness:
+                worst_badness = bad
+                worst_face_idx = (fi, fj, fk, opp_local)  # type: ignore[assignment]
+
+        fi, fj, fk, opp_local = worst_face_idx  # type: ignore[misc]
+        fa, fb, fc = verts[fi], verts[fj], verts[fk]
+        d_vert = verts[opp_local]
+
+        # Find the OTHER tet sharing this face.
+        face_key: tuple[int, int, int] = tuple(sorted([fa, fb, fc]))  # type: ignore[assignment]
+        neighbors = [t for t in face_to_tets.get(face_key, []) if t != ti and t not in invalidated]
+        if not neighbors:
+            continue  # Boundary face — skip.
+        ti2 = neighbors[0]
+
+        tet2 = tets_list[ti2]
+        verts2 = [int(tet2[k]) for k in range(4)]
+        # Opposite vert of tet2 w.r.t. face {fa,fb,fc}
+        face_set = {fa, fb, fc}
+        opp2_list = [v for v in verts2 if v not in face_set]
+        if not opp2_list:
+            continue
+        d2_vert = opp2_list[0]
+
+        # q_old_min over both tets.
+        q_old = min(
+            _tet_quality(pts_arr, np.array(tets_list[ti])),
+            _tet_quality(pts_arr, np.array(tets_list[ti2])),
+        )
+
+        # Steiner point = centroid of face f_worst.
+        m = (pts_arr[fa] + pts_arr[fb] + pts_arr[fc]) / 3.0
+        m_idx = len(pts_list)
+        pts_list.append(m)
+        pts_arr_new = np.array(pts_list)
+
+        dtype = tets.dtype
+        sub_T = [
+            np.array([fa, fb, m_idx, d_vert], dtype=dtype),
+            np.array([fb, fc, m_idx, d_vert], dtype=dtype),
+            np.array([fc, fa, m_idx, d_vert], dtype=dtype),
+        ]
+        sub_T2 = [
+            np.array([fa, fb, m_idx, d2_vert], dtype=dtype),
+            np.array([fb, fc, m_idx, d2_vert], dtype=dtype),
+            np.array([fc, fa, m_idx, d2_vert], dtype=dtype),
+        ]
+
+        all_new = sub_T + sub_T2
+        q_new_min = min(_tet_quality(pts_arr_new, nt) for nt in all_new)
+
+        if q_new_min >= q_old + min_quality_improvement:
+            # Accept: replace both tets.
+            tets_list[ti] = sub_T[0]
+            tets_list[ti2] = sub_T2[0]
+            tets_list.extend(sub_T[1:] + sub_T2[1:])
+            invalidated.add(ti)
+            invalidated.add(ti2)
+            n_inserted += 1
+        else:
+            # Revert: pop m.
+            pts_list.pop()
+
+    pts_out = np.array(pts_list)
+    tets_out = np.array(tets_list, dtype=tets.dtype)
+    return pts_out, tets_out, n_inserted
+
+
+# ---------------------------------------------------------------------------
 # VAL1 (beta2147) — global negative-volume tet detection + auto-flip
 # ---------------------------------------------------------------------------
 

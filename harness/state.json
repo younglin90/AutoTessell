@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2153,
+  "beta": 2154,
   "max_round": 1000,
-  "round": 100,
+  "round": 101,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -42,12 +42,13 @@
     "POL_QUALITY1",
     "PRE3",
     "TET_QUALITY1",
-    "VVV13"
+    "VVV13",
+    "VVV14"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BL_TANGENT_SMOOTH — tangential Laplacian of prism outer-layer verts, projected along extrusion plane (cfMesh BLSmoothing, beta2153, R100 milestone)"
+  "plan_archive": "VVV14 — face-centroid Steiner insertion, worst-face-fan 1+1→6 sub-tets, strict guard q_new_min>=q_old+1e-3 (beta2154, R101)"
 }

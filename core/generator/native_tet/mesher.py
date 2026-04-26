@@ -2674,6 +2674,41 @@ def generate_native_tet(
         except Exception as exc:
             log.warning("native_tet_vvv13_skipped", reason=str(exc)[:120])
 
+    # VVV14 — face-centroid Steiner insertion (worst-face-fan, 1+1→6 sub-tets)
+    if not os.environ.get("AUTO_TESSELL_VVV14_OFF"):
+        try:
+            if final_tets.shape[0] < 500:
+                log.info("vvv14_skipped_small_mesh", n_tets=int(final_tets.shape[0]))
+            else:
+                from core.generator.native_tet.stellar import (  # noqa: PLC0415
+                    insert_face_centroid_steiner as _ifcs,
+                )
+                from core.generator.native_tet.quality import snapshot as _qsnap714  # noqa: PLC0415
+                _pre714 = _qsnap714(final_pts, final_tets)
+                _pts714, _tets714, _n714 = _ifcs(
+                    final_pts, final_tets,
+                    top_k=5,
+                    min_quality_improvement=1e-3,
+                    max_inserts=10,
+                )
+                _post714 = _qsnap714(_pts714, _tets714)
+                # Triple monotone global revert.
+                _acc714 = (
+                    _post714.min_q >= _pre714.min_q - 1e-6
+                    and _post714.mean_q >= _pre714.mean_q - 1e-3
+                )
+                if _acc714:
+                    final_pts, final_tets = _pts714, _tets714
+                log.info(
+                    "native_tet_face_steiner",
+                    n_inserted=int(_n714),
+                    pre_min=float(_pre714.min_q),
+                    post_min=float(_post714.min_q),
+                    accepted=bool(_acc714),
+                )
+        except Exception as exc:
+            log.warning("native_tet_vvv14_skipped", reason=str(exc)[:120])
+
     # TET_QUALITY1 (beta2141) — non-ortho local post-pass (mirror HEX_QUALITY1).
     # env AUTO_TESSELL_TET_QUALITY1_OFF disables. Default ON.
     if (
