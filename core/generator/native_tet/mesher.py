@@ -134,8 +134,8 @@ def generate_native_tet(
     edge_steiner_count: int = 1,
     # beta1370 — CDT recovery 통합 (P1).
     enable_cdt_recovery: bool = False,
-    cdt_recovery_max_cycles: int = 3,
-    cdt_recovery_points_budget: int = 200,
+    cdt_recovery_max_cycles: int = 2,
+    cdt_recovery_points_budget: int = 100,
     # beta1430 (Q6) — outer loop: B 등급 이하면 추가 cycle 까지.
     cdt_recovery_outer_iter: int = 1,
     cdt_recovery_target_ratio: float = 0.9,

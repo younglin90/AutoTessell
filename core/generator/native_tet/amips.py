@@ -96,68 +96,77 @@ def _amips_local_energy(
 def _amips_grad_analytic(
     pts: np.ndarray, tet_rows: np.ndarray, vi: int, alpha: float,
 ) -> np.ndarray:
-    """Q5 — analytic ∂E/∂v_i for vertex vi over its 1-ring tets.
+    """beta1770 (A) — vectorized analytic ∂E/∂v_i for vertex vi over 1-ring.
 
-    수식
-        E(F)   = exp(α D) - exp(3α),  D = tr(FᵀF) / det(F)^(2/3)
-        F      = J · M⁻¹,  J = [v1-v0, v2-v0, v3-v0]^T (column 별)
-        ∂E/∂v_i = exp(α D) · α · ∂D/∂v_i
-        ∂D/∂F  = 2 F / det(F)^(2/3)
-                  - (2/3) · tr(FᵀF) / det(F)^(5/3) · cof(F)
-        ∂F/∂v_i = (∂J/∂v_i) · M⁻¹
-                = chain rule: J 는 v_i 가 v0 (k=0) 이면 모든 column 에 -I,
-                  v_i 가 v_k (k=1..3) 이면 column k-1 에 +I.
-    1-ring 의 모든 tet 에 대해 v_i 의 위치가 어떤 indexing 인지 (k=0..3) 따라
-    적절한 부호의 contribution 합.
+    이전: per-tet Python loop + np.linalg.det/inv 호출 4 번.
+    지금: 1-ring 전체 (M, 3, 3) 행렬 한 번에 numpy einsum batch.
     """
     if tet_rows.shape[0] == 0:
         return np.zeros(3, dtype=np.float64)
-    grad = np.zeros(3, dtype=np.float64)
-    for row in tet_rows:
-        v0, v1, v2, v3 = (int(x) for x in row)
-        P0 = pts[v0]; P1 = pts[v1]; P2 = pts[v2]; P3 = pts[v3]
-        J = np.stack([P1 - P0, P2 - P0, P3 - P0], axis=1)   # (3, 3) columns
-        F = J @ _REF_INV
-        det_F = float(np.linalg.det(F))
-        if det_F <= 1e-30:
-            continue
-        tr_FtF = float(np.einsum("ij,ij->", F, F))
-        D = tr_FtF / (det_F ** (2.0 / 3.0))
-        # cofactor(F) = inv(F).T * det(F).
-        try:
-            inv_F = np.linalg.inv(F)
-        except Exception:
-            continue
-        cof_F = inv_F.T * det_F
-        dD_dF = (2.0 / (det_F ** (2.0 / 3.0))) * F \
-            - (2.0 / 3.0) * tr_FtF / (det_F ** (5.0 / 3.0)) * cof_F
-        # ∂F/∂v_i: index of vi in row.
-        idx = -1
-        for k, vid in enumerate((v0, v1, v2, v3)):
-            if vid == vi:
-                idx = k
-                break
-        if idx < 0:
-            continue
-        # ∂J/∂v_i: 3x3 행렬, column 별 contribution.
-        # k=0 (v0): J 의 모든 column 에 -I → ∂F = -sum(_REF_INV columns) = -_REF_INV row sum.
-        # k>=1: column (k-1) 에 +I → ∂F = _REF_INV row k-1 의 외적 형태.
-        # 더 간단: dJ_dvi 는 (3,3) 텐서로 한 column 만 ±I.
-        if idx == 0:
-            # 각 column j 에 대해 dJ[:, j] = -e_d (axis d). 즉 dJ_d/dvi_d = -1 모든 col.
-            # → ∂F = -_REF_INV 의 모든 column 합 (row 별).
-            # dF[a, b] = - sum_j _REF_INV[j, b]  if a == d (axis of v_i) else 0.
-            # axis-별 grad: g[d] = sum_{a,b} dD_dF[a,b] * dF[a,b]_d = -sum_b dD_dF[d, b] * sum_j _REF_INV[j, b].
-            row_sum = _REF_INV.sum(axis=0)        # (3,)
-            for d in range(3):
-                grad[d] += float(np.exp(min(alpha * D, 50.0)) * alpha *
-                                 (-np.dot(dD_dF[d], row_sum)))
-        else:
-            j = idx - 1                            # J 의 column index.
-            for d in range(3):
-                grad[d] += float(np.exp(min(alpha * D, 50.0)) * alpha *
-                                 np.dot(dD_dF[d], _REF_INV[j]))
-    return grad
+
+    # (M, 4) tet vertex indices.
+    rows = np.asarray(tet_rows, dtype=np.int64)
+    M = rows.shape[0]
+
+    P = pts[rows]                                         # (M, 4, 3)
+    # J = [P1-P0, P2-P0, P3-P0] columns. shape (M, 3, 3).
+    J = np.stack([P[:, 1] - P[:, 0],
+                  P[:, 2] - P[:, 0],
+                  P[:, 3] - P[:, 0]], axis=2)
+    F = J @ _REF_INV                                       # (M, 3, 3)
+
+    det_F = np.linalg.det(F)                               # (M,)
+    safe = det_F > 1e-30
+    if not safe.any():
+        return np.zeros(3, dtype=np.float64)
+
+    F_safe = F[safe]
+    det_safe = det_F[safe]
+    M_safe = F_safe.shape[0]
+
+    # tr(F^T F).
+    tr_FtF = np.einsum("...ij,...ij->...", F_safe, F_safe)   # (Ms,)
+    D = tr_FtF / (det_safe ** (2.0 / 3.0))
+
+    # cofactor: try batched inv.
+    try:
+        inv_F = np.linalg.inv(F_safe)
+    except Exception:
+        return np.zeros(3, dtype=np.float64)
+    cof_F = np.einsum("...ji->...ij", inv_F) * det_safe[:, None, None]
+
+    # ∂D/∂F = 2 F / det^(2/3) - (2/3) tr/det^(5/3) cof.
+    a1 = 2.0 / (det_safe ** (2.0 / 3.0))                  # (Ms,)
+    a2 = (2.0 / 3.0) * tr_FtF / (det_safe ** (5.0 / 3.0))  # (Ms,)
+    dD_dF = a1[:, None, None] * F_safe - a2[:, None, None] * cof_F
+
+    # idx: vi 의 vertex 위치 (0..3) per tet.
+    rows_safe = rows[safe]
+    idx = np.argmax(rows_safe == vi, axis=1)                # (Ms,)
+    has_vi = (rows_safe == vi).any(axis=1)
+    idx = np.where(has_vi, idx, -1)
+
+    # exp scale.
+    exp_factor = np.exp(np.minimum(alpha * D, 50.0)) * alpha   # (Ms,)
+
+    # idx==0: dF row_d = -sum_j _REF_INV[j, b] for col b → grad[d] = -sum_b dD_dF[d, b] · row_sum[b].
+    row_sum = _REF_INV.sum(axis=0)                         # (3,)
+    grad_v0 = -np.einsum("...db,b->...d", dD_dF, row_sum)  # (Ms, 3)
+
+    # idx>=1: grad[d] = sum_b dD_dF[d, b] · _REF_INV[j=idx-1, b].
+    # 모든 idx 행에 대해 _REF_INV[idx-1] 인 (Ms, 3) 벡터 만들기.
+    # idx-1 in {0, 1, 2}. idx==0 인 행은 어차피 grad_v0 사용.
+    safe_j = np.clip(idx - 1, 0, 2)
+    rj = _REF_INV[safe_j]                                  # (Ms, 3)
+    grad_pos = np.einsum("...db,...b->...d", dD_dF, rj)    # (Ms, 3)
+
+    is_v0 = (idx == 0)
+    grad_per_tet = np.where(is_v0[:, None], grad_v0, grad_pos)
+    grad_per_tet = grad_per_tet * exp_factor[:, None]
+    # has_vi false 인 행은 0.
+    grad_per_tet[~has_vi] = 0.0
+
+    return np.asarray(grad_per_tet.sum(axis=0), dtype=np.float64)
 
 
 def smooth_amips_analytic(
@@ -225,7 +234,10 @@ def smooth_amips_analytic(
             orig = pts[vi].copy()
             step = float(step_init)
             improved = False
-            while step >= step_min:
+            # beta1770 (A) — line-search halving max 5회 (기존 무한).
+            for _halve in range(5):
+                if step < step_min:
+                    break
                 pts[vi] = orig + step * direction
                 e1, ok1 = _energy_local(vi)
                 if ok1 and np.isfinite(e1) and e1 < e0 - 1e-20:
@@ -374,7 +386,10 @@ def smooth_amips(
             step = float(step_init) * avg_edge_per_v[vi]
             local_step_min = max(step_min, avg_edge_per_v[vi] * 1e-6)
             improved = False
-            while step >= local_step_min:
+            # beta1770 (A) — line-search halving max 5회.
+            for _halve in range(5):
+                if step < local_step_min:
+                    break
                 pts[vi] = orig + step * direction
                 e1, ok1 = _energy_local(vi)
                 if ok1 and np.isfinite(e1) and e1 < e0 - 1e-20:
