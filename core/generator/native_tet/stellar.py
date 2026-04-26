@@ -60,6 +60,58 @@ def _invalidate_edge_incident_cache() -> None:
     _EDGE_INCIDENT_CACHE = None
 
 
+# ---------------------------------------------------------------------------
+# PERF4 (beta2167) — face→incident-tet adjacency cache (single-slot LRU).
+# Shared by VVV14 (insert_face_centroid_steiner).  Mirror of PERF3 for edges.
+# Cache key = id(tets) + tets.shape[0]; invalidated when tets array changes.
+# ---------------------------------------------------------------------------
+_FACE_INCIDENT_CACHE: Optional[tuple[int, int, dict[tuple[int, int, int], list[int]]]] = None
+
+_FACES4 = ((0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3))
+
+
+def compute_face_incident_tets_cached(
+    tets: np.ndarray,
+) -> dict[tuple[int, int, int], list[int]]:
+    """Return sorted-face-tuple→[tet_idx] map for *tets*.  Single-slot LRU.
+
+    Cache hit: O(1).  Cache miss: O(N_tets * 4) to build.
+    Invalidated whenever tets object changes (new array after split acceptance).
+    """
+    global _FACE_INCIDENT_CACHE
+    key_id = id(tets)
+    key_shape = tets.shape[0]
+    if _FACE_INCIDENT_CACHE is not None:
+        cached_id, cached_shape, cached_map = _FACE_INCIDENT_CACHE
+        if cached_id == key_id and cached_shape == key_shape:
+            return cached_map
+    # Build map.
+    face_map: dict[tuple[int, int, int], list[int]] = {}
+    for ti in range(tets.shape[0]):
+        t = tets[ti]
+        for fi, fj, fk in _FACES4:
+            a, b, c = int(t[fi]), int(t[fj]), int(t[fk])
+            if a > b:
+                a, b = b, a
+            if b > c:
+                b, c = c, b
+            if a > b:
+                a, b = b, a
+            key = (a, b, c)
+            if key in face_map:
+                face_map[key].append(ti)
+            else:
+                face_map[key] = [ti]
+    _FACE_INCIDENT_CACHE = (key_id, key_shape, face_map)
+    return face_map
+
+
+def _invalidate_face_incident_cache() -> None:
+    """Invalidate PERF4 cache (called after accepted split modifies tets array)."""
+    global _FACE_INCIDENT_CACHE
+    _FACE_INCIDENT_CACHE = None
+
+
 def _orient_tet(pts_list: list, tet: list[int]) -> list[int]:
     """VVV12_ORIENT_FIX — ensure positive signed volume; swap last two verts if negative."""
     a, b, c, d = pts_list[tet[0]], pts_list[tet[1]], pts_list[tet[2]], pts_list[tet[3]]
@@ -689,13 +741,8 @@ def insert_face_centroid_steiner(
             return 1e30
         return R / area  # inverse of area/R
 
-    # Build face → tet adjacency for finding shared faces.
-    face_to_tets: dict[tuple[int, int, int], list[int]] = {}
-    for ti in range(n_tets):
-        tet = tets[ti]
-        for fi, fj, fk, _opp in _FACES:
-            key = tuple(sorted([int(tet[fi]), int(tet[fj]), int(tet[fk])]))
-            face_to_tets.setdefault(key, []).append(ti)  # type: ignore[arg-type]
+    # PERF4: use cached face→incident-tet map (avoids per-call O(N) rebuild).
+    face_to_tets = compute_face_incident_tets_cached(tets)
 
     qualities = np.array([_tet_quality(pts, tets[i]) for i in range(n_tets)], dtype=np.float64)
     worst_indices = np.argsort(qualities)[: top_k]
