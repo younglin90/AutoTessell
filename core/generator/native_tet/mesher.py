@@ -1554,10 +1554,13 @@ def generate_native_tet(
             except NameError:
                 # fallback: 입력 표면 vertex (V) 의 첫 n_surface_in 개 ID lock.
                 lock_ids = np.arange(int(n_surface_in), dtype=np.int64)
+            # YY1 (beta2000) — hard input (mq < 0.15) 일 땐 ratio 0.85 로
+            # 더 적극적 collapse → sliver 더 격감.
+            collapse_ratio = 0.85 if float(pre_q.mean_q) < 0.15 else 0.7
             new_pts, new_tets, n_c = collapse_short_edges(
                 final_pts, final_tets,
                 target_edge=float(target_edge_length),
-                ratio=0.7,
+                ratio=collapse_ratio,
                 locked_vertices=lock_ids,
                 max_collapses=4000,
             )
