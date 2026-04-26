@@ -173,7 +173,7 @@ def _write_polymesh_poly(
     return write_generic_polymesh(vertices, cells, case_dir)
 
 
-_TTT3_POLY_BL_EXTRUDE_ENABLE = False  # 본 카드: 스켈레톤만, default OFF.
+_TTT3_POLY_BL_EXTRUDE_ENABLE = True  # TTT4: BL prism extrude 활성.
 
 def _extrude_prism_layer(
     wall_cells: set[int],
@@ -189,7 +189,53 @@ def _extrude_prism_layer(
 
     Returns: (new_vertices, new_cells) — 기존 + 신규 prism append.
     """
-    return vertices, cells
+    try:
+        wall_seed_to_cell = {cell_owner_seed[i]: i for i in range(len(cells))}
+        n_added = 0
+        new_verts: list = list(vertices)
+        new_cells: list = list(cells)
+
+        for seed_idx in wall_cells:
+            if n_added >= max_extrude:
+                break
+            ci = wall_seed_to_cell.get(seed_idx)
+            if ci is None or not cells[ci]:
+                continue
+            face = cells[ci][0]
+            if len(face) < 3:
+                continue
+            pts = vertices[face]
+            c = pts.mean(axis=0)
+            A = pts - c
+            _, _, Vt = np.linalg.svd(A, full_matrices=False)
+            normal = Vt[-1]
+            # outward: 시드 방향 반대
+            seed_pt = surface_V[seed_idx] if seed_idx < len(surface_V) else c
+            if np.dot(normal, c - seed_pt) < 0:
+                normal = -normal
+            normal = normal / (np.linalg.norm(normal) + 1e-30)
+
+            top_indices = []
+            base_offset = len(new_verts)
+            for vi in face:
+                new_verts.append(np.array(new_verts[vi]) + normal * step)
+                top_indices.append(base_offset + len(top_indices))
+
+            n_face = len(face)
+            prism_faces: list[list[int]] = []
+            prism_faces.append(list(face))  # bottom
+            prism_faces.append(list(reversed(top_indices)))  # top (flip normal)
+            for k in range(n_face):
+                k2 = (k + 1) % n_face
+                prism_faces.append([face[k], face[k2], top_indices[k2], top_indices[k]])
+            new_cells.append(prism_faces)
+            n_added += 1
+
+        return np.array(new_verts, dtype=vertices.dtype), new_cells
+    except Exception as exc:
+        import structlog as _sl
+        _sl.get_logger().warning("native_poly_ttt4_skipped", reason=str(exc)[:120])
+        return vertices, cells
 
 
 def _ccw_sort_face_vertices(
@@ -761,10 +807,13 @@ def _generate_native_poly_voronoi_inner(
 
     if _TTT3_POLY_BL_EXTRUDE_ENABLE and _wall_adj:
         bbox_diag = float(np.linalg.norm(V.max(0) - V.min(0)))
+        _n_cells_pre = len(final_cells)
         final_vertices, final_cells = _extrude_prism_layer(
             _wall_adj, final_vertices, final_cells, cell_owner_seed,
             V, F, step=bbox_diag * 0.005, max_extrude=20,
         )
+        n_prism_added = len(final_cells) - _n_cells_pre
+        log.info("ttt4_poly_bl_extruded", n_added=n_prism_added)
 
     # Y2 (beta1660) — Voronoi cell vertex Laplacian smoothing (skewness 잡기).
     # 평균 skewness 100+ → < 5 목표. quality 검증 후 채택 (revert 가드).
