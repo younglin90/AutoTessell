@@ -54,6 +54,9 @@ log = get_logger(__name__)
 _BL_QQQ1_FRONT_COLLISION = True
 _BL_QQQ4_LOCAL_THICKNESS = True
 
+# HEX_BL1 — Garimella 2003 §3 prism aspect+collision guard for native hex+BL path (default ON)
+_BL_HEX_BL1_GUARD = True
+
 
 def _local_thickness_factor(
     collision_mask: np.ndarray,
@@ -115,6 +118,106 @@ def _check_prism_front_collision(
             "native_bl_qqq3_skipped reason=%s", str(exc)[:120]
         )
         return False
+
+
+# ---------------------------------------------------------------------------
+# HEX_BL1 — per-face prism aspect+collision guard (Garimella 2003 §3)
+# ---------------------------------------------------------------------------
+
+
+def _hex_bl1_prism_guard(
+    wall_face_indices: list[int],
+    faces: list[list[int]],
+    points: np.ndarray,
+    vnorm: "dict[int, np.ndarray]",
+    first_thickness: float,
+    aspect_threshold: float = 50.0,
+) -> tuple[list[int], int, int]:
+    """HEX_BL1: Filter wall faces whose layer-0 prism fails aspect or collision guard.
+
+    Mirrors POL_BL1 / TET_BL1 pattern (Garimella 2003 §3 advancing-front).
+    Estimates top vertex positions as: pt_top = pt - vnorm[v] * first_thickness.
+
+    Returns:
+        accepted_faces: filtered wall_face_indices list.
+        n_rejected_aspect: count of aspect-rejected faces.
+        n_rejected_collision: count of collision-rejected faces.
+    """
+    if not _BL_HEX_BL1_GUARD or not wall_face_indices:
+        return wall_face_indices, 0, 0
+
+    _log = log
+
+    # Pre-compute centroids of non-wall inner cells for collision check.
+    wall_set = set(wall_face_indices)
+    # Build rough cell centroid list from non-wall faces (owner side).
+    # Use bottom-face centroids as bounding-sphere centres with radius = first_thickness.
+    # Lightweight: O(n_wall_faces) only.
+    _wall_face_centroids: list[np.ndarray] = []
+    for fi in wall_face_indices:
+        _vs = faces[fi]
+        if len(_vs) >= 3:
+            _wall_face_centroids.append(points[_vs].mean(axis=0))
+
+    accepted: list[int] = []
+    n_rej_asp = 0
+    n_rej_col = 0
+
+    for fi in wall_face_indices:
+        _vs = faces[fi]
+        if len(_vs) < 3:
+            accepted.append(fi)
+            continue
+
+        bot_pts = points[_vs]
+        top_pts = np.array([
+            points[v] - vnorm[v] * first_thickness
+            for v in _vs
+            if v in vnorm
+        ])
+        if len(top_pts) != len(_vs):
+            # vnorm missing for some verts — skip guard for this face
+            accepted.append(fi)
+            continue
+
+        # Guard 1 — aspect ratio (max_edge / min_edge across all prism edges)
+        _edges: list[float] = []
+        n_v = len(_vs)
+        for _k in range(n_v):
+            _k2 = (_k + 1) % n_v
+            _edges.append(float(np.linalg.norm(bot_pts[_k2] - bot_pts[_k])))
+            _edges.append(float(np.linalg.norm(top_pts[_k2] - top_pts[_k])))
+            _edges.append(float(np.linalg.norm(top_pts[_k] - bot_pts[_k])))  # lateral
+        _min_e = min(_edges) if _edges else 1.0
+        _max_e = max(_edges) if _edges else 1.0
+        _aspect = _max_e / (_min_e + 1e-30)
+        if _aspect > aspect_threshold:
+            n_rej_asp += 1
+            _log.debug("hex_bl_prism_rejected_aspect", face=fi, aspect=round(_aspect, 2))
+            continue
+
+        # Guard 2 — collision check: top centroid must not be within first_thickness of
+        # any OTHER wall face centroid (bounding-sphere approximation).
+        _top_c = top_pts.mean(axis=0)
+        _collision = False
+        for _wc in _wall_face_centroids:
+            if float(np.linalg.norm(_top_c - _wc)) < first_thickness * 0.5:
+                _collision = True
+                break
+        if _collision:
+            n_rej_col += 1
+            _log.debug("hex_bl_prism_rejected_collision", face=fi)
+            continue
+
+        accepted.append(fi)
+
+    _log.info(
+        "hex_bl_prism_added",
+        n_accepted=len(accepted),
+        n_rejected_aspect=n_rej_asp,
+        n_rejected_collision=n_rej_col,
+    )
+    return accepted, n_rej_asp, n_rej_col
 
 
 # ---------------------------------------------------------------------------
@@ -1004,6 +1107,21 @@ def generate_native_bl(
             n_limited_verts=n_limited,
             min_scale=float(min(vertex_scale.values())),
         )
+
+    # HEX_BL1 — pre-filter wall_face_indices via aspect+collision guard (Garimella 2003 §3).
+    # Mirrors POL_BL1 (voronoi.py) and TET_BL1 (tet_bl_subdivide.py) pattern.
+    try:
+        wall_face_indices, _n_rej_asp, _n_rej_col = _hex_bl1_prism_guard(
+            wall_face_indices, faces, points, vnorm, cfg.first_thickness,
+            aspect_threshold=cfg.aspect_ratio_threshold,
+        )
+        # Rebuild dependent sets after filtering.
+        wall_set = set(wall_face_indices)
+        wall_vert_indices = sorted(
+            {v for fi in wall_face_indices for v in faces[fi] if v in vnorm}
+        )
+    except Exception as _hex_bl1_exc:
+        log.warning("hex_bl1_guard_skipped", reason=str(_hex_bl1_exc)[:120])
 
     # 공유 캐시: wall_face_indices 기반 topology (loop 밖에서 한 번만 계산)
     n_wall_faces = len(wall_face_indices)
