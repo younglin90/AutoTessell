@@ -615,6 +615,46 @@ def _extrude_prism_layer(
             for k in range(n_face):
                 k2 = (k + 1) % n_face
                 prism_faces.append([face[k], face[k2], top_indices[k2], top_indices[k]])
+
+            # POL_BL1_ORIENT_FIX (beta2163): compute signed volume; flip if negative.
+            def _prism_signed_vol(
+                pf: "list[list[int]]",
+                all_verts: "list",
+            ) -> float:
+                """Fan-tet from centroid; return sum of signed volumes (×6)."""
+                _all_idx: list[int] = []
+                for _f in pf:
+                    _all_idx.extend(_f)
+                _unique = list(dict.fromkeys(_all_idx))
+                if len(_unique) < 4:
+                    return 0.0
+                _pts_arr = np.array([all_verts[_i] for _i in _unique], dtype=np.float64)
+                _cen = _pts_arr.mean(axis=0)
+                _vol = 0.0
+                for _f in pf:
+                    if len(_f) < 3:
+                        continue
+                    for _k in range(1, len(_f) - 1):
+                        _a = np.array(all_verts[_f[0]], dtype=np.float64)
+                        _b = np.array(all_verts[_f[_k]], dtype=np.float64)
+                        _c = np.array(all_verts[_f[_k + 1]], dtype=np.float64)
+                        _vol += float(np.dot(_a - _cen, np.cross(_b - _cen, _c - _cen)))
+                return _vol
+
+            _combined_verts: list = list(vertices) + new_verts
+            _sv = _prism_signed_vol(prism_faces, _combined_verts)
+            if _sv < 0.0:
+                # Flip orientation: reverse bottom face vertex order.
+                prism_faces[0] = list(reversed(prism_faces[0]))
+                # Re-check after flip.
+                _sv2 = _prism_signed_vol(prism_faces, _combined_verts)
+                if _sv2 < 0.0:
+                    _log.warning("poly_bl1_orient_fail", seed=seed_idx, sv=round(_sv2, 8))
+                    # Remove appended verts and skip this prism.
+                    del new_verts[base_offset:]
+                    n_rejected_aspect += 1  # reuse counter; semantically a reject
+                    continue
+
             new_cells.append(prism_faces)
             n_added += 1
 

@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2161,
+  "beta": 2163,
   "max_round": 1000,
-  "round": 108,
+  "round": 110,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -33,6 +33,7 @@
     "poly"
   ],
   "recent_cards": [
+    "POL_BL1_ORIENT_FIX",
     "BSP_ORIENT_FIX",
     "HEX_BL_TANGENT",
     "POL_BL_TANGENT",
@@ -45,13 +46,12 @@
     "POL_QUALITY1",
     "PRE3",
     "TET_QUALITY1",
-    "VVV13",
-    "VVV12_ORIENT_FIX"
+    "VVV13"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "HEX_VAL3 — _count_neg_vol_hex helper + per-pass native_hex_neg_vol_track log after post_filter/WWW7/HEX_QUALITY1/VAL2_post; all 5 STL bench fids show delta=0 n_neg=0 (clean); 22/22 tests PASS, bench 101.7s, hex A=5/5 (beta2161, R108)"
+  "plan_archive": "POL_BL1_ORIENT_FIX — _extrude_prism_layer: compute signed vol after prism build; if V<0 flip bottom face; if still <0 log poly_bl1_orient_fail + skip; POL_BL1 delta now 0 (was +1); 22/22 tests PASS, bench 100.5s, poly A=5/5 (beta2163, R110)"
 }
