@@ -418,6 +418,85 @@ def _inject_feature_seeds(
     return np.vstack(feature_pts)
 
 
+def _relax_high_aspect_seeds(
+    seeds: np.ndarray,
+    V: np.ndarray,
+    F: np.ndarray,
+    *,
+    top_k: int = 10,
+    relax_factor: float = 0.3,
+) -> tuple[np.ndarray, int]:
+    """PPP11 — per-cell local seed relaxation for high-aspect-ratio Voronoi cells.
+
+    Detects seeds whose Voronoi cells have high aspect ratio and moves them
+    toward their cell centroid (Lloyd-style, local only). Only processes
+    top_k worst cells to bound cost.
+
+    Returns
+    -------
+    (new_seeds, n_relaxed) — updated seed array and count of relaxed seeds.
+    """
+    if seeds.shape[0] < 5 or top_k <= 0:
+        return seeds, 0
+
+    try:
+        from scipy.spatial import Voronoi  # noqa: PLC0415
+    except Exception:
+        return seeds, 0
+
+    # Gate: skip rebuild for large seed sets to bound wall-time
+    if seeds.shape[0] >= 5000:
+        return seeds, 0
+
+    try:
+        vor = Voronoi(seeds)
+    except Exception:
+        return seeds, 0
+
+    # Compute per-cell aspect ratio: bbox diagonal / min bbox edge
+    aspect_ratios: list[tuple[float, int]] = []
+    for si, region_idx in enumerate(vor.point_region):
+        if region_idx < 0 or region_idx >= len(vor.regions):
+            continue
+        region = vor.regions[region_idx]
+        if -1 in region or len(region) < 4:
+            continue
+        verts = vor.vertices[region]
+        vmin = verts.min(axis=0)
+        vmax = verts.max(axis=0)
+        extents = vmax - vmin + 1e-30
+        aspect = float(extents.max() / extents.min())
+        aspect_ratios.append((aspect, si))
+
+    if not aspect_ratios:
+        return seeds, 0
+
+    # Sort descending by aspect ratio; take top_k
+    aspect_ratios.sort(reverse=True)
+    worst = aspect_ratios[:top_k]
+
+    new_seeds = seeds.copy()
+    n_relaxed = 0
+    for aspect, si in worst:
+        if aspect < 2.0:
+            break  # remaining cells are acceptable
+        region_idx = vor.point_region[si]
+        if region_idx < 0 or region_idx >= len(vor.regions):
+            continue
+        region = vor.regions[region_idx]
+        if -1 in region or len(region) < 4:
+            continue
+        centroid = vor.vertices[region].mean(axis=0)
+        candidate = (1.0 - relax_factor) * new_seeds[si] + relax_factor * centroid
+        # Only accept if candidate is still inside surface
+        inside = _inside_ray_cast(candidate[None, :], V, F)
+        if inside[0]:
+            new_seeds[si] = candidate
+            n_relaxed += 1
+
+    return new_seeds, n_relaxed
+
+
 def _lloyd_3d_iteration(
     seeds: np.ndarray,
     V: np.ndarray,
@@ -845,6 +924,17 @@ def _generate_native_poly_voronoi_inner(
                 n_seeds_after=seeds.shape[0],
                 lp_p=lp_p,
             )
+
+    # PPP11 — local seed relaxation for high-aspect-ratio cells.
+    try:
+        seeds_relaxed, n_relaxed = _relax_high_aspect_seeds(
+            seeds, V, F, top_k=10, relax_factor=0.3,
+        )
+        if n_relaxed > 0 and seeds_relaxed.shape[0] >= 5:
+            seeds = seeds_relaxed
+            log.info("native_poly_ppp11_relaxed", n_relaxed=n_relaxed)
+    except Exception as exc:
+        log.debug("native_poly_ppp11_skipped", reason=str(exc)[:120])
 
     # boundary padding: 입력 표면 vertex 를 outer seed 로 사용하면 Voronoi 가
     # 내부 seed region 을 surface 근처에서 절단한다. → inside region 유지율 ↑.
