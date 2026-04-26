@@ -4,6 +4,8 @@ Klingner & Shewchuk 2008 §3.
 """
 from __future__ import annotations
 
+import time
+
 import numpy as np
 
 # VVV1: skeleton only — default OFF, no call path added
@@ -203,3 +205,90 @@ def insert_steiner_flip14(
     pts_out = np.array(pts_list)
     tets_out = np.array(tets_list, dtype=tets.dtype)
     return pts_out, tets_out, n_inserted
+
+
+def lookahead_2flip_chain(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    top_k: int = 5,
+    lookahead_ops: tuple[str, ...] = ("flip23", "flip32", "flip44"),
+    min_quality_improvement: float = 1e-3,
+    max_chains: int = 5,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """VVV11 — 2-flip lookahead chain (Klingner 2008 §3.4 multi-step search).
+
+    Escape plateau by allowing flip A even if it temporarily worsens worst_q,
+    committing (A, B) only when FINAL worst_q > initial worst_q + min_quality_improvement.
+
+    Returns (pts_out, tets_out, n_chains_committed).
+    """
+    from .flip import flip_edges_32, flip_edges_44, flip_face_23  # noqa: PLC0415
+
+    _OP_MAP = {
+        "flip23": lambda p, t: flip_face_23(p, t, min_quality_improvement=-1.0, max_flips=1),
+        "flip32": lambda p, t: (p,) + flip_edges_32(p, t, min_quality_improvement=-1.0, max_flips=1),
+        "flip44": lambda p, t: (p,) + flip_edges_44(p, t, min_quality_improvement=-1.0, max_flips=1),
+    }
+
+    def _q_arr(p: np.ndarray, t: np.ndarray) -> np.ndarray:
+        return np.array([_tet_quality(p, t[i]) for i in range(t.shape[0])], dtype=np.float64)
+
+    def _try_first_valid_op(
+        p: np.ndarray, t: np.ndarray, ops: tuple[str, ...]
+    ) -> tuple[np.ndarray, np.ndarray, int]:
+        """Try each op in order; return first result with n_applied > 0."""
+        for op in ops:
+            fn = _OP_MAP.get(op)
+            if fn is None:
+                continue
+            try:
+                result = fn(p, t)
+                # flip23 returns (pts, tets, n); flip32/44 return (pts, tets, n) via lambda above
+                p_new, t_new, n = result[0], result[1], result[2]
+                if n > 0:
+                    return p_new, t_new, n
+            except Exception:
+                continue
+        return p, t, 0
+
+    if tets.shape[0] == 0:
+        return pts, tets, 0
+
+    qs_pre = _q_arr(pts, tets)
+    pre_min = float(qs_pre.min())
+
+    n_chains_committed = 0
+    pts_cur, tets_cur = pts.copy(), tets.copy()
+
+    for _ in range(max_chains):
+        t0 = time.monotonic()
+        qs = _q_arr(pts_cur, tets_cur)
+        pre_min_cur = float(qs.min())
+
+        # Snapshot
+        pts_snap, tets_snap = pts_cur.copy(), tets_cur.copy()
+
+        # Flip A — no per-flip guard (accept any valid)
+        pts_a, tets_a, na = _try_first_valid_op(pts_cur, tets_cur, lookahead_ops)
+        if na == 0:
+            break  # No valid op A found for any tet
+        if time.monotonic() - t0 > 0.05:
+            break
+
+        # Flip B — on worst tet after A
+        pts_b, tets_b, nb = _try_first_valid_op(pts_a, tets_a, lookahead_ops)
+        # nb may be 0 — still evaluate chain quality
+
+        post_min = float(_q_arr(pts_b, tets_b).min())
+
+        # Strict chain guard: commit only if overall improvement
+        if post_min >= pre_min_cur + min_quality_improvement:
+            pts_cur, tets_cur = pts_b, tets_b
+            n_chains_committed += 1
+        else:
+            # Revert to snapshot
+            pts_cur, tets_cur = pts_snap, tets_snap
+            break  # No more useful chains from this state
+
+    return pts_cur, tets_cur, n_chains_committed

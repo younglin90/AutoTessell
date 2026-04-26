@@ -2506,6 +2506,38 @@ def generate_native_tet(
         except Exception as exc:
             log.warning("native_tet_vvv10_skipped", reason=str(exc)[:120])
 
+    # VVV11 — 2-flip lookahead chain (Klingner 2008 §3.4 plateau escape)
+    if not os.environ.get("AUTO_TESSELL_VVV11_OFF"):
+        try:
+            if final_tets.shape[0] < 500:
+                log.info("vvv11_skipped_small_mesh", n_tets=int(final_tets.shape[0]))
+            else:
+                from core.generator.native_tet.stellar import lookahead_2flip_chain as _la2  # noqa: PLC0415
+                from core.generator.native_tet.quality import snapshot as _qsnap711  # noqa: PLC0415
+                _pre711 = _qsnap711(final_pts, final_tets)
+                _pts711, _tets711, _n711 = _la2(
+                    final_pts, final_tets,
+                    top_k=5,
+                    min_quality_improvement=1e-3,
+                    max_chains=5,
+                )
+                _post711 = _qsnap711(_pts711, _tets711)
+                _acc711 = (
+                    _post711.min_q >= _pre711.min_q - 1e-6
+                    and _post711.mean_q >= _pre711.mean_q - 1e-3
+                )
+                if _acc711:
+                    final_pts, final_tets = _pts711, _tets711
+                log.info(
+                    "native_tet_lookahead_chain",
+                    n_chains=int(_n711),
+                    pre_min=float(_pre711.min_q),
+                    post_min=float(_post711.min_q),
+                    accepted=bool(_acc711),
+                )
+        except Exception as exc:
+            log.warning("native_tet_vvv11_skipped", reason=str(exc)[:120])
+
     # beta1530 (V3) — 외부 tet 제거: 입력 surface 외부에 centroid 가 있는 tet drop.
     if enable_boundary_clip:
         try:
