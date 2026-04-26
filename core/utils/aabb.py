@@ -400,14 +400,16 @@ class TriangleBVH:
     def closest_points_batch(
         self, points: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """N 개 점에 대해 closest_point 일괄 계산.
-
-        각 leaf 방문 시 해당 leaf 의 triangle 목록을 모든 query 점에 대해
-        한꺼번에 브로드캐스트 검사 (numpy). leaf 방문 순서는 per-point
-        이지만 leaf 당 batch 가속으로 python 오버헤드 감소.
-
-        fallback: closest_point 를 점별 호출. small N (< 32) 면 그냥 순회.
+        """C (beta1780) — closest_points_all_shared 로 통합. 기존 per-point
+        Python stack loop 제거. shared-stack BVH traversal 이 큰 N 에서
+        Python overhead 절감.
         """
+        return self.closest_points_all_shared(points)
+
+    def _closest_points_batch_legacy(
+        self, points: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """이전 per-point loop — backwards-compat 용 (debug)."""
         points = np.asarray(points, dtype=np.float64)
         N = points.shape[0]
         if N == 0 or not self.nodes:
