@@ -183,7 +183,7 @@ def _extrude_prism_layer(
     surface_V: "np.ndarray",        # (Vs,3)
     surface_F: "np.ndarray",        # (Fs,3) wall 삼각형
     step: float,
-    max_extrude: int = 20,
+    max_extrude: int = 100,
 ) -> tuple["np.ndarray", list[list[list[int]]]]:
     """wall-adj cell 의 boundary face 1 개당 prism 1 셀 추가.
 
@@ -810,7 +810,7 @@ def _generate_native_poly_voronoi_inner(
         _n_cells_pre = len(final_cells)
         final_vertices, final_cells = _extrude_prism_layer(
             _wall_adj, final_vertices, final_cells, cell_owner_seed,
-            V, F, step=bbox_diag * 0.005, max_extrude=20,
+            V, F, step=bbox_diag * 0.005, max_extrude=100,
         )
         n_prism_added = len(final_cells) - _n_cells_pre
         log.info("ttt4_poly_bl_extruded", n_added=n_prism_added)
