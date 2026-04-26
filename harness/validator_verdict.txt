@@ -1,0 +1,3 @@
+PASS
+
+R11 NNN2b: Steiner insertion (n_inserted=200@fid=100040), tet worst-mq 0.055 stable, bench 58.2s.
