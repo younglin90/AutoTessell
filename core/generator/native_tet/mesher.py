@@ -2637,6 +2637,43 @@ def generate_native_tet(
         except Exception as exc:
             log.warning("native_tet_vvv12_skipped", reason=str(exc)[:120])
 
+    # VVV13 — anisotropic tet AR longest-edge split (fTetWild §3.2 style)
+    if not os.environ.get("AUTO_TESSELL_VVV13_OFF"):
+        try:
+            if final_tets.shape[0] < 500:
+                log.info("vvv13_skipped_small_mesh", n_tets=int(final_tets.shape[0]))
+            else:
+                from core.generator.native_tet.stellar import (  # noqa: PLC0415
+                    split_anisotropic_tet_edges as _sate,
+                    _count_anisotropic as _ca13,
+                )
+                from core.generator.native_tet.quality import snapshot as _qsnap713  # noqa: PLC0415
+                _pre713 = _qsnap713(final_pts, final_tets)
+                _n_aniso_pre = _ca13(final_pts, final_tets, ar_threshold=5.0)
+                _pts713, _tets713, _n713 = _sate(
+                    final_pts, final_tets,
+                    ar_threshold=5.0,
+                    min_quality_improvement=1e-3,
+                    max_splits=20,
+                )
+                _post713 = _qsnap713(_pts713, _tets713)
+                _acc713 = (
+                    _post713.min_q >= _pre713.min_q - 1e-6
+                    and _post713.mean_q >= _pre713.mean_q - 1e-3
+                )
+                if _acc713:
+                    final_pts, final_tets = _pts713, _tets713
+                log.info(
+                    "native_tet_aniso_split",
+                    n_aniso_detected=int(_n_aniso_pre),
+                    n_split=int(_n713),
+                    pre_min=float(_pre713.min_q),
+                    post_min=float(_post713.min_q),
+                    accepted=bool(_acc713),
+                )
+        except Exception as exc:
+            log.warning("native_tet_vvv13_skipped", reason=str(exc)[:120])
+
     # TET_QUALITY1 (beta2141) — non-ortho local post-pass (mirror HEX_QUALITY1).
     # env AUTO_TESSELL_TET_QUALITY1_OFF disables. Default ON.
     if (

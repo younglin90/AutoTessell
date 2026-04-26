@@ -1,8 +1,8 @@
 {
-  "target_engine": "poly",
-  "beta": 2149,
+  "target_engine": "tet",
+  "beta": 2150,
   "max_round": 1000,
-  "round": 96,
+  "round": 97,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -24,9 +24,9 @@
     }
   },
   "last_mq": {
-    "tet_worst": 0.095
+    "tet_worst": 0.127
   },
-  "last_bench_time": 88.2,
+  "last_bench_time": 99.6,
   "consecutive_fails": 0,
   "dones": [
     "hex",
@@ -42,12 +42,12 @@
     "POL_QUALITY1",
     "PRE3",
     "TET_QUALITY1",
-    "PRE3_HEXPOLY"
+    "VVV13"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "HEX_LAYERS — native_hex+BL 2-layer geometric extrusion (3-engine BL multi-layer parity, cfMesh nLayers=2)"
+  "plan_archive": "VVV13 — native_tet anisotropic-AR longest-edge split (fTetWild §3.2 style)"
 }

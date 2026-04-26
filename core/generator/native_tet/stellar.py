@@ -424,6 +424,133 @@ def lookahead_2flip_chain(
     return pts_cur, tets_cur, n_chains_committed
 
 
+def split_anisotropic_tet_edges(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    ar_threshold: float = 5.0,
+    min_quality_improvement: float = 1e-3,
+    max_splits: int = 20,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """VVV13 — anisotropic tet detection + longest-edge midpoint split (fTetWild §3.2 style).
+
+    For each tet: edge_length_ratio = max_edge / min_edge (AR).
+    If AR > ar_threshold AND tet quality < 0.3 → mark as anisotropic candidate.
+    Longest edge of candidate is split at midpoint; all incident tets are replaced.
+    Accept only if q_new_min >= q_old_min + min_quality_improvement; else revert.
+    Cap total splits at max_splits.
+
+    Returns (pts_out, tets_out, n_split).
+    """
+    n_tets = tets.shape[0]
+    if n_tets == 0:
+        return pts, tets, 0
+
+    _PAIRS = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
+
+    def _edge_stats(p: np.ndarray, tet: np.ndarray) -> tuple[float, float, int, int]:
+        """Return (ar, longest_edge_len, ei, ej) for tet vertices."""
+        verts = [p[tet[k]] for k in range(4)]
+        lengths = [float(np.dot(verts[pi] - verts[pj], verts[pi] - verts[pj])) ** 0.5
+                   for pi, pj in _PAIRS]
+        l_max = max(lengths)
+        l_min = min(lengths)
+        ar = l_max / l_min if l_min > 1e-15 else float("inf")
+        best_idx = int(np.argmax(lengths))
+        pi, pj = _PAIRS[best_idx]
+        return ar, l_max, int(tet[pi]), int(tet[pj])
+
+    # Detect anisotropic candidates.
+    aniso_edges: list[tuple[int, int]] = []
+    seen_edges: set[tuple[int, int]] = set()
+    for ti in range(n_tets):
+        q = _tet_quality(pts, tets[ti])
+        if q >= 0.3:
+            continue
+        ar, _lmax, ei, ej = _edge_stats(pts, tets[ti])
+        if ar > ar_threshold:
+            u, v = (ei, ej) if ei < ej else (ej, ei)
+            if (u, v) not in seen_edges:
+                seen_edges.add((u, v))
+                aniso_edges.append((u, v))
+
+    pts_list = list(pts)
+    tets_list = list(tets)
+    n_split = 0
+
+    for edge_i, edge_j in aniso_edges:
+        if n_split >= max_splits:
+            break
+
+        # Find all tets incident to this edge.
+        incident: list[int] = []
+        for ti, tet in enumerate(tets_list):
+            tet_set = set(int(v) for v in tet)
+            if edge_i in tet_set and edge_j in tet_set:
+                incident.append(ti)
+
+        if not incident:
+            continue
+
+        # Compute q_old_min over all incident tets.
+        pts_arr = np.array(pts_list)
+        q_old = min(_tet_quality(pts_arr, np.array(tets_list[ti])) for ti in incident)
+
+        # Midpoint m.
+        m = 0.5 * (pts_arr[edge_i] + pts_arr[edge_j])
+        m_idx = len(pts_list)
+        pts_list.append(m)
+        pts_arr_new = np.array(pts_list)
+
+        # Split each incident tet: replace edge_i with m AND edge_j with m.
+        new_tets: list[np.ndarray] = []
+        for ti in incident:
+            tet = list(int(v) for v in tets_list[ti])
+            st1 = [m_idx if v == edge_i else v for v in tet]
+            st2 = [m_idx if v == edge_j else v for v in tet]
+            new_tets.append(np.array(st1, dtype=tets.dtype))
+            new_tets.append(np.array(st2, dtype=tets.dtype))
+
+        # Compute q_new_min.
+        q_new = min(_tet_quality(pts_arr_new, nt) for nt in new_tets)
+
+        if q_new >= q_old + min_quality_improvement:
+            # Accept.
+            for idx, ti in enumerate(sorted(incident, reverse=True)):
+                tets_list[ti] = new_tets[2 * (len(incident) - 1 - idx)]
+            for idx, ti in enumerate(incident):
+                tets_list.append(new_tets[2 * idx + 1])
+            n_split += 1
+        else:
+            # Revert.
+            pts_list.pop()
+
+    pts_out = np.array(pts_list)
+    tets_out = np.array(tets_list, dtype=tets.dtype)
+    return pts_out, tets_out, n_split
+
+
+def _count_anisotropic(
+    pts: np.ndarray, tets: np.ndarray, ar_threshold: float = 5.0
+) -> int:
+    """Count anisotropic tets (AR > ar_threshold AND quality < 0.3)."""
+    _PAIRS = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
+    count = 0
+    for i in range(tets.shape[0]):
+        q = _tet_quality(pts, tets[i])
+        if q >= 0.3:
+            continue
+        verts = [pts[tets[i, k]] for k in range(4)]
+        lengths = [float(np.dot(verts[pi] - verts[pj], verts[pi] - verts[pj])) ** 0.5
+                   for pi, pj in _PAIRS]
+        l_min = min(lengths)
+        l_max = max(lengths)
+        ar = l_max / l_min if l_min > 1e-15 else float("inf")
+        if ar > ar_threshold:
+            count += 1
+    return count
+
+
 # ---------------------------------------------------------------------------
 # VAL1 (beta2147) — global negative-volume tet detection + auto-flip
 # ---------------------------------------------------------------------------

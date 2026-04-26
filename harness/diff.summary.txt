@@ -1,9 +1,9 @@
-file: core/generator/native_hex/mesher.py
-functions: generate_native_hex
-lines_added: 41
+file: core/generator/native_tet/stellar.py
+functions: split_anisotropic_tet_edges, _count_anisotropic
+lines_added: 96
 lines_removed: 0
 
-file: core/generator/native_poly/voronoi.py
-functions: generate_native_poly_voronoi
-lines_added: 41
+file: core/generator/native_tet/mesher.py
+functions: generate_native_tet (VVV13 wiring block)
+lines_added: 36
 lines_removed: 0
