@@ -422,3 +422,54 @@ def lookahead_2flip_chain(
             break  # No more useful chains from this state
 
     return pts_cur, tets_cur, n_chains_committed
+
+
+# ---------------------------------------------------------------------------
+# VAL1 (beta2147) — global negative-volume tet detection + auto-flip
+# ---------------------------------------------------------------------------
+
+def validate_and_fix_orientations(
+    pts: "np.ndarray", tets: "np.ndarray"
+) -> "tuple[np.ndarray, int, int]":
+    """Scan all tets for V<=0 and fix orientation by swapping last two verts.
+
+    Returns
+    -------
+    tets_fixed : np.ndarray
+        Tet array with flipped orientations for negative-volume tets.
+    n_flipped : int
+        Number of tets whose orientation was flipped (V<0 -> V>0).
+    n_degenerate : int
+        Number of tets with V~=0 after attempted fix (left as-is).
+    """
+    tets_out = tets.copy()
+
+    a = pts[tets_out[:, 0]]
+    b = pts[tets_out[:, 1]]
+    c = pts[tets_out[:, 2]]
+    d = pts[tets_out[:, 3]]
+    vols = (1.0 / 6.0) * (
+        np.einsum("ij,ij->i", d - a, np.cross(b - a, c - a))
+    )
+
+    neg_mask = vols < 0.0
+
+    if neg_mask.any():
+        # swap last two verts: [a,b,c,d] -> [a,b,d,c] flips orientation
+        tmp = tets_out[neg_mask, 2].copy()
+        tets_out[neg_mask, 2] = tets_out[neg_mask, 3]
+        tets_out[neg_mask, 3] = tmp
+
+    n_flipped = int(neg_mask.sum())
+
+    # Re-check degenerate after fix
+    a2 = pts[tets_out[:, 0]]
+    b2 = pts[tets_out[:, 1]]
+    c2 = pts[tets_out[:, 2]]
+    d2 = pts[tets_out[:, 3]]
+    vols2 = (1.0 / 6.0) * (
+        np.einsum("ij,ij->i", d2 - a2, np.cross(b2 - a2, c2 - a2))
+    )
+    n_degenerate = int((np.abs(vols2) < 1e-15).sum())
+
+    return tets_out, n_flipped, n_degenerate

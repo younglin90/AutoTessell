@@ -2800,6 +2800,27 @@ def generate_native_tet(
     except Exception:
         pass
 
+    # VAL1 (beta2147) — final orientation validate + auto-flip (default ON).
+    # Set env AUTO_TESSELL_VAL1_OFF=1 to disable.
+    if os.environ.get("AUTO_TESSELL_VAL1_OFF", "0") != "1":
+        try:
+            from core.generator.native_tet.stellar import (  # noqa: PLC0415
+                validate_and_fix_orientations as _vfo,
+            )
+            final_tets, _n_flipped, _n_degen = _vfo(final_pts, final_tets)
+            log.info(
+                "native_tet_validate",
+                n_flipped=_n_flipped,
+                n_degenerate=_n_degen,
+                questionable=(_n_degen > 0),
+            )
+            if _n_degen > 0:
+                warnings_list.append(
+                    f"native_tet_degenerate_volume: {_n_degen} degenerate tets"
+                )
+        except Exception as _val1_exc:
+            log.debug("native_tet_validate_skipped", reason=str(_val1_exc)[:120])
+
     return NativeTetResult(
         success=True, elapsed=elapsed,
         n_cells=n_cells, n_points=n_points,
