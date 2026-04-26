@@ -159,14 +159,76 @@ def subdivide_prism_layers_to_tet(
             message="prism cell 없음 — 이미 전체 tet.",
         )
 
-    # 2) 각 prism 의 outer/inner pair 추출
+    # 2) 각 prism 의 outer/inner pair 추출 + TET_BL1 quality/collision guard
+    # Garimella 2003 §3 참고: advancing-front 에서 prism 삽입 전 검사.
     prism_pairs: dict[int, tuple[list[int], list[int]]] = {}
+    _n_rejected_aspect = 0
+    _n_rejected_collision = 0
+
+    # Collision check: 기존 tet cell centroid set (non-prism) 을 사전 계산.
+    _tet_centroids: list[np.ndarray] = []
+    for _cid in range(n_cells):
+        if _cid in set(prism_cells):
+            continue
+        _f_list = cell_faces_map[_cid]
+        _vs: set[int] = set()
+        for _f in _f_list:
+            _vs.update(_f)
+        if _vs:
+            _tet_centroids.append(points[list(_vs)].mean(axis=0))
+
+    def _point_in_tet_approx(pt: np.ndarray, centroid: np.ndarray, radius: float) -> bool:
+        """Simplified: check if pt is within radius of centroid (bounding-sphere approx)."""
+        return bool(np.linalg.norm(pt - centroid) < radius)
+
     for cid in prism_cells:
         p = _prism_vertex_pairs(cell_faces_map[cid])
         if p is None:
             log.warning("prism_pair_extract_failed", cell=cid)
             continue
-        prism_pairs[cid] = p
+        outer, inner = p
+
+        # TET_BL1 guard 1 — aspect ratio (Garimella 2003 quality criterion).
+        # Prism aspect = max_edge / min_edge across bottom-tri + lateral edges.
+        outer_pts = points[outer]
+        inner_pts = points[inner]
+        _edges: list[float] = []
+        for _k in range(3):
+            _k2 = (_k + 1) % 3
+            _edges.append(float(np.linalg.norm(outer_pts[_k2] - outer_pts[_k])))  # bottom tri
+            _edges.append(float(np.linalg.norm(inner_pts[_k2] - inner_pts[_k])))  # top tri
+            _edges.append(float(np.linalg.norm(inner_pts[_k] - outer_pts[_k])))   # lateral
+        _min_e = min(_edges) if _edges else 1.0
+        _max_e = max(_edges) if _edges else 1.0
+        _aspect = _max_e / (_min_e + 1e-30)
+        if _aspect > 50.0:
+            _n_rejected_aspect += 1
+            log.debug("tet_bl_prism_rejected_aspect", cell=cid, aspect=round(_aspect, 2))
+            continue
+
+        # TET_BL1 guard 2 — collision check (Garimella 2003 §3 advancing-front).
+        # New top vertices (inner) centroid must not lie inside any neighbouring tet.
+        _top_centroid = inner_pts.mean(axis=0)
+        # Estimate local tet radius from outer triangle edge length.
+        _local_radius = (_max_e * 0.5) if _max_e > 0 else 1e-6
+        _collision = False
+        for _tc in _tet_centroids:
+            if _point_in_tet_approx(_top_centroid, _tc, _local_radius):
+                _collision = True
+                break
+        if _collision:
+            _n_rejected_collision += 1
+            log.debug("tet_bl_prism_rejected_collision", cell=cid)
+            continue
+
+        prism_pairs[cid] = (outer, inner)
+
+    log.info(
+        "tet_bl_prism_added",
+        n_accepted=len(prism_pairs),
+        n_rejected_aspect=_n_rejected_aspect,
+        n_rejected_collision=_n_rejected_collision,
+    )
 
     if not prism_pairs:
         return TetSubdivResult(

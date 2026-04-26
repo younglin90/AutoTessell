@@ -1,8 +1,8 @@
 {
-  "target_engine": "poly",
-  "beta": 2132,
+  "target_engine": "tet",
+  "beta": 2133,
   "max_round": 1000,
-  "round": 79,
+  "round": 80,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,24 +26,24 @@
   "last_mq": {
     "tet_worst": 0.095
   },
-  "last_bench_time": 72.4,
+  "last_bench_time": 73.2,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
-    "VVV11",
     "PRE1",
     "BL1",
     "WWW7",
     "BL2",
-    "POL_BL1"
+    "POL_BL1",
+    "TET_BL1"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "POL_BL1 — native_poly prism aspect+collision guard (Garimella 2003 advancing-front variant)"
+  "plan_archive": "TET_BL1 — native_tet+BL prism aspect+collision guard (mirror POL_BL1 / Garimella 2003)"
 }
