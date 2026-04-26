@@ -241,6 +241,12 @@ def _write_polymesh_poly(
 
 _TTT3_POLY_BL_EXTRUDE_ENABLE = True  # TTT4: BL prism extrude 활성.
 
+# POL_BL_TANGENT (beta2155) — poly+BL top-layer tangential Laplacian smoothing.
+# Mirrors BL_TANGENT_SMOOTH (R100, native_bl.py) for the poly-specific extrude path.
+# Default ON; disable via env AUTO_TESSELL_POL_BL_TANG_OFF=1.
+import os as _os_poly
+_POL_BL_TANG_SMOOTH_ON: bool = _os_poly.environ.get("AUTO_TESSELL_POL_BL_TANG_OFF", "0") != "1"
+
 # TTT9 — voronoi cell merging skeleton (default OFF, 호출 경로 없음)
 _TTT9_CELL_MERGE: bool = False
 
@@ -301,6 +307,146 @@ def _find_merge_candidates(
                 candidates.append((ci, nb))
 
     return candidates
+
+def _smooth_poly_top_layer_tangential(
+    vertices: "np.ndarray",
+    cells: "list[list[list[int]]]",
+    n_prism_start: int,
+    *,
+    n_iter: int = 1,
+    min_aspect_improve: float = 1e-3,
+) -> tuple["np.ndarray", int]:
+    """POL_BL_TANGENT: tangential Laplacian of outermost prism-layer verts.
+
+    Mirrors BL_TANGENT_SMOOTH (R100, native_bl.py beta2153) for the poly-specific
+    prism extrude path (cfMesh BLSmoothing 3-engine parity).
+
+    For each top-layer polygon vertex v:
+      - Collects 1-ring top-layer neighbours (shared prism top-face edge).
+      - Moves v toward ring centroid, projected onto the plane tangential to the
+        extrusion direction (bottom-centroid → top-centroid) — preserves thickness.
+      - STRICT GUARD: post max_edge/min_height aspect ≥ pre aspect → revert.
+
+    Args:
+        vertices: (V,3) float64 vertex array.
+        cells: list of cells; each cell = list of faces; face = list of vert idx.
+               Prism cells occupy cells[n_prism_start:].
+        n_prism_start: index into `cells` where prisms begin.
+        n_iter: number of smoothing passes (default 1).
+        min_aspect_improve: minimum aspect reduction to accept move.
+
+    Returns:
+        (modified_vertices, n_moved)
+    """
+    prism_cells = cells[n_prism_start:]
+    if not prism_cells:
+        return vertices, 0
+
+    verts = vertices.copy()
+
+    # ── 1. Collect top-face and bottom-face vert indices per prism ────────────
+    # Convention from _extrude_prism_layer: face[0]=bottom, face[1]=top (reversed).
+    top_sets: list[list[int]] = []   # top-face verts per prism
+    bot_sets: list[list[int]] = []   # bottom-face verts per prism
+    for cell in prism_cells:
+        if len(cell) < 2:
+            top_sets.append([])
+            bot_sets.append([])
+            continue
+        bot_sets.append(list(cell[0]))
+        top_sets.append(list(cell[1]))  # reversed top; same indices, reversed order
+
+    # ── 2. Build adjacency among top-layer verts (shared edge in any top face) ─
+    all_top_verts: set[int] = set()
+    for ts in top_sets:
+        all_top_verts.update(ts)
+
+    adj: dict[int, set[int]] = {v: set() for v in all_top_verts}
+    for ts in top_sets:
+        n = len(ts)
+        for k in range(n):
+            va, vb = ts[k], ts[(k + 1) % n]
+            if va in adj and vb in adj:
+                adj[va].add(vb)
+                adj[vb].add(va)
+
+    # ── 3. Map each top vert → its corresponding bottom vert ─────────────────
+    # (same position within the face list; bottom=face[0], top=face[1] reversed)
+    top_to_bot: dict[int, int] = {}
+    for pi, (ts, bs) in enumerate(zip(top_sets, bot_sets)):
+        if len(ts) != len(bs):
+            continue
+        rev_ts = list(reversed(ts))  # undo the reversal to align with bs
+        for tv, bv in zip(rev_ts, bs):
+            top_to_bot[tv] = bv
+
+    # ── 4. Helper: max aspect ratio over prisms incident to a top vert ────────
+    # Build top-vert → prism index lookup
+    tv_to_prisms: dict[int, list[int]] = {v: [] for v in all_top_verts}
+    for pi, ts in enumerate(top_sets):
+        for tv in ts:
+            if tv in tv_to_prisms:
+                tv_to_prisms[tv].append(pi)
+
+    def _max_aspect(tv: int) -> float:
+        best = 0.0
+        for pi in tv_to_prisms.get(tv, []):
+            ts = top_sets[pi]
+            bs = bot_sets[pi]
+            if not ts or not bs:
+                continue
+            top_pts = verts[ts]
+            bot_pts = verts[bs]
+            # max lateral edge length
+            n = len(ts)
+            lat_h = [float(np.linalg.norm(verts[ts[k]] - verts[bs[len(bs) - 1 - k]]))
+                     for k in range(min(n, len(bs)))]
+            top_e = [float(np.linalg.norm(top_pts[(k + 1) % n] - top_pts[k])) for k in range(n)]
+            max_e = max(top_e) if top_e else 1.0
+            min_h = min(lat_h) if lat_h else 1e-30
+            ar = max_e / (min_h + 1e-30)
+            if ar > best:
+                best = ar
+        return best
+
+    # ── 5. Tangential Laplacian + strict guard ────────────────────────────────
+    n_moved = 0
+    for _it in range(n_iter):
+        for tv in all_top_verts:
+            nbs = adj.get(tv, set())
+            if not nbs:
+                continue
+            nb_pts = np.array([verts[nb] for nb in nbs if nb in all_top_verts])
+            if len(nb_pts) == 0:
+                continue
+            centroid = nb_pts.mean(axis=0)
+
+            bv = top_to_bot.get(tv)
+            if bv is None:
+                continue
+            p_top = verts[tv]
+            p_bot = verts[bv]
+            extrusion = p_top - p_bot
+            ext_len = float(np.linalg.norm(extrusion))
+            if ext_len < 1e-30:
+                continue
+            ext_hat = extrusion / ext_len
+
+            # project centroid onto tangential plane at p_top
+            delta = centroid - p_top
+            projected = p_top + delta - float(np.dot(delta, ext_hat)) * ext_hat
+
+            pre_ar = _max_aspect(tv)
+            old_pos = verts[tv].copy()
+            verts[tv] = projected
+            post_ar = _max_aspect(tv)
+            if post_ar < pre_ar - min_aspect_improve:
+                n_moved += 1
+            else:
+                verts[tv] = old_pos
+
+    return verts, n_moved
+
 
 def _extrude_prism_layer(
     wall_cells: set[int],
@@ -1358,6 +1504,23 @@ def _generate_native_poly_voronoi_inner(
             log.info("pol_layers_summary", n_layers=_n_layers_added, n_total_prism=len(final_cells) - _n_cells_pre)
         except Exception as _e:
             log.info("pol_layers_skipped", reason=str(_e)[:120])
+
+        # POL_BL_TANGENT (beta2155) — tangential Laplacian of outer prism-layer verts.
+        # Poly-specific path: poly extrudes its own prisms (not via native_bl.py shared path),
+        # so R100 BL_TANGENT_SMOOTH does NOT cover poly. Add poly-specific guard call.
+        if _POL_BL_TANG_SMOOTH_ON:
+            try:
+                _fv_tang, _n_tang = _smooth_poly_top_layer_tangential(
+                    final_vertices, final_cells, _n_cells_pre,
+                )
+                final_vertices = _fv_tang
+                log.info(
+                    "poly_bl_tangent_smooth",
+                    n_moved=_n_tang,
+                    n_prism=len(final_cells) - _n_cells_pre,
+                )
+            except Exception as _tang_exc:
+                log.warning("poly_bl_tangent_smooth_skipped", reason=str(_tang_exc)[:120])
 
     # Y2 (beta1660) — Voronoi cell vertex Laplacian smoothing (skewness 잡기).
     # 평균 skewness 100+ → < 5 목표. quality 검증 후 채택 (revert 가드).

@@ -1,9 +1,4 @@
-file: core/generator/native_tet/stellar.py
-functions: split_anisotropic_tet_edges, _count_anisotropic
-lines_added: 96
-lines_removed: 0
-
-file: core/generator/native_tet/mesher.py
-functions: generate_native_tet (VVV13 wiring block)
-lines_added: 36
+file: core/generator/native_poly/voronoi.py
+functions: _smooth_poly_top_layer_tangential (new), generate_native_poly_voronoi (call site)
+lines_added: 135
 lines_removed: 0

@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2154,
+  "beta": 2155,
   "max_round": 1000,
-  "round": 101,
+  "round": 102,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,13 +26,14 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 99.6,
+  "last_bench_time": 99.2,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "POL_BL_TANGENT",
     "POL_LAYERS",
     "POL_BL1",
     "TET_BL1",
@@ -42,13 +43,12 @@
     "POL_QUALITY1",
     "PRE3",
     "TET_QUALITY1",
-    "VVV13",
-    "VVV14"
+    "VVV13"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "VVV14 — face-centroid Steiner insertion, worst-face-fan 1+1→6 sub-tets, strict guard q_new_min>=q_old+1e-3 (beta2154, R101)"
+  "plan_archive": "POL_BL_TANGENT — poly+BL top-layer tangential Laplacian smoothing (cfMesh BLSmoothing 3-engine parity), new code path (poly extrudes own prisms, R100 does not cover), n_moved up to 11 per fid (beta2155, R102)"
 }
