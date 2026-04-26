@@ -74,6 +74,8 @@ def generate_native_tet(
     seed_density: int = 12,
     sliver_quality_threshold: float = 0.05,
     max_input_vertices: int = 100000,
+    # JJ1 (beta1800) — 입력 자동 수리 (dedup + winding align).
+    enable_auto_fix_input: bool = True,
     # beta104 Phase A — TetWild-lite 1 단계.
     enable_phase_a: bool = True,
     feature_angle_deg: float = 30.0,
@@ -143,9 +145,10 @@ def generate_native_tet(
     enable_boundary_clip: bool = False,
     boundary_clip_threshold: float = 0.5,
     # W4 (beta1610) — best-of-two score 가중 (area / cdt / mq).
-    score_weight_area: float = 0.5,
-    score_weight_cdt: float = 0.3,
-    score_weight_mq: float = 0.2,
+    # JJ2 (beta1810) — mq 가중 0.2 → 0.35 으로 강화 (hard mesh sliver 회피).
+    score_weight_area: float = 0.4,
+    score_weight_cdt: float = 0.25,
+    score_weight_mq: float = 0.35,
     prefer_base_threshold: float = 0.02,
 ) -> NativeTetResult:
     """입력 표면 메쉬 → tet polyMesh (MVP).
@@ -195,6 +198,28 @@ def generate_native_tet(
         from core.generator.native_tet.input_check import check_input
 
         chk = check_input(V, F)
+        # JJ1 (beta1800) — 자동 입력 수리: dedup + zero-area drop + winding align.
+        if enable_auto_fix_input:
+            try:
+                from core.generator.native_tet.input_check import auto_fix_input
+                V_fix, F_fix, fix_info = auto_fix_input(
+                    V, F, dup_tol=1e-9, drop_zero_area=True, align_winding=True,
+                )
+                if (
+                    fix_info.get("n_dedup", 0)
+                    or fix_info.get("n_zero_area_drop", 0)
+                    or fix_info.get("n_winding_flip", 0)
+                ):
+                    log.info(
+                        "native_tet_auto_fix",
+                        n_dedup=int(fix_info.get("n_dedup", 0)),
+                        n_zero_area=int(fix_info.get("n_zero_area_drop", 0)),
+                        n_winding_flip=int(fix_info.get("n_winding_flip", 0)),
+                    )
+                    V = V_fix.astype(np.float64)
+                    F = F_fix.astype(np.int64)
+            except Exception as exc:
+                log.debug("native_tet_auto_fix_skipped", reason=str(exc))
         if chk.warnings:
             log.warning(
                 "native_tet_input_warnings",
@@ -1143,6 +1168,35 @@ def generate_native_tet(
                 fixed_by_swap=vr.n_fixed_by_swap,
                 degenerate=vr.n_degenerate,
             )
+
+    # JJ3 (beta1820) — drop_extreme_slivers 전에 smooth_then_drop_slivers 호출
+    # (drop 대신 주변 vertex 이동으로 sliver 회복 시도). hard mesh quality ↑.
+    if enable_phase_a and final_tets.shape[0] > 0:
+        try:
+            from core.generator.native_tet.validate import (
+                smooth_then_drop_slivers,
+            )
+            n_surface_in = int(V.shape[0])
+            locked_smooth = np.arange(min(n_surface_in, final_pts.shape[0]),
+                                       dtype=np.int64)
+            new_pts, new_tets, n_moved, n_drop_jj = smooth_then_drop_slivers(
+                final_pts, final_tets,
+                locked_vertex_ids=locked_smooth,
+                min_dihedral_deg=float(sliver_drop_min_dihedral_deg) * 0.5,
+                min_aspect_regular=float(sliver_drop_max_aspect) * 1.5,
+                n_smooth_iter=2, relax=0.25,
+            )
+            if new_tets.shape[0] >= final_tets.shape[0] * 0.9:
+                # 셀 손실 10% 이내일 때만 채택.
+                final_pts = new_pts
+                final_tets = new_tets
+                if n_moved > 0 or n_drop_jj > 0:
+                    log.info(
+                        "native_tet_smooth_then_drop",
+                        moved=int(n_moved), dropped=int(n_drop_jj),
+                    )
+        except Exception as exc:
+            log.debug("native_tet_smooth_then_drop_skipped", reason=str(exc))
 
     # Round 73-74: extreme sliver 제거 (파라미터 노출). V5 — surface-aware revert.
     if enable_phase_a:
