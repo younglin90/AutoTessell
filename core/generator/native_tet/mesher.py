@@ -2180,10 +2180,10 @@ def generate_native_tet(
                     q_per_tet = tet_shape_quality(final_pts, final_tets)
                     p5 = float(np.percentile(q_per_tet, 5))
 
-                    if p5 >= 0.05:
-                        log.info("native_tet_rrr2_targeted_amips_skip", p5=p5, reason="p5>=0.05")
+                    if p5 >= 0.10:
+                        log.info("native_tet_rrr2_targeted_amips_skip", p5=p5, reason="p5>=0.10")
                     else:
-                        worst_mask = q_per_tet < 0.05
+                        worst_mask = q_per_tet < 0.10
                         worst_v = np.unique(final_tets[worst_mask].ravel())
 
                         n_surface_in = int(V.shape[0])
@@ -2202,7 +2202,7 @@ def generate_native_tet(
                             _res, sm_pts = smooth_amips_analytic(
                                 final_pts, final_tets,
                                 locked_vertex_ids=lock_ids,
-                                n_iter=1,
+                                n_iter=2,
                                 alpha=1.0,
                             )
 
@@ -2221,6 +2221,8 @@ def generate_native_tet(
                                 pre_mean=pre_mean,
                                 post_mean=float(post_q.mean()),
                                 accepted=accepted,
+                                q_thresh=0.10,
+                                n_iter=2,
                             )
             except Exception as exc:
                 log.warning("native_tet_rrr2_skipped", reason=str(exc)[:120])

@@ -1,3 +1,2 @@
 PASS
-
-beta2087 (R25 QQQ4): BL local thickness skeleton (_local_thickness_factor helper, default OFF), 58.8s, tet C/D stable.
+R29 RRR3 (beta2091): targeted AMIPS 임계+iter 강화. mq=0.082 stable, bench 58.8s (-0.6s 개선).

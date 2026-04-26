@@ -1,36 +1,47 @@
-  fid= 100027 hex       : grade=A cells=2 t=0.12s no=0.0° sk=0.0
-  fid= 100027 hex+BL    : grade=A cells=2 t=0.12s no=0.0° sk=0.0 BL=OK prism=72
+  fid= 100027 hex       : grade=A cells=2 t=0.13s no=0.0° sk=0.0
+  fid= 100027 hex+BL    : grade=A cells=2 t=0.13s no=0.0° sk=0.0 BL=OK prism=72
   fid= 100027 poly      : grade=A cells=78 t=0.45s no=43.3° sk=0.19
-  fid= 100027 poly+BL   : grade=A cells=78 t=0.45s no=43.3° sk=0.19 BL=OK prism=1584
-2026-04-26 19:12:47 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=13 n_worst=681 p5=0.0018590368416723385 post_mean=0.05833915688926953 post_min=2.31849482639971e-16 pre_mean=0.05833915688926953 pre_min=2.31849482639971e-16
-2026-04-26 19:12:47 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=13 n_worst=681 p5=0.0018590368416723385 post_mean=0.05833915688926953 post_min=2.31849482639971e-16 pre_mean=0.05833915688926953 pre_min=2.31849482639971e-16
-  fid= 100027 tet       : grade=D cells=1791 t=9.6s mq=0.082
+  fid= 100027 poly+BL   : grade=A cells=78 t=0.44s no=43.3° sk=0.19 BL=OK prism=1584
+2026-04-26 19:17:01 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=14 n_iter=2 n_worst=886 p5=0.0018590368416723385 post_mean=0.058344202297332455 post_min=2.31849482639971e-16 pre_mean=0.05833915688926953 pre_min=2.31849482639971e-16 q_thresh=0.1
+2026-04-26 19:17:01 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=14 n_iter=2 n_worst=886 p5=0.0018590368416723385 post_mean=0.058344202297332455 post_min=2.31849482639971e-16 pre_mean=0.05833915688926953 pre_min=2.31849482639971e-16 q_thresh=0.1
+  fid= 100027 tet       : grade=D cells=1791 t=9.48s mq=0.082
   fid= 100030 hex       : grade=A cells=266 t=0.29s no=39.6° sk=0.21
-  fid= 100027 tet+BL    : grade=D cells=1791 t=9.62s mq=0.082 BL=OK prism=4248
-  fid= 100030 hex+BL    : grade=A cells=266 t=0.33s no=39.6° sk=0.21 BL=OK prism=2676
-2026-04-26 19:12:57 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=16 n_worst=2808 p5=1.3166408013280452e-06 post_mean=0.06634320921736572 post_min=1.2390530249581843e-09 pre_mean=0.06634320921736572 pre_min=1.2390530249581843e-09
-2026-04-26 19:12:57 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=16 n_worst=2808 p5=1.3166408013280452e-06 post_mean=0.06634320921736572 post_min=1.2390530249581843e-09 pre_mean=0.06634320921736572 pre_min=1.2390530249581843e-09
-  fid= 100030 poly      : grade=A cells=6 t=2.87s no=3.3° sk=0.19
-  fid= 100030 poly+BL   : grade=A cells=6 t=2.88s no=3.3° sk=0.19 BL=OK prism=792
-2026-04-26 19:13:00 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=53 n_worst=179 p5=0.0 post_mean=0.07396628545244387 post_min=0.0 pre_mean=0.07396628545244387 pre_min=0.0
-2026-04-26 19:13:00 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=53 n_worst=179 p5=0.0 post_mean=0.07396628545244387 post_min=0.0 pre_mean=0.07396628545244387 pre_min=0.0
-  fid= 100040 tet       : grade=D cells=4710 t=4.52s mq=0.055
+  fid= 100027 tet+BL    : grade=D cells=1791 t=9.46s mq=0.082 BL=OK prism=4248
+  fid= 100030 hex+BL    : grade=A cells=266 t=0.32s no=39.6° sk=0.21 BL=OK prism=2676
+2026-04-26 19:17:10 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=17 n_iter=2 n_worst=3402 p5=1.3166408013280452e-06 post_mean=0.06634320921736572 post_min=1.2390530249581843e-09 pre_mean=0.06634320921736572 pre_min=1.2390530249581843e-09 q_thresh=0.1
+2026-04-26 19:17:10 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=17 n_iter=2 n_worst=3402 p5=1.3166408013280452e-06 post_mean=0.06634320921736572 post_min=1.2390530249581843e-09 pre_mean=0.06634320921736572 pre_min=1.2390530249581843e-09 q_thresh=0.1
+  fid= 100030 poly      : grade=A cells=6 t=2.8s no=3.3° sk=0.19
+  fid= 100030 poly+BL   : grade=A cells=6 t=2.86s no=3.3° sk=0.19 BL=OK prism=792
+2026-04-26 19:17:14 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=54 n_iter=2 n_worst=233 p5=0.0 post_mean=0.07396628545244387 post_min=0.0 pre_mean=0.07396628545244387 pre_min=0.0 q_thresh=0.1
+2026-04-26 19:17:14 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=54 n_iter=2 n_worst=233 p5=0.0 post_mean=0.07396628545244387 post_min=0.0 pre_mean=0.07396628545244387 pre_min=0.0 q_thresh=0.1
+  fid= 100040 tet       : grade=D cells=4710 t=4.29s mq=0.055
   fid= 100040 hex       : grade=A cells=38 t=0.04s no=36.5° sk=0.2
   fid= 100040 hex+BL    : grade=A cells=38 t=0.04s no=36.5° sk=0.2 BL=OK prism=756
-  fid= 100040 poly      : grade=A cells=12 t=1.22s no=41.8° sk=0.14
+  fid= 100040 poly      : grade=A cells=12 t=1.35s no=41.8° sk=0.14
   fid= 100040 tet+BL    : grade=D cells=4710 t=4.32s mq=0.055 BL=OK prism=5844
-  fid= 100040 poly+BL   : grade=A cells=12 t=1.18s no=41.8° sk=0.14 BL=OK prism=288
-2026-04-26 19:13:11 [info     ] native_tet_rrr2_targeted_amips_skip p5=0.05721842235474888 reason='p5>=0.05'
-2026-04-26 19:13:12 [info     ] native_tet_rrr2_targeted_amips_skip p5=0.05721842235474888 reason='p5>=0.05'
-  fid= 100030 tet       : grade=D cells=11979 t=31.75s mq=0.095
+  fid= 100040 poly+BL   : grade=A cells=12 t=1.19s no=41.8° sk=0.14 BL=OK prism=288
+2026-04-26 19:17:24 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=210 n_iter=2 n_worst=505 p5=0.05721842235474888 post_mean=0.23681624622496722 post_min=0.006632378448310056 pre_mean=0.23680083435192212 pre_min=0.006632378448310056 q_thresh=0.1
+2026-04-26 19:17:25 [info     ] native_tet_rrr2_targeted_amips accepted=True n_free=210 n_iter=2 n_worst=505 p5=0.05721842235474888 post_mean=0.23681624622496722 post_min=0.006632378448310056 pre_mean=0.23680083435192212 pre_min=0.006632378448310056 q_thresh=0.1
+  fid= 100030 tet       : grade=D cells=11979 t=31.6s mq=0.095
   fid=1004826 hex       : grade=A cells=60 t=0.06s no=22.4° sk=0.11
   fid=1004826 hex+BL    : grade=A cells=60 t=0.06s no=22.4° sk=0.11 BL=OK prism=960
-  fid=1004826 tet       : grade=C cells=3033 t=17.01s mq=0.208
-  fid=1004826 poly      : grade=A cells=38 t=4.31s no=20.3° sk=0.14
-  fid= 100030 tet+BL    : grade=D cells=11979 t=31.83s mq=0.095 BL=OK prism=12820
-  fid=1004826 tet+BL    : grade=C cells=3033 t=17.28s mq=0.208 BL=OK prism=2416
+  fid=1004826 tet       : grade=C cells=3033 t=17.1s mq=0.208
+  fid=1004826 poly      : grade=A cells=38 t=4.09s no=20.3° sk=0.14
+  fid= 100030 tet+BL    : grade=D cells=11979 t=31.58s mq=0.095 BL=OK prism=12820
+  fid=1004826 tet+BL    : grade=C cells=3033 t=16.99s mq=0.208 BL=OK prism=2416
   fid= 101085 hex       : grade=A cells=28 t=0.04s no=16.2° sk=0.14
   fid= 101085 hex+BL    : grade=A cells=28 t=0.03s no=16.2° sk=0.14 BL=OK prism=612
-  fid= 101085 poly      : grade=A cells=6 t=1.27s no=30.7° sk=0.44
-  fid=1004826 poly+BL   : grade=A cells=38 t=4.34s no=20.3° sk=0.14 BL=OK prism=636
-  fid= 101085 poly+BL   : grade=A cells=6 t=1.44s no=30.7° sk=0.44 BL=FAIL
+  fid= 101085 poly      : grade=A cells=6 t=1.26s no=30.7° sk=0.44
+  fid= 101085 poly+BL   : grade=A cells=6 t=1.21s no=30.7° sk=0.44 BL=FAIL
+  fid=1004826 poly+BL   : grade=A cells=38 t=4.29s no=20.3° sk=0.14 BL=OK prism=636
+2026-04-26 19:17:46 [info     ] native_tet_rrr2_targeted_amips_skip p5=7.030301723464784e-05 reason=no_free_interior_vertices
+2026-04-26 19:17:46 [info     ] native_tet_rrr2_targeted_amips_skip p5=7.030301723464784e-05 reason=no_free_interior_vertices
+  fid= 101085 tet       : grade=C cells=9897 t=19.02s mq=0.127
+  fid= 101085 tet+BL    : grade=C cells=9897 t=18.65s mq=0.127 BL=OK prism=8840
+total time: 58.8s
+  hex +BL : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 5}
+  hex raw : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 0}
+  poly+BL : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 4}
+  polyraw : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 0}
+  tet +BL : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 0, 'B': 0, 'C': 2, 'D': 3, 'bl_ok': 5}
+  tet raw : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 0, 'B': 0, 'C': 2, 'D': 3, 'bl_ok': 0}
