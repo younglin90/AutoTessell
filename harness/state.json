@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2157,
+  "beta": 2158,
   "max_round": 1000,
-  "round": 104,
+  "round": 105,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -51,5 +51,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "RUN_SUMMARY — 3-engine aggregate post-pass count log emitted (native_tet_run_summary / native_hex_run_summary / native_poly_run_summary), pure observability, 22/22 tests PASS, bench 99.0s (beta2157, R104)"
+  "plan_archive": "VAL3 — per-pass negative-volume tracker added (_count_neg_vol in stellar.py, 9 log points in mesher.py); culprits: VVV12 (+50/+24) and VVV13 (+23) introduce new negatives; VVV5b/VVV7 reduce them; 22/22 tests PASS, bench 100.6s (beta2158, R105)"
 }

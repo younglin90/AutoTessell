@@ -2320,6 +2320,14 @@ def generate_native_tet(
     except Exception as exc:
         log.debug("native_tet_post_bsp_pass_skipped", reason=str(exc))
 
+    # VAL3 (beta2158) — initialize negative-volume tracker
+    try:
+        from core.generator.native_tet.stellar import _count_neg_vol as _cnv  # noqa: PLC0415
+        _val3_prev_neg = _cnv(final_pts, final_tets)
+        log.info("native_tet_neg_vol_track", pass_name="init_post_bsp", n_neg=_val3_prev_neg, delta=0)
+    except Exception:
+        _val3_prev_neg = 0
+
     # VVV3b — Stellar queue build + swap-only apply (worst-first 32+44, triple monotone)
     if os.environ.get("AUTO_TESSELL_VVV2_QUEUE", "1") != "0":
         try:
@@ -2365,6 +2373,13 @@ def generate_native_tet(
                 )
         except Exception as exc:
             log.warning("native_tet_vvv2_skipped", reason=str(exc)[:120])
+    try:
+        from core.generator.native_tet.stellar import _count_neg_vol as _cnv3b  # noqa: PLC0415
+        _n3b = _cnv3b(final_pts, final_tets)
+        log.info("native_tet_neg_vol_track", pass_name="VVV3b", n_neg=_n3b, delta=_n3b - _val3_prev_neg)
+        _val3_prev_neg = _n3b
+    except Exception:
+        pass
 
     # VVV5b — flip_edges_54 (Klingner Table 1 5-4 ring removal, strict per-flip guard)
     if not os.environ.get("AUTO_TESSELL_VVV5B_OFF"):
@@ -2398,6 +2413,13 @@ def generate_native_tet(
                 )
         except Exception as exc:
             log.warning("native_tet_vvv5b_skipped", reason=str(exc)[:120])
+    try:
+        from core.generator.native_tet.stellar import _count_neg_vol as _cnv5b  # noqa: PLC0415
+        _n5b = _cnv5b(final_pts, final_tets)
+        log.info("native_tet_neg_vol_track", pass_name="VVV5b", n_neg=_n5b, delta=_n5b - _val3_prev_neg)
+        _val3_prev_neg = _n5b
+    except Exception:
+        pass
 
     # VVV6 — flip_edges_76 (Klingner Table 1 7-6 ring removal, strict per-flip guard)
     if not os.environ.get("AUTO_TESSELL_VVV6_OFF"):
@@ -2465,6 +2487,13 @@ def generate_native_tet(
                 )
         except Exception as exc:
             log.warning("native_tet_vvv7_skipped", reason=str(exc)[:120])
+    try:
+        from core.generator.native_tet.stellar import _count_neg_vol as _cnv7  # noqa: PLC0415
+        _n7 = _cnv7(final_pts, final_tets)
+        log.info("native_tet_neg_vol_track", pass_name="VVV7", n_neg=_n7, delta=_n7 - _val3_prev_neg)
+        _val3_prev_neg = _n7
+    except Exception:
+        pass
 
     # VVV8 — boundary Laplacian + envelope projection (Loseille 2013 §3.2)
     if not os.environ.get("AUTO_TESSELL_VVV8_OFF"):
@@ -2500,6 +2529,13 @@ def generate_native_tet(
                 )
         except Exception as exc:
             log.warning("native_tet_vvv8_skipped", reason=str(exc)[:120])
+    try:
+        from core.generator.native_tet.stellar import _count_neg_vol as _cnv8  # noqa: PLC0415
+        _n8 = _cnv8(final_pts, final_tets)
+        log.info("native_tet_neg_vol_track", pass_name="VVV8", n_neg=_n8, delta=_n8 - _val3_prev_neg)
+        _val3_prev_neg = _n8
+    except Exception:
+        pass
 
     # VVV9 — flip-1-4 Steiner insertion (non-Delaunay, fTetWild §3.4 simplified)
     if not os.environ.get("AUTO_TESSELL_VVV9_OFF"):
@@ -2534,6 +2570,13 @@ def generate_native_tet(
                 )
         except Exception as exc:
             log.warning("native_tet_vvv9_skipped", reason=str(exc)[:120])
+    try:
+        from core.generator.native_tet.stellar import _count_neg_vol as _cnv9  # noqa: PLC0415
+        _n9 = _cnv9(final_pts, final_tets)
+        log.info("native_tet_neg_vol_track", pass_name="VVV9", n_neg=_n9, delta=_n9 - _val3_prev_neg)
+        _val3_prev_neg = _n9
+    except Exception:
+        pass
 
     # VVV10 — flip_face_23 strict per-flip guard (Klingner Table 1: 2→3 face flip)
     if not os.environ.get("AUTO_TESSELL_VVV10_OFF"):
@@ -2636,6 +2679,13 @@ def generate_native_tet(
                 )
         except Exception as exc:
             log.warning("native_tet_vvv12_skipped", reason=str(exc)[:120])
+    try:
+        from core.generator.native_tet.stellar import _count_neg_vol as _cnv12  # noqa: PLC0415
+        _n12 = _cnv12(final_pts, final_tets)
+        log.info("native_tet_neg_vol_track", pass_name="VVV12", n_neg=_n12, delta=_n12 - _val3_prev_neg)
+        _val3_prev_neg = _n12
+    except Exception:
+        pass
 
     # VVV13 — anisotropic tet AR longest-edge split (fTetWild §3.2 style)
     if not os.environ.get("AUTO_TESSELL_VVV13_OFF"):
@@ -2673,6 +2723,13 @@ def generate_native_tet(
                 )
         except Exception as exc:
             log.warning("native_tet_vvv13_skipped", reason=str(exc)[:120])
+    try:
+        from core.generator.native_tet.stellar import _count_neg_vol as _cnv13  # noqa: PLC0415
+        _n13 = _cnv13(final_pts, final_tets)
+        log.info("native_tet_neg_vol_track", pass_name="VVV13", n_neg=_n13, delta=_n13 - _val3_prev_neg)
+        _val3_prev_neg = _n13
+    except Exception:
+        pass
 
     # VVV14 — face-centroid Steiner insertion (worst-face-fan, 1+1→6 sub-tets)
     if not os.environ.get("AUTO_TESSELL_VVV14_OFF"):
@@ -2708,6 +2765,13 @@ def generate_native_tet(
                 )
         except Exception as exc:
             log.warning("native_tet_vvv14_skipped", reason=str(exc)[:120])
+    try:
+        from core.generator.native_tet.stellar import _count_neg_vol as _cnv14  # noqa: PLC0415
+        _n14 = _cnv14(final_pts, final_tets)
+        log.info("native_tet_neg_vol_track", pass_name="VVV14", n_neg=_n14, delta=_n14 - _val3_prev_neg)
+        _val3_prev_neg = _n14
+    except Exception:
+        pass
 
     # TET_QUALITY1 (beta2141) — non-ortho local post-pass (mirror HEX_QUALITY1).
     # env AUTO_TESSELL_TET_QUALITY1_OFF disables. Default ON.

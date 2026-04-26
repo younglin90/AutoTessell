@@ -1,9 +1,9 @@
-file: core/layers/native_bl.py
-functions: generate_native_bl, hex_bl_tangent_smooth log block
-lines_added: 10
+file: core/generator/native_tet/stellar.py
+functions: _count_neg_vol (new)
+lines_added: 12
 lines_removed: 0
 
-file: tests/stl/bench_thingi10k_all_engines.py
-functions: _try_bl, _worker_run
-lines_added: 3
-lines_removed: 2
+file: core/generator/native_tet/mesher.py
+functions: generate_native_tet (VAL3 tracking after VVV3b/5b/7/8/9/12/13/14)
+lines_added: 63
+lines_removed: 0

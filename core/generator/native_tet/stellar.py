@@ -708,6 +708,21 @@ def insert_face_centroid_steiner(
 # ---------------------------------------------------------------------------
 # VAL1 (beta2147) — global negative-volume tet detection + auto-flip
 # ---------------------------------------------------------------------------
+# VAL3 (beta2158) — per-pass negative-volume counter
+# ---------------------------------------------------------------------------
+
+def _count_neg_vol(pts: "np.ndarray", tets: "np.ndarray") -> int:
+    """Return number of tets with negative signed volume (wrong orientation)."""
+    if tets.shape[0] == 0:
+        return 0
+    e0 = pts[tets[:, 1]] - pts[tets[:, 0]]
+    e1 = pts[tets[:, 2]] - pts[tets[:, 0]]
+    e2 = pts[tets[:, 3]] - pts[tets[:, 0]]
+    v = np.einsum("ij,ij->i", np.cross(e0, e1), e2) / 6.0
+    return int((v < 0).sum())
+
+
+# ---------------------------------------------------------------------------
 
 def validate_and_fix_orientations(
     pts: "np.ndarray", tets: "np.ndarray"
