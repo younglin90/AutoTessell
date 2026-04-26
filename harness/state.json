@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2160,
+  "beta": 2161,
   "max_round": 1000,
-  "round": 107,
+  "round": 108,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -53,5 +53,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "BSP_ORIENT_FIX — validate_and_fix_orientations inserted immediately after final_pts/final_tets construction (post-BSP, pre-Phase-A); n_flipped_bsp ~562→0, VAL1 final n_flipped 74→0; worst_mq 0.127 unchanged; 22/22 tests PASS, bench 100.0s (beta2160, R107)"
+  "plan_archive": "HEX_VAL3 — _count_neg_vol_hex helper + per-pass native_hex_neg_vol_track log after post_filter/WWW7/HEX_QUALITY1/VAL2_post; all 5 STL bench fids show delta=0 n_neg=0 (clean); 22/22 tests PASS, bench 101.7s, hex A=5/5 (beta2161, R108)"
 }

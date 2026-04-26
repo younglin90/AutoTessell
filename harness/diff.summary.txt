@@ -1,4 +1,4 @@
-file: core/generator/native_tet/mesher.py
-functions: generate_native_tet (BSP_ORIENT_FIX insertion after final_pts/final_tets construction)
-lines_added: 6
+file: core/generator/native_hex/mesher.py
+functions: _count_neg_vol_hex, generate_native_hex
+lines_added: 38
 lines_removed: 0
