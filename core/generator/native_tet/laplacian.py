@@ -11,6 +11,48 @@ from __future__ import annotations
 
 import numpy as np
 
+# ── TET_CACHE1 (beta2152) — boundary-face memo ────────────────────────────────
+# LRU-1: cache last boundary-face computation keyed by tets.tobytes().
+# Avoids redundant O(T) dict build across VVV7 / VVV8 / TET_QUALITY1 post-passes
+# when tets array has not changed (smoothing only moves pts, not topology).
+_BF_CACHE_KEY: bytes | None = None
+_BF_CACHE_VAL: "tuple[dict[tuple[int,int,int],int], set[int]] | None" = None
+
+
+def _compute_boundary_faces_cached(
+    tets: np.ndarray,
+) -> "tuple[dict[tuple[int,int,int],int], set[int]]":
+    """Return (face_count, boundary_verts) for tets, using a 1-entry memo cache.
+
+    face_count: maps sorted 3-tuple → int (1 = boundary, 2 = interior).
+    boundary_verts: set of vertex indices on boundary faces.
+    Cache is invalidated whenever tets.tobytes() changes (topology mutation).
+    """
+    global _BF_CACHE_KEY, _BF_CACHE_VAL  # noqa: PLW0603
+    key = tets.tobytes()
+    if key == _BF_CACHE_KEY and _BF_CACHE_VAL is not None:
+        return _BF_CACHE_VAL
+
+    face_count: dict[tuple[int, int, int], int] = {}
+    for tet in tets:
+        for combo in (
+            (tet[0], tet[1], tet[2]),
+            (tet[0], tet[1], tet[3]),
+            (tet[0], tet[2], tet[3]),
+            (tet[1], tet[2], tet[3]),
+        ):
+            f: tuple[int, int, int] = tuple(sorted(combo))  # type: ignore[assignment]
+            face_count[f] = face_count.get(f, 0) + 1
+
+    boundary_verts: set[int] = set()
+    for f, cnt in face_count.items():
+        if cnt == 1:
+            boundary_verts.update(f)
+
+    _BF_CACHE_KEY = key
+    _BF_CACHE_VAL = (face_count, boundary_verts)
+    return _BF_CACHE_VAL
+
 
 def _tet_shape_quality(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
     """Per-tet shape quality in [0,1]. Regular tet ≈ 1."""
@@ -67,21 +109,8 @@ def smooth_interior_laplacian(
             vert_tets[v].append(ti)
 
     # ── 2. Identify boundary faces (appear in exactly 1 tet) ─────────────────
-    face_count: dict[tuple[int, int, int], int] = {}
-    for tet in tets:
-        faces = [
-            tuple(sorted((tet[0], tet[1], tet[2]))),
-            tuple(sorted((tet[0], tet[1], tet[3]))),
-            tuple(sorted((tet[0], tet[2], tet[3]))),
-            tuple(sorted((tet[1], tet[2], tet[3]))),
-        ]
-        for f in faces:
-            face_count[f] = face_count.get(f, 0) + 1
-
-    boundary_verts: set[int] = set()
-    for f, cnt in face_count.items():
-        if cnt == 1:
-            boundary_verts.update(f)
+    # TET_CACHE1: reuse cached result when tets topology hasn't changed.
+    _fc, boundary_verts = _compute_boundary_faces_cached(tets)
 
     # ── 3. 2-ring BFS from boundary to mark interior-safe verts ──────────────
     # Build vert → neighbor verts adjacency (edges shared in tets).
@@ -392,21 +421,8 @@ def smooth_boundary_envelope(
         for v in tet:
             vert_tets[v].append(ti)
 
-    face_count: dict[tuple[int, int, int], int] = {}
-    for tet in tets:
-        for combo in [
-            (tet[0], tet[1], tet[2]),
-            (tet[0], tet[1], tet[3]),
-            (tet[0], tet[2], tet[3]),
-            (tet[1], tet[2], tet[3]),
-        ]:
-            f = tuple(sorted(combo))
-            face_count[f] = face_count.get(f, 0) + 1  # type: ignore[assignment]
-
-    boundary_verts: set[int] = set()
-    for f, cnt in face_count.items():
-        if cnt == 1:
-            boundary_verts.update(f)
+    # TET_CACHE1: reuse cached boundary-face result when tets topology unchanged.
+    _fc2, boundary_verts = _compute_boundary_faces_cached(tets)
 
     if not boundary_verts:
         return pts, tets, 0
