@@ -1584,8 +1584,9 @@ def generate_native_tet(
         from core.generator.native_tet.quality import snapshot as _qsnap_flip
         pre_q_f = _qsnap_flip(final_pts, final_tets)
         if float(pre_q_f.mean_q) < 0.25 and final_tets.shape[0] > 100:
-            from core.generator.native_tet.flip import flip_faces_23
+            from core.generator.native_tet.flip import flip_faces_23, flip_edges_32
             t_before = int(final_tets.shape[0])
+            # 2-3 face flip.
             new_tets_f, n_flips = flip_faces_23(
                 final_pts, final_tets,
                 min_quality_improvement=1e-3,
@@ -1602,6 +1603,28 @@ def generate_native_tet(
                         mq_before=round(float(pre_q_f.mean_q), 3),
                         mq_after=round(float(post_q_f.mean_q), 3),
                     )
+            # SS1 (beta1960) — 3-2 edge flip pass: 추가 sliver 타입 깨기.
+            try:
+                pre_q_e = _qsnap_flip(final_pts, final_tets)
+                t_pre_e = int(final_tets.shape[0])
+                new_tets_e, n_e = flip_edges_32(
+                    final_pts, final_tets,
+                    min_quality_improvement=1e-3,
+                    max_flips=2000,
+                )
+                if n_e > 0 and new_tets_e.shape[0] > 50:
+                    post_q_e = _qsnap_flip(final_pts, new_tets_e)
+                    if float(post_q_e.mean_q) >= float(pre_q_e.mean_q) * 0.99:
+                        final_tets = new_tets_e
+                        log.info(
+                            "native_tet_flip_32",
+                            n_flips=int(n_e),
+                            t_before=t_pre_e, t_after=int(new_tets_e.shape[0]),
+                            mq_before=round(float(pre_q_e.mean_q), 3),
+                            mq_after=round(float(post_q_e.mean_q), 3),
+                        )
+            except Exception as exc:
+                log.debug("native_tet_flip_32_skipped", reason=str(exc))
     except Exception as exc:
         log.debug("native_tet_flip_23_skipped", reason=str(exc))
 
