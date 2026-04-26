@@ -28,6 +28,9 @@ from core.utils.logging import get_logger
 
 log = get_logger(__name__)
 
+# WWW1: octree 2:1 balance 시퀀스 스켈레톤 (Marechal 2009 §3) — default OFF
+_WWW1_OCTREE_BALANCE: bool = False
+
 # --------------------------------------------------------------------------
 # 기본 인덱싱 유틸
 # --------------------------------------------------------------------------
@@ -541,3 +544,79 @@ def build_octree_hex_cells(
     }
     log.info("native_hex_octree_done", **stats)
     return fine_pts, cell_face_verts, stats
+
+
+# --------------------------------------------------------------------------
+# WWW1 스켈레톤: node-level octree 2:1 balance helper (Marechal 2009 §3)
+# _WWW1_OCTREE_BALANCE = False 이므로 호출 경로 없음 — 영향 없음.
+# --------------------------------------------------------------------------
+
+def _balance_octree_2to1_nodes(
+    levels: dict[tuple[int, int, int], int],
+) -> dict[tuple[int, int, int], int]:
+    """BFS 로 26-이웃 leaf level diff > 1 인 셀을 split(level += 1) 하여
+    2:1 balance 를 만족하는 levels dict 를 반환한다.
+
+    Parameters
+    ----------
+    levels:
+        {(ix, iy, iz): refinement_level} 노드 레벨 딕셔너리.
+        빈 딕셔너리나 단일 노드 입력이면 변경 없이 반환.
+
+    Returns
+    -------
+    dict[tuple[int, int, int], int]
+        2:1 balance 가 보장된 levels 사본.
+    """
+    from collections import deque
+
+    if len(levels) <= 1:
+        return dict(levels)
+
+    balanced = dict(levels)
+
+    # 26-이웃 오프셋 (face + edge + corner)
+    _NEIGHBOR_OFFSETS: list[tuple[int, int, int]] = [
+        (di, dj, dk)
+        for di in (-1, 0, 1)
+        for dj in (-1, 0, 1)
+        for dk in (-1, 0, 1)
+        if not (di == 0 and dj == 0 and dk == 0)
+    ]
+
+    # 초기 큐: level diff > 1 이 존재하는 셀 전부
+    queue: deque[tuple[int, int, int]] = deque()
+    for cell in balanced:
+        for di, dj, dk in _NEIGHBOR_OFFSETS:
+            nb = (cell[0] + di, cell[1] + dj, cell[2] + dk)
+            if nb in balanced and abs(balanced[cell] - balanced[nb]) > 1:
+                queue.append(cell)
+                break
+
+    visited_in_queue: set[tuple[int, int, int]] = set(queue)
+
+    while queue:
+        cell = queue.popleft()
+        visited_in_queue.discard(cell)
+
+        cell_lev = balanced.get(cell, 0)
+        for di, dj, dk in _NEIGHBOR_OFFSETS:
+            nb = (cell[0] + di, cell[1] + dj, cell[2] + dk)
+            if nb not in balanced:
+                continue
+            nb_lev = balanced[nb]
+            if cell_lev - nb_lev > 1:
+                # nb 의 level 을 올려 diff 를 1 로 줄임
+                balanced[nb] = cell_lev - 1
+                if nb not in visited_in_queue:
+                    queue.append(nb)
+                    visited_in_queue.add(nb)
+            elif nb_lev - cell_lev > 1:
+                # cell 의 level 을 올림
+                balanced[cell] = nb_lev - 1
+                cell_lev = balanced[cell]
+                if cell not in visited_in_queue:
+                    queue.append(cell)
+                    visited_in_queue.add(cell)
+
+    return balanced
