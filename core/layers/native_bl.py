@@ -370,6 +370,76 @@ def _prism_aspect_ratio_stats(
     return n_degenerate, float(max_ratio)
 
 
+def _curvature_adaptive_thickness(
+    surface_pts: np.ndarray,
+    surface_faces: list[list[int]],
+    wall_vert_indices: list[int],
+    base_thickness: float,
+    *,
+    max_aspect: float = 50.0,
+    curvature_window: int = 5,
+) -> np.ndarray:
+    """BL1 — per-vertex adaptive first-layer thickness (cfMesh-style aspect cap).
+
+    Algorithm (clean-room, §cfMesh generateBoundaryLayers maxFirstLayerThickness):
+      1. Discrete mean curvature via Laplacian magnitude: curv[v] = ||Σ(p_j - p_v)|| / N.
+      2. local_edge_min[v] = min incident edge length over wall faces.
+      3. max_safe = local_edge_min / max_aspect  (prism aspect ratio cap).
+      4. thickness[v] = min(base_thickness, max_safe).
+      5. Sharp region (curv > 2×median): additional 0.5× scale.
+
+    Returns:
+        np.ndarray shape (len(wall_vert_indices),) — per-vertex first thickness.
+    """
+    if not wall_vert_indices or not surface_faces:
+        return np.full(len(wall_vert_indices), base_thickness, dtype=np.float64)
+
+    # build adjacency: vertex → set of neighbouring vertices (wall faces only)
+    vert_set = set(wall_vert_indices)
+    neighbours: dict[int, list[int]] = {v: [] for v in wall_vert_indices}
+    for f in surface_faces:
+        if len(f) < 2:
+            continue
+        for ai in range(len(f)):
+            a = int(f[ai])
+            b = int(f[(ai + 1) % len(f)])
+            if a in neighbours:
+                neighbours[a].append(b)
+            if b in neighbours:
+                neighbours[b].append(a)
+
+    n_verts = len(wall_vert_indices)
+    thickness = np.full(n_verts, base_thickness, dtype=np.float64)
+    curvatures = np.zeros(n_verts, dtype=np.float64)
+
+    for vi, v in enumerate(wall_vert_indices):
+        nbrs = neighbours[v]
+        if not nbrs:
+            continue
+        pv = surface_pts[v]
+        # discrete Laplacian magnitude as mean curvature proxy
+        lap = np.zeros(3, dtype=np.float64)
+        edge_lens: list[float] = []
+        for nb in nbrs:
+            diff = surface_pts[nb] - pv
+            lap += diff
+            edge_lens.append(float(np.linalg.norm(diff)))
+        curvatures[vi] = float(np.linalg.norm(lap)) / len(nbrs)
+        # local edge min → aspect ratio cap
+        if edge_lens:
+            local_edge_min = float(min(edge_lens))
+            max_safe = local_edge_min / max_aspect
+            thickness[vi] = min(base_thickness, max_safe)
+
+    # sharp region: curv > 2 × median → halve thickness (cfMesh rule)
+    if n_verts > 1:
+        med = float(np.median(curvatures))
+        sharp_mask = curvatures > (2.0 * med)
+        thickness[sharp_mask] *= 0.5
+
+    return thickness
+
+
 def _detect_feature_vertices(
     points: np.ndarray,
     faces: list[list[int]],
@@ -928,6 +998,47 @@ def generate_native_bl(
             "native_bl_per_vertex_cum_activated", component="native_bl", phase="beta95",
             n_vertices=len(vertex_cum_map),
         )
+
+    # 4e) BL1 — curvature-adaptive per-vertex first thickness (default ON).
+    #     Only activates when user has NOT set per_vertex_first_thickness explicitly.
+    #     Computes per-vertex first layer thickness using local curvature + aspect cap.
+    if not cfg.per_vertex_first_thickness and not use_per_vertex_cum:
+        try:
+            adap_thick = _curvature_adaptive_thickness(
+                points, [faces[fi] for fi in wall_face_indices], wall_vert_indices,
+                base_thickness=cfg.first_thickness,
+                max_aspect=cfg.aspect_ratio_threshold,
+            )
+            # Apply global bbox/local safety scale already applied to thicknesses[0]
+            global_scale = (
+                float(thicknesses[0]) / cfg.first_thickness
+                if cfg.first_thickness > 1e-30 else 1.0
+            )
+            adap_thick *= global_scale
+            use_per_vertex_cum = True
+            for vi_bl1, v in enumerate(wall_vert_indices):
+                ft = float(adap_thick[vi_bl1])
+                v_thick = np.array(
+                    [ft * (cfg.growth_ratio ** i) for i in range(cfg.num_layers)],
+                    dtype=np.float64,
+                )
+                v_thick *= vertex_scale.get(v, 1.0)
+                vertex_cum_map[v] = np.concatenate(([0.0], np.cumsum(v_thick)))
+            _adap_min = float(adap_thick.min())
+            _adap_max = float(adap_thick.max())
+            _adap_mean = float(adap_thick.mean())
+            log.info(
+                "native_bl_curvature_adaptive", component="native_bl", phase="BL1",
+                n_verts=len(wall_vert_indices),
+                thickness_min=round(_adap_min, 6),
+                thickness_max=round(_adap_max, 6),
+                thickness_mean=round(_adap_mean, 6),
+            )
+        except Exception as _bl1_exc:
+            import logging as _lg
+            _lg.getLogger(__name__).warning(
+                "native_bl_BL1_curvature_skipped reason=%s", str(_bl1_exc)[:200]
+            )
 
     # 5-7) Prism 생성 내부 함수 (beta93: shrink iteration 에서 반복 호출 가능)
     def _run_prism_pass(
