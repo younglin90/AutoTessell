@@ -228,6 +228,50 @@ def validate_poly_cell_volumes(
     return n_negative, n_degenerate
 
 
+# POL_VAL3 (beta2162) — lightweight count-only helper for per-pass neg-vol tracking.
+# Mirrors R105 VAL3 (tet) and R108 HEX_VAL3 patterns. Default ON.
+def _count_neg_vol_poly(
+    cells: "list[list[list[int]]]",
+    points: "np.ndarray",
+    *,
+    degenerate_eps: float = 1e-20,
+) -> int:
+    """Count cells with negative signed volume (fan-tet from centroid).
+
+    Lightweight: no per-cell logging, count only. Used for per-pass delta tracking.
+    Returns n_negative (degenerate cells excluded from count).
+    """
+    import os as _os  # noqa: PLC0415
+    if _os.environ.get("AUTO_TESSELL_VAL2_OFF"):
+        return 0
+    pts = np.asarray(points, dtype=np.float64)
+    n_negative = 0
+    for cell_faces in cells:
+        cell_vidx: list[int] = []
+        for face in cell_faces:
+            cell_vidx.extend(face)
+        unique_vidx = list(dict.fromkeys(cell_vidx))
+        if len(unique_vidx) < 4:
+            continue
+        cell_verts = pts[unique_vidx]
+        centroid = cell_verts.mean(axis=0)
+        total_vol = 0.0
+        for face in cell_faces:
+            if len(face) < 3:
+                continue
+            for k in range(1, len(face) - 1):
+                a = pts[face[0]]
+                b = pts[face[k]]
+                c = pts[face[k + 1]]
+                total_vol += float(np.dot(
+                    a - centroid,
+                    np.cross(b - centroid, c - centroid),
+                ))
+        if abs(total_vol) >= float(degenerate_eps) and total_vol < 0.0:
+            n_negative += 1
+    return n_negative
+
+
 def _write_polymesh_poly(
     vertices: np.ndarray,
     cells: list[list[list[int]]],  # cell 별 face (vertex index list)
@@ -1443,6 +1487,15 @@ def _generate_native_poly_voronoi_inner(
         ]
         final_cells.append(remapped_cell)
 
+    # POL_VAL3 (beta2162) — per-pass neg-vol tracker. Mirror R105/R108.
+    _pol_val3_prev = _count_neg_vol_poly(final_cells, final_vertices)
+    log.info(
+        "native_poly_neg_vol_track",
+        pass_name="initial_voronoi",
+        n_neg=_pol_val3_prev,
+        delta=0,
+    )
+
     if _TTT3_POLY_BL_EXTRUDE_ENABLE and _wall_adj:
         bbox_diag = float(np.linalg.norm(V.max(0) - V.min(0)))
         _n_cells_pre = len(final_cells)
@@ -1452,6 +1505,14 @@ def _generate_native_poly_voronoi_inner(
         )
         n_prism_added = len(final_cells) - _n_cells_pre
         log.info("ttt4_poly_bl_extruded", n_added=n_prism_added)
+        _pol_val3_cur = _count_neg_vol_poly(final_cells, final_vertices)
+        log.info(
+            "native_poly_neg_vol_track",
+            pass_name="POL_BL1_prism_extrude",
+            n_neg=_pol_val3_cur,
+            delta=_pol_val3_cur - _pol_val3_prev,
+        )
+        _pol_val3_prev = _pol_val3_cur
 
         # POL_LAYERS — multi-layer BL with geometric growth (cfMesh nLayers=2 default).
         # Uses _geometric_layer_thickness from core.layers.native_bl (BL2, 1.2× ratio).
@@ -1504,6 +1565,14 @@ def _generate_native_poly_voronoi_inner(
             log.info("pol_layers_summary", n_layers=_n_layers_added, n_total_prism=len(final_cells) - _n_cells_pre)
         except Exception as _e:
             log.info("pol_layers_skipped", reason=str(_e)[:120])
+        _pol_val3_cur = _count_neg_vol_poly(final_cells, final_vertices)
+        log.info(
+            "native_poly_neg_vol_track",
+            pass_name="POL_LAYERS",
+            n_neg=_pol_val3_cur,
+            delta=_pol_val3_cur - _pol_val3_prev,
+        )
+        _pol_val3_prev = _pol_val3_cur
 
         # POL_BL_TANGENT (beta2155) — tangential Laplacian of outer prism-layer verts.
         # Poly-specific path: poly extrudes its own prisms (not via native_bl.py shared path),
@@ -1521,6 +1590,14 @@ def _generate_native_poly_voronoi_inner(
                 )
             except Exception as _tang_exc:
                 log.warning("poly_bl_tangent_smooth_skipped", reason=str(_tang_exc)[:120])
+            _pol_val3_cur = _count_neg_vol_poly(final_cells, final_vertices)
+            log.info(
+                "native_poly_neg_vol_track",
+                pass_name="POL_BL_TANGENT",
+                n_neg=_pol_val3_cur,
+                delta=_pol_val3_cur - _pol_val3_prev,
+            )
+            _pol_val3_prev = _pol_val3_cur
 
     # Y2 (beta1660) — Voronoi cell vertex Laplacian smoothing (skewness 잡기).
     # 평균 skewness 100+ → < 5 목표. quality 검증 후 채택 (revert 가드).
@@ -1601,11 +1678,29 @@ def _generate_native_poly_voronoi_inner(
     except Exception as exc:
         log.debug("native_poly_smooth_skipped", reason=str(exc))
 
+    # POL_VAL3 — track after PPP9b/smooth (best-of-three drop+smooth pass).
+    _pol_val3_cur = _count_neg_vol_poly(final_cells, final_vertices)
+    log.info(
+        "native_poly_neg_vol_track",
+        pass_name="PPP9b_smooth",
+        n_neg=_pol_val3_cur,
+        delta=_pol_val3_cur - _pol_val3_prev,
+    )
+    _pol_val3_prev = _pol_val3_cur
+
     # VAL2 (beta2148) — negative-volume poly validation (default ON).
     try:
         validate_poly_cell_volumes(final_cells, final_vertices)
     except Exception as _val2_exc:
         log.debug("native_poly_val2_skipped", reason=str(_val2_exc))
+    # POL_VAL3 — final pass tracking (VAL2 post).
+    _pol_val3_final = _count_neg_vol_poly(final_cells, final_vertices)
+    log.info(
+        "native_poly_neg_vol_track",
+        pass_name="VAL2_post",
+        n_neg=_pol_val3_final,
+        delta=_pol_val3_final - _pol_val3_prev,
+    )
 
     try:
         stats = _write_polymesh_poly(final_vertices, final_cells, case_dir)
