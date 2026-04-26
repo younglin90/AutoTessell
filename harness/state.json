@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2112,
+  "beta": 2113,
   "max_round": 1000,
-  "round": 54,
+  "round": 55,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,22 +26,22 @@
   "last_mq": {
     "tet_worst": 0.082
   },
-  "last_bench_time": 57.4,
+  "last_bench_time": 59.1,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
-    "WWW4",
     "WWW5",
-    "TTT8",
-    "UUU7"
+    "WWW6",
+    "UUU7",
+    "TTT7c"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "UUU7 — face split Laplacian cleanup"
+  "plan_archive": "WWW6 — native_hex templating 활성 log only"
 }

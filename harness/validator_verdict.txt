@@ -1,3 +1,2 @@
-PASS
-
-Round 49 — UUU6 (beta2107) native_tet face split: regression 35/35, bench 58.0s (stable), tet C/D stable, worst=0.082, n_si=0 no-op.
+PASS — R55 WWW6 (native_hex templating log-only, beta2113).
+Regression 35/35 PASS. Bench 59.1s (≤720s). Hex A=5/5 stable, all grades unchanged, BL ok 5/5.

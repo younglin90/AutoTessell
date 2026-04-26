@@ -35,7 +35,7 @@ _WWW1_OCTREE_BALANCE: bool = True
 _WWW3_SURFACE_REFINE: bool = True
 
 # WWW5: octree cell templating 스켈레톤 (Marechal 2009 §4) — default OFF
-_WWW5_TEMPLATING: bool = False
+_WWW5_TEMPLATING: bool = True
 
 # WWW5: 26 cell type → pre-defined hex subdivision 패턴 (WWW6 에서 채울 자리)
 _TEMPLATE_PATTERNS: dict[str, list] = {}
@@ -358,6 +358,24 @@ def _build_nlevel_cells(
                         # Fine cell 의 faces — 인접 cell 과의 conformal 연결은
                         # 단순 6-quad (fine 레벨끼리는 크기 동일)
                         faces_of_cell = [[hex8[v] for v in lf] for lf in _HEX_FACES]
+                        # WWW6: templating 활성 — cell type 식별 + log only
+                        if _WWW5_TEMPLATING:
+                            class _N:
+                                level = target_lev
+                            _nbrs: dict[str, object | None] = {}
+                            for _fdir, (_di, _dj, _dk) in zip(
+                                ("x+", "x-", "y+", "y-", "z+", "z-"),
+                                ((1,0,0),(-1,0,0),(0,1,0),(0,-1,0),(0,0,1),(0,0,-1)),
+                            ):
+                                _ni, _nj, _nk = fi+_di, fj+_dj, fk+_dk
+                                if 0<=_ni<nfx and 0<=_nj<nfy and 0<=_nk<nfz and bool(inside_3d[_ni,_nj,_nk]):
+                                    class _NB:
+                                        level = int(level_3d[_ni, _nj, _nk])
+                                    _nbrs[_fdir] = _NB()
+                                else:
+                                    _nbrs[_fdir] = None
+                            _ctype = _classify_cell_type(_N(), _nbrs)
+                            log.debug("wwww6_cell_type", ctype=_ctype, fi=fi, fj=fj, fk=fk)
                         cell_face_verts.append(faces_of_cell)
                         covered[fi, fj, fk] = True
                         continue
