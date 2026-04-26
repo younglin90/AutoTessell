@@ -1,4 +1,4 @@
 file: core/generator/native_tet/stellar.py
-functions: compute_edge_incident_tets_cached, _invalidate_edge_incident_cache, split_sliver_longest_edge, split_anisotropic_tet_edges
-lines_added: 66
-lines_removed: 12
+functions: compute_face_incident_tets_cached, _invalidate_face_incident_cache, insert_face_centroid_steiner
+lines_added: 51
+lines_removed: 7

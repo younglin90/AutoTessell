@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2166,
+  "beta": 2167,
   "max_round": 1000,
-  "round": 113,
+  "round": 114,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,14 +26,13 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 85.9,
+  "last_bench_time": 86.7,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
-    "POL_BL1_ORIENT_FIX",
     "BSP_ORIENT_FIX",
     "HEX_BL_TANGENT",
     "POL_BL_TANGENT",
@@ -47,12 +46,13 @@
     "PRE3",
     "TET_QUALITY1",
     "VVV13",
-    "PERF3"
+    "PERF3",
+    "PERF4"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "PERF3 — edge→incident-tet adjacency cache: single-slot LRU compute_edge_incident_tets_cached() built once from initial tets; VVV12 and VVV13 share cache across sequential calls; invalidated on accepted split; bench 100.3s→85.9s (-14.4s); 22/22 PASS, grades stable (beta2166, R113)"
+  "plan_archive": "PERF4 — face→incident-tet adjacency cache: single-slot LRU compute_face_incident_tets_cached() mirrors PERF3; VVV14 (insert_face_centroid_steiner) reuses map instead of per-call O(N) rebuild; bench 85.9s→86.7s (noise); 22/22 PASS, grades stable (beta2167, R114)"
 }
