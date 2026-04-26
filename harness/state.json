@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2158,
+  "beta": 2159,
   "max_round": 1000,
-  "round": 105,
+  "round": 106,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -44,12 +44,13 @@
     "POL_QUALITY1",
     "PRE3",
     "TET_QUALITY1",
-    "VVV13"
+    "VVV13",
+    "VVV12_ORIENT_FIX"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "VAL3 — per-pass negative-volume tracker added (_count_neg_vol in stellar.py, 9 log points in mesher.py); culprits: VVV12 (+50/+24) and VVV13 (+23) introduce new negatives; VVV5b/VVV7 reduce them; 22/22 tests PASS, bench 100.6s (beta2158, R105)"
+  "plan_archive": "VVV12_ORIENT_FIX — _orient_tet() helper added to stellar.py; applied to VVV12 split_sliver_longest_edge and VVV13 split_anisotropic_tet_edges sub-tet construction; eliminates ~73 wrong-orient tets/fid; 22/22 tests PASS, bench 99.7s (beta2159, R106)"
 }

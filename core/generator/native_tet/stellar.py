@@ -12,6 +12,16 @@ import numpy as np
 _VVV1_STELLAR_QUEUE: bool = True
 
 
+def _orient_tet(pts_list: list, tet: list[int]) -> list[int]:
+    """VVV12_ORIENT_FIX — ensure positive signed volume; swap last two verts if negative."""
+    a, b, c, d = pts_list[tet[0]], pts_list[tet[1]], pts_list[tet[2]], pts_list[tet[3]]
+    vol6 = float(np.dot(np.array(b) - np.array(a),
+                        np.cross(np.array(c) - np.array(a), np.array(d) - np.array(a))))
+    if vol6 < 0.0:
+        return [tet[0], tet[1], tet[3], tet[2]]
+    return tet
+
+
 def _tet_quality(pts: np.ndarray, tet: np.ndarray) -> float:
     """Mean-ratio quality for a single tet (0..1, higher is better)."""
     a, b, c, d = pts[tet[0]], pts[tet[1]], pts[tet[2]], pts[tet[3]]
@@ -296,6 +306,9 @@ def split_sliver_longest_edge(
             st1 = [m_idx if v == edge_i else v for v in tet]
             # Sub-tet 2: replace edge_j with m_idx.
             st2 = [m_idx if v == edge_j else v for v in tet]
+            # VVV12_ORIENT_FIX: ensure positive signed volume.
+            st1 = _orient_tet(pts_list, st1)
+            st2 = _orient_tet(pts_list, st2)
             new_tets.append(np.array(st1, dtype=tets.dtype))
             new_tets.append(np.array(st2, dtype=tets.dtype))
 
@@ -508,6 +521,9 @@ def split_anisotropic_tet_edges(
             tet = list(int(v) for v in tets_list[ti])
             st1 = [m_idx if v == edge_i else v for v in tet]
             st2 = [m_idx if v == edge_j else v for v in tet]
+            # VVV12_ORIENT_FIX: ensure positive signed volume.
+            st1 = _orient_tet(pts_list, st1)
+            st2 = _orient_tet(pts_list, st2)
             new_tets.append(np.array(st1, dtype=tets.dtype))
             new_tets.append(np.array(st2, dtype=tets.dtype))
 
