@@ -1199,34 +1199,57 @@ def _generate_native_poly_voronoi_inner(
         n_prism_added = len(final_cells) - _n_cells_pre
         log.info("ttt4_poly_bl_extruded", n_added=n_prism_added)
 
-        # TTT8 — 2nd BL layer (expansion ratio 1.5, Garimella 2003).
-        _fv_1st = final_vertices
-        _fc_1st = final_cells
+        # POL_LAYERS — multi-layer BL with geometric growth (cfMesh nLayers=2 default).
+        # Uses _geometric_layer_thickness from core.layers.native_bl (BL2, 1.2× ratio).
+        # Layer chain: wall → layer1 (t1) → layer2 (t1*1.2) → outer.
+        # Guards applied per-layer; truncate chain at last valid layer (don't reject all).
+        _POL_LAYERS_N: int = 2  # algorithmic cap (not a sweep param).
         try:
-            # 1st layer 의 extruded wall vertex 집합을 새 wall 로 재구성.
-            _n_orig_v = len(_fv_1st)
-            _wall_adj_2 = _find_wall_adjacent_cells(
-                list(range(len(final_cells) - n_prism_added, len(final_cells))),
-                {}, F,
-            )
-            if not _wall_adj_2:
-                # fallback: 1st-pass prism index 직접 사용.
-                _wall_adj_2 = list(range(len(final_cells) - n_prism_added, len(final_cells)))
-            _step_2 = bbox_diag * 0.005 * 0.95 * 1.5
-            _fv_2nd, _fc_2nd = _extrude_prism_layer(
-                _wall_adj_2, final_vertices, final_cells, cell_owner_seed,
-                V, F, step=_step_2, max_extrude=100,
-            )
-            n_prism_added_2 = len(_fc_2nd) - len(final_cells)
-            if n_prism_added_2 > 0 and len(_fc_2nd) > _n_cells_pre:
-                final_vertices, final_cells = _fv_2nd, _fc_2nd
-                log.info("ttt8_poly_bl_2nd_layer", n_added=n_prism_added_2, step=_step_2)
-            else:
-                log.info("ttt8_poly_bl_2nd_layer_skipped", reason="no_cells_added")
+            from core.layers.native_bl import _geometric_layer_thickness as _glt
+            _first_step = bbox_diag * 0.005 * 0.95
+            _layer_thicknesses = _glt(_first_step, _POL_LAYERS_N, growth_ratio=1.2)
+            # layer 0 already extruded above; iterate remaining layers.
+            _n_layers_added = 1  # 1st layer done
+            _prev_n_prism = n_prism_added
+            for _li in range(1, _POL_LAYERS_N):
+                _fv_prev = final_vertices
+                _fc_prev = final_cells
+                try:
+                    _wall_adj_li = _find_wall_adjacent_cells(
+                        list(range(len(final_cells) - _prev_n_prism, len(final_cells))),
+                        {}, F,
+                    )
+                    if not _wall_adj_li:
+                        _wall_adj_li = set(range(
+                            len(final_cells) - _prev_n_prism, len(final_cells)
+                        ))
+                    _step_li = float(_layer_thicknesses[_li])
+                    _fv_li, _fc_li = _extrude_prism_layer(
+                        _wall_adj_li, final_vertices, final_cells, cell_owner_seed,
+                        V, F, step=_step_li, max_extrude=100,
+                    )
+                    _n_added_li = len(_fc_li) - len(final_cells)
+                    if _n_added_li > 0:
+                        final_vertices, final_cells = _fv_li, _fc_li
+                        _prev_n_prism = _n_added_li
+                        _n_layers_added += 1
+                        log.info(
+                            "pol_layers_layer_added",
+                            layer=_li + 1,
+                            n_added=_n_added_li,
+                            step=round(_step_li, 6),
+                        )
+                    else:
+                        # guard failed for all prisms in this layer — truncate chain.
+                        log.info("pol_layers_layer_truncated", layer=_li + 1, reason="no_cells_added")
+                        break
+                except Exception as _le:
+                    final_vertices, final_cells = _fv_prev, _fc_prev
+                    log.info("pol_layers_layer_reverted", layer=_li + 1, err=str(_le)[:80])
+                    break
+            log.info("pol_layers_summary", n_layers=_n_layers_added, n_total_prism=len(final_cells) - _n_cells_pre)
         except Exception as _e:
-            # 2nd layer 실패 시 1st 결과로 revert (grade 가드).
-            final_vertices, final_cells = _fv_1st, _fc_1st
-            log.info("ttt8_poly_bl_2nd_layer_reverted", err=str(_e))
+            log.info("pol_layers_skipped", reason=str(_e)[:120])
 
     # Y2 (beta1660) — Voronoi cell vertex Laplacian smoothing (skewness 잡기).
     # 평균 skewness 100+ → < 5 목표. quality 검증 후 채택 (revert 가드).

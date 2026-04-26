@@ -1,8 +1,8 @@
 {
   "target_engine": "poly",
-  "beta": 2143,
+  "beta": 2144,
   "max_round": 1000,
-  "round": 90,
+  "round": 91,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,13 +26,14 @@
   "last_mq": {
     "tet_worst": 0.095
   },
-  "last_bench_time": 81.3,
+  "last_bench_time": 81.2,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "POL_LAYERS",
     "POL_BL1",
     "TET_BL1",
     "HEX_BL1",
@@ -40,13 +41,12 @@
     "HEX_QUALITY1",
     "POL_QUALITY1",
     "PRE3",
-    "TET_QUALITY1",
-    "BL3"
+    "TET_QUALITY1"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BL3 — relative first-layer thickness uniformization (cfMesh relativeSizes / uniform y+)"
+  "plan_archive": "POL_LAYERS — native_poly+BL 2-layer geometric extrusion (cfMesh nLayers=2, 1.2x growth ratio)"
 }
