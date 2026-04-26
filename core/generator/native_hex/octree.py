@@ -32,7 +32,7 @@ log = get_logger(__name__)
 _WWW1_OCTREE_BALANCE: bool = True
 
 # WWW3: surface 근접 cell refinement 스켈레톤 (snappy castellated 모티프) — default OFF
-_WWW3_SURFACE_REFINE: bool = False
+_WWW3_SURFACE_REFINE: bool = True
 
 # --------------------------------------------------------------------------
 # 기본 인덱싱 유틸
@@ -523,6 +523,8 @@ def build_octree_hex_cells(
                 if fine_inside_3d[i, j, k] and level_3d[i, j, k] > 0
             }
             _balanced = _balance_octree_2to1_nodes(_levels_dict)
+            _refined = _refine_surface_adjacent_nodes(_balanced, surface_V, surface_F, max_refine=20)
+            _balanced = _balance_octree_2to1_nodes(_refined)
             for (i, j, k), lv in _balanced.items():
                 if lv > level_3d[i, j, k]:
                     level_3d[i, j, k] = np.int8(min(lv, n_lev))
