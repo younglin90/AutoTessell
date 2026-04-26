@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2085,
+  "beta": 2086,
   "max_round": 1000,
-  "round": 21,
+  "round": 24,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,17 +26,17 @@
   "last_mq": {
     "tet_worst": 0.208
   },
-  "last_bench_time": 59.2,
+  "last_bench_time": 58.8,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
-    "PPP4",
     "PPP5",
     "PPP6",
-    "QQQ1b"
+    "QQQ1b",
+    "QQQ3"
   ],
   "rotate_targets": [
     "tet"

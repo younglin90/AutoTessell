@@ -51,20 +51,54 @@ log = get_logger(__name__)
 # QQQ1 — Garimella 2003 §3 front-collision (default OFF, skeleton only)
 # ---------------------------------------------------------------------------
 
-_BL_QQQ1_FRONT_COLLISION = False
+_BL_QQQ1_FRONT_COLLISION = True
 
 
 def _check_prism_front_collision(
     front_normals: np.ndarray,
     front_points: np.ndarray,
-    step: int,
+    step: float,
 ) -> bool:
-    """Garimella 2003 §3 참고: advancing layer front-collision 검사 스켈레톤.
+    """Garimella 2003 §3 참고: advancing layer front-collision 검사 (QQQ3 vectorize).
 
-    현재 _BL_QQQ1_FRONT_COLLISION=False 이므로 호출되지 않음.
-    QQQ2 카드에서 실제 충돌 검사 로직을 구현 예정.
+    cosine 기반 O(N²)→numpy 1회 + max_pairs 가드.
+    front_normals: (N,3) 단위 법선, front_points: (N,3) 전진면 점, step: 현재 layer 두께.
     """
-    raise NotImplementedError("QQQ2 에서 구현 예정")
+    try:
+        n = front_normals
+        p = front_points
+        max_check_pairs = 200
+
+        # N×N cosine 행렬 (self-dot product)
+        dots = n @ n.T
+        np.fill_diagonal(dots, 0)
+
+        # 거의 반대 방향(|dot| > 0.5, dot < -0.5) 인 후보 쌍 추출 (i < j)
+        rows, cols = np.where(dots < -0.5)
+        mask_ij = rows < cols
+        rows, cols = rows[mask_ij], cols[mask_ij]
+
+        if len(rows) == 0:
+            return False
+
+        # max_check_pairs 가드: 후보 > 200 이면 가장 음수 200 쌍만
+        if len(rows) > max_check_pairs:
+            scores = dots[rows, cols]
+            idx = np.argpartition(scores, max_check_pairs)[:max_check_pairs]
+            rows, cols = rows[idx], cols[idx]
+
+        # 각 후보 쌍의 거리 검사
+        diffs = p[rows] - p[cols]
+        dists = np.linalg.norm(diffs, axis=1)
+        if np.any(dists < step):
+            return True
+        return False
+    except Exception as exc:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "native_bl_qqq3_skipped reason=%s", str(exc)[:120]
+        )
+        return False
 
 
 # ---------------------------------------------------------------------------
