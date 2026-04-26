@@ -747,6 +747,18 @@ def generate_native_hex(
     except Exception as exc:
         log.debug("native_hex_plane_cov_skipped", reason=str(exc))
 
+    # RUN_SUMMARY (beta2157) — aggregate post-pass counts (observability only).
+    log.info(
+        "native_hex_run_summary",
+        n_cells=_n_kept,
+        n_points=int(stats["num_points"]),
+        grade=grade,
+        n_val_flipped=int(locals().get("_val2_flipped", 0) or 0),
+        n_val_degen=int(locals().get("_val2_degen", 0) or 0),
+        fill_ratio=round(_fill, 4),
+        elapsed=round(time.perf_counter() - t0, 3),
+    )
+
     return NativeHexResult(
         success=True,
         elapsed=time.perf_counter() - t0,

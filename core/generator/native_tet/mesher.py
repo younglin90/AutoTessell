@@ -2874,12 +2874,16 @@ def generate_native_tet(
 
     # VAL1 (beta2147) — final orientation validate + auto-flip (default ON).
     # Set env AUTO_TESSELL_VAL1_OFF=1 to disable.
+    _val1_n_flipped = 0
+    _val1_n_degen = 0
     if os.environ.get("AUTO_TESSELL_VAL1_OFF", "0") != "1":
         try:
             from core.generator.native_tet.stellar import (  # noqa: PLC0415
                 validate_and_fix_orientations as _vfo,
             )
             final_tets, _n_flipped, _n_degen = _vfo(final_pts, final_tets)
+            _val1_n_flipped = int(_n_flipped)
+            _val1_n_degen = int(_n_degen)
             log.info(
                 "native_tet_validate",
                 n_flipped=_n_flipped,
@@ -2892,6 +2896,20 @@ def generate_native_tet(
                 )
         except Exception as _val1_exc:
             log.debug("native_tet_validate_skipped", reason=str(_val1_exc)[:120])
+
+    # RUN_SUMMARY (beta2157) — aggregate post-pass counts (observability only).
+    log.info(
+        "native_tet_run_summary",
+        n_cells=n_cells,
+        n_points=n_points,
+        grade=grade,
+        n_sliver_detected=int(locals().get("_n_sliver_pre", 0) or 0),
+        n_aniso_detected=int(locals().get("_n_aniso_pre", 0) or 0),
+        n_chains=int(locals().get("_n711", 0) or 0),
+        n_val_flipped=_val1_n_flipped,
+        n_val_degen=_val1_n_degen,
+        elapsed=round(elapsed, 3),
+    )
 
     return NativeTetResult(
         success=True, elapsed=elapsed,

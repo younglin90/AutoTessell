@@ -1695,6 +1695,17 @@ def _generate_native_poly_voronoi_inner(
     except Exception as exc:
         log.debug("native_poly_plane_cov_skipped", reason=str(exc))
 
+    # RUN_SUMMARY (beta2157) — aggregate post-pass counts (observability only).
+    log.info(
+        "native_poly_run_summary",
+        n_cells=int(stats["num_cells"]),
+        n_points=int(stats["num_points"]),
+        grade=grade,
+        max_skewness=round(float(max_sk), 4),
+        max_non_ortho=round(float(max_no), 4),
+        elapsed=round(time.perf_counter() - t0, 3),
+    )
+
     return NativePolyResult(
         success=True,
         elapsed=time.perf_counter() - t0,

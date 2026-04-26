@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2156,
+  "beta": 2157,
   "max_round": 1000,
-  "round": 103,
+  "round": 104,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -51,5 +51,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "HEX_BL_TANGENT — hex+BL top-layer tangential smoothing verified (shared native_bl.py path, R100 covers hex), engine_tag='hex' alias log added (hex_bl_tangent_smooth), 3-engine BL tangent parity confirmed (beta2156, R103)"
+  "plan_archive": "RUN_SUMMARY — 3-engine aggregate post-pass count log emitted (native_tet_run_summary / native_hex_run_summary / native_poly_run_summary), pure observability, 22/22 tests PASS, bench 99.0s (beta2157, R104)"
 }
