@@ -134,11 +134,15 @@ def _lloyd_3d_iteration(
                 if lp_p == 2.0:
                     centroid = vor.vertices[region].mean(axis=0)
                 else:
-                    # PPP2 에서 Lp weighted centroid 활성화 예정 — fallback to mean
                     try:
-                        centroid = vor.vertices[region].mean(axis=0)
+                        vs = vor.vertices[region]
+                        d = np.linalg.norm(vs - seeds_inside[si], axis=1)
+                        w = np.power(np.maximum(d, 1e-12), lp_p - 2.0)
+                        centroid = (w[:, None] * vs).sum(axis=0) / w.sum()
+                        if not np.all(np.isfinite(centroid)):
+                            centroid = vs.mean(axis=0)
                     except Exception as exc:
-                        log.warning("native_poly_ppp1_skipped", reason=str(exc)[:120])
+                        log.warning("native_poly_ppp2_skipped", reason=str(exc)[:120])
                         centroid = seeds_inside[si]
                 new_seeds.append(centroid)
         seeds_inside = np.array(new_seeds, dtype=np.float64)
@@ -194,6 +198,18 @@ def generate_native_poly_voronoi(
                 )
                 break
             cur_seed = max(int(cur_seed * 1.5), cur_seed + 4)
+
+        # PPP2 — best-of-N 에 voronoi(p=4) 후보 추가.
+        try:
+            r_p4 = _generate_native_poly_voronoi_inner(
+                vertices, faces, case_dir,
+                target_edge_length=target_edge_length,
+                seed_density=cur_seed, n_lloyd=n_lloyd, lp_p=4.0,
+            )
+            if r_p4.success and r_p4.n_cells > 2:
+                candidates.append((_grade_score(r_p4.quality_grade), r_p4, f"voronoi_p4(sd={cur_seed})"))
+        except Exception as exc:
+            log.warning("native_poly_ppp2_skipped", reason=str(exc)[:120])
 
         # hex fallback 후보.
         try:
@@ -340,6 +356,7 @@ def _generate_native_poly_voronoi_inner(
     target_edge_length: float | None = None,
     seed_density: int = 8,
     n_lloyd: int = 2,
+    lp_p: float = 2.0,
 ) -> NativePolyResult:
     """단일 시도 (auto_escalate 없는 원본 흐름)."""
     t0 = time.perf_counter()
@@ -407,7 +424,7 @@ def _generate_native_poly_voronoi_inner(
 
     # 3D Lloyd CVT 정제: seed 분포 균일화
     if n_lloyd > 0:
-        seeds_refined = _lloyd_3d_iteration(seeds, V, F, n_lloyd, lp_p=2.0)
+        seeds_refined = _lloyd_3d_iteration(seeds, V, F, n_lloyd, lp_p=lp_p)
         if seeds_refined.shape[0] >= 5:
             seeds = seeds_refined
             log.info(
@@ -415,7 +432,7 @@ def _generate_native_poly_voronoi_inner(
                 n_lloyd=n_lloyd,
                 n_seeds_before=int(inside.sum()),
                 n_seeds_after=seeds.shape[0],
-                lp_p=2.0,
+                lp_p=lp_p,
             )
 
     # boundary padding: 입력 표면 vertex 를 outer seed 로 사용하면 Voronoi 가
