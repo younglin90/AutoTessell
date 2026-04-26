@@ -2370,6 +2370,40 @@ def generate_native_tet(
         except Exception as exc:
             log.warning("native_tet_vvv6_skipped", reason=str(exc)[:120])
 
+    # VVV7 — interior Laplacian smoothing (top-K worst-tet incident verts, ≥2-ring from boundary)
+    if not os.environ.get("AUTO_TESSELL_VVV7_OFF"):
+        try:
+            if final_tets.shape[0] < 500:
+                log.info("vvv7_skipped_small_mesh", n_tets=int(final_tets.shape[0]))
+            else:
+                from core.generator.native_tet.laplacian import smooth_interior_laplacian as _sil  # noqa: PLC0415
+                from core.generator.native_tet.quality import snapshot as _qsnap77  # noqa: PLC0415
+                _pre77 = _qsnap77(final_pts, final_tets)
+                _pre77_n = final_tets.shape[0]
+                _pts77, _tets77, _n77 = _sil(
+                    final_pts, final_tets,
+                    top_k=20,
+                    n_iter=1,
+                    min_quality_improvement=1e-6,
+                )
+                _post77 = _qsnap77(_pts77, _tets77)
+                _acc77 = (
+                    _post77.min_q >= _pre77.min_q - 1e-6
+                    and _post77.mean_q >= _pre77.mean_q - 1e-3
+                    and _tets77.shape[0] == _pre77_n
+                )
+                if _acc77:
+                    final_pts, final_tets = _pts77, _tets77
+                log.info(
+                    "native_tet_smooth_interior",
+                    n_moved=int(_n77),
+                    pre_min=float(_pre77.min_q),
+                    post_min=float(_post77.min_q),
+                    accepted=bool(_acc77),
+                )
+        except Exception as exc:
+            log.warning("native_tet_vvv7_skipped", reason=str(exc)[:120])
+
     # beta1530 (V3) — 외부 tet 제거: 입력 surface 외부에 centroid 가 있는 tet drop.
     if enable_boundary_clip:
         try:
