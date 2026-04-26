@@ -57,3 +57,4 @@
 | R52   | WWW5  | hex    | PASS    | =0.0  | octree cell templating skeleton (Marechal 2009 §4 시퀀스 #5), default OFF, bench 58.2s, hex grade A=5 stable |
 | R54   | UUU7  | tet    | PASS    | =0.0  | face split Laplacian cleanup (Hu 2018 §3.1 시퀀스 #7), 1-pass smoothing + envelope guard, tet C/D stable, bench 57.4s |
 | R55   | WWW6  | hex    | PASS    | =0.0  | octree templating 활성 (Marechal 2009 시퀀스 #6), _WWW5_TEMPLATING=True + type 식별 log only, hex A=5/5 stable, bench 59.1s |
+| R56   | VVV1  | tet    | PASS    | =0.0  | Stellar 4-op queue skeleton (Klingner 2008 §3 시퀀스 #1), default OFF, tet C/D stable, bench 57.9s |
