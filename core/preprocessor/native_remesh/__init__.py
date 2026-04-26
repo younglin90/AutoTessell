@@ -26,6 +26,7 @@ from core.preprocessor.native_remesh.isotropic import isotropic_remesh
 
 _UUU1_SI_DETECT = True
 _UUU3_REPAIR_CANDIDATES = True
+_UUU5_FACE_SPLIT = False
 
 
 def _detect_self_intersections(V: np.ndarray, F: np.ndarray) -> np.ndarray:
@@ -147,6 +148,69 @@ def _si_repair_candidates(V: np.ndarray, F: np.ndarray, si_pairs: np.ndarray) ->
     return candidates
 
 
+def _apply_face_split(
+    V: np.ndarray,
+    F: np.ndarray,
+    candidates: list,
+    max_split: int = 20,
+) -> tuple:
+    """input face split helper (Hu 2018 fTetWild §3.1, UUU5).
+
+    Parameters
+    ----------
+    V : np.ndarray, shape (N, 3)
+        Vertex positions.
+    F : np.ndarray, shape (T, 3)
+        Triangle face indices.
+    candidates : list of dict
+        Candidate ops from _si_repair_candidates; only ``op=="split"`` are used.
+    max_split : int
+        Maximum number of splits to apply (default 20, very conservative).
+
+    Returns
+    -------
+    V_new : np.ndarray
+        Updated vertex array with new midpoints appended.
+    F_new : np.ndarray
+        Updated face array with split triangles replacing originals.
+    n_split : int
+        Number of splits actually applied.
+    """
+    split_ops = [c for c in candidates if c.get("op") == "split"][:max_split]
+    if not split_ops:
+        return V, F, 0
+
+    V_new = list(V)
+    F_list = list(F)
+    replaced: set = set()
+    n_split = 0
+
+    for op in split_ops:
+        face_idx = op.get("face")
+        if face_idx is None or face_idx in replaced:
+            continue
+        tri = F_list[face_idx]
+        a, b, c = int(tri[0]), int(tri[1]), int(tri[2])
+        va, vb, vc = np.array(V_new[a]), np.array(V_new[b]), np.array(V_new[c])
+        # longest edge midpoint
+        edges = [(a, b, va, vb), (b, c, vb, vc), (a, c, va, vc)]
+        ea, eb, p0, p1 = max(edges, key=lambda e: float(np.linalg.norm(e[3] - e[2])))
+        m_pos = (p0 + p1) * 0.5
+        m_idx = len(V_new)
+        V_new.append(m_pos)
+        # replace face with 2 new triangles
+        # keep vertex not on split edge as third vertex
+        third = c if (ea, eb) == (a, b) or (ea, eb) == (b, a) else (a if (ea, eb) in ((b, c), (c, b)) else b)
+        F_list[face_idx] = np.array([ea, m_idx, third], dtype=F.dtype)
+        F_list.append(np.array([eb, third, m_idx], dtype=F.dtype))
+        replaced.add(face_idx)
+        n_split += 1
+
+    V_out = np.array(V_new, dtype=V.dtype)
+    F_out = np.array(F_list, dtype=F.dtype)
+    return V_out, F_out, n_split
+
+
 __all__ = [
     "isotropic_remesh",
     "lloyd_cvt",
@@ -154,4 +218,6 @@ __all__ = [
     "_detect_self_intersections",
     "_UUU3_REPAIR_CANDIDATES",
     "_si_repair_candidates",
+    "_UUU5_FACE_SPLIT",
+    "_apply_face_split",
 ]

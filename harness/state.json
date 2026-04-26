@@ -1,8 +1,8 @@
 {
-  "target_engine": "hex",
-  "beta": 2102,
+  "target_engine": "tet",
+  "beta": 2103,
   "max_round": 1000,
-  "round": 43,
+  "round": 44,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,17 +26,17 @@
   "last_mq": {
     "tet_worst": 0.082
   },
-  "last_bench_time": 58.3,
+  "last_bench_time": 57.4,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "UUU5",
     "WWW1",
     "UUU4",
-    "UUU3",
-    "UUU2"
+    "UUU3"
   ],
   "rotate_targets": [
     "hex",
