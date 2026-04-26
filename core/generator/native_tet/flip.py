@@ -910,6 +910,9 @@ def flip_face_23(
     Convexity check: all 3 new tets must have positive volume.
     Boundary faces (only 1 incident tet) are naturally skipped.
 
+    PERF6: vectorized screening phase — batch numpy ops for q_old, vol6, q_new_min
+    over all candidate pairs before the serial apply loop.
+
     Returns: (pts_out, tets_out, n_applied)
     """
     pts = np.asarray(pts, dtype=np.float64)
@@ -920,7 +923,7 @@ def flip_face_23(
     tets_list = tets.tolist()
     alive = np.ones(tets.shape[0], dtype=bool)
 
-    # Build face → incident tet list
+    # Build face → incident tet list (vectorized)
     T = np.asarray(tets_list, dtype=np.int64)
     face_arr = np.stack(
         [T[:, [1, 2, 3]], T[:, [0, 2, 3]], T[:, [0, 1, 3]], T[:, [0, 1, 2]]],
@@ -952,60 +955,146 @@ def flip_face_23(
                 ((int(f0[0]), int(f0[1]), int(f0[2])), ti1, ti2)
             )
 
+    if not fmap_shared:
+        return pts, tets[alive], 0
+
+    # ------------------------------------------------------------------
+    # PERF6: vectorized screening phase
+    # Step 1 — extract (a,b,c,d,e) arrays for all candidates,
+    #          filtering protected faces early in Python.
+    # ------------------------------------------------------------------
+    cand_faces: list[tuple[int, int, int]] = []
+    cand_ti:    list[int] = []
+    cand_tj:    list[int] = []
+
+    T_np = np.asarray(tets_list, dtype=np.int64)  # (N, 4)
+
+    for face, ti, tj in fmap_shared:
+        if protected_faces and face in protected_faces:
+            continue
+        cand_faces.append(face)
+        cand_ti.append(ti)
+        cand_tj.append(tj)
+
+    n_cands = len(cand_faces)
+    accept_mask = np.zeros(n_cands, dtype=bool)  # filled below
+
+    if n_cands > 0:
+        fa = np.array(cand_faces, dtype=np.int64)          # (M, 3)
+        ti_arr = np.array(cand_ti,  dtype=np.int64)         # (M,)
+        tj_arr = np.array(cand_tj,  dtype=np.int64)         # (M,)
+
+        # Derive d = apex of ti not in face, e = apex of tj not in face.
+        # For each tet row, XOR with face membership to find the 4th vertex.
+        # tets_i[m] = T_np[ti_arr[m]], shape (M, 4).
+        tets_i = T_np[ti_arr]   # (M, 4)
+        tets_j = T_np[tj_arr]   # (M, 4)
+        a_col = fa[:, 0]; b_col = fa[:, 1]; c_col = fa[:, 2]
+
+        # For each row find which column is NOT in {a,b,c}.
+        def _find_apex(tet_rows: np.ndarray, fa_np: np.ndarray) -> np.ndarray:
+            """Return apex vertex (the one not in face), or -1 if invalid."""
+            M = tet_rows.shape[0]
+            in_face = (
+                (tet_rows == fa_np[:, 0:1])
+                | (tet_rows == fa_np[:, 1:2])
+                | (tet_rows == fa_np[:, 2:3])
+            )  # (M, 4) bool
+            not_in = ~in_face  # (M, 4)
+            # exactly 1 True per row if valid
+            n_apex = not_in.sum(axis=1)  # (M,)
+            apex = np.full(M, -1, dtype=np.int64)
+            valid = n_apex == 1
+            if valid.any():
+                # argmax gives first True
+                col = np.argmax(not_in[valid], axis=1)
+                apex[valid] = tet_rows[valid][np.arange(valid.sum()), col]
+            return apex
+
+        d_arr = _find_apex(tets_i, fa)  # (M,) apex of ti
+        e_arr = _find_apex(tets_j, fa)  # (M,) apex of tj
+
+        valid_de = (d_arr >= 0) & (e_arr >= 0) & (d_arr != e_arr)
+
+        if valid_de.any():
+            idx_v = np.where(valid_de)[0]
+            av = a_col[idx_v]; bv = b_col[idx_v]; cv = c_col[idx_v]
+            dv = d_arr[idx_v]; ev = e_arr[idx_v]
+
+            # --- q_old: min quality over 2 existing tets ---
+            # tet1 = (a,b,c,d), tet2 = (a,b,c,e)
+            tet_old1 = np.stack([av, bv, cv, dv], axis=1)  # (K,4)
+            tet_old2 = np.stack([av, bv, cv, ev], axis=1)
+            q1 = _tet_quality_batch_arr(pts, tet_old1)
+            q2 = _tet_quality_batch_arr(pts, tet_old2)
+            q_old_arr = np.minimum(q1, q2)                  # (K,)
+
+            # --- new 3 tets: (a,b,d,e), (b,c,d,e), (c,a,d,e) ---
+            nt0 = np.stack([av, bv, dv, ev], axis=1)  # (K,4)
+            nt1 = np.stack([bv, cv, dv, ev], axis=1)
+            nt2 = np.stack([cv, av, dv, ev], axis=1)
+
+            # Convexity: signed vol6 must be > 1e-20 for all 3
+            v0 = _tet_signed_vol6_batch_arr(pts, nt0)
+            v1 = _tet_signed_vol6_batch_arr(pts, nt1)
+            v2 = _tet_signed_vol6_batch_arr(pts, nt2)
+            convex_ok = (v0 > 1e-20) & (v1 > 1e-20) & (v2 > 1e-20)
+
+            # Quality of new tets
+            qn0 = _tet_quality_batch_arr(pts, nt0)
+            qn1 = _tet_quality_batch_arr(pts, nt1)
+            qn2 = _tet_quality_batch_arr(pts, nt2)
+            q_new_min_arr = np.minimum(np.minimum(qn0, qn1), qn2)  # (K,)
+
+            improves = q_new_min_arr >= q_old_arr + float(min_quality_improvement)
+            ok_mask_k = convex_ok & improves
+
+            # Map back to accept_mask (size M)
+            accept_mask_v = np.zeros(idx_v.shape[0], dtype=bool)
+            accept_mask_v[ok_mask_k] = True
+            accept_mask[idx_v] = accept_mask_v
+
+    # ------------------------------------------------------------------
+    # Serial apply: process accepted candidates respecting alive + max_flips.
+    # Use precomputed d_arr/e_arr values for accepted rows.
+    # Build a lookup from cand index → (d, e) for accepted ones.
+    # ------------------------------------------------------------------
+    # Recompute d_arr, e_arr for all cands (cheap — needed for apply).
+    fa_all = np.array(cand_faces, dtype=np.int64) if n_cands > 0 else np.empty((0,3), dtype=np.int64)
+    ti_all = np.array(cand_ti,  dtype=np.int64) if n_cands > 0 else np.empty(0, dtype=np.int64)
+    tj_all = np.array(cand_tj,  dtype=np.int64) if n_cands > 0 else np.empty(0, dtype=np.int64)
+
+    d_all = np.full(n_cands, -1, dtype=np.int64)
+    e_all = np.full(n_cands, -1, dtype=np.int64)
+
+    if n_cands > 0:
+        tets_i_all = T_np[ti_all]
+        tets_j_all = T_np[tj_all]
+        d_all = _find_apex(tets_i_all, fa_all)  # type: ignore[assignment]
+        e_all = _find_apex(tets_j_all, fa_all)  # type: ignore[assignment]
+
     n_flip = 0
     visited_faces: set[tuple[int, int, int]] = set()
 
-    for face, ti, tj in fmap_shared:
+    for m in range(n_cands):
         if n_flip >= max_flips:
             break
+        if not accept_mask[m]:
+            continue
+        face = cand_faces[m]
         if face in visited_faces:
             continue
-        if protected_faces and face in protected_faces:
-            continue
+        ti = int(ti_all[m]); tj = int(tj_all[m])
         if not (alive[ti] and alive[tj]):
             continue
         a, b, c = face
-        d_cands = [v for v in tets_list[ti] if v not in face]
-        e_cands = [v for v in tets_list[tj] if v not in face]
-        if len(d_cands) != 1 or len(e_cands) != 1:
-            continue
-        d = d_cands[0]; e = e_cands[0]
-        if d == e:
-            continue
-
-        # STRICT guard: q_old_min over 2 incident tets
-        q_old = min(
-            _tet_quality(pts[a], pts[b], pts[c], pts[d]),
-            _tet_quality(pts[a], pts[b], pts[c], pts[e]),
-        )
-
-        # New 3 tets sharing edge (d, e)
-        new_tets = [
-            (a, b, d, e),
-            (b, c, d, e),
-            (c, a, d, e),
-        ]
-        ok = True
-        q_new_min = 1.0
-        for nt in new_tets:
-            if len(set(nt)) != 4:
-                ok = False; break
-            vol6 = _tet_signed_vol6(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
-            if vol6 <= 1e-20:  # must be positive (convexity + orientation)
-                ok = False; break
-            q = _tet_quality(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
-            if q < q_new_min:
-                q_new_min = q
-        if not ok:
-            continue
-        # STRICT: accept only if improvement is sufficient
-        if q_new_min < q_old + float(min_quality_improvement):
-            continue
+        d = int(d_all[m]); e = int(e_all[m])
 
         alive[ti] = False
         alive[tj] = False
-        for nt in new_tets:
-            tets_list.append(list(nt))
+        tets_list.append([a, b, d, e])
+        tets_list.append([b, c, d, e])
+        tets_list.append([c, a, d, e])
         n_flip += 1
         visited_faces.add(face)
 
