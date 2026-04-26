@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2125,
+  "beta": 2127,
   "max_round": 1000,
-  "round": 72,
+  "round": 74,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -24,24 +24,25 @@
     }
   },
   "last_mq": {
-    "tet_worst": 0.055
+    "tet_worst": 0.095
   },
-  "last_bench_time": 69.1,
+  "last_bench_time": 69.6,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
-    "VVV7",
     "VVV8",
     "VVV9",
-    "VVV10"
+    "VVV10",
+    "VVV11",
+    "PRE1"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "VVV10 — native_tet flip_face_23 strict per-flip guard (Klingner Table 1, 2→3 face flip)"
+  "plan_archive": "PRE1 \u2014 native_tet input sliver triangle merge (BSP plateau escape via input pre-pass)"
 }

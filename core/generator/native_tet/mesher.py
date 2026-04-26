@@ -312,6 +312,26 @@ def generate_native_tet(
     except Exception as exc:
         log.debug("native_tet_input_check_skipped", reason=str(exc))
 
+    # PRE1 (beta2127) — input sliver triangle merge (before BSP/Delaunay).
+    try:
+        from core.generator.native_tet.sliver_merge import (
+            merge_sliver_triangles, _PRE1_ON,
+        )
+        if _PRE1_ON and F.shape[0] >= 100:
+            _f_before = int(F.shape[0])
+            V_pre1, F_pre1, n_merged = merge_sliver_triangles(V, F)
+            if n_merged > 0:
+                V = V_pre1.astype(np.float64)
+                F = F_pre1.astype(np.int64)
+                log.info(
+                    "native_tet_sliver_merge",
+                    n_merged=int(n_merged),
+                    faces_before=_f_before,
+                    faces_after=int(F.shape[0]),
+                )
+    except Exception as exc:
+        log.debug("native_tet_sliver_merge_skipped", reason=str(exc))
+
     # beta77: large input guardrail — scipy.Delaunay 가 100k+ vertex 에서 OOM.
     cap = max(1, int(max_input_vertices))
     if V.shape[0] > cap:

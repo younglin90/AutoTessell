@@ -1,9 +1,9 @@
-file: core/generator/native_tet/flip.py
-functions: flip_face_23
-lines_added: 92
+file: core/generator/native_tet/sliver_merge.py (new)
+functions: merge_sliver_triangles
+lines_added: 155
 lines_removed: 0
 
 file: core/generator/native_tet/mesher.py
-functions: generate_native_tet_mesh (VVV10 block)
-lines_added: 33
+functions: generate_native_tet (PRE1 wiring block)
+lines_added: 18
 lines_removed: 0
