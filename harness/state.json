@@ -1,8 +1,8 @@
 {
-  "target_engine": "poly",
-  "beta": 2117,
+  "target_engine": "tet",
+  "beta": 2120,
   "max_round": 1000,
-  "round": 59,
+  "round": 67,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,22 +26,22 @@
   "last_mq": {
     "tet_worst": 0.082
   },
-  "last_bench_time": 59.3,
-  "consecutive_fails": 2,
+  "last_bench_time": 68.3,
+  "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
-    "TTT7c",
-    "VVV1",
     "VVV2",
-    "TTT9"
+    "TTT9",
+    "VVV5b",
+    "VVV6"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "VVV3b \u2014 native_tet Stellar swap-only apply (Klingner 2008 \u00a73.2 \uc2dc\ud000\uc2a4 #3)"
+  "plan_archive": "VVV6 — native_tet flip_edges_76 strict per-flip guard (Klingner Table 1, 7-6 ring removal)"
 }

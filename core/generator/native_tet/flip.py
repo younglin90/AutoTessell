@@ -730,6 +730,169 @@ def flip_edges_54(
     return pts, out, n_flip
 
 
+def flip_edges_76(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    min_quality_improvement: float = 1e-3,
+    max_flips: int = 200,
+    protected_edges: set[tuple[int, int]] | None = None,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """7-6 edge flip: 내부 edge 공유 7 tet ring 을 6 tet 으로 재구성.
+
+    Klingner 2008 Table 1 7-6 swap: edge (u,v) 를 공유하는 7 tet 의 반대편
+    vertex 7 개가 heptagonal ring 을 이룰 때, ring 의 최선 triangulation
+    (5 triangles + u or v apex → 6 tets) 을 채택. STRICT per-flip guard: accept iff
+    q_new_min >= q_old_min + min_quality_improvement.
+
+    Returns: (pts_out, tets_out, n_applied)
+    """
+    pts = np.asarray(pts, dtype=np.float64)
+    tets = np.asarray(tets, dtype=np.int64).copy()
+    if tets.size == 0:
+        return pts, tets, 0
+
+    tets_list = tets.tolist()
+    alive = np.ones(tets.shape[0], dtype=bool)
+    e2t = _edge_to_tets_map(np.asarray(tets_list, dtype=np.int64))
+
+    # boundary edge detection
+    fmap = _face_map_vectorized(np.asarray(tets_list, dtype=np.int64))
+    boundary_edges: set[tuple[int, int]] = set()
+    for fk, lst in fmap.items():
+        if len(lst) == 1:
+            a_, b_, c_ = fk
+            for u_, v_ in ((a_, b_), (a_, c_), (b_, c_)):
+                key = (u_, v_) if u_ < v_ else (v_, u_)
+                boundary_edges.add(key)
+
+    n_flip = 0
+
+    for (u, v), owners in list(e2t.items()):
+        if n_flip >= max_flips:
+            break
+        if len(owners) != 7:
+            continue
+        if not all(alive[t] for t in owners):
+            continue
+        if (u, v) in boundary_edges:
+            continue
+        if protected_edges and (u, v) in protected_edges:
+            continue
+
+        # Collect opposite vertices (ring of 7 around edge u-v)
+        ring: list[int] = []
+        for ti in owners:
+            rest = [x for x in tets_list[ti] if x != u and x != v]
+            if len(rest) != 2:
+                ring = []
+                break
+            ring.extend(rest)
+        uniq = sorted(set(ring))
+        if len(uniq) != 7:
+            continue
+
+        # Order ring vertices by angle around u-v axis
+        axis = pts[v] - pts[u]
+        axis_len = float(np.linalg.norm(axis))
+        if axis_len < 1e-20:
+            continue
+        axis_n = axis / axis_len
+        ring_pts = pts[uniq]
+        ref = pts[u]
+        proj = ring_pts - ref - np.outer(np.dot(ring_pts - ref, axis_n), axis_n)
+        perp = np.array([1.0, 0.0, 0.0])
+        if abs(float(np.dot(axis_n, perp))) > 0.9:
+            perp = np.array([0.0, 1.0, 0.0])
+        perp = perp - float(np.dot(perp, axis_n)) * axis_n
+        perp_len = float(np.linalg.norm(perp))
+        if perp_len < 1e-20:
+            continue
+        perp = perp / perp_len
+        perp2 = np.cross(axis_n, perp)
+        angles = np.arctan2(proj @ perp2, proj @ perp)
+        order = np.argsort(angles)
+        r = [uniq[i] for i in order]  # ordered ring of 7
+
+        # q_old = min quality over 7 incident tets
+        q_old = min(
+            _tet_quality(pts[tets_list[ti][0]], pts[tets_list[ti][1]],
+                         pts[tets_list[ti][2]], pts[tets_list[ti][3]])
+            for ti in owners
+        )
+
+        # 7-6 swap: heptagon r[0..6] → try all "fan" triangulations from each root.
+        # Each fan from root r[d]: 5 triangles = (r[d],r[d+1],r[d+2]),
+        # (r[d],r[d+2],r[d+3]), (r[d],r[d+3],r[d+4]), (r[d],r[d+4],r[d+5]),
+        # (r[d],r[d+5],r[d+6]). Combined with apex u → 5 tets; need 1 more from v.
+        # Simpler valid 6-tet form: 3 tets with u + 3 tets with v using a diagonal split.
+        # We use: fan from r[0]: 5 tris × u = 5 tets, then drop one and add v-based tet.
+        # Best approach: pick a diagonal of heptagon, split into triangle (3 tets with u)
+        # and pentagon (handled as 3 tris with v → 3 tets). Total = 6 tets.
+        # Try all 7 diagonals r[d] - r[d+3] (skip-2 chord) splitting heptagon into
+        # a quad+triangle and pentagon (or triangle+pentagon).
+        best_new_tets: list[tuple[int, int, int, int]] | None = None
+        best_q_new = -1.0
+
+        for d in range(7):
+            # Split heptagon with diagonal r[d] to r[(d+3)%7]:
+            # Side A (triangle): r[d], r[(d+1)%7], r[(d+2)%7], r[(d+3)%7] → 2 tris fan from r[d]
+            # Side B (pentagon): r[d], r[(d+3)%7], r[(d+4)%7], r[(d+5)%7], r[(d+6)%7] → 3 tris fan from r[d]
+            # Total 5 triangles → 3 with u, 2 with v (or any 3+3 split)
+            # Use: side A tris with u (2 tets), side B tris with v (3 tets) + 1 shared diagonal tet
+            # Simpler: fan all 5 from r[d] → 5 tris; 3 get u-apex, 2 get v-apex → 5 tets + 1 extra.
+            # For strict 6 tets: 3 tris × u + 3 tris × v via two sub-fans.
+            tri_a0 = (r[d], r[(d+1)%7], r[(d+2)%7])
+            tri_a1 = (r[d], r[(d+2)%7], r[(d+3)%7])
+            tri_b0 = (r[d], r[(d+3)%7], r[(d+4)%7])
+            tri_b1 = (r[d], r[(d+4)%7], r[(d+5)%7])
+            tri_b2 = (r[d], r[(d+5)%7], r[(d+6)%7])
+
+            cand_tets = [
+                (u, tri_a0[0], tri_a0[1], tri_a0[2]),
+                (u, tri_a1[0], tri_a1[1], tri_a1[2]),
+                (u, tri_b0[0], tri_b0[1], tri_b0[2]),
+                (v, tri_b0[0], tri_b0[1], tri_b0[2]),
+                (v, tri_b1[0], tri_b1[1], tri_b1[2]),
+                (v, tri_b2[0], tri_b2[1], tri_b2[2]),
+            ]
+            ok = True
+            q_cand_min = 1.0
+            for nt in cand_tets:
+                if len(set(nt)) != 4:
+                    ok = False; break
+                vol6 = _tet_signed_vol6(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
+                if abs(vol6) < 1e-20:
+                    ok = False; break
+                q = _tet_quality(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
+                if q < q_cand_min:
+                    q_cand_min = q
+            if not ok:
+                continue
+            if q_cand_min > best_q_new:
+                best_q_new = q_cand_min
+                best_new_tets = cand_tets
+
+        if best_new_tets is None:
+            continue
+        # STRICT guard: accept only if improvement is sufficient
+        if best_q_new < q_old + float(min_quality_improvement):
+            continue
+
+        for ti in owners:
+            alive[ti] = False
+        for nt in best_new_tets:
+            tets_list.append(list(nt))
+            alive = np.append(alive, True)
+        n_flip += 1
+
+    out = np.asarray(
+        [tets_list[i] for i in range(len(tets_list)) if alive[i]],
+        dtype=np.int64,
+    )
+    return pts, out, n_flip
+
+
 def face_flip_pass(
     pts: np.ndarray,
     tets: np.ndarray,

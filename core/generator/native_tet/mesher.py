@@ -2337,6 +2337,39 @@ def generate_native_tet(
         except Exception as exc:
             log.warning("native_tet_vvv5b_skipped", reason=str(exc)[:120])
 
+    # VVV6 — flip_edges_76 (Klingner Table 1 7-6 ring removal, strict per-flip guard)
+    if not os.environ.get("AUTO_TESSELL_VVV6_OFF"):
+        try:
+            if final_tets.shape[0] < 500:
+                log.info("vvv6_skipped_small_mesh", n_tets=int(final_tets.shape[0]))
+            else:
+                from core.generator.native_tet.flip import flip_edges_76 as _f76  # noqa: PLC0415
+                from core.generator.native_tet.quality import snapshot as _qsnap76  # noqa: PLC0415
+                _pre76 = _qsnap76(final_pts, final_tets)
+                _pre76_n = final_tets.shape[0]
+                _pts76, _tets76, _n76 = _f76(
+                    final_pts, final_tets,
+                    min_quality_improvement=1e-3,
+                    max_flips=200,
+                )
+                _post76 = _qsnap76(_pts76, _tets76)
+                _acc76 = (
+                    _post76.min_q >= _pre76.min_q - 1e-6
+                    and _post76.mean_q >= _pre76.mean_q - 1e-3
+                    and _tets76.shape[0] >= 0.95 * _pre76_n
+                )
+                if _acc76:
+                    final_pts, final_tets = _pts76, _tets76
+                log.info(
+                    "native_tet_flip76",
+                    n_app=int(_n76),
+                    pre_min=float(_pre76.min_q),
+                    post_min=float(_post76.min_q),
+                    accepted=bool(_acc76),
+                )
+        except Exception as exc:
+            log.warning("native_tet_vvv6_skipped", reason=str(exc)[:120])
+
     # beta1530 (V3) — 외부 tet 제거: 입력 surface 외부에 centroid 가 있는 tet drop.
     if enable_boundary_clip:
         try:
