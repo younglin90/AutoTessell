@@ -206,24 +206,77 @@ def tet_min_dihedral_deg(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
 
 
 def snapshot(pts: np.ndarray, tets: np.ndarray) -> QualitySnapshot:
-    q = tet_shape_quality(pts, tets)
-    if q.size == 0:
-        return QualitySnapshot(0, 0.0, 0.0, 0.0, 0.0)
-    aspect = tet_aspect_ratio(pts, tets)
-    dih = tet_min_dihedral_deg(pts, tets)
-
-    # volume weight.
+    """PERF1 (beta2151): fused single-pass — pts[tets] allocated once."""
     tets_arr = np.asarray(tets, dtype=np.int64)
-    v = pts[tets_arr]
-    vol6 = np.abs(np.einsum(
-        "ij,ij->i",
-        v[:, 1] - v[:, 0],
-        np.cross(v[:, 2] - v[:, 0], v[:, 3] - v[:, 0]),
-    ))
+    if tets_arr.size == 0:
+        return QualitySnapshot(0, 0.0, 0.0, 0.0, 0.0)
+
+    # --- single vertex gather (shared across all metrics) ---
+    v = pts[tets_arr]                   # (N,4,3)
+    a, b, c, d = v[:, 0], v[:, 1], v[:, 2], v[:, 3]
+
+    # --- edge vectors from vertex 0 ---
+    ab = b - a; ac = c - a; ad = d - a
+    bc = c - b; bd = d - b; cd = d - c
+
+    # --- 6 edge lengths ---
+    e01 = np.linalg.norm(ab, axis=1)
+    e02 = np.linalg.norm(ac, axis=1)
+    e03 = np.linalg.norm(ad, axis=1)
+    e12 = np.linalg.norm(bc, axis=1)
+    e13 = np.linalg.norm(bd, axis=1)
+    e23 = np.linalg.norm(cd, axis=1)
+    emax = np.maximum.reduce([e01, e02, e03, e12, e13, e23])
+
+    # --- scalar triple product = 6V ---
+    cross_ac_ad = np.cross(ac, ad)
+    vol6 = np.abs(np.einsum("ij,ij->i", ab, cross_ac_ad))
+    vol = vol6 / 6.0
+
+    # --- shape quality (Parthasarathy 1994) ---
+    safe = emax > 1e-30
+    q = np.zeros(len(tets_arr))
+    q[safe] = 8.48 * vol[safe] / (emax[safe] ** 3)
+
+    # --- aspect ratio (circumradius/inradius approx) ---
+    def _area_norm(p, q_v, r):
+        return 0.5 * np.linalg.norm(np.cross(q_v - p, r - p), axis=1)
+    A1 = _area_norm(a, b, c)
+    A2 = _area_norm(a, b, d)
+    A3 = _area_norm(a, c, d)
+    A4 = _area_norm(b, c, d)
+    surf_sum = A1 + A2 + A3 + A4
+    inrad = np.where(surf_sum > 1e-30, 3.0 * vol / surf_sum, 0.0)
+    rmax = emax / 2.0
+    safe_inrad = np.where(inrad > 1e-30, inrad, 1.0)
+    aspect = np.where(inrad > 1e-30, rmax / safe_inrad, 1e6)
+
+    # --- dihedral angles via face normals ---
+    def _unit_n(p, q_v, r):
+        n = np.cross(q_v - p, r - p)
+        nrm = np.linalg.norm(n, axis=1, keepdims=True)
+        return n / np.where(nrm > 1e-30, nrm, 1.0)
+
+    n_abc = _unit_n(a, b, c)
+    n_abd = _unit_n(a, b, d)
+    n_acd = _unit_n(a, c, d)
+    n_bcd = _unit_n(b, c, d)
+
+    def _dih(n1, n2):
+        dot = np.clip(np.einsum("ij,ij->i", n1, n2), -1.0, 1.0)
+        return np.rad2deg(np.arccos(dot))
+
+    dh1 = 180.0 - _dih(n_abc, n_abd)
+    dh2 = 180.0 - _dih(n_abc, n_acd)
+    dh3 = 180.0 - _dih(n_abd, n_acd)
+    dh4 = 180.0 - _dih(n_abc, n_bcd)
+    dh5 = 180.0 - _dih(n_abd, n_bcd)
+    dh6 = 180.0 - _dih(n_acd, n_bcd)
+    dih = np.minimum.reduce([dh1, dh2, dh3, dh4, dh5, dh6])
+
+    # --- volume-weighted mean quality ---
     w_sum = float(vol6.sum())
-    vol_weighted_mean_q = (
-        float((q * vol6).sum() / w_sum) if w_sum > 0 else 0.0
-    )
+    vol_weighted_mean_q = float((q * vol6).sum() / w_sum) if w_sum > 0 else 0.0
 
     return QualitySnapshot(
         n_tets=int(q.size),
