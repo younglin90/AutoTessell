@@ -277,6 +277,28 @@ def generate_native_tet(
         else:
             target_edge_length = diag / max(1, int(seed_density))
 
+    # LL1 (beta1880) — 입력 V 가 작으면 셀 폭증 방지 위해 target_edge 키움.
+    # 11k vertex 입력에서 156k tet 폭증 → mean_q 0.12 sliver. cell 수
+    # ≈ V^1.5 정도가 적절 (Delaunay heuristic).
+    try:
+        nv = int(V.shape[0])
+        if nv > 200:
+            # n_target_cells = nv * 1.5 → target_edge = (vol / (0.118 * n))^(1/3).
+            n_target = int(nv ** 1.4)
+            span = (bmax - bmin).prod()
+            if span > 0 and n_target > 0:
+                te_cap = float((span / (0.118 * n_target)) ** (1.0 / 3.0))
+                if te_cap > target_edge_length:
+                    log.info(
+                        "native_tet_target_edge_auto_tune",
+                        prev=round(float(target_edge_length), 5),
+                        new=round(te_cap, 5),
+                        n_input_v=nv, n_target_cells=n_target,
+                    )
+                    target_edge_length = te_cap
+    except Exception:
+        pass
+
     log.info(
         "native_tet_start",
         n_surf_verts=V.shape[0], n_surf_faces=F.shape[0],

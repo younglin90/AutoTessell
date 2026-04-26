@@ -264,6 +264,7 @@ def generate_native_poly_voronoi(
 def _hex_to_poly_fallback(
     vertices: np.ndarray, faces: np.ndarray, case_dir: Path,
     *, seed_density: int = 12,
+    escalate_max: int = 4,
 ) -> NativePolyResult:
     """FF1 (beta1730) — voronoi base 가 fail 한 형상에서 native_hex 결과를
     polyhedral 표현으로 변환해 fallback.
@@ -278,16 +279,24 @@ def _hex_to_poly_fallback(
     )
 
     t0 = _time.perf_counter()
-    r_hex = generate_native_hex(
-        vertices, faces, case_dir,
-        seed_density=int(seed_density),
-        snap_boundary=True, snap_iterations=2,
-        max_cells_per_axis=40,
-    )
-    if not r_hex.success:
+    # KK5 (beta1890) — seed_density escalate. 작은 mesh 에서 hex grid 가
+    # bbox 보다 커서 inside cell 0 인 케이스 자동 회복.
+    cur_sd = int(seed_density)
+    r_hex = None
+    for _att in range(int(escalate_max)):
+        r_hex = generate_native_hex(
+            vertices, faces, case_dir,
+            seed_density=cur_sd,
+            snap_boundary=True, snap_iterations=2,
+            max_cells_per_axis=60,
+        )
+        if r_hex.success and r_hex.n_cells > 2:
+            break
+        cur_sd = max(int(cur_sd * 1.6), cur_sd + 6)
+    if r_hex is None or not r_hex.success or r_hex.n_cells <= 2:
         return NativePolyResult(
             False, _time.perf_counter() - t0,
-            message=f"hex fallback fail: {r_hex.message[:80]}",
+            message=f"hex fallback fail: {(r_hex.message if r_hex else 'unknown')[:80]}",
         )
 
     # hex cell → polyhedral cell (6 quad face).
