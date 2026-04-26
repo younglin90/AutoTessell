@@ -255,11 +255,37 @@ def _extrude_prism_layer(
     Returns: (new_vertices, new_cells) — 기존 + 신규 prism append.
     """
     try:
+        import structlog as _sl
+        _log = _sl.get_logger()
         wall_seed_to_cell = {cell_owner_seed[i]: i for i in range(len(cells))}
         n_added = 0
+        n_rejected_aspect = 0
+        n_rejected_collision = 0
         new_verts: list = list(vertices)
         new_cells: list = list(cells)
         _tf_array = np.asarray(thickness_factor) if not np.isscalar(thickness_factor) else None
+
+        # POL_BL1 — build neighbour cell centroid lookup for collision check.
+        # Garimella 2003 §3 advancing-front: new top face verts must not land
+        # inside any neighbouring poly cell's bounding box (simplified check).
+        _cell_centroids: list[np.ndarray] = []
+        for _ci, _cfaces in enumerate(cells):
+            _all_v: list[int] = []
+            for _f in _cfaces:
+                _all_v.extend(_f)
+            if _all_v:
+                _cell_centroids.append(vertices[_all_v].mean(axis=0))
+            else:
+                _cell_centroids.append(np.zeros(3))
+
+        def _cell_bbox(ci_: int) -> tuple[np.ndarray, np.ndarray]:
+            _all_v_: list[int] = []
+            for _f_ in cells[ci_]:
+                _all_v_.extend(_f_)
+            if not _all_v_:
+                return np.zeros(3), np.zeros(3)
+            _pts_ = vertices[_all_v_]
+            return _pts_.min(axis=0), _pts_.max(axis=0)
 
         for seed_idx in wall_cells:
             if n_added >= max_extrude:
@@ -286,13 +312,47 @@ def _extrude_prism_layer(
             else:
                 factor_i = float(thickness_factor)
 
+            top_pts = np.array(new_verts)[face] + normal * step * factor_i
+
+            # POL_BL1 guard 1 — aspect ratio (Garimella 2003 quality criterion).
+            # Prism aspect = max_edge / min_edge across all edges (bottom + lateral).
+            _all_prism_pts = np.vstack([pts, top_pts])
+            _edges_len: list[float] = []
+            n_face = len(face)
+            for _k in range(n_face):
+                _k2 = (_k + 1) % n_face
+                _edges_len.append(float(np.linalg.norm(_all_prism_pts[_k2] - _all_prism_pts[_k])))
+                _edges_len.append(float(np.linalg.norm(top_pts[_k] - pts[_k])))  # lateral
+            _min_e = min(_edges_len) if _edges_len else 1.0
+            _max_e = max(_edges_len) if _edges_len else 1.0
+            _aspect = _max_e / (_min_e + 1e-30)
+            if _aspect > 50.0:
+                n_rejected_aspect += 1
+                _log.debug("poly_bl_prism_rejected_aspect", aspect=round(_aspect, 2))
+                continue
+
+            # POL_BL1 guard 2 — collision check (Garimella 2003 §3 advancing-front).
+            # Top face centroid must not land inside any non-wall neighbouring cell bbox.
+            _top_c = top_pts.mean(axis=0)
+            _collision = False
+            for _nci in range(len(cells)):
+                if _nci == ci:
+                    continue
+                _bmin, _bmax = _cell_bbox(_nci)
+                if np.all(_top_c >= _bmin - 1e-9) and np.all(_top_c <= _bmax + 1e-9):
+                    _collision = True
+                    break
+            if _collision:
+                n_rejected_collision += 1
+                _log.debug("poly_bl_prism_rejected_collision", seed=seed_idx)
+                continue
+
             top_indices = []
             base_offset = len(new_verts)
-            for vi in face:
-                new_verts.append(np.array(new_verts[vi]) + normal * step * factor_i)
-                top_indices.append(base_offset + len(top_indices))
+            for _vi_idx, vi in enumerate(face):
+                new_verts.append(top_pts[_vi_idx])
+                top_indices.append(base_offset + _vi_idx)
 
-            n_face = len(face)
             prism_faces: list[list[int]] = []
             prism_faces.append(list(face))  # bottom
             prism_faces.append(list(reversed(top_indices)))  # top (flip normal)
@@ -302,6 +362,12 @@ def _extrude_prism_layer(
             new_cells.append(prism_faces)
             n_added += 1
 
+        _log.info(
+            "poly_bl_prism_added",
+            n_prism=n_added,
+            n_rejected_aspect=n_rejected_aspect,
+            n_rejected_collision=n_rejected_collision,
+        )
         return np.array(new_verts, dtype=vertices.dtype), new_cells
     except Exception as exc:
         import structlog as _sl

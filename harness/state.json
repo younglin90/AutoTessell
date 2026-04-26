@@ -1,8 +1,8 @@
 {
-  "target_engine": "tet",
-  "beta": 2130,
+  "target_engine": "poly",
+  "beta": 2132,
   "max_round": 1000,
-  "round": 77,
+  "round": 79,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,24 +26,24 @@
   "last_mq": {
     "tet_worst": 0.095
   },
-  "last_bench_time": 70.5,
+  "last_bench_time": 72.4,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
-    "VVV9",
-    "VVV10",
     "VVV11",
     "PRE1",
     "BL1",
-    "WWW7"
+    "WWW7",
+    "BL2",
+    "POL_BL1"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "WWW7 — native_hex feature edge snap (snappyHexMesh nFeatureSnapIter style)"
+  "plan_archive": "POL_BL1 — native_poly prism aspect+collision guard (Garimella 2003 advancing-front variant)"
 }

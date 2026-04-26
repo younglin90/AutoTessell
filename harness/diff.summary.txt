@@ -1,9 +1,4 @@
-file: core/generator/native_tet/sliver_merge.py (new)
-functions: merge_sliver_triangles
-lines_added: 155
-lines_removed: 0
-
-file: core/generator/native_tet/mesher.py
-functions: generate_native_tet (PRE1 wiring block)
-lines_added: 18
-lines_removed: 0
+file: core/generator/native_poly/voronoi.py
+functions: _extrude_prism_layer
+lines_added: 57
+lines_removed: 6
