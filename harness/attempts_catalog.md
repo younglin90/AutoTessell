@@ -30,6 +30,7 @@
 | R27   | RRR1  | tet   | PASS    | =0.0  | Quality percentiles skeleton (Klingner 2008 시퀀스 #1), _quality_percentiles helper, default OFF, bench 59.4s (stable), tet C/D stable |
 | R28   | RRR2  | tet   | PASS    | =0.0  | Worst-percentile targeted AMIPS (Klingner 2008 시퀀스 #2), p5 < 0.05 시 interior lock + smooth_amips_analytic(n_iter=1, α=1.0), tet worst 0.082 stable, bench 59.4s (stable) |
 | R29   | RRR3  | tet   | PASS    | =0.0  | Targeted AMIPS 임계+iter 강화 (Klingner 2008 시퀀스 #3), q<0.10 → q<0.05 (worst pool 확장) + n_iter 1→2, tet worst 0.082 stable, bench 58.8s (-0.6s) |
+| R30   | SSS1  | tet   | PASS    | =0.0  | Envelope-bounded relocation skeleton (fTetWild §3.5 시퀀스 #1), default OFF, worst 0.127 stable, bench 59.2s (stable) |
 
 # AVOID (4회 reject 됨)
 - smooth_amips_analytic / smooth_amips_multistage 호출 BSP 직후 (HHH1/III1/JJJ1 — worst-mq 악화 패턴). 동일 함수/위치 재시도 금지.
