@@ -1649,6 +1649,37 @@ def generate_native_tet(
                         )
             except Exception as exc:
                 log.debug("native_tet_flip_44_skipped", reason=str(exc))
+
+            # UU1 (beta1980) — 2nd flip cycle: 첫 cycle 의 잔여 sliver 를
+            # 다시 노출시켜 추가 mq 향상. flip_23 → flip_32 1회 더.
+            try:
+                pre_q_c2 = _qsnap_flip(final_pts, final_tets)
+                if float(pre_q_c2.mean_q) < 0.30:
+                    new_tets_c2, n_c2 = flip_faces_23(
+                        final_pts, final_tets,
+                        min_quality_improvement=1e-3, max_flips=2000,
+                    )
+                    if n_c2 > 0 and new_tets_c2.shape[0] > 50:
+                        post_q_c2 = _qsnap_flip(final_pts, new_tets_c2)
+                        if float(post_q_c2.mean_q) >= float(pre_q_c2.mean_q) * 0.99:
+                            final_tets = new_tets_c2
+                            log.info("native_tet_flip_23_c2", n_flips=int(n_c2),
+                                     mq_before=round(float(pre_q_c2.mean_q), 3),
+                                     mq_after=round(float(post_q_c2.mean_q), 3))
+                    pre_q_c2b = _qsnap_flip(final_pts, final_tets)
+                    new_tets_c2b, n_c2b = flip_edges_32(
+                        final_pts, final_tets,
+                        min_quality_improvement=1e-3, max_flips=1500,
+                    )
+                    if n_c2b > 0 and new_tets_c2b.shape[0] > 50:
+                        post_q_c2b = _qsnap_flip(final_pts, new_tets_c2b)
+                        if float(post_q_c2b.mean_q) >= float(pre_q_c2b.mean_q) * 0.99:
+                            final_tets = new_tets_c2b
+                            log.info("native_tet_flip_32_c2", n_flips=int(n_c2b),
+                                     mq_before=round(float(pre_q_c2b.mean_q), 3),
+                                     mq_after=round(float(post_q_c2b.mean_q), 3))
+            except Exception as exc:
+                log.debug("native_tet_flip_cycle2_skipped", reason=str(exc))
     except Exception as exc:
         log.debug("native_tet_flip_23_skipped", reason=str(exc))
 
