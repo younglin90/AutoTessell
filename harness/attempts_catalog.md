@@ -45,3 +45,4 @@
 | R39 | UUU1 | tet | PASS | =0.0 | self-intersect detect skeleton (Hu 2018 §3.1 시퀀스 #1), default OFF, tet C/D stable, bench 57.6s |
 | R40 | UUU2 | tet | PASS | =0.0 | self-intersect detect 활성 (Hu 2018 §3.1 시퀀스 #2), flag=True + 1회 호출 @mesher line 196, log-only (cleanup 미적용), tet C/D stable, bench 57.0s, n_si=0 |
 | R41 | UUU3 | tet | PASS | =0.0 | self-intersect repair candidates skeleton (Hu 2018 §3.1 시퀀스 #3), _si_repair_candidates helper + _UUU3_REPAIR_CANDIDATES=False, default OFF, tet C/D stable, bench 57.6s |
+| R42 | UUU4 | tet | PASS | =0.0 | self-intersect repair candidates 활성 (Hu 2018 §3.1 시퀀스 #4), flag=True + 1회 호출 @mesher line 204, log-only (candidate 미적용), tet C/D stable, bench 57.4s, n_candidates=0 |

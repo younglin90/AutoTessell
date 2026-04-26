@@ -194,11 +194,17 @@ def generate_native_tet(
     _prog("start", 0.0, n_verts=V.shape[0], n_faces=F.shape[0])
 
     # UUU2 (beta2099) — self-intersect 탐지 활성 (식별만).
-    from core.preprocessor.native_remesh import _UUU1_SI_DETECT, _detect_self_intersections
+    from core.preprocessor.native_remesh import _UUU1_SI_DETECT, _detect_self_intersections, _UUU3_REPAIR_CANDIDATES, _si_repair_candidates
     try:
         if _UUU1_SI_DETECT:
             si_pairs = _detect_self_intersections(V, F)
             log.info("native_tet_uuu2_si_detect", n_si=int(len(si_pairs)))
+            if _UUU3_REPAIR_CANDIDATES and len(si_pairs) > 0:
+                cands = _si_repair_candidates(V, F, si_pairs)
+                n_split = sum(1 for c in cands if c["op"] == "split")
+                n_merge = sum(1 for c in cands if c["op"] == "merge")
+                log.info("native_tet_uuu4_candidates",
+                         n_candidates=len(cands), n_split=n_split, n_merge=n_merge)
     except Exception as exc:
         log.debug("native_tet_uuu2_si_detect_skipped", reason=str(exc))
 
