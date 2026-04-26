@@ -1,54 +1,34 @@
   fid= 100027 hex       : grade=A cells=2 t=0.12s no=0.0° sk=0.0
   fid= 100027 hex+BL    : grade=A cells=2 t=0.12s no=0.0° sk=0.0 BL=OK prism=72
   fid= 100027 poly      : grade=A cells=78 t=0.15s no=43.3° sk=0.19
-  fid= 100027 poly+BL   : grade=A cells=78 t=0.14s no=43.3° sk=0.19 BL=OK prism=1584
-2026-04-26 17:20:40 [info     ] native_tet_nnn3                n_inserted_iter2=0 post_mean=0.05833664909885268 post_min=2.31849482639971e-16 pre_mean=0.05833664909885268 pre_min=2.31849482639971e-16
-2026-04-26 17:20:40 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.05833915688926953 post_min=2.31849482639971e-16 pre_mean=0.05833664909885268 pre_min=2.31849482639971e-16
-2026-04-26 17:20:40 [info     ] native_tet_nnn3                n_inserted_iter2=0 post_mean=0.05833664909885268 post_min=2.31849482639971e-16 pre_mean=0.05833664909885268 pre_min=2.31849482639971e-16
-2026-04-26 17:20:40 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.05833915688926953 post_min=2.31849482639971e-16 pre_mean=0.05833664909885268 pre_min=2.31849482639971e-16
-  fid= 100027 tet       : grade=D cells=1791 t=9.59s mq=0.082
+  fid= 100027 poly+BL   : grade=A cells=78 t=0.15s no=43.3° sk=0.19 BL=OK prism=1584
+  fid= 100027 tet       : grade=D cells=1791 t=9.62s mq=0.082
   fid= 100030 hex       : grade=A cells=266 t=0.3s no=39.6° sk=0.21
-  fid= 100027 tet+BL    : grade=D cells=1791 t=9.54s mq=0.082 BL=OK prism=4248
+  fid= 100027 tet+BL    : grade=D cells=1791 t=9.8s mq=0.082 BL=OK prism=4248
   fid= 100030 hex+BL    : grade=A cells=266 t=0.29s no=39.6° sk=0.21 BL=OK prism=2676
-  fid= 100030 poly      : grade=A cells=142 t=1.25s no=41.1° sk=0.14
-  fid= 100030 poly+BL   : grade=A cells=142 t=1.25s no=41.1° sk=0.14 BL=OK prism=1644
-2026-04-26 17:20:49 [info     ] native_tet_nnn3                n_inserted_iter2=0 post_mean=0.06634320921736572 post_min=1.2390530249581843e-09 pre_mean=0.06634320921736572 pre_min=1.2390530249581843e-09
-2026-04-26 17:20:49 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.06634320921736572 post_min=1.2390530249581843e-09 pre_mean=0.06634320921736572 pre_min=1.2390530249581843e-09
-2026-04-26 17:20:49 [info     ] native_tet_nnn3                n_inserted_iter2=0 post_mean=0.06634320921736572 post_min=1.2390530249581843e-09 pre_mean=0.06634320921736572 pre_min=1.2390530249581843e-09
-2026-04-26 17:20:49 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.06634320921736572 post_min=1.2390530249581843e-09 pre_mean=0.06634320921736572 pre_min=1.2390530249581843e-09
-2026-04-26 17:20:51 [info     ] native_tet_nnn3                n_inserted_iter2=200 post_mean=0.07396628545244387 post_min=0.0 pre_mean=0.07011327185533028 pre_min=0.0
-2026-04-26 17:20:51 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.07396628545244387 post_min=0.0 pre_mean=0.07396628545244387 pre_min=0.0
-2026-04-26 17:20:52 [info     ] native_tet_nnn3                n_inserted_iter2=200 post_mean=0.07396628545244387 post_min=0.0 pre_mean=0.07011327185533028 pre_min=0.0
-2026-04-26 17:20:52 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.07396628545244387 post_min=0.0 pre_mean=0.07396628545244387 pre_min=0.0
-  fid= 100040 tet       : grade=D cells=4710 t=4.49s mq=0.055
+  fid= 100030 poly      : grade=A cells=142 t=1.28s no=41.1° sk=0.14
+  fid= 100030 poly+BL   : grade=A cells=142 t=1.28s no=41.1° sk=0.14 BL=OK prism=1644
+  fid= 100040 tet       : grade=D cells=4710 t=4.51s mq=0.055
   fid= 100040 hex       : grade=A cells=38 t=0.04s no=36.5° sk=0.2
   fid= 100040 hex+BL    : grade=A cells=38 t=0.04s no=36.5° sk=0.2 BL=OK prism=756
   fid= 100040 poly      : grade=A cells=12 t=0.38s no=41.8° sk=0.14
-  fid= 100040 poly+BL   : grade=A cells=12 t=0.37s no=41.8° sk=0.14 BL=OK prism=288
-  fid= 100040 tet+BL    : grade=D cells=4710 t=4.53s mq=0.055 BL=OK prism=5844
-2026-04-26 17:21:01 [info     ] native_tet_nnn3                n_inserted_iter2=0 post_mean=0.23656244798984039 post_min=0.006632378448310056 pre_mean=0.23656244798984039 pre_min=0.006632378448310056
-2026-04-26 17:21:01 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.23680083435192212 post_min=0.006632378448310056 pre_mean=0.23656244798984039 pre_min=0.006632378448310056
-2026-04-26 17:21:02 [info     ] native_tet_nnn3                n_inserted_iter2=0 post_mean=0.23656244798984039 post_min=0.006632378448310056 pre_mean=0.23656244798984039 pre_min=0.006632378448310056
-2026-04-26 17:21:02 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.23680083435192212 post_min=0.006632378448310056 pre_mean=0.23656244798984039 pre_min=0.006632378448310056
-  fid= 100030 tet       : grade=D cells=11979 t=31.3s mq=0.095
+  fid= 100040 poly+BL   : grade=A cells=12 t=0.38s no=41.8° sk=0.14 BL=OK prism=288
+  fid= 100040 tet+BL    : grade=D cells=4710 t=4.51s mq=0.055 BL=OK prism=5844
+  fid= 100030 tet       : grade=D cells=11979 t=31.45s mq=0.095
   fid=1004826 hex       : grade=A cells=60 t=0.06s no=22.4° sk=0.11
   fid=1004826 hex+BL    : grade=A cells=60 t=0.06s no=22.4° sk=0.11 BL=OK prism=960
-  fid=1004826 poly      : grade=A cells=38 t=2.02s no=20.3° sk=0.14
-  fid=1004826 tet       : grade=C cells=3033 t=17.18s mq=0.208
-  fid=1004826 tet+BL    : grade=C cells=3033 t=17.23s mq=0.208 BL=OK prism=2416
-  fid=1004826 poly+BL   : grade=A cells=38 t=1.81s no=20.3° sk=0.14 BL=OK prism=636
+  fid=1004826 poly      : grade=A cells=38 t=2.06s no=20.3° sk=0.14
+  fid=1004826 tet       : grade=C cells=3033 t=17.36s mq=0.208
+  fid=1004826 tet+BL    : grade=C cells=3033 t=17.48s mq=0.208 BL=OK prism=2416
+  fid=1004826 poly+BL   : grade=A cells=38 t=1.82s no=20.3° sk=0.14 BL=OK prism=636
   fid= 101085 hex       : grade=A cells=28 t=0.03s no=16.2° sk=0.14
   fid= 101085 hex+BL    : grade=A cells=28 t=0.03s no=16.2° sk=0.14 BL=OK prism=612
-  fid= 101085 poly      : grade=A cells=22 t=0.8s no=22.3° sk=0.11
-  fid= 100030 tet+BL    : grade=D cells=11979 t=31.38s mq=0.095 BL=OK prism=12820
-  fid= 101085 poly+BL   : grade=A cells=22 t=0.62s no=22.3° sk=0.11 BL=OK prism=492
-2026-04-26 17:21:22 [info     ] native_tet_nnn3                n_inserted_iter2=0 post_mean=0.07619212056823868 post_min=8.18933128392051e-12 pre_mean=0.07619212056823868 pre_min=8.18933128392051e-12
-2026-04-26 17:21:22 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.07619212056823868 post_min=8.18933128392051e-12 pre_mean=0.07619212056823868 pre_min=8.18933128392051e-12
-2026-04-26 17:21:23 [info     ] native_tet_nnn3                n_inserted_iter2=0 post_mean=0.07619212056823868 post_min=8.18933128392051e-12 pre_mean=0.07619212056823868 pre_min=8.18933128392051e-12
-2026-04-26 17:21:23 [info     ] native_tet_nnn4_post_steiner_amips accepted=True post_mean=0.07619212056823868 post_min=8.18933128392051e-12 pre_mean=0.07619212056823868 pre_min=8.18933128392051e-12
-  fid= 101085 tet       : grade=C cells=9897 t=18.85s mq=0.127
+  fid= 101085 poly      : grade=A cells=22 t=0.82s no=22.3° sk=0.11
+  fid= 100030 tet+BL    : grade=D cells=11979 t=31.68s mq=0.095 BL=OK prism=12820
+  fid= 101085 poly+BL   : grade=A cells=22 t=0.6s no=22.3° sk=0.11 BL=OK prism=492
+  fid= 101085 tet       : grade=C cells=9897 t=19.11s mq=0.127
   fid= 101085 tet+BL    : grade=C cells=9897 t=19.0s mq=0.127 BL=OK prism=8840
-total time: 57.0s
+total time: 57.7s
   hex +BL : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 5}
   hex raw : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 0}
   poly+BL : {'ok': 5, 'fail': 0, 'timeout': 0, 'A': 5, 'B': 0, 'C': 0, 'D': 0, 'bl_ok': 5}

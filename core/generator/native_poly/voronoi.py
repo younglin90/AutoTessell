@@ -89,6 +89,7 @@ def _lloyd_3d_iteration(
     V: np.ndarray,
     F: np.ndarray,
     n_lloyd: int,
+    lp_p: float = 2.0,
 ) -> np.ndarray:
     """3D Lloyd CVT 반복 — Voronoi region centroid 를 새 seed 로 갱신.
 
@@ -130,7 +131,15 @@ def _lloyd_3d_iteration(
                 # open cell → 원본 유지
                 new_seeds.append(seeds_inside[si])
             else:
-                centroid = vor.vertices[region].mean(axis=0)
+                if lp_p == 2.0:
+                    centroid = vor.vertices[region].mean(axis=0)
+                else:
+                    # PPP2 에서 Lp weighted centroid 활성화 예정 — fallback to mean
+                    try:
+                        centroid = vor.vertices[region].mean(axis=0)
+                    except Exception as exc:
+                        log.warning("native_poly_ppp1_skipped", reason=str(exc)[:120])
+                        centroid = seeds_inside[si]
                 new_seeds.append(centroid)
         seeds_inside = np.array(new_seeds, dtype=np.float64)
         # inside 재필터
@@ -398,7 +407,7 @@ def _generate_native_poly_voronoi_inner(
 
     # 3D Lloyd CVT 정제: seed 분포 균일화
     if n_lloyd > 0:
-        seeds_refined = _lloyd_3d_iteration(seeds, V, F, n_lloyd)
+        seeds_refined = _lloyd_3d_iteration(seeds, V, F, n_lloyd, lp_p=2.0)
         if seeds_refined.shape[0] >= 5:
             seeds = seeds_refined
             log.info(
@@ -406,6 +415,7 @@ def _generate_native_poly_voronoi_inner(
                 n_lloyd=n_lloyd,
                 n_seeds_before=int(inside.sum()),
                 n_seeds_after=seeds.shape[0],
+                lp_p=2.0,
             )
 
     # boundary padding: 입력 표면 vertex 를 outer seed 로 사용하면 Voronoi 가
