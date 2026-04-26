@@ -162,6 +162,29 @@ def validate_hex_cell_volumes(
     return hex_cells, n_flipped, n_degenerate
 
 
+# VAL3 (beta2161) — per-pass negative-volume hex tracker (diagnostic, default ON).
+# env AUTO_TESSELL_HEX_VAL3_OFF=1 to disable. Mirror of R105 VAL3 (tet).
+def _count_neg_vol_hex(hex_pts: np.ndarray, hex_cells: np.ndarray) -> int:
+    """Count hex cells with negative signed volume (5-tet decomposition). Read-only."""
+    import os as _os_v3
+    if _os_v3.environ.get("AUTO_TESSELL_HEX_VAL3_OFF"):
+        return 0
+    if hex_cells is None or len(hex_cells) == 0:
+        return 0
+    pts = np.asarray(hex_pts, dtype=np.float64)
+    cells = np.asarray(hex_cells, dtype=np.int64)
+    _5TETS = [[0,1,3,4],[1,2,3,6],[3,4,6,7],[1,4,5,6],[1,3,4,6]]
+    count = 0
+    for cell in cells:
+        vol = 0.0
+        for ti in _5TETS:
+            v = pts[cell[ti]]
+            vol += float(np.dot(v[1]-v[0], np.cross(v[2]-v[0], v[3]-v[0])))
+        if vol < 0.0:
+            count += 1
+    return count
+
+
 def _reduce_nonortho_post(
     hex_pts: np.ndarray,
     hex_cells: np.ndarray,
@@ -605,6 +628,10 @@ def generate_native_hex(
         except Exception as exc:
             log.debug("native_hex_post_smooth_skipped", reason=str(exc))
 
+    # VAL3 (beta2161) — per-pass neg-vol tracker initialisation.
+    _val3_prev = _count_neg_vol_hex(final_pts, final_hexes)
+    log.info("native_hex_neg_vol_track", pass_name="post_filter", n_neg=_val3_prev, delta=0)
+
     # WWW7 (beta2130) — feature edge snap (default ON, env AUTO_TESSELL_WWW7_OFF disables).
     if final_hexes.shape[0] > 0 and final_pts.shape[0] >= 100:
         try:
@@ -621,6 +648,10 @@ def generate_native_hex(
         except Exception as exc:
             log.debug("native_hex_www7_skipped", reason=str(exc))
 
+    _val3_n = _count_neg_vol_hex(final_pts, final_hexes)
+    log.info("native_hex_neg_vol_track", pass_name="WWW7", n_neg=_val3_n, delta=_val3_n - _val3_prev)
+    _val3_prev = _val3_n
+
     # HEX_QUALITY1 (beta2137) — non-ortho local post-pass (snappyHexMesh postSnap analog).
     # env AUTO_TESSELL_HEX_QUALITY1_OFF disables. Default ON.
     import os as _os  # noqa: PLC0415
@@ -633,6 +664,10 @@ def generate_native_hex(
         except Exception as exc:
             log.debug("native_hex_quality1_skipped", reason=str(exc))
 
+    _val3_n = _count_neg_vol_hex(final_pts, final_hexes)
+    log.info("native_hex_neg_vol_track", pass_name="HEX_QUALITY1", n_neg=_val3_n, delta=_val3_n - _val3_prev)
+    _val3_prev = _val3_n
+
     # VAL2 (beta2148) — negative-volume hex validation (default ON).
     try:
         final_hexes, _val2_flipped, _val2_degen = validate_hex_cell_volumes(
@@ -640,6 +675,9 @@ def generate_native_hex(
         )
     except Exception as _val2_exc:
         log.debug("native_hex_val2_skipped", reason=str(_val2_exc))
+
+    _val3_n = _count_neg_vol_hex(final_pts, final_hexes)
+    log.info("native_hex_neg_vol_track", pass_name="VAL2_post", n_neg=_val3_n, delta=_val3_n - _val3_prev)
 
     # 최소 system/controlDict + fvSchemes + fvSolution 생성 (checkMesh 가 요구).
     from core.generator.tier_layers_post import (  # noqa: PLC0415
