@@ -370,6 +370,45 @@ def _prism_aspect_ratio_stats(
     return n_degenerate, float(max_ratio)
 
 
+def _geometric_layer_thickness(
+    first_thickness: float | np.ndarray,
+    n_layers: int,
+    *,
+    growth_ratio: float = 1.2,
+) -> np.ndarray:
+    """BL2 — geometric prism layer thickness array (cfMesh / snappy standard 1.2×).
+
+    Algorithm (clean-room, cfMesh maxFirstLayerThickness ratio §generateBoundaryLayers):
+      layer i thickness = first_thickness * growth_ratio^i  (i=0..n_layers-1)
+      total = first_thickness * (growth_ratio^n_layers - 1) / (growth_ratio - 1)
+             (geometric series; if growth_ratio==1.0 → uniform = first_thickness * n_layers)
+
+    Args:
+        first_thickness: scalar or per-vertex array shape (V,).
+        n_layers: number of BL layers.
+        growth_ratio: multiplicative expansion factor per layer (default 1.2).
+
+    Returns:
+        ndarray shape (n_layers,) if first_thickness is scalar,
+        or (n_layers, V) if first_thickness is array.
+    """
+    if n_layers <= 0:
+        if np.ndim(first_thickness) == 0:
+            return np.empty(0, dtype=np.float64)
+        return np.empty((0, int(np.asarray(first_thickness).shape[0])), dtype=np.float64)
+
+    exponents = np.arange(n_layers, dtype=np.float64)  # [0, 1, ..., n-1]
+    factors = growth_ratio ** exponents                 # [1, r, r², ...]
+
+    ft = np.asarray(first_thickness, dtype=np.float64)
+    if ft.ndim == 0:
+        # scalar path → shape (n_layers,)
+        return float(ft) * factors
+    else:
+        # per-vertex path → shape (n_layers, V)
+        return ft[np.newaxis, :] * factors[:, np.newaxis]
+
+
 def _curvature_adaptive_thickness(
     surface_pts: np.ndarray,
     surface_faces: list[list[int]],
@@ -852,11 +891,19 @@ def generate_native_bl(
 
     # 4) Thickness 배열 + bbox safety
     bbox_diag = float(np.linalg.norm(points.max(0) - points.min(0)))
-    thicknesses = np.array(
-        [cfg.first_thickness * (cfg.growth_ratio ** i) for i in range(cfg.num_layers)],
-        dtype=np.float64,
+    # BL2: geometric growth via _geometric_layer_thickness (cfMesh default 1.2×/layer)
+    thicknesses = _geometric_layer_thickness(
+        cfg.first_thickness, cfg.num_layers, growth_ratio=cfg.growth_ratio,
     )
     total = float(thicknesses.sum())
+    log.info(
+        "native_bl_geometric_growth", component="native_bl", phase="BL2",
+        first_thickness=cfg.first_thickness,
+        growth_ratio=cfg.growth_ratio,
+        n_layers=cfg.num_layers,
+        total=round(total, 6),
+        thicknesses=[round(float(t), 6) for t in thicknesses],
+    )
     if total > cfg.max_total_ratio * bbox_diag:
         scale = (cfg.max_total_ratio * bbox_diag) / total
         thicknesses *= scale
