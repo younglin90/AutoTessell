@@ -734,28 +734,29 @@ def insert_face_centroid_steiner(
     if n_tets == 0:
         return pts, tets, 0
 
-    _FACES = [(0, 1, 2, 3), (0, 1, 3, 2), (0, 2, 3, 1), (1, 2, 3, 0)]  # (a,b,c, opp)
-
-    def _face_badness(p: np.ndarray, va: np.ndarray, vb: np.ndarray, vc: np.ndarray) -> float:
-        """1 / (area / circumradius) of triangle — higher = worse."""
-        ab, ac = vb - va, vc - va
-        cross = np.cross(ab, ac)
-        area = float(np.linalg.norm(cross)) * 0.5
-        if area < 1e-30:
-            return 1e30
-        # Circumradius of triangle: R = |a||b||c| / (4*area)
-        la = float(np.linalg.norm(vb - vc))
-        lb = float(np.linalg.norm(va - vc))
-        lc = float(np.linalg.norm(va - vb))
-        R = la * lb * lc / (4.0 * area)
-        if R < 1e-30:
-            return 1e30
-        return R / area  # inverse of area/R
+    # PERF7: face-local index triples (a,b,c) and opposite index for each of 4 faces.
+    # Shape kept as arrays for vectorized worst-face identification below.
+    _FACE_ABC = np.array([[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]], dtype=np.intp)  # (4,3)
+    _FACE_OPP = np.array([3, 2, 1, 0], dtype=np.intp)  # opposite local index per face
 
     # PERF4: use cached face→incident-tet map (avoids per-call O(N) rebuild).
     face_to_tets = compute_face_incident_tets_cached(tets)
 
-    qualities = np.array([_tet_quality(pts, tets[i]) for i in range(n_tets)], dtype=np.float64)
+    # PERF7 Step 1 — vectorized per-tet quality (mirrors _tet_quality mean-ratio formula).
+    verts_all = pts[tets]                           # (N,4,3)
+    a = verts_all[:, 0]; b = verts_all[:, 1]
+    c = verts_all[:, 2]; d = verts_all[:, 3]
+    e0 = b - a; e1 = c - a; e2 = d - a
+    vol6 = (np.cross(e1, e2) * e0).sum(axis=1)     # scalar triple product × 6
+    l_sq = (
+        (e0 ** 2).sum(1) + (e1 ** 2).sum(1) + (e2 ** 2).sum(1)
+        + ((b - c) ** 2).sum(1) + ((b - d) ** 2).sum(1) + ((c - d) ** 2).sum(1)
+    )
+    qualities = np.where(
+        l_sq > 1e-30,
+        np.clip(12.0 * (3.0 * np.abs(vol6) / 6.0) ** (2.0 / 3.0) / l_sq, 0.0, 1.0),
+        0.0,
+    )
     worst_indices = np.argsort(qualities)[: top_k]
 
     pts_list = list(pts)
@@ -772,18 +773,25 @@ def insert_face_centroid_steiner(
         tet = tets_list[ti]
         verts = [int(tet[k]) for k in range(4)]
 
-        # Find worst face of this tet.
+        # PERF7 Step 2 — vectorized worst-face identification over 4 faces.
+        # Build (4,3) vertex positions for each face's 3 corners.
         pts_arr = np.array(pts_list)
-        worst_face_idx = -1
-        worst_badness = -1.0
-        for fi, fj, fk, opp_local in _FACES:
-            va, vb, vc = pts_arr[verts[fi]], pts_arr[verts[fj]], pts_arr[verts[fk]]
-            bad = _face_badness(pts_arr, va, vb, vc)
-            if bad > worst_badness:
-                worst_badness = bad
-                worst_face_idx = (fi, fj, fk, opp_local)  # type: ignore[assignment]
-
-        fi, fj, fk, opp_local = worst_face_idx  # type: ignore[misc]
+        verts_np = np.array(verts, dtype=np.intp)          # (4,)
+        face_verts = pts_arr[verts_np[_FACE_ABC]]           # (4,3,3)
+        va = face_verts[:, 0]; vb = face_verts[:, 1]; vc = face_verts[:, 2]
+        ab = vb - va; ac = vc - va
+        cross_f = np.cross(ab, ac)                          # (4,3)
+        area2 = np.sqrt((cross_f ** 2).sum(axis=1))         # (4,) = 2*area
+        area = area2 * 0.5
+        la = np.sqrt(((vb - vc) ** 2).sum(axis=1))
+        lb = np.sqrt(((va - vc) ** 2).sum(axis=1))
+        lc = np.sqrt(((va - vb) ** 2).sum(axis=1))
+        R = la * lb * lc / np.maximum(4.0 * area, 1e-30)   # circumradius per face
+        badness = np.where(area > 1e-30, R / area, 1e30)   # (4,) R/area = 1/(area/R)
+        worst_fi = int(np.argmax(badness))
+        fi, fj, fk = _FACE_ABC[worst_fi]
+        opp_local = int(_FACE_OPP[worst_fi])
+        fi, fj, fk = int(fi), int(fj), int(fk)
         fa, fb, fc = verts[fi], verts[fj], verts[fk]
         d_vert = verts[opp_local]
 
