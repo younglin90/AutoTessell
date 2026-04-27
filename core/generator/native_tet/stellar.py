@@ -1960,3 +1960,92 @@ def _slim_compute_local_gradient(jac_dict: dict) -> np.ndarray:
         grad[valid] = F[valid] - cof_T * inv_det[:, None, None]
 
     return grad
+
+
+# ---------------------------------------------------------------------------
+# CARD BETA2272_VVV9J3B_LINE_SEARCH — Armijo backtracking line-search helper
+# Gate: default OFF, no caller → mesh unchanged.
+# ---------------------------------------------------------------------------
+_VVV9J3B_LINE_SEARCH: bool = False
+
+
+def _slim_armijo_line_search(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    v_idx: int,
+    direction: np.ndarray,
+    max_step: float = 0.1,
+    c1: float = 0.5,
+    n_iter: int = 10,
+) -> dict:
+    """Armijo backtracking line-search for SLIM Newton step.
+
+    Parameters
+    ----------
+    pts       : (N, 3) float64 vertex positions — NOT mutated.
+    tets      : (T, 4) int    tetrahedra indices.
+    v_idx     : target vertex index.
+    direction : (3,) proposed Newton step direction.
+    max_step  : initial step size α_0 (default 0.1).
+    c1        : Armijo sufficient-decrease fraction (default 0.5).
+    n_iter    : maximum backtracking iterations (default 10).
+
+    Returns
+    -------
+    dict with keys: alpha, n_iter_used, E_pre, E_post, accepted, n_inverted.
+    """
+    _REJECT = {
+        "alpha": 0.0,
+        "n_iter_used": 0,
+        "E_pre": np.inf,
+        "E_post": np.inf,
+        "accepted": False,
+        "n_inverted": -1,
+    }
+
+    # Star of v_idx
+    mask = np.any(tets == v_idx, axis=1)
+    star = tets[mask]
+    if star.shape[0] == 0:
+        return _REJECT
+
+    # Degenerate direction guard
+    if np.linalg.norm(direction) < 1e-14:
+        return _REJECT
+
+    # Pre-step energy (copy — never mutate pts)
+    V_pre = pts.copy()
+    jac_pre = _slim_local_jacobian_per_tet(V_pre, star)
+    E_pre = float(np.sum(_slim_symmetric_dirichlet_energy(jac_pre)))
+
+    eps_det = 1e-14
+
+    for k in range(n_iter):
+        alpha = max_step * (0.5 ** k)
+        V_try = pts.copy()
+        V_try[v_idx] = pts[v_idx] + alpha * direction
+
+        jac_try = _slim_local_jacobian_per_tet(V_try, star)
+        det_F = jac_try["det_F"]
+        n_inv = int(np.sum(det_F <= eps_det))
+        E_post = float(np.sum(_slim_symmetric_dirichlet_energy(jac_try)))
+
+        if n_inv == 0 and E_post <= c1 * E_pre + 1e-12:
+            return {
+                "alpha": alpha,
+                "n_iter_used": k + 1,
+                "E_pre": E_pre,
+                "E_post": E_post,
+                "accepted": True,
+                "n_inverted": 0,
+            }
+
+    # All candidates rejected
+    return {
+        "alpha": 0.0,
+        "n_iter_used": n_iter,
+        "E_pre": E_pre,
+        "E_post": np.inf,
+        "accepted": False,
+        "n_inverted": -1,
+    }
