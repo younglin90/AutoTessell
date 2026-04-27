@@ -3030,7 +3030,7 @@ def generate_native_tet(
                 except Exception as exc:  # noqa: BLE001
                     log.warning("native_tet_vvv9i_skipped", reason=str(exc)[:120])
             # VVV9J #6 — SLIM global-pass diagnostic hook (gate OFF by default, discard-only)
-            _VVV9J_DIAG: bool = False
+            _VVV9J_DIAG: bool = True
             if _VVV9J_DIAG and _n_sliver_pre >= 1:
                 try:
                     from core.generator.native_tet.stellar import _slim_global_pass  # noqa: PLC0415
