@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2214,
+  "beta": 2215,
   "max_round": 1000,
-  "round": 163,
+  "round": 164,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,13 +26,14 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 34.07,
+  "last_bench_time": 32.81,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "BL_REMAIN_VEC",
     "TET_MESHER_REMAIN_VEC",
     "HEX_OCTREE_REMAIN_VEC",
     "POLY_VORONOI_VEC",
@@ -73,5 +74,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "QUALITY_REMAIN_VEC (R163) — no-op: quality.py fully vectorized (PERF1/beta2151 fused snapshot); should_stop history loop is O(window=3) not per-tet; 22/22 PASS 34.10s"
+  "plan_archive": "BL_REMAIN_VEC (R164) — vectorized 3 loops in native_bl.py: curvature per-vertex edge, relative thickness edge, vert_min_cell_dist; 66/66 PASS 32.81s"
 }

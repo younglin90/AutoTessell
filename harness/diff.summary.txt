@@ -1,5 +1,4 @@
-file: core/generator/native_tet/quality.py
-functions: (none — no-op)
-lines_added: 0
-lines_removed: 0
-note: all numeric loops already vectorized (PERF1/beta2151 fused snapshot); should_stop history loop is O(window=3) not per-tet; _quality_percentiles is dead code (no callers)
+file: core/layers/native_bl.py
+functions: _curvature_adaptive_thickness, _relative_first_thickness, generate_native_bl (vert_min_cell_dist)
+lines_added: 9
+lines_removed: 11

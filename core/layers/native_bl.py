@@ -757,24 +757,19 @@ def _curvature_adaptive_thickness(
     thickness = np.full(n_verts, base_thickness, dtype=np.float64)
     curvatures = np.zeros(n_verts, dtype=np.float64)
 
+    # BL_REMAIN_VEC: vectorize per-vertex curvature+edge-min loop
     for vi, v in enumerate(wall_vert_indices):
         nbrs = neighbours[v]
         if not nbrs:
             continue
         pv = surface_pts[v]
-        # discrete Laplacian magnitude as mean curvature proxy
-        lap = np.zeros(3, dtype=np.float64)
-        edge_lens: list[float] = []
-        for nb in nbrs:
-            diff = surface_pts[nb] - pv
-            lap += diff
-            edge_lens.append(float(np.linalg.norm(diff)))
-        curvatures[vi] = float(np.linalg.norm(lap)) / len(nbrs)
-        # local edge min → aspect ratio cap
-        if edge_lens:
-            local_edge_min = float(min(edge_lens))
-            max_safe = local_edge_min / max_aspect
-            thickness[vi] = min(base_thickness, max_safe)
+        nb_pts = surface_pts[nbrs] if isinstance(nbrs, np.ndarray) else surface_pts[list(set(nbrs))]
+        diffs = nb_pts - pv                              # (K, 3)
+        edge_lens_arr = np.linalg.norm(diffs, axis=1)   # (K,)
+        curvatures[vi] = float(np.linalg.norm(diffs.sum(axis=0))) / len(nbrs)
+        local_edge_min = float(edge_lens_arr.min())
+        max_safe = local_edge_min / max_aspect
+        thickness[vi] = min(base_thickness, max_safe)
 
     # sharp region: curv > 2 × median → halve thickness (cfMesh rule)
     if n_verts > 1:
@@ -823,15 +818,16 @@ def _relative_first_thickness(
                 neighbours[b].append(a)
 
     thickness = np.zeros(len(wall_vert_indices), dtype=np.float64)
+    # BL_REMAIN_VEC: vectorize per-vertex mean-edge loop
     for vi, v in enumerate(wall_vert_indices):
         nbrs = neighbours[v]
         if not nbrs:
             thickness[vi] = 0.0
             continue
         pv = surface_pts[v]
-        edge_lens = [float(np.linalg.norm(surface_pts[nb] - pv)) for nb in nbrs]
-        local_mean = float(np.mean(edge_lens))
-        thickness[vi] = ratio * local_mean
+        nb_pts_r = surface_pts[list(set(nbrs))] if not isinstance(nbrs, np.ndarray) else surface_pts[nbrs]
+        edge_lens_r = np.linalg.norm(nb_pts_r - pv, axis=1)  # (K,)
+        thickness[vi] = ratio * float(edge_lens_r.mean())
     return thickness
 
 
@@ -1284,12 +1280,13 @@ def generate_native_bl(
         for v in faces[fi]:
             if int(v) in vert_to_cells:
                 vert_to_cells[int(v)].append(own)
+    # BL_REMAIN_VEC: vectorize vert→cell distance min
     vert_min_cell_dist: dict[int, float] = {}
     for v, clist in vert_to_cells.items():
         if not clist:
             continue
-        dists = [float(np.linalg.norm(points[v] - cell_centres[c])) for c in clist]
-        vert_min_cell_dist[v] = min(dists)
+        dists_arr = np.linalg.norm(cell_centres[list(set(clist))] - points[v], axis=1)
+        vert_min_cell_dist[v] = float(dists_arr.min())
     if vert_min_cell_dist:
         min_local = float(min(vert_min_cell_dist.values()))
         local_cap = max(min_local * 0.8, cfg.first_thickness)
