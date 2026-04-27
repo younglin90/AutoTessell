@@ -1592,3 +1592,90 @@ def validate_and_fix_orientations(
     n_degenerate = int((np.abs(vols2) < 1e-15).sum())
 
     return tets_out, n_flipped, n_degenerate
+
+
+# ---------------------------------------------------------------------------
+# fTetWild §3.2 envelope projection helper (VVV9I1)
+# Default OFF — no caller wired in this card.
+# ---------------------------------------------------------------------------
+
+def _envelope_point_projection(
+    pts,
+    envelope_pts,
+    eps: float,
+    lock_ids=None,
+) -> dict:
+    """Project vertices that violate the ε-envelope back onto the surface.
+
+    Parameters
+    ----------
+    pts : np.ndarray, shape (N, 3)
+        Current vertex positions (not modified — dry-run only by default).
+    envelope_pts : np.ndarray, shape (M, 3)
+        Reference surface sample points that define the thin-shell envelope.
+    eps : float
+        Envelope half-thickness.  Vertices with nearest-envelope-distance > eps
+        are *violated*.
+    lock_ids : set | None
+        Vertex indices that must not be snapped (BL / feature vertices).
+        None ⟹ no locks.
+
+    Returns
+    -------
+    dict
+        {
+          "n_violated": int,   # vertices outside the ε-envelope
+          "n_snapped":  int,   # vertices that *would* be snapped (0 — dry-run)
+          "max_d":      float, # maximum violation distance
+          "snap_map":   dict,  # {vertex_idx: snap_target (np.ndarray, shape (3,))}
+          "applied":    bool,  # always False in this card
+        }
+
+    Notes
+    -----
+    Monotonicity guard (per-vertex dihedral_min non-decrease) is described in
+    the card spec but NOT applied here — reserved for VVV9I4.
+    """
+    # Lazy import to avoid hard dependency at module load time.
+    try:
+        from scipy.spatial import cKDTree  # type: ignore[import]
+    except ImportError as exc:  # pragma: no cover
+        raise ImportError(
+            "_envelope_point_projection requires scipy.spatial.cKDTree"
+        ) from exc
+
+    import numpy as np  # already imported at module level; re-import is a no-op
+
+    lock_set: set = set(lock_ids) if lock_ids is not None else set()
+
+    # Build KDTree over envelope reference points.
+    tree = cKDTree(envelope_pts)
+
+    # Query nearest envelope point for every vertex.
+    dists, _ = tree.query(pts, workers=1)
+
+    # Identify violated vertices (outside ε-envelope) that are not locked.
+    all_violated_mask = dists > eps
+    all_violated_idx = np.where(all_violated_mask)[0]
+
+    # Filter out locked vertices.
+    violated_idx = [i for i in all_violated_idx if i not in lock_set]
+
+    n_violated = len(violated_idx)
+    max_d = float(dists[violated_idx].max()) if n_violated > 0 else 0.0
+
+    # Build snap_map: vertex → nearest envelope point (exact snap target).
+    # Dry-run — positions are NOT modified.
+    snap_map: dict = {}
+    if n_violated > 0:
+        _, nn_indices = tree.query(pts[violated_idx], workers=1)
+        for local_i, global_i in enumerate(violated_idx):
+            snap_map[global_i] = envelope_pts[nn_indices[local_i]].copy()
+
+    return {
+        "n_violated": n_violated,
+        "n_snapped": 0,        # dry-run only; apply step reserved for VVV9I5
+        "max_d": max_d,
+        "snap_map": snap_map,
+        "applied": False,
+    }

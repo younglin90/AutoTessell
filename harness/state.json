@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2264,
+  "beta": 2265,
   "max_round": 1000,
-  "round": 199,
+  "round": 200,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -12,8 +12,8 @@
       "OK": 5,
       "BL_OK": 5,
       "total": 5,
-      "source": "BETA2263_VVV9H7_APPLY_HARDEN_AFFECTED - Klingner apply helper hardening (star-local quality + strict neg-vol equality), regression 35/35 PASS, worst_mq 0.208 \u00b10.005, bench 59.1s stable",
-      "bench_time_s": 59.1
+      "source": "BETA2265_VVV9I1_ENVELOPE_PROJECT_HELPER - fTetWild \u00a73 envelope point projection helper, regression 31/31 PASS (67s), no caller (default OFF), worst_mq 0.208\u00b10.005 maintained",
+      "bench_time_s": null
     },
     "hex": {
       "A": 5,
@@ -39,16 +39,16 @@
     "poly"
   ],
   "recent_cards": [
+    "BETA2265_VVV9I1_ENVELOPE_PROJECT_HELPER",
     "BETA2263_VVV9H7_APPLY_HARDEN_AFFECTED",
     "BETA2262_VVV9H6_APPLY_DRYRUN_ON",
     "BETA2261_VVV9H5_APPLY_DRYRUN_WIRE",
-    "BETA2260_VVV9H4_EDGE_CONTRACT_APPLY_SKEL",
-    "BETA2259_VVV9H3_DIAG_ON"
+    "BETA2260_VVV9H4_EDGE_CONTRACT_APPLY_SKEL"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2263_VVV9H7_APPLY_HARDEN_AFFECTED (R198) - Klingner apply helper hardening (star-local quality + strict neg-vol equality), regression 35/35 PASS, worst_mq 0.208 \u00b10.005, bench 59.1s stable"
+  "plan_archive": "BETA2265_VVV9I1_ENVELOPE_PROJECT_HELPER (R200) - fTetWild \u00a73 envelope point projection helper, regression 31/31 PASS, helper-only (no caller), default OFF"
 }
