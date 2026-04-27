@@ -3079,7 +3079,7 @@ def generate_native_tet(
                 except Exception as exc:  # noqa: BLE001
                     log.warning("native_tet_vvv9j6_skipped", reason=str(exc)[:120])
             # VVV9K #5 — priority-queue main-loop diagnostic hook (gate OFF default, discard-only)
-            _VVV9K_DIAG: bool = False  # R217: default OFF
+            _VVV9K_DIAG: bool = True  # R218: gate flip ON
             if _VVV9K_DIAG and _n_sliver_pre >= 1:
                 try:
                     from core.generator.native_tet.stellar import _priority_queue_main_loop  # noqa: PLC0415

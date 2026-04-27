@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2282,
+  "beta": 2283,
   "max_round": 1000,
-  "round": 217,
+  "round": 218,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -12,8 +12,8 @@
       "OK": 5,
       "BL_OK": 5,
       "total": 5,
-      "source": "BETA2281_VVV9K4_MAIN_LOOP - helper-only, no mesh change",
-      "bench_time_s": 67.45
+      "source": "BETA2283_VVV9K6_DIAG_ON - gate flip, main-loop evidence collect",
+      "bench_time_s": 67.59
     },
     "hex": {
       "A": 5,
@@ -39,16 +39,16 @@
     "poly"
   ],
   "recent_cards": [
+    "BETA2283_VVV9K6_DIAG_ON",
     "BETA2282_VVV9K5_DIAG_HOOK",
     "BETA2281_VVV9K4_MAIN_LOOP",
     "BETA2280_VVV9K3_IMPROVEMENT_ATTEMPT",
-    "BETA2279_VVV9K2_PRIORITY_QUEUE_POP",
-    "BETA2278_VVV9K1_PRIORITY_QUEUE_INIT"
+    "BETA2279_VVV9K2_PRIORITY_QUEUE_POP"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2282_VVV9K5_DIAG_HOOK (R217)"
+  "plan_archive": "BETA2283_VVV9K6_DIAG_ON (R218)"
 }
