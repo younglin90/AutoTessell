@@ -2906,7 +2906,7 @@ def generate_native_tet(
                     flatness_thresh=1e-2,
                 )
                 # VVV9D (beta2249) — dry-run off-plane Steiner (mesh unchanged, log only)
-                _VVV9D_DRYRUN: bool = True  # R185/VVV9E: dry-run evidence ON, mesh untouched (caller discards return)
+                _VVV9D_DRYRUN: bool = False  # R187/VVV9F2: evidence collected (R185 n_offplane=0 across 20 fids), revert to skip dry-run path
                 if _VVV9D_DRYRUN:
                     try:
                         from core.generator.native_tet.stellar import (  # noqa: PLC0415
