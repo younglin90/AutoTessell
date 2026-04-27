@@ -3050,7 +3050,32 @@ def generate_native_tet(
                         n_iters=int(_res_j6["n_iters_used"]),
                         mode="dry_run",
                     )
-                    # discard _res_j6["new_pts"] — final_pts/final_tets unchanged
+                    # env-gate apply (default OFF — empirical evidence pending)
+                    _apply_env = os.environ.get("AUTO_TESSELL_VVV9J_APPLY", "0") == "1"
+                    if not _apply_env:
+                        log.info("native_tet_vvv9j_apply", mode="skip_env_off")
+                    else:
+                        from core.generator.native_tet.stellar import _count_neg_vol as _cnv_j6  # noqa: PLC0415
+                        _pre_n_neg_j6 = _cnv_j6(final_pts, final_tets)
+                        _post_n_neg_j6 = _cnv_j6(_res_j6["new_pts"], final_tets)
+                        if _pre_j6.min_q > 0.05:
+                            log.info("native_tet_vvv9j_apply", mode="reject_pre_gate",
+                                     pre_min_q=float(_pre_j6.min_q))
+                        elif _post_j6.min_q < _pre_j6.min_q:
+                            log.info("native_tet_vvv9j_apply", mode="reject_min_q",
+                                     pre_min_q=float(_pre_j6.min_q), post_min_q=float(_post_j6.min_q))
+                        elif _post_j6.mean_q < _pre_j6.mean_q - 1e-3:
+                            log.info("native_tet_vvv9j_apply", mode="reject_mean_q",
+                                     pre_mean_q=float(_pre_j6.mean_q), post_mean_q=float(_post_j6.mean_q))
+                        elif _post_n_neg_j6 != _pre_n_neg_j6:
+                            log.info("native_tet_vvv9j_apply", mode="reject_neg_vol",
+                                     pre_n_neg=_pre_n_neg_j6, post_n_neg=_post_n_neg_j6)
+                        else:
+                            final_pts = _res_j6["new_pts"]
+                            log.info("native_tet_vvv9j_apply", mode="apply",
+                                     pre_min_q=float(_pre_j6.min_q), post_min_q=float(_post_j6.min_q),
+                                     pre_mean_q=float(_pre_j6.mean_q), post_mean_q=float(_post_j6.mean_q))
+                    # discard _res_j6["new_pts"] if not applied — final_tets unchanged
                 except Exception as exc:  # noqa: BLE001
                     log.warning("native_tet_vvv9j6_skipped", reason=str(exc)[:120])
         except Exception as exc:

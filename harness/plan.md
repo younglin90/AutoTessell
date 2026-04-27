@@ -1,32 +1,34 @@
-# CARD BETA2261_VVV9H5_APPLY_DRYRUN_WIRE (beta2261) — VVV9H #5 wire apply helper as dryrun
+# CARD BETA2277_VVV9J8_REAL_APPLY_ENV (beta2277) — VVV9J #8 SLIM real-apply env-gate (default OFF)
 
 **target_engine**: tet
-**모티프**: Klingner & Shewchuk 2008 §4.1 short-edge contraction — apply path dryrun wire (R184/R190 pattern: helper invoked, return discarded, evidence-only log)
+**모티프**: Rabinovich 2017 SLIM §3 Algorithm 1 (apply path) + R197/R198 strict ratchet (per-fid pre/post) + env-only opt-in (CLAUDE.md `AUTO_TESSELL_*` 패턴)
 
 ## 이론적 근거 (≤30줄)
 
-- **문제 정의**: VVV9H 시퀀스 #4 (R195) 에서 `_apply_klingner_edge_contract_topK` 가 `stellar.py:1434` 에 추가됐으나 mesher 에서 호출되지 않아 evidence 가 0. 다음 단계는 mesher VVV12 try-block 에서 helper 를 *호출* 하되 결과 (new_pts, new_tets, stats) 를 *discard* 하여 메쉬 무변경 + 실측 통계 (n_apply_attempted, n_apply_accepted, wall_ms) 수집.
-- **본 카드의 핵심**:
-  1. mesher.py VVV9H3 diag hook 직후 (line ~2980) 에 `_VVV9H_APPLY_DRYRUN: bool = False` gate 추가.
-  2. gate ON + `_n_sliver_pre >= 1` + `len(_cands) >= 1` 시 `_apply_klingner_edge_contract_topK(final_pts, final_tets, _cands, k=10)` 호출.
-  3. 반환값 `(_new_pts, _new_tets, _stats)` discard — `final_pts/final_tets` 미터치.
-  4. log key `native_tet_vvv9h4_dryrun` 에 `n_apply_attempted=10, n_apply_accepted=_stats['n_applied'], n_reverted, n_conflict, wall_ms` 노출.
-- **단조 보장**: gate=False (default OFF) → R195 대비 runtime 0 byte 차이. `mesh ±0` 자명.
-- **레퍼런스**: Klingner & Shewchuk 2008 §4.1; R184 (VVV9D dryrun wire) / R190 (VVV9F6 dryrun ON) 패턴 동일.
-- **혁신성**: novelty 1 (skel→wire), rigor 3 (gate OFF 무변경), impact 2 (다음 R197 gate flip 시 곧바로 evidence 산출). 합 6 ≥ 5 OK.
+- 현 evidence: bench.full.txt 는 2026-04-27 (R≤209 era) 산물 — R211 DIAG ON 이후 bench 미재생. `native_tet_vvv9j_diag` log key 0 회. R211 합격 근거는 pytest 31/31 (mesh<500 → VVV12 skip → DIAG never fires). 즉 SLIM global-pass 의 dE / Δworst_mq 분포는 **empirical 미관측**.
+- 결정: evidence 없음 → 무조건 mesh-mutating apply 금지. 그러나 #7 까지 7 카드 전부 PASS, 자료구조/Armijo guard 검증 완료 → opt-in 환경변수 gate 로 진보 허용.
+- 본 카드 핵심: 단일 환경변수 `AUTO_TESSELL_VVV9J_APPLY` 도입. unset (default) → 기존 #7 DIAG path 100% 동일 (mesh discard). set "1" → DIAG 직후 strict ratchet 검사 통과 시에만 final_pts ← _res_j6["new_pts"] 1회 commit.
+- Ratchet (Klingner 2008 §3.5 형식):
+  1. `pre.min_q <= 0.05` (sliver-prone hard mesh 만 진입 — easy mesh 영향 0).
+  2. `post.min_q >= pre.min_q` (worst 비감소 — strict ≥, ε margin 없음).
+  3. `post.mean_q >= pre.mean_q - 1e-3` (mean tolerance R198 답습).
+  4. `_count_neg_vol(post) == _count_neg_vol(pre)` (inversion equality).
+- 단조: 4 조건 동시 PASS 시에만 apply. revert log emit 시 `mode="reject_<reason>"`. apply 시 `mode="apply"`.
+- 레퍼런스: stellar.py:549 `_slim_global_pass` (R209, dE_total ≥ 0 by Armijo); R197 `_VVV9H_APPLY_DRYRUN` 패턴; R198 strict neg-vol equality.
+- 혁신성: novelty 1 (env-gate apply skeleton), rigor 3 (4-조건 ratchet + env-only + Armijo descent), impact 2 (수동 opt-in 으로 hard mesh 실험 가능 + 기본 default 회귀 0). 합 6.
 
 ## 변경
 
-- 파일: `core/generator/native_tet/mesher.py` (단일 파일, ≤25줄)
-- 위치: line ~2980 (VVV9H3 diag try-block 직후, VVV12 outer except 직전)
+- 파일: core/generator/native_tet/mesher.py (단일, ≤45줄 추가)
+- 위치: line 3053 직전 (discard 주석 전) — DIAG emit 직후
 - 핵심 변경:
-  1. `_VVV9H_APPLY_DRYRUN: bool = False` gate (default OFF).
-  2. `if _VVV9H_APPLY_DRYRUN and _n_sliver_pre >= 1 and len(_cands) >= 1:`
-  3. `from core.generator.native_tet.stellar import _apply_klingner_edge_contract_topK as _akec_dr`
-  4. `_t0 = time.perf_counter(); _np, _nt, _st = _akec_dr(final_pts, final_tets, _cands, k=10); _wall_ms = int((time.perf_counter()-_t0)*1000)`
-  5. `log.info("native_tet_vvv9h4_dryrun", n_apply_attempted=10, n_apply_accepted=int(_st.get("n_applied",0)), n_reverted=int(_st.get("n_reverted",0)), n_conflict=int(_st.get("n_conflict",0)), wall_ms=_wall_ms, mode="dry_run")`
-  6. `except Exception as exc: log.warning("native_tet_vvv9h4_skipped", reason=str(exc)[:120])`
-- 주의: `_cands` 는 R193 hook 의 try-block 안에서 정의되므로 본 코드도 동일 try-block 안에 nest 또는 재계산. **권장: 동일 try-block 끝 부분에 추가** → `_cands` 가 in-scope.
+  1. env 검사: `_apply_env = os.environ.get("AUTO_TESSELL_VVV9J_APPLY", "0") == "1"` (1 줄).
+  2. ratchet: `pre.min_q <= 0.05 AND post.min_q >= pre.min_q AND post.mean_q >= pre.mean_q - 1e-3 AND post_n_neg == pre_n_neg`.
+  3. apply: `final_pts = _res_j6["new_pts"]` (final_tets 미변경, topology 무손상).
+  4. log emit: `native_tet_vvv9j_apply` with mode in {"apply", "reject_min_q", "reject_mean_q", "reject_neg_vol", "reject_pre_gate", "skip_env_off"}.
+  5. _count_neg_vol import: 재사용 (`from core.generator.native_tet.stellar import _count_neg_vol`).
+- 단조 가드: 환경변수 unset → R211 path 정확 동일 (1-line if 분기 외 zero behavior change).
+- AVOID 준수: bench / pytest threshold / spec 무변경. ENV gate 패턴은 CLAUDE.md `AUTO_TESSELL_VVV13_OFF` 등 선례 따름. 단일 파일.
 
 ## 검증 명령
 
@@ -36,21 +38,13 @@ timeout 90 python3 -m pytest tests/test_native_tet_amips.py tests/test_native_te
 
 ## 합격 기준
 
-- 회귀 31/31 PASS (gate OFF → 코드 경로 미진입)
-- worst_mq 0.2069 ±0.005
-- mesh 무변경 (`final_pts/final_tets` 미터치)
-- bench ≤62s (R195 대비 ±0)
-- BL_OK 5/5
-
-## AVOID 마커 준수
-
-- smooth_amips_analytic BSP 직후 X (HHH1/III1/JJJ1)
-- collapse_short_edges KKK1 flip 후 X (LLL1)
-- flip_edges_54 default-ON without strict per-flip guard X (VVV5)
-- Steiner cavity insertion non-Delaunay X (VVV4/VVV4b)
-→ 본 카드는 gate OFF apply-helper wire only — 모든 AVOID 와 무관.
+- 회귀 PASS (env unset 기본 → R211 정확 동일)
+- worst_mq 변동 ±0.005 (env unset 기본 → 0.208 정확 동일)
+- bench_time ≤ R211 + 5s tolerance (apply path 미진입; ratchet check overhead < 1ms)
+- log `native_tet_vvv9j_apply` 1+ emit (env unset 기본은 mode="skip_env_off")
 
 ## 카드 시퀀스 위치
 
-- VVV9H 시퀀스 (Klingner §4.1 edge contract): #1 candidates(R192) → #2 diag hook(R193) → #3 diag ON(R194) → #4 apply skel(R195) → **#5 apply dryrun wire(R196=현)** → #6 dryrun ON (R197) → #7 default activate (R198+).
-- 다음 카드: `BETA2262_VVV9H6_APPLY_DRYRUN_ON` — gate flip True, evidence 수집, mesh 무변경 (helper return discard).
+- VVV9J SLIM 시퀀스 8/N — **마지막 skeleton 카드**.
+  (#1 jacobian, #2 SD, #3 grad, #3B line-search, #4 Newton-compose, #5 global-pass, #6 DIAG hook, #7 DIAG ON, **#8 real-apply env-gate**).
+- 다음 후보 (R213): VVV9J9 evidence-driven default-ON 결정 — `AUTO_TESSELL_VVV9J_APPLY=1` 로 hard mesh bench 1회 수동 실행 + per-fid `mode="apply"` count 분석. `apply` 빈도 ≥ 3/5 hard mesh AND Δworst_mq > 0 시 default-ON 카드 추진. 실패 시 alt 라인 (fTetWild §3.3 priority queue mesh improvement, 또는 Du-Ying-Wang 2003 AABB-based delaunay refinement) skeleton.
