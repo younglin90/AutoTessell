@@ -6,6 +6,15 @@ CAD/메쉬 파일 → OpenFOAM polyMesh 자동 생성 도구.
 으로만 사용하며, 핵심 알고리즘을 `core/` 내부로 카피·이식·고도화해 최종적으로 외부 의존 없이
 동작하는 것을 목표로 한다.
 
+**B+C 결합 정책 (v0.4 beta2236+)**: native engine 의 self-구현 algorithm 이 grade A
+도달 못한 mesh 만 한정해서 **fallback** 으로 외부 라이브러리 호출 허용.
+- (B) fTetWild / TetWild / Lp CVT / Marechal octree 등 핵심 단계는 자체 Python 포팅 우선.
+- (C) self-구현 algorithm 이 grade<A 시 `pytetwild.tetrahedralize` (또는 wildmeshing)
+  로 fallback. 결과 polyMesh 는 자체 `core/layers/native_bl.py` 가 그대로 적용.
+- env `AUTO_TESSELL_P4C_PYTETWILD=0` 으로 fallback off 가능 (자체-only 측정용).
+- worker pool (fork-spawned) 에서는 pytetwild segfault — bench script 에서만 worker
+  진입부에 강제 OFF (`bench_difficulty_tiers.py:_worker_run`), main / CLI / GUI 는 ON.
+
 ## 개발 단계
 
 **Phase 1 (현재): CLI + Qt GUI** — 리눅스/Windows 직접 실행·테스트
