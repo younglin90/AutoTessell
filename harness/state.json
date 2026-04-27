@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2178,
+  "beta": 2179,
   "max_round": 1000,
-  "round": 126,
+  "round": 127,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,7 +26,7 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 41.93,
+  "last_bench_time": 40.81,
   "consecutive_fails": 0,
   "dones": [
     "hex",
@@ -57,5 +57,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "POLY_CACHE (R126) — single-slot LRU adjacency cache for poly passes; _build_poly_adjacency keyed on id(cells); refactored _poly_merge_candidates callsite; 22/22 PASS; bench 41.93s"
+  "plan_archive": "POL_PERF2 (R127) — vectorize poly_quality_report per-face metric loop; _batch_internal_face_metrics groups faces by vertex count and stacks as (F,K,3) numpy; _polygon_normal_centroid_area fan-tri vectorized via np.roll; 22/22 PASS; bench 40.81s"
 }

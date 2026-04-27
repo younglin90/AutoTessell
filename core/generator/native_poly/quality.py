@@ -29,15 +29,12 @@ def _polygon_normal_centroid_area(
     """N-gon polygon → unit normal, centroid, area (fan triangulation)."""
     P = pts[vert_ids]
     cen = P.mean(axis=0)
-    n_acc = np.zeros(3, dtype=np.float64)
-    area = 0.0
-    for i in range(len(vert_ids)):
-        j = (i + 1) % len(vert_ids)
-        e1 = P[i] - cen
-        e2 = P[j] - cen
-        cr = np.cross(e1, e2)
-        n_acc += cr
-        area += 0.5 * float(np.linalg.norm(cr))
+    # POL_PERF2: vectorized fan-triangulation using numpy slice roll
+    e1 = P - cen            # (K, 3)
+    e2 = np.roll(e1, -1, axis=0)  # shifted by 1 → (P[1]-cen, P[2]-cen, ..., P[0]-cen)
+    crosses = np.cross(e1, e2)    # (K, 3)
+    n_acc = crosses.sum(axis=0)
+    area = 0.5 * float(np.linalg.norm(crosses, axis=1).sum())
     norm = float(np.linalg.norm(n_acc))
     if norm < 1e-30:
         return np.zeros(3), cen, 0.0
@@ -51,6 +48,96 @@ def _cell_centroid(pts: np.ndarray, faces: list[list[int]]) -> np.ndarray:
     if not used:
         return np.zeros(3)
     return pts[list(used)].mean(axis=0)
+
+
+def _batch_internal_face_metrics(
+    pts: np.ndarray,
+    shared_faces: list[tuple[list[int], int, int]],
+    cell_centroids: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """POL_PERF2 — vectorized non-orthogonality + skewness for all shared faces.
+
+    Groups faces by vertex count, processes each group as a (F, K, 3) numpy batch.
+
+    Parameters
+    ----------
+    pts : (V, 3) vertex array.
+    shared_faces : list of (vert_ids, cell_a_idx, cell_b_idx).
+    cell_centroids : (C, 3) precomputed cell centroid array.
+
+    Returns
+    -------
+    non_orths : (M,) float64 — non-orthogonality degrees for valid faces.
+    skews     : (M,) float64 — skewness values for valid faces (≤ M entries).
+    """
+    if not shared_faces:
+        return np.zeros(1), np.zeros(1)
+
+    # Group by face vertex count for vectorised batch processing.
+    from collections import defaultdict as _dd
+    groups: dict[int, list[tuple[list[int], int, int]]] = _dd(list)
+    for entry in shared_faces:
+        groups[len(entry[0])].append(entry)
+
+    all_no: list[np.ndarray] = []
+    all_sk: list[np.ndarray] = []
+
+    for k, entries in groups.items():
+        F = len(entries)
+        # Stack face vertices: (F, K, 3)
+        idx_arr = np.array([e[0] for e in entries], dtype=np.int64)  # (F, K)
+        ca_arr = np.array([e[1] for e in entries], dtype=np.int64)   # (F,)
+        cb_arr = np.array([e[2] for e in entries], dtype=np.int64)   # (F,)
+
+        P = pts[idx_arr]            # (F, K, 3)
+        cens = P.mean(axis=1)      # (F, 3)
+
+        # Fan-triangulate from centroid: edges e1[f,i] = P[f,i]-cen[f], e2 = P[f,(i+1)%k]-cen
+        e1 = P - cens[:, None, :]                              # (F, K, 3)
+        e2 = np.roll(e1, -1, axis=1)                          # (F, K, 3)
+        crosses = np.cross(e1, e2)                             # (F, K, 3)
+        n_acc = crosses.sum(axis=1)                            # (F, 3)
+        cross_norms = np.linalg.norm(crosses, axis=2)          # (F, K)
+        areas = 0.5 * cross_norms.sum(axis=1)                  # (F,)
+        n_norms = np.linalg.norm(n_acc, axis=1)                # (F,)
+
+        valid = (areas > 1e-30) & (n_norms > 1e-30)
+        if not valid.any():
+            continue
+
+        unit_n = np.where(valid[:, None], n_acc / np.maximum(n_norms[:, None], 1e-30), 0.0)  # (F, 3)
+
+        # d vector between cell centroids
+        d = cell_centroids[cb_arr] - cell_centroids[ca_arr]   # (F, 3)
+        d_norms = np.linalg.norm(d, axis=1)                   # (F,)
+        valid2 = valid & (d_norms > 1e-30)
+        if not valid2.any():
+            continue
+
+        d_unit = np.where(valid2[:, None], d / np.maximum(d_norms[:, None], 1e-30), 0.0)
+
+        # Non-orthogonality
+        dot_dn = np.einsum('fi,fi->f', d_unit, unit_n)        # (F,)
+        cos_a = np.clip(np.abs(dot_dn), 0.0, 1.0)
+        no = np.degrees(np.arccos(cos_a))                     # (F,)
+        all_no.append(no[valid2])
+
+        # Skewness: intersection of line (ca→cb) with face plane
+        # t = dot(cen_face - ca, unit_n) / dot(d_unit, unit_n)
+        denom = dot_dn                                         # (F,)
+        valid_sk = valid2 & (np.abs(denom) > 1e-30)
+        if valid_sk.any():
+            ca_pts = cell_centroids[ca_arr]                    # (F, 3)
+            num = np.einsum('fi,fi->f', cens - ca_pts, unit_n)
+            t = np.where(valid_sk, num / np.where(valid_sk, denom, 1.0), 0.0)
+            intersect = ca_pts + t[:, None] * d_unit           # (F, 3)
+            skew_d = np.linalg.norm(intersect - cens, axis=1) # (F,)
+            sk = skew_d / np.sqrt(np.maximum(areas, 1e-30))
+            all_sk.append(sk[valid_sk])
+
+    non_orths = np.concatenate(all_no) if all_no else np.zeros(1)
+    skews = np.concatenate(all_sk) if all_sk else np.zeros(1)
+    return non_orths, skews
 
 
 def poly_quality_report(
@@ -84,30 +171,18 @@ def poly_quality_report(
     n_faces_total = len(face_dict)
     avg_fpc = n_total_face_inst / max(n_cells, 1)
 
-    non_orths: list[float] = []
-    skews: list[float] = []
+    # POL_PERF2: collect shared faces then vectorize metric computation.
+    shared_faces: list[tuple[list[int], int, int]] = []
     for key, owners in face_dict.items():
         if len(owners) != 2:
             continue
         (ca, fi_a), (cb, _fi_b) = owners
         verts = list(cells[ca][fi_a])
-        unit_n, cen, area = _polygon_normal_centroid_area(pts, verts)
-        if area < 1e-30:
-            continue
-        d = cell_centroids[cb] - cell_centroids[ca]
-        d_norm = float(np.linalg.norm(d))
-        if d_norm < 1e-30:
-            continue
-        d_unit = d / d_norm
-        cos_a = float(np.clip(abs(np.dot(d_unit, unit_n)), 0.0, 1.0))
-        non_orths.append(float(np.degrees(np.arccos(cos_a))))
-        denom = float(np.dot(d_unit, unit_n))
-        if abs(denom) < 1e-30:
-            continue
-        t = float(np.dot(cen - cell_centroids[ca], unit_n)) / denom
-        intersect = cell_centroids[ca] + t * d_unit
-        skew_d = float(np.linalg.norm(intersect - cen))
-        skews.append(skew_d / np.sqrt(max(area, 1e-30)))
+        shared_faces.append((verts, ca, cb))
+
+    non_orths_arr, skews_arr = _batch_internal_face_metrics(pts, shared_faces, cell_centroids)
+    non_orths = non_orths_arr.tolist() if len(non_orths_arr) > 0 else [0.0]
+    skews = skews_arr.tolist() if len(skews_arr) > 0 else [0.0]
 
     if not non_orths:
         non_orths = [0.0]

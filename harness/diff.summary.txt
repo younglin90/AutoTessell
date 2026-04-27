@@ -1,4 +1,4 @@
-file: core/generator/native_poly/voronoi.py
-functions: _build_poly_adjacency (new), _poly_merge_candidates (refactored)
-lines_added: 47
-lines_removed: 14
+file: core/generator/native_poly/quality.py
+functions: _polygon_normal_centroid_area, _batch_internal_face_metrics, poly_quality_report
+lines_added: 72
+lines_removed: 23
