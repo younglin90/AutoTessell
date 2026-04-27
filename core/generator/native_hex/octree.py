@@ -526,23 +526,50 @@ def _refine_at_features(
         k0 = max(0, int(np.searchsorted(fine_pts_zs, seg_lo[2], side="left")) - 1)
         k1 = min(nfz - 1, int(np.searchsorted(fine_pts_zs, seg_hi[2], side="right")))
 
-        for i in range(i0, i1 + 1):
-            for j in range(j0, j1 + 1):
-                for k in range(k0, k1 + 1):
-                    if not fine_inside_3d[i, j, k]:
-                        continue
-                    cell_lo = np.array([
-                        fine_pts_xs[i], fine_pts_ys[j], fine_pts_zs[k],
-                    ], dtype=np.float64)
-                    cell_hi = np.array([
-                        fine_pts_xs[i + 1], fine_pts_ys[j + 1], fine_pts_zs[k + 1],
-                    ], dtype=np.float64)
-                    if _segment_intersects_aabb(sa, sb, cell_lo, cell_hi):
-                        cur = int(out[i, j, k])
-                        new_lev = min(cur + max_extra_levels, max_lev_cap)
-                        if new_lev > cur:
-                            out[i, j, k] = np.int8(new_lev)
-                            n_refined += 1
+        # Vectorized AABB slab test over candidate cell sub-grid
+        # Build lo/hi arrays for the candidate block
+        sub_xs_lo = fine_pts_xs[i0 : i1 + 1]          # (di,)
+        sub_xs_hi = fine_pts_xs[i0 + 1 : i1 + 2]
+        sub_ys_lo = fine_pts_ys[j0 : j1 + 1]          # (dj,)
+        sub_ys_hi = fine_pts_ys[j0 + 1 : j1 + 2]
+        sub_zs_lo = fine_pts_zs[k0 : k1 + 1]          # (dk,)
+        sub_zs_hi = fine_pts_zs[k0 + 1 : k1 + 2]
+
+        inv_dx = 1.0 / (sb[0] - sa[0]) if abs(sb[0] - sa[0]) > 1e-30 else 1e30
+        inv_dy = 1.0 / (sb[1] - sa[1]) if abs(sb[1] - sa[1]) > 1e-30 else 1e30
+        inv_dz = 1.0 / (sb[2] - sa[2]) if abs(sb[2] - sa[2]) > 1e-30 else 1e30
+
+        # slab t-intervals per axis (shape: di/dj/dk respectively)
+        tx0 = (sub_xs_lo - sa[0]) * inv_dx; tx1 = (sub_xs_hi - sa[0]) * inv_dx
+        ty0 = (sub_ys_lo - sa[1]) * inv_dy; ty1 = (sub_ys_hi - sa[1]) * inv_dy
+        tz0 = (sub_zs_lo - sa[2]) * inv_dz; tz1 = (sub_zs_hi - sa[2]) * inv_dz
+
+        txmin = np.minimum(tx0, tx1); txmax = np.maximum(tx0, tx1)  # (di,)
+        tymin = np.minimum(ty0, ty1); tymax = np.maximum(ty0, ty1)  # (dj,)
+        tzmin = np.minimum(tz0, tz1); tzmax = np.maximum(tz0, tz1)  # (dk,)
+
+        # Broadcast to (di, dj, dk)
+        t_enter = np.maximum(txmin[:, None, None],
+                  np.maximum(tymin[None, :, None], tzmin[None, None, :]))
+        t_exit  = np.minimum(txmax[:, None, None],
+                  np.minimum(tymax[None, :, None], tzmax[None, None, :]))
+
+        hit = (t_enter <= t_exit + 1e-9) & (t_exit >= -1e-9) & (t_enter <= 1.0 + 1e-9)
+
+        # Combine with inside mask for the sub-block
+        sub_inside = fine_inside_3d[i0:i1 + 1, j0:j1 + 1, k0:k1 + 1]
+        cand_mask = hit & sub_inside  # (di, dj, dk) bool
+
+        if not cand_mask.any():
+            continue
+
+        # Apply level bump where candidate
+        sub_out = out[i0:i1 + 1, j0:j1 + 1, k0:k1 + 1]
+        new_lev = np.minimum(sub_out.astype(np.int16) + max_extra_levels, max_lev_cap)
+        improve = cand_mask & (new_lev > sub_out)
+        n_refined += int(improve.sum())
+        sub_out[improve] = new_lev[improve].astype(np.int8)
+        out[i0:i1 + 1, j0:j1 + 1, k0:k1 + 1] = sub_out
 
     return out, n_refined
 

@@ -237,16 +237,19 @@ def _count_neg_vol_hex(hex_pts: np.ndarray, hex_cells: np.ndarray) -> int:
         return 0
     pts = np.asarray(hex_pts, dtype=np.float64)
     cells = np.asarray(hex_cells, dtype=np.int64)
-    _5TETS = [[0,1,3,4],[1,2,3,6],[3,4,6,7],[1,4,5,6],[1,3,4,6]]
-    count = 0
-    for cell in cells:
-        vol = 0.0
-        for ti in _5TETS:
-            v = pts[cell[ti]]
-            vol += float(np.dot(v[1]-v[0], np.cross(v[2]-v[0], v[3]-v[0])))
-        if vol < 0.0:
-            count += 1
-    return count
+    # Vectorized 5-tet signed-volume sum over all cells.
+    # _5TETS local indices: (5, 4)
+    _5T = np.array([[0,1,3,4],[1,2,3,6],[3,4,6,7],[1,4,5,6],[1,3,4,6]], dtype=np.int64)
+    # verts shape: (N, 5, 4, 3)
+    verts = pts[cells[:, _5T]]          # (N, 5, 4, 3)
+    v0 = verts[:, :, 0, :]             # (N, 5, 3)
+    v1 = verts[:, :, 1, :] - v0        # (N, 5, 3)
+    v2 = verts[:, :, 2, :] - v0        # (N, 5, 3)
+    v3 = verts[:, :, 3, :] - v0        # (N, 5, 3)
+    cross = np.cross(v2, v3)            # (N, 5, 3)
+    dot = (v1 * cross).sum(axis=2)     # (N, 5)
+    vol = dot.sum(axis=1)               # (N,)
+    return int((vol < 0.0).sum())
 
 
 def _reduce_nonortho_post(
@@ -539,31 +542,26 @@ def generate_native_hex(
     X, Y, Z = np.meshgrid(xs, ys, zs, indexing="ij")
     grid_pts = np.stack([X.ravel(), Y.ravel(), Z.ravel()], axis=1)
 
-    def _pid(i: int, j: int, k: int) -> int:
-        return i * (ny + 1) * (nz + 1) + j * (nz + 1) + k
+    # Vectorized hex cell vertex index construction (OpenFOAM order)
+    ny1 = ny + 1; nz1 = nz + 1
+    _ia = np.arange(nx, dtype=np.int64)
+    _ja = np.arange(ny, dtype=np.int64)
+    _ka = np.arange(nz, dtype=np.int64)
+    _CI, _CJ, _CK = np.meshgrid(_ia, _ja, _ka, indexing="ij")
+    _base_c = _CI.ravel() * (ny1 * nz1) + _CJ.ravel() * nz1 + _CK.ravel()
+    # 8 vertex offsets (di,dj,dk): OpenFOAM hex order p0..p7
+    _od = np.array([[0,0,0],[1,0,0],[1,1,0],[0,1,0],
+                    [0,0,1],[1,0,1],[1,1,1],[0,1,1]], dtype=np.int64)
+    _voff = _od[:, 0] * (ny1 * nz1) + _od[:, 1] * nz1 + _od[:, 2]  # (8,)
+    hexes_all = (_base_c[:, None] + _voff[None, :]).astype(np.int64)  # (N, 8)
 
-    # 각 cell (i, j, k) 의 8 vertex id (OpenFOAM hex order)
-    cells: list[tuple[int, ...]] = []
-    for i in range(nx):
-        for j in range(ny):
-            for k in range(nz):
-                p0 = _pid(i,     j,     k    )
-                p1 = _pid(i + 1, j,     k    )
-                p2 = _pid(i + 1, j + 1, k    )
-                p3 = _pid(i,     j + 1, k    )
-                p4 = _pid(i,     j,     k + 1)
-                p5 = _pid(i + 1, j,     k + 1)
-                p6 = _pid(i + 1, j + 1, k + 1)
-                p7 = _pid(i,     j + 1, k + 1)
-                cells.append((p0, p1, p2, p3, p4, p5, p6, p7))
-
-    if not cells:
+    if hexes_all.shape[0] == 0:
         return NativeHexResult(
             False, time.perf_counter() - t0,
             message="grid 가 비어있음 (target_edge_length 가 bbox 보다 큼)",
         )
 
-    hexes = np.array(cells, dtype=np.int64)
+    hexes = hexes_all
     n_grid_total = hexes.shape[0]
     # centroid 로 inside 판정
     centroids = grid_pts[hexes].mean(axis=1)
