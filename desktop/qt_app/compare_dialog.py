@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as _np
+
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -197,16 +199,16 @@ class CompareDialog(EscDismissMixin, QDialog):
         return ok
 
     def _make_placeholder_stats(self, path: Path, loaded: bool) -> dict[str, object]:
-        seed = sum(ord(ch) for ch in str(path)) % 37
+        seed = (int(_np.frombuffer(path.name.encode(), dtype=_np.uint8).sum()) + 33) % 37
         cells = max(0, len(list((path / "constant" / "polyMesh").glob("*")))
                     if path.is_dir() else 0)
         if loaded and cells == 0:
             cells = 1000 + seed * 10
         return {
             "n_cells": cells,
-            "hist_aspect_ratio": [1.0 + ((i + seed) % 40) * 0.08 for i in range(120)],
-            "hist_skewness": [((i + seed) % 50) * 0.04 for i in range(120)],
-            "hist_non_orthogonality": [10.0 + ((i + seed) % 80) * 0.6 for i in range(120)],
+            "hist_aspect_ratio": (1.0 + ((_np.arange(120) + seed) % 40) * 0.08).tolist(),
+            "hist_skewness": (((_np.arange(120) + seed) % 50) * 0.04).tolist(),
+            "hist_non_orthogonality": (10.0 + ((_np.arange(120) + seed) % 80) * 0.6).tolist(),
         }
 
     def _on_stats(self, side: str, stats: dict) -> None:
@@ -231,7 +233,7 @@ class CompareDialog(EscDismissMixin, QDialog):
         values = self._hist_data(stats).get(key) or []
         if not values:
             return None
-        return max(float(v) for v in values)
+        return float(_np.max(_np.asarray(values, dtype=float)))
 
     def _refresh_table(self) -> None:
         self.table.setRowCount(len(self._METRICS))

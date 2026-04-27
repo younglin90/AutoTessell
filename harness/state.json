@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2221,
+  "beta": 2222,
   "max_round": 1000,
-  "round": 170,
+  "round": 171,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -76,5 +76,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "GEOM_FIDELITY_VEC (R170) — fidelity.py fan-triangulation + patch-index loops vectorized (size-grouped numpy); 22/22 PASS 32.30s"
+  "plan_archive": "DESKTOP_QT_REMAIN_VEC (R171) — compare_dialog.py seed/hist/max loops vectorized (numpy); 22/22 PASS 32.37s"
 }

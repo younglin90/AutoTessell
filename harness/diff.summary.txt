@@ -1,4 +1,4 @@
-file: core/utils/boundary_classifier.py
-functions: classify_boundaries
-lines_added: 22
-lines_removed: 16
+file: desktop/qt_app/compare_dialog.py
+functions: _make_placeholder_stats, _metric_value
+lines_added: 5
+lines_removed: 4
