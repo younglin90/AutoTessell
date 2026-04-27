@@ -1555,6 +1555,8 @@ def generate_native_tet(
     # W3 (beta1600) — Best-of-two: final vs base+inside 후보 중 점수 최대 채택.
     # 점수 = area*0.5 + cdt_chain*0.3 + mq*0.2 (단순 가중).
     try:
+        if _phase_bc_skip:
+            raise RuntimeError("_phase_bc_skip")
         from core.generator.native_tet.cdt_check import (
             check_edge_recovery_chained, cdt_ratio as _cdt_ratio_w3,
         )
@@ -1736,6 +1738,8 @@ def generate_native_tet(
     # sliver tet 직접 제거. fTetWild §3.4 의 sliver removal 핵심 단계.
     # mean_q < 0.20 이면 1 회 적용. surface vertex lock.
     try:
+        if _phase_bc_skip:
+            raise RuntimeError("_phase_bc_skip")
         from core.generator.native_tet.quality import snapshot as _qsnap_pre
         pre_q = _qsnap_pre(final_pts, final_tets)
         if float(pre_q.mean_q) < 0.20 and final_tets.shape[0] > 100:
@@ -1778,6 +1782,8 @@ def generate_native_tet(
     # RR1 (beta1950) — 2-3 face flip pass: connectivity-only sliver 깨기.
     # vertex 위치 변경 X (surface 보존), tet 재구성으로 min Q 향상.
     try:
+        if _phase_bc_skip:
+            raise RuntimeError("_phase_bc_skip")
         from core.generator.native_tet.quality import snapshot as _qsnap_flip
         pre_q_f = _qsnap_flip(final_pts, final_tets)
         if float(pre_q_f.mean_q) < 0.25 and final_tets.shape[0] > 100:
@@ -1953,6 +1959,8 @@ def generate_native_tet(
     # 강제 회복. fTetWild §3.3 의 핵심 envelope 정합 단계.
     # missing_face_indices 직접 계산 (input F 중 final_tets 안에 없는 face).
     try:
+        if _phase_bc_skip:
+            raise RuntimeError("_phase_bc_skip")
         from core.generator.native_tet.bsp_insert import bsp_insert_triangles_batch as _bsp_batch
         # final_tets 의 모든 canonical face set.
         if final_tets.size > 0 and F.size > 0:
@@ -2002,6 +2010,8 @@ def generate_native_tet(
     # EEE1 (beta2050) — BSP insert 후 flip + AMIPS post-pass: 새 Steiner
     # vertex 로 인한 sliver 추가 처리.
     try:
+        if _phase_bc_skip:
+            raise RuntimeError("_phase_bc_skip")
         from core.generator.native_tet.quality import snapshot as _qsnap_eee
         from core.generator.native_tet.flip import (
             flip_faces_23 as _f23_e, flip_edges_32 as _f32_e,
