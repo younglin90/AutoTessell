@@ -99,11 +99,11 @@ def smooth_poly_mesh(
         c = verts.mean(axis=0)
         if len(f) < 3:
             return c, 0.0
-        v0 = verts[0]
-        area_vec = np.zeros(3, dtype=np.float64)
-        for k in range(1, len(f) - 1):
-            area_vec += np.cross(verts[k] - v0, verts[k + 1] - v0)
-        area = float(np.linalg.norm(area_vec)) * 0.5
+        # vectorised fan-triangulation from centroid
+        e1 = verts - c                          # (K, 3)
+        e2 = np.roll(e1, -1, axis=0)           # (K, 3)
+        crosses = np.cross(e1, e2)             # (K, 3)
+        area = 0.5 * float(np.linalg.norm(crosses, axis=1).sum())
         return c, area
 
     # vertex → face mapping

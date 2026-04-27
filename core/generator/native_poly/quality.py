@@ -335,17 +335,27 @@ def smooth_poly_in_memory(
                 if 0 <= vi < n:
                     nbrs[vi].update(int(x) for x in f if int(x) != vi)
 
+    # Build CSR-style neighbour arrays for vectorised Laplacian.
+    row_ids: list[int] = []
+    col_ids: list[int] = []
+    for vi in range(n):
+        for nb in nbrs[vi]:
+            row_ids.append(vi)
+            col_ids.append(nb)
+    row_arr = np.array(row_ids, dtype=np.int64)
+    col_arr = np.array(col_ids, dtype=np.int64)
+    # degree per vertex (number of neighbours)
+    deg = np.bincount(row_arr, minlength=n).astype(np.float64)
+    free = (~locked) & (deg > 0)
+
     for _ in range(int(n_iter)):
-        new_pts = pts.copy()
-        for vi in range(n):
-            if locked[vi]:
-                continue
-            ngs = nbrs[vi]
-            if not ngs:
-                continue
-            cen = pts[list(ngs)].mean(axis=0)
-            new_pts[vi] = pts[vi] + float(relax) * (cen - pts[vi])
-        pts = new_pts
+        # Accumulate neighbour positions via np.add.at — vectorised over all edges.
+        acc = np.zeros((n, 3), dtype=np.float64)
+        np.add.at(acc, row_arr, pts[col_arr])
+        # mean neighbour position
+        cen = np.where(deg[:, None] > 0, acc / np.maximum(deg[:, None], 1.0), pts)
+        delta = float(relax) * (cen - pts)
+        pts = np.where(free[:, None], pts + delta, pts)
     return pts
 
 
@@ -369,13 +379,11 @@ def drop_degenerate_poly_cells(
     def _face_normal(face_verts: list[int]) -> tuple[float, float]:
         P = pts[face_verts]
         cen = P.mean(axis=0)
-        n_acc = np.zeros(3)
-        ar = 0.0
-        for i in range(len(face_verts)):
-            j = (i + 1) % len(face_verts)
-            cr = np.cross(P[i] - cen, P[j] - cen)
-            n_acc += cr
-            ar += 0.5 * float(np.linalg.norm(cr))
+        e1 = P - cen                           # (K, 3)
+        e2 = np.roll(e1, -1, axis=0)           # shifted neighbours
+        crosses = np.cross(e1, e2)             # (K, 3) vectorised
+        n_acc = crosses.sum(axis=0)
+        ar = 0.5 * float(np.linalg.norm(crosses, axis=1).sum())
         nn = float(np.linalg.norm(n_acc))
         return ar, nn
 
