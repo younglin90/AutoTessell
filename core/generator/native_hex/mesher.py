@@ -516,6 +516,8 @@ def generate_native_hex(
 
     bmin = V.min(axis=0); bmax = V.max(axis=0)
     diag = float(np.linalg.norm(bmax - bmin))
+    # P1 (beta2232): target_edge_length 가 사용자 명시인지 플래그 저장.
+    _p1_te_user_set = (target_edge_length is not None and float(target_edge_length) > 0)
     if target_edge_length is None or target_edge_length <= 0:
         target_edge_length = diag / max(1, int(seed_density))
     h = float(target_edge_length)
@@ -568,10 +570,59 @@ def generate_native_hex(
     inside = _inside_winding_number(centroids, V, F)
     kept = hexes[inside]
     if kept.shape[0] == 0:
-        return NativeHexResult(
-            False, time.perf_counter() - t0,
-            message="inside hex 0 — target_edge_length 조정 필요",
-        )
+        # P1 (beta2232) — small bbox auto escalate.
+        # target_edge_length 가 사용자 명시 (user_set) 가 아니면, default
+        # seed_density 의 grid spacing 이 너무 커서 hex centroid 모두 외부인
+        # 케이스. seed_density ×1.5 × 3 회 retry.
+        if not _p1_te_user_set:
+            for _retry in range(3):
+                _new_sd = int(seed_density * (1.5 ** (_retry + 1)))
+                _new_h = diag / max(1, _new_sd)
+                # grid 재생성 (line 525-556 의 inline 코드 reproduction).
+                _nxyz_req = np.maximum(
+                    np.ceil((bmax - bmin) / _new_h).astype(int), 1,
+                )
+                _nxyz = np.minimum(_nxyz_req, cap)
+                _nx, _ny, _nz = int(_nxyz[0]), int(_nxyz[1]), int(_nxyz[2])
+                _xs = np.linspace(bmin[0], bmax[0], _nx + 1)
+                _ys = np.linspace(bmin[1], bmax[1], _ny + 1)
+                _zs = np.linspace(bmin[2], bmax[2], _nz + 1)
+                _X, _Y, _Z = np.meshgrid(_xs, _ys, _zs, indexing="ij")
+                _grid_pts2 = np.stack([_X.ravel(), _Y.ravel(), _Z.ravel()], axis=1)
+                _ny1 = _ny + 1; _nz1 = _nz + 1
+                _ia = np.arange(_nx, dtype=np.int64)
+                _ja = np.arange(_ny, dtype=np.int64)
+                _ka = np.arange(_nz, dtype=np.int64)
+                _CI, _CJ, _CK = np.meshgrid(_ia, _ja, _ka, indexing="ij")
+                _base_c = _CI.ravel() * (_ny1 * _nz1) + _CJ.ravel() * _nz1 + _CK.ravel()
+                _od = np.array([[0,0,0],[1,0,0],[1,1,0],[0,1,0],
+                                [0,0,1],[1,0,1],[1,1,1],[0,1,1]], dtype=np.int64)
+                _voff = _od[:, 0] * (_ny1 * _nz1) + _od[:, 1] * _nz1 + _od[:, 2]
+                _hexes_all2 = (_base_c[:, None] + _voff[None, :]).astype(np.int64)
+                if _hexes_all2.shape[0] == 0:
+                    continue
+                _centroids2 = _grid_pts2[_hexes_all2].mean(axis=1)
+                _inside2 = _inside_winding_number(_centroids2, V, F)
+                _kept2 = _hexes_all2[_inside2]
+                if _kept2.shape[0] > 0:
+                    log.info(
+                        "native_hex_p1_auto_escalate",
+                        seed_density_old=int(seed_density),
+                        seed_density_new=_new_sd,
+                        retry=_retry + 1, n_kept=int(_kept2.shape[0]),
+                    )
+                    grid_pts = _grid_pts2
+                    hexes = _kept2
+                    kept = _kept2
+                    n_grid_total = _hexes_all2.shape[0]
+                    seed_density = _new_sd
+                    h = _new_h
+                    break
+        if kept.shape[0] == 0:
+            return NativeHexResult(
+                False, time.perf_counter() - t0,
+                message="inside hex 0 — target_edge_length 조정 필요",
+            )
 
     # 사용된 vertex 만 압축
     used = np.unique(kept.ravel())
