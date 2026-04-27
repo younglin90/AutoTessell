@@ -3141,6 +3141,18 @@ def generate_native_tet(
                     from core.generator.native_tet.stellar import _multi_face_removal_candidates as _mfrc_9p  # noqa: PLC0415
                     _t0_9p = time.perf_counter()
                     _cands = _mfrc_9p(final_pts, final_tets, k_worst=64, q_thr=0.3)
+                    # VVV9P #5 — env-only real-apply gate (R228)
+                    _VVV9P_APPLY_REAL: bool = bool(os.environ.get("AUTO_TESSELL_VVV9P_APPLY", "0") == "1")
+                    from core.generator.native_tet.stellar import _multi_face_removal_apply as _mfra_9p  # noqa: PLC0415
+                    _pts2, _tets2, _n_imp, _delta = _mfra_9p(final_pts, final_tets, candidates=_cands)
+                    if _VVV9P_APPLY_REAL and _delta >= 0.0 and int(_n_imp) >= 1:
+                        final_pts, final_tets = _pts2, _tets2
+                        log.info(
+                            "native_tet_vvv9p5_real_apply",
+                            n_improved=int(_n_imp),
+                            delta=float(_delta),
+                            mode="real_apply",
+                        )
                     _wall_ms_9p = int((time.perf_counter() - _t0_9p) * 1000)
                     _top_q = float(_cands[0]["min_q"]) if _cands else 1.0
                     log.info(
