@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2228,
+  "beta": 2229,
   "max_round": 1000,
-  "round": 177,
+  "round": 178,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -33,6 +33,7 @@
     "poly"
   ],
   "recent_cards": [
+    "EVAL_REMAIN_VEC",
     "PREPROC_REMAIN_VEC",
     "ANALYZER_REMAIN_VEC",
     "HEX_INIT_REMAIN_VEC",
@@ -80,5 +81,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "PREPROC_REMAIN_VEC (R177) — remesh.py apply_laplacian_smoothing inner coord_idx loop → spsolve dense RHS; 22/22 PASS bench 0.001s"
+  "plan_archive": "EVAL_REMAIN_VEC (R178) — all core/evaluator/ files already vectorized (no-op); 22/22 PASS bench 32.5s"
 }
