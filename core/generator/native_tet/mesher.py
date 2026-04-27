@@ -3080,6 +3080,7 @@ def generate_native_tet(
                     log.warning("native_tet_vvv9j6_skipped", reason=str(exc)[:120])
             # VVV9K #5 — priority-queue main-loop diagnostic hook (gate OFF default, discard-only)
             _VVV9K_DIAG: bool = True  # R218: gate flip ON
+            _VVV9K_APPLY_REAL: bool = bool(os.environ.get("AUTO_TESSELL_VVV9K_APPLY", "0") == "1")
             if _VVV9K_DIAG and _n_sliver_pre >= 1:
                 try:
                     from core.generator.native_tet.stellar import _priority_queue_main_loop  # noqa: PLC0415
@@ -3098,7 +3099,16 @@ def generate_native_tet(
                         wall_ms=_wall_ms_9k,
                         mode="dry_run",
                     )
-                    # results discard — final_pts/final_tets unchanged
+                    # results discard — final_pts/final_tets unchanged unless AUTO_TESSELL_VVV9K_APPLY=1
+                    if _VVV9K_APPLY_REAL and _delta >= 0.0 and int(_n_imp) >= 1:
+                        final_pts, final_tets = _pts2, _tets2
+                        log.info(
+                            "native_tet_vvv9k7_real_apply",
+                            n_improved=int(_n_imp),
+                            total_delta=float(_delta),
+                            wall_ms=_wall_ms_9k,
+                            mode="apply",
+                        )
                 except Exception as exc:  # noqa: BLE001
                     log.warning("native_tet_vvv9k_skipped", reason=str(exc)[:120])
         except Exception as exc:

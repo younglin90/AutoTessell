@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2283,
+  "beta": 2284,
   "max_round": 1000,
-  "round": 218,
+  "round": 219,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -12,7 +12,7 @@
       "OK": 5,
       "BL_OK": 5,
       "total": 5,
-      "source": "BETA2283_VVV9K6_DIAG_ON - gate flip, main-loop evidence collect",
+      "source": "BETA2284_VVV9K7_REAL_APPLY_ENV - env-only opt-in gate",
       "bench_time_s": 67.59
     },
     "hex": {
@@ -39,16 +39,16 @@
     "poly"
   ],
   "recent_cards": [
+    "BETA2284_VVV9K7_REAL_APPLY_ENV",
     "BETA2283_VVV9K6_DIAG_ON",
     "BETA2282_VVV9K5_DIAG_HOOK",
     "BETA2281_VVV9K4_MAIN_LOOP",
-    "BETA2280_VVV9K3_IMPROVEMENT_ATTEMPT",
-    "BETA2279_VVV9K2_PRIORITY_QUEUE_POP"
+    "BETA2280_VVV9K3_IMPROVEMENT_ATTEMPT"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2283_VVV9K6_DIAG_ON (R218)"
+  "plan_archive": "BETA2284_VVV9K7_REAL_APPLY_ENV (R219)"
 }

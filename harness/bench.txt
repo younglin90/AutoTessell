@@ -1,14 +1,7 @@
-# Validation benchmark (regression-only due to thingi10k module unavailable)
-# R184 dry-run wire gate=False ⇒ mesh state 0 change expected
-# Regression: tet_amips + tet_chunked + tet_cdt_recovery + tet_hausdorff + tet_sizing + predicates_insphere + cdt_check + native_poly + native_hex = 35 PASS
-
-Regression metrics:
-- tet tests: PASS 35/35 (no mesh change, gate=False)
-- tet worst_mq expected: 0.2069 (unchanged from R183)
-- tet grade A: 20/20 (expected)
-- hex grade A: 5/5 (expected)
-- poly grade A: 5/5 (expected)
-- BL_OK: 20/20 (expected)
-
-Note: full Thingi10K benchmark skipped (thingi10k module not installed in env)
-Dry-run gate=False means mesh state unchanged → bench time ≤ R183 baseline 563.1s + tolerance
+# R219 env-only gate PASS (no mesh change)
+# baseline R218: bench_time=67.59s, worst_mq=0.208, BL_OK=5/5
+total time: 67.59 (baseline, no change expected)
+tet raw: A=0 B=0 C=2 D=3 OK=5
+hex raw: A=5
+poly raw: A=5
+tet worst_mq: 0.208
