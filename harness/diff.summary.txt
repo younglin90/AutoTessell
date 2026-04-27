@@ -1,9 +1,4 @@
-file: core/generator/polymesh_writer.py
-functions: write_generic_polymesh
-lines_added: 7
-lines_removed: 5
-
-file: core/layers/native_bl.py
-functions: _write_labels
-lines_added: 4
-lines_removed: 1
+file: core/generator/native_poly/voronoi.py
+functions: _generate_native_poly_voronoi_inner (ridge loop, used_vertex_set collection, face_owner counting)
+lines_added: 18
+lines_removed: 10

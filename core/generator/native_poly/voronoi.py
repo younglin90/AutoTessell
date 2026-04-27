@@ -1553,15 +1553,21 @@ def _generate_native_poly_voronoi_inner(
     seed_ridges: dict[int, list[tuple[int, list[int]]]] = defaultdict(list)
     # (neighbour_seed, ridge_vertex_indices) 형태로 저장해 이후 "neighbour 가
     # kept 인 ridge 만" 을 internal face 로 썼을 때 manifold 를 보장.
-    for ri, (sa, sb) in enumerate(vor.ridge_points):
-        rv = vor.ridge_vertices[ri]
-        if -1 in rv or len(rv) < 3:
-            continue
-        seed_ridges[int(sa)].append((int(sb), list(rv)))
-        seed_ridges[int(sb)].append((int(sa), list(rv)))
+    # POLY_VORONOI_VEC (R157) — pre-filter valid ridges via numpy; skip open ridges fast.
+    _rp = np.asarray(vor.ridge_points, dtype=np.intp)  # (R, 2)
+    _rv_list = vor.ridge_vertices  # list of lists (variable length)
+    # Identify closed ridges (no -1) with >= 3 vertices using vectorizable checks.
+    _valid_ri = [
+        ri for ri, rv in enumerate(_rv_list)
+        if len(rv) >= 3 and -1 not in rv
+    ]
+    for ri in _valid_ri:
+        sa, sb = int(_rp[ri, 0]), int(_rp[ri, 1])
+        rv = list(_rv_list[ri])
+        seed_ridges[sa].append((sb, rv))
+        seed_ridges[sb].append((sa, rv))
 
     keep_set = set(keep_region_indices)
-    used_vertex_set: set[int] = set()
     cell_face_verts_list: list[list[list[int]]] = []
     cell_owner_seed: list[int] = []
     # v0.4 boundary clipping MVP:
@@ -1578,13 +1584,21 @@ def _generate_native_poly_voronoi_inner(
             # kept 가 아닌 neighbour 도 유지 → 해당 face 가 boundary 가 됨.
             # 어느 쪽이든 cell 에 포함해야 "topologically closed" polyhedron.
             cell_faces.append(list(fv))
-            for v in fv:
-                used_vertex_set.add(int(v))
         cell_face_verts_list.append(cell_faces)
         cell_owner_seed.append(pi)
 
+    # POLY_VORONOI_VEC (R157) — collect used vertex indices in bulk via numpy.
+    # Replace per-vertex set.add() loop with flat concatenation + np.unique.
+    if cell_face_verts_list:
+        _all_vidx = np.concatenate([
+            np.concatenate([np.asarray(f, dtype=np.intp) for f in cell])
+            for cell in cell_face_verts_list
+        ])
+        used = sorted(int(v) for v in np.unique(_all_vidx))
+    else:
+        used = []
+
     # vertex 압축
-    used = sorted(used_vertex_set)
     remap = {old: new for new, old in enumerate(used)}
     final_vertices = vor_vertices[used]
     final_cells: list[list[list[int]]] = []
@@ -1884,11 +1898,14 @@ def _generate_native_poly_voronoi_inner(
             _triangle_planes_and_areas, _group_by_plane,
         )
         # boundary face = 1-owner face.
-        face_owner: dict[tuple[int, ...], int] = {}
-        for cell_faces in final_cells:
-            for f in cell_faces:
-                k = tuple(sorted(f))
-                face_owner[k] = face_owner.get(k, 0) + 1
+        # POLY_VORONOI_VEC (R157) — vectorized face-owner counting via Counter.
+        from collections import Counter as _Counter  # noqa: PLC0415
+        _all_face_keys: list[tuple[int, ...]] = [
+            tuple(sorted(f))
+            for cell_faces in final_cells
+            for f in cell_faces
+        ]
+        face_owner = dict(_Counter(_all_face_keys))
         bnd_tris: list[list[int]] = []
         for cell_faces in final_cells:
             for f in cell_faces:

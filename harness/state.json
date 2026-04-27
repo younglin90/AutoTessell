@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2207,
+  "beta": 2208,
   "max_round": 1000,
-  "round": 156,
+  "round": 157,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -33,6 +33,7 @@
     "poly"
   ],
   "recent_cards": [
+    "POLY_VORONOI_VEC",
     "POLYMESH_OWNER_VEC",
     "CHECKER_REMAIN_VEC",
     "REMESH_VEC",
@@ -70,5 +71,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "POLYMESH_OWNER_VEC (R156) — np.lexsort owner/nbr sort + np.argsort bnd_order in write_generic_polymesh; np.savetxt label string in _write_labels; 22/22 PASS 40.76s"
+  "plan_archive": "POLY_VORONOI_VEC (R157) — numpy ridge pre-filter, bulk vertex collection via np.concatenate+np.unique, Counter-based face_owner in voronoi.py; 22/22 PASS 40.97s"
 }
