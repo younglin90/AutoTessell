@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2287,
+  "beta": 2288,
   "max_round": 1000,
-  "round": 222,
+  "round": 223,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -12,7 +12,7 @@
       "OK": 5,
       "BL_OK": 5,
       "total": 5,
-      "source": "BETA2287_VVV9N2_DIAG_HOOK - diagnostic hook (read-only, default OFF)",
+      "source": "BETA2288_VVV9N3_DIAG_ON - diagnostic hook (read-only, default ON + guard)",
       "bench_time_s": 67.59
     },
     "hex": {
@@ -50,5 +50,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2287_VVV9N2_DIAG_HOOK (R222)"
+  "plan_archive": "BETA2288_VVV9N3_DIAG_ON (R223)"
 }

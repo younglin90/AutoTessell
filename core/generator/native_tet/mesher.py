@@ -3112,8 +3112,13 @@ def generate_native_tet(
                 except Exception as exc:  # noqa: BLE001
                     log.warning("native_tet_vvv9k_skipped", reason=str(exc)[:120])
             # VVV9N #2 — line-comparison helper diagnostic hook (gate OFF default)
-            _VVV9N_DIAG: bool = False  # planner activates in VVV9N3+
-            if _VVV9N_DIAG:
+            _VVV9N_DIAG: bool = True  # VVV9N #3: default ON
+            try:
+                from core.generator.native_tet.quality import snapshot as _qsnap_9n  # noqa: PLC0415
+                _worst_pre = float(_qsnap_9n(final_pts, final_tets).min_q)
+            except Exception:
+                _worst_pre = 1.0
+            if _VVV9N_DIAG and _n_sliver_pre >= 1 and _worst_pre < 0.10:
                 try:
                     from core.generator.native_tet.stellar import _evidence_compare_lines  # noqa: PLC0415
                     _t0_9n = time.perf_counter()
@@ -3127,6 +3132,8 @@ def generate_native_tet(
                     )
                 except Exception as exc:  # noqa: BLE001
                     log.warning("native_tet_vvv9n_skipped", reason=str(exc)[:120])
+            else:
+                log.info("native_tet_vvv9n_skipped_guard", n_sliver_pre=int(_n_sliver_pre), worst_pre=float(_worst_pre))
         except Exception as exc:
             log.warning("native_tet_vvv12_skipped", reason=str(exc)[:120])
     log.info("native_tet_pass_timing", pass_name="VVV12", dt_ms=int((time.perf_counter() - _t_vvv12) * 1000))
