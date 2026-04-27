@@ -13,15 +13,28 @@ Binary 감지: header 의 "solid" 문자열 여부만으론 부족 (일부 binar
 Vertex 병합:
     STL 은 face 당 vertex 가 독립 저장되므로 중복 좌표가 많다. 옵션으로 (기본 on)
     KDTree 기반 좌표 근접 병합을 수행하여 shared vertex 형태로 반환.
+
+Binary 파싱 최적화 (STL_READER_VEC):
+    np.frombuffer + structured dtype 으로 전체 triangle 데이터를 단일 호출로
+    파싱. struct.unpack 루프 없음. _is_binary_stl 도 np.frombuffer 사용.
 """
 from __future__ import annotations
 
-import struct
 from pathlib import Path
 
 import numpy as np
 
 from core.analyzer.readers.core_mesh import CoreSurfaceMesh
+
+# Binary STL per-triangle structured dtype (50 bytes/tri)
+_BINARY_STL_DTYPE = np.dtype([
+    ("normal", "<f4", (3,)),
+    ("v0", "<f4", (3,)),
+    ("v1", "<f4", (3,)),
+    ("v2", "<f4", (3,)),
+    ("attr", "<u2"),
+])
+assert _BINARY_STL_DTYPE.itemsize == 50
 
 
 def _is_binary_stl(path: Path) -> bool:
@@ -31,7 +44,7 @@ def _is_binary_stl(path: Path) -> bool:
         return False
     with path.open("rb") as f:
         header = f.read(84)
-    n_tri = struct.unpack_from("<I", header, 80)[0]
+    n_tri = int(np.frombuffer(header, dtype="<u4", count=1, offset=80)[0])
     expected = 84 + 50 * n_tri
     return size == expected
 
@@ -61,18 +74,11 @@ def _dedupe_vertices(
 
 
 def _read_binary_stl(path: Path, dedupe: bool, tol: float) -> CoreSurfaceMesh:
-    with path.open("rb") as f:
-        header_bytes = f.read(80)
-        n_tri = struct.unpack("<I", f.read(4))[0]
-        # 각 triangle = 12 floats + uint16 attribute = 50 bytes
-        dtype = np.dtype([
-            ("normal", "<f4", 3),
-            ("v0", "<f4", 3),
-            ("v1", "<f4", 3),
-            ("v2", "<f4", 3),
-            ("attr", "<u2"),
-        ])
-        data = np.frombuffer(f.read(n_tri * 50), dtype=dtype, count=n_tri)
+    raw_bytes = path.read_bytes()
+    header_bytes = raw_bytes[:80]
+    n_tri = int(np.frombuffer(raw_bytes, dtype="<u4", count=1, offset=80)[0])
+    # 단일 np.frombuffer 호출로 전체 triangle 배열 파싱 (struct.unpack 루프 없음)
+    data = np.frombuffer(raw_bytes, dtype=_BINARY_STL_DTYPE, count=n_tri, offset=84)
 
     if n_tri == 0:
         return CoreSurfaceMesh(

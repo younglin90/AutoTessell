@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2187,
+  "beta": 2188,
   "max_round": 1000,
-  "round": 136,
+  "round": 137,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,14 +26,13 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 41.01,
+  "last_bench_time": 40.98,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
-    "ANALYZER1",
     "MESHCHECKER1",
     "POLY_CACHE",
     "HEX_CACHE",
@@ -53,12 +52,13 @@
     "PERF3",
     "PERF4",
     "PERF5",
-    "POLYMESHWRITER_VEC"
+    "POLYMESHWRITER_VEC",
+    "STL_READER_VEC"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "HEX_BUILD_VEC (R136) — vectorize build_octree_hex_cells fine_cells_idx via meshgrid+broadcast; 22/22 PASS 41.50s"
+  "plan_archive": "STL_READER_VEC (R137) — vectorize binary STL reader: path.read_bytes()+np.frombuffer+_BINARY_STL_DTYPE, _is_binary_stl np.frombuffer; 22/22 PASS 40.98s 0.57ms/call"
 }
