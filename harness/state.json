@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2215,
+  "beta": 2216,
   "max_round": 1000,
-  "round": 164,
+  "round": 165,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,13 +26,14 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 32.81,
+  "last_bench_time": 38.34,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "TET_BL_REMAIN_VEC",
     "BL_REMAIN_VEC",
     "TET_MESHER_REMAIN_VEC",
     "HEX_OCTREE_REMAIN_VEC",
@@ -74,5 +75,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "BL_REMAIN_VEC (R164) — vectorized 3 loops in native_bl.py: curvature per-vertex edge, relative thickness edge, vert_min_cell_dist; 66/66 PASS 32.81s"
+  "plan_archive": "TET_BL_REMAIN_VEC (R165) — vectorized 4 loops in tet_bl_subdivide.py: _tet_centroids_arr stack, collision check (layer-0), collision check (layer-N), inner vertex batch append; 35/35 PASS 38.34s"
 }

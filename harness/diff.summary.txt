@@ -1,4 +1,4 @@
-file: core/layers/native_bl.py
-functions: _curvature_adaptive_thickness, _relative_first_thickness, generate_native_bl (vert_min_cell_dist)
-lines_added: 9
+file: core/layers/tet_bl_subdivide.py
+functions: subdivide_prism_layers_to_tet
+lines_added: 15
 lines_removed: 11

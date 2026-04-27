@@ -172,16 +172,22 @@ def subdivide_prism_layers_to_tet(
     _n_rejected_collision = 0
 
     # Collision check: 기존 tet cell centroid set (non-prism) 을 사전 계산.
-    _tet_centroids: list[np.ndarray] = []
+    _prism_set_fast = set(prism_cells)
+    _centroid_rows: list[np.ndarray] = []
     for _cid in range(n_cells):
-        if _cid in set(prism_cells):
+        if _cid in _prism_set_fast:
             continue
         _f_list = cell_faces_map[_cid]
         _vs: set[int] = set()
         for _f in _f_list:
             _vs.update(_f)
         if _vs:
-            _tet_centroids.append(points[list(_vs)].mean(axis=0))
+            _centroid_rows.append(points[list(_vs)].mean(axis=0))
+    # Stack into 2-D array for vectorised distance checks (N_tet × 3).
+    _tet_centroids_arr: np.ndarray = (
+        np.stack(_centroid_rows, axis=0) if _centroid_rows else np.empty((0, 3), dtype=np.float64)
+    )
+    _tet_centroids = _centroid_rows  # keep list alias for legacy references below
 
     def _point_in_tet_approx(pt: np.ndarray, centroid: np.ndarray, radius: float) -> bool:
         """Simplified: check if pt is within radius of centroid (bounding-sphere approx)."""
@@ -217,11 +223,12 @@ def subdivide_prism_layers_to_tet(
         _top_centroid = inner_pts.mean(axis=0)
         # Estimate local tet radius from outer triangle edge length.
         _local_radius = (_max_e * 0.5) if _max_e > 0 else 1e-6
-        _collision = False
-        for _tc in _tet_centroids:
-            if _point_in_tet_approx(_top_centroid, _tc, _local_radius):
-                _collision = True
-                break
+        # Vectorised: compute all distances at once; avoid Python loop over centroids.
+        if _tet_centroids_arr.shape[0] > 0:
+            _dists = np.linalg.norm(_tet_centroids_arr - _top_centroid, axis=1)
+            _collision = bool((_dists < _local_radius).any())
+        else:
+            _collision = False
         if _collision:
             _n_rejected_collision += 1
             log.debug("tet_bl_prism_rejected_collision", cell=cid)
@@ -314,21 +321,22 @@ def subdivide_prism_layers_to_tet(
                     # TET_BL1 guard 2 — collision check (bounding-sphere approx)
                     _top_c_li = _inner_pts_li.mean(axis=0)
                     _local_r_li = (_max_e_li * 0.5) if _max_e_li > 0 else 1e-6
-                    _collision_li = any(
-                        bool(np.linalg.norm(_top_c_li - _tc) < _local_r_li)
-                        for _tc in _tet_centroids
-                    )
+                    # Vectorised distance check over all tet centroids.
+                    if _tet_centroids_arr.shape[0] > 0:
+                        _dists_li = np.linalg.norm(_tet_centroids_arr - _top_c_li, axis=1)
+                        _collision_li = bool((_dists_li < _local_r_li).any())
+                    else:
+                        _collision_li = False
                     if _collision_li:
                         _n_rej_col_li += 1
                         log.debug("tet_layers_prism_rejected_collision",
                                   layer=_li + 1, cell=_cid_prev)
                         continue
 
-                    # Accepted: add new vertices to extended points list.
-                    _inner_ids_li: list[int] = []
-                    for _ip in _inner_pts_li:
-                        _inner_ids_li.append(len(_pts_list))
-                        _pts_list.append(_ip)
+                    # Accepted: add new vertices to extended points list (batch append).
+                    _base_idx = len(_pts_list)
+                    _inner_ids_li: list[int] = [_base_idx, _base_idx + 1, _base_idx + 2]
+                    _pts_list.extend(_inner_pts_li)  # 3 rows — no Python loop
 
                     # Register synthetic prism pair under virtual cell ID.
                     _vid = _vcell_counter
