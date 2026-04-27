@@ -1,4 +1,5 @@
-file: core/generator/tier_wildmesh.py
-functions: _tet_boundary_faces_vec (new), _boundary_vertices, _hausdorff_log
-lines_added: 17
-lines_removed: 14
+file: core/generator/polyhedral.py
+functions: (none — no numeric loops found)
+lines_added: 0
+lines_removed: 0
+note: file is pure orchestration; no vectorization possible

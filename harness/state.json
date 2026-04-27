@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2218,
+  "beta": 2219,
   "max_round": 1000,
-  "round": 167,
+  "round": 168,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -76,5 +76,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "TIER_GEN_REMAIN_VEC (R167) — vectorized _boundary_vertices/_hausdorff_log double-loops in tier_wildmesh.py via _tet_boundary_faces_vec (np gather+sort+unique); 22/22 PASS 31.96s"
+  "plan_archive": "POLYHEDRAL_VEC (R168) — no-op: core/generator/polyhedral.py has no numeric loops (pure orchestration); 22/22 PASS 31.89s"
 }
