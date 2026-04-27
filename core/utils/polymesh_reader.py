@@ -16,6 +16,8 @@ import re
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 try:
     import Ofpp as _ofpp
     from Ofpp.mesh_parser import FoamMesh as _FoamMesh
@@ -56,20 +58,18 @@ def _read_foam_list(text: str) -> list[str]:
 def parse_foam_points(points_file: Path) -> list[list[float]]:
     """Parse polyMesh/points and return a list of [x, y, z] coordinates."""
     text = points_file.read_text()
-    tokens = _read_foam_list(text)
-    coords: list[list[float]] = []
-    i = 0
-    while i < len(tokens):
-        tok = tokens[i]
-        if tok.startswith("("):
-            x = float(tok.lstrip("(").rstrip(")"))
-            y = float(tokens[i + 1].rstrip(")"))
-            z = float(tokens[i + 2].rstrip(")"))
-            coords.append([x, y, z])
-            i += 3
-        else:
-            i += 1
-    return coords
+    text = _strip_foam_comments(text)
+    start = text.find("(")
+    end = text.rfind(")")
+    if start == -1 or end == -1:
+        return []
+    inner = text[start + 1 : end]
+    # Replace parentheses with spaces for uniform splitting
+    inner = inner.replace("(", " ").replace(")", " ")
+    vals = np.fromstring(inner, dtype=np.float64, sep=" ")
+    if vals.size == 0 or vals.size % 3 != 0:
+        return []
+    return vals.reshape(-1, 3).tolist()
 
 
 def parse_foam_faces(faces_file: Path) -> list[list[int]]:
@@ -120,14 +120,16 @@ def parse_foam_faces(faces_file: Path) -> list[list[int]]:
 def parse_foam_labels(label_file: Path) -> list[int]:
     """Parse a polyMesh label list file (owner or neighbour)."""
     text = label_file.read_text()
-    tokens = _read_foam_list(text)
-    labels: list[int] = []
-    for tok in tokens:
-        try:
-            labels.append(int(tok))
-        except ValueError:
-            pass
-    return labels
+    text = _strip_foam_comments(text)
+    start = text.find("(")
+    end = text.rfind(")")
+    if start == -1 or end == -1:
+        return []
+    inner = text[start + 1 : end]
+    vals = np.fromstring(inner, dtype=np.int64, sep="\n")
+    if vals.size == 0:
+        vals = np.fromstring(inner, dtype=np.int64, sep=" ")
+    return vals.tolist()
 
 
 def parse_foam_boundary(boundary_file: Path) -> list[dict[str, Any]]:
