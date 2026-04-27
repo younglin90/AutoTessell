@@ -1056,12 +1056,43 @@ def generate_native_tet(
             _skip_thresh = float(os.environ.get("AUTO_TESSELL_PHASE_BC_SKIP_MQ", "0.18"))
             if _pa_mean < _skip_thresh:
                 _phase_bc_skip = True
+                # Phase B/C 와 함께 후속 heavy 패스 (NNN/RRR/SSS/VVV3b~14) 도 스킵.
+                # 어차피 P4-C 가 mesh 를 통째로 재생성하므로 의미 없음.
+                _skip_envs = [
+                    "AUTO_TESSELL_NNN1_DRYRUN",
+                    "AUTO_TESSELL_RRR2_TARGETED",
+                    "AUTO_TESSELL_P3_SSS_REVIVAL",
+                    "AUTO_TESSELL_VVV2_QUEUE",
+                    "AUTO_TESSELL_VVV5B_OFF",
+                    "AUTO_TESSELL_VVV6_OFF",
+                    "AUTO_TESSELL_VVV7_OFF",
+                    "AUTO_TESSELL_VVV8_OFF",
+                    "AUTO_TESSELL_VVV9_OFF",
+                    "AUTO_TESSELL_VVV10_OFF",
+                    "AUTO_TESSELL_VVV11_OFF",
+                    "AUTO_TESSELL_VVV12_OFF",
+                    "AUTO_TESSELL_VVV13_OFF",
+                    "AUTO_TESSELL_VVV14_OFF",
+                ]
+                # ON-by-default (NNN1_DRYRUN/RRR2_TARGETED/P3_SSS_REVIVAL/VVV2_QUEUE)
+                # 는 "0" 으로, OFF-by-default (VVV5B/6~14_OFF) 는 "1" 로.
+                _on_by_default = {
+                    "AUTO_TESSELL_NNN1_DRYRUN", "AUTO_TESSELL_RRR2_TARGETED",
+                    "AUTO_TESSELL_P3_SSS_REVIVAL", "AUTO_TESSELL_VVV2_QUEUE",
+                }
+                _orig_env: dict[str, str | None] = {}
+                for _k in _skip_envs:
+                    _orig_env[_k] = os.environ.get(_k)
+                    os.environ[_k] = "0" if _k in _on_by_default else "1"
+                # 함수 종료 시점에 복원되어야 함 — try/finally 패턴 X (early return 없음)
+                # 이므로 정상 흐름 후 P4-C 진입까지 그대로 유지.
                 log.info(
                     "native_tet_phase_bc_skip",
                     phase_a_mean_q=round(_pa_mean, 4),
                     skip_thresh=round(_skip_thresh, 3),
                     n_tets=int(final_tets.shape[0]),
                     reason="below_threshold_p4c_fallback_will_rescue",
+                    skipped_passes=len(_skip_envs),
                 )
     except Exception as exc:
         log.debug("native_tet_phase_bc_skip_eval_failed", reason=str(exc))
@@ -3091,6 +3122,18 @@ def generate_native_tet(
     except Exception as exc:
         log.debug("native_tet_pass_gate_skipped", reason=str(exc))
 
+    # P4-B-5 (beta2245d) — _phase_bc_skip 으로 mutate 된 env 변수 복원.
+    # P4-C 가 처리하기 전 / 함수 종료 후 호출자 영향 없도록.
+    if _phase_bc_skip:
+        try:
+            for _k, _v in _orig_env.items():
+                if _v is None:
+                    os.environ.pop(_k, None)
+                else:
+                    os.environ[_k] = _v
+        except Exception:
+            pass
+
     # P4-C (beta2236) — grade<A 시 pytetwild fallback.
     # native_tet 의 self-구현 algorithm 이 grade A 도달 못한 mesh 만 fTetWild
     # python wrapper (pytetwild) 로 재생성. 결과 final_pts/final_tets 교체
@@ -3107,13 +3150,18 @@ def generate_native_tet(
             _bbox = V.max(axis=0) - V.min(axis=0)
             _diag_fb = float(np.linalg.norm(_bbox))
             _t_fb0 = time.perf_counter()
+            # P4-C 파라미터 env-configurable. 기본값 fTetWild 권장값.
+            _elf = float(os.environ.get("AUTO_TESSELL_P4C_EDGE_LEN_FAC", "0.05"))
+            _eps = float(os.environ.get("AUTO_TESSELL_P4C_EPSILON", "0.001"))
+            _se = float(os.environ.get("AUTO_TESSELL_P4C_STOP_ENERGY", "10.0"))
+            _noi = int(os.environ.get("AUTO_TESSELL_P4C_NUM_OPT_ITER", "80"))
             _tw_v, _tw_f = pytetwild.tetrahedralize(
                 V.astype(np.float64),
                 F.astype(np.int32),
-                edge_length_fac=0.05,
-                epsilon=0.001,
-                stop_energy=10.0,
-                num_opt_iter=80,
+                edge_length_fac=_elf,
+                epsilon=_eps,
+                stop_energy=_se,
+                num_opt_iter=_noi,
                 quiet=True,
             )
             _t_fb = time.perf_counter() - _t_fb0
