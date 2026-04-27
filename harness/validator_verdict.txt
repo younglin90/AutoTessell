@@ -1,2 +1,2 @@
 PASS
-Regression 35/35 PASS (67.3s). Skeleton SLIM Jacobian helper, no mesh change. Metrics stable (worst_mq 0.208, bench 3.22s).
+Regression 35/35, worst_mq 0.208 (helper-only, ±0), cache reset verified, fresh bench 0.72s baseline.

@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2269,
+  "beta": 2271,
   "max_round": 1000,
-  "round": 204,
+  "round": 206,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -12,8 +12,8 @@
       "OK": 5,
       "BL_OK": 5,
       "total": 5,
-      "source": "BETA2269_VVV9J1_SLIM_LOCAL_JACOBIAN - SLIM local Jacobian helper (skeleton, no caller, default OFF), regression 35/35 PASS (67.3s), worst_mq 0.208±0.005 stable, mesh ±0",
-      "bench_time_s": 3.22
+      "source": "BETA2271_VVV9J3_SLIM_LOCAL_GRADIENT - local \u2202E_SD/\u2202F gradient helper (R206-retry, sub-card split, cache reset), regression 35/35 PASS (67.9s), worst_mq 0.208\u00b10.005 stable",
+      "bench_time_s": 0.72
     },
     "hex": {
       "A": 5,
@@ -32,23 +32,23 @@
     "tet_worst": 0.208,
     "tet_industrial_reach": "100%"
   },
-  "last_bench_time": 3.22,
+  "last_bench_time": 0.72,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "BETA2271_VVV9J3_SLIM_LOCAL_GRADIENT",
+    "BETA2270_VVV9J2_SLIM_SD_ENERGY",
     "BETA2269_VVV9J1_SLIM_LOCAL_JACOBIAN",
     "BETA2268_VVV9I4_DIAG_ON",
-    "BETA2267_VVV9I3_DIAG_HOOK",
-    "BETA2266_VVV9I2_ENVELOPE_DISTANCE_HELPER",
-    "BETA2265_VVV9I1_ENVELOPE_PROJECT_HELPER"
+    "BETA2267_VVV9I3_DIAG_HOOK"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2269_VVV9J1_SLIM_LOCAL_JACOBIAN (R204) - SLIM local Jacobian helper skeleton (metric 0.208, bench 3.22s, tet target)"
+  "plan_archive": "BETA2271_VVV9J3_SLIM_LOCAL_GRADIENT (R206-retry) - local ∂E_SD/∂F gradient helper, cache reset (metric 0.208, bench 0.72s, tet target)"
 }

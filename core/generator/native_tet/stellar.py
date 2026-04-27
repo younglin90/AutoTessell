@@ -1914,3 +1914,49 @@ def _slim_symmetric_dirichlet_energy(jac_dict: dict) -> np.ndarray:
     E_SD = 0.5 * (frob_F2 + inv_term)  # (T,) — +inf where mask is False
 
     return E_SD
+
+
+# ---------------------------------------------------------------------------
+# VVV9J3 — SLIM local gradient helper (Rabinovich 2017 §3 eq.4)
+# Default OFF; no caller in this sub-card (helper-only).
+# ---------------------------------------------------------------------------
+
+_VVV9J3_LOCAL_GRAD: bool = False
+
+
+def _slim_compute_local_gradient(jac_dict: dict) -> np.ndarray:
+    """Per-tet analytic gradient ∂E_SD/∂F (Rabinovich 2017 §3 eq.4).
+
+    Parameters
+    ----------
+    jac_dict : dict
+        Output of ``_slim_compute_jacobians`` (R204).  Must contain keys:
+        ``F`` (T, 3, 3), ``det_F`` (T,), ``cof_F`` (T, 3, 3).
+
+    Returns
+    -------
+    grad : np.ndarray, shape (T, 3, 3)
+        ∂E_SD/∂F_t for each tet t.
+        Degenerate tets (det_F ≤ 0 or |det_F| < 1e-14) → zeros; flag
+        stored in returned dict key ``degenerate_mask`` if caller inspects
+        jac_dict (dict is not mutated here — caller may extend as needed).
+    """
+    F: np.ndarray = jac_dict["F"]        # (T, 3, 3)
+    det_F: np.ndarray = jac_dict["det_F"]  # (T,)
+    cof_F: np.ndarray = jac_dict["cof_F"]  # (T, 3, 3)
+
+    T = F.shape[0]
+    grad = np.zeros((T, 3, 3), dtype=np.float64)
+
+    # Valid tets: det > 0 and |det| >= 1e-14
+    valid = (det_F > 0.0) & (np.abs(det_F) >= 1e-14)
+
+    if valid.any():
+        # ∂E_SD/∂F = F − cof(F)^T / det(F)
+        # cof_F has shape (T, 3, 3); transpose per-tet: axes (0,2,1)
+        cof_T = np.transpose(cof_F[valid], (0, 2, 1))  # (V, 3, 3)
+        inv_det = 1.0 / det_F[valid]                   # (V,)
+        # broadcast: (V,3,3) / (V,1,1)
+        grad[valid] = F[valid] - cof_T * inv_det[:, None, None]
+
+    return grad
