@@ -1477,6 +1477,9 @@ def _generate_native_poly_voronoi_inner(
         outside_idx = np.where(~vv_inside)[0]
         if outside_idx.size > 0:
             _, nearest = tree.query(vor_vertices[outside_idx], k=1)
+            # beta2245m: KDTree may return index == V.shape[0] (off-by-one);
+            # clip to valid range.
+            nearest = np.asarray(nearest, dtype=np.int64).clip(0, V.shape[0] - 1)
             vor_vertices = vor_vertices.copy()
             vor_vertices[outside_idx] = V[nearest]
             log.info(
