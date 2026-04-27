@@ -86,12 +86,16 @@ def _point_in_triangle(
 
 
 def _tet_facet_keys(tets: np.ndarray) -> set[tuple[int, int, int]]:
-    keys: set[tuple[int, int, int]] = set()
-    for t in tets:
-        a, b, c, d = int(t[0]), int(t[1]), int(t[2]), int(t[3])
-        for tri in ((a, b, c), (a, b, d), (a, c, d), (b, c, d)):
-            keys.add(tuple(sorted(tri)))  # type: ignore[arg-type]
-    return keys
+    """Vectorized: extract sorted (i,j,k) facet keys from (T,4) tet array."""
+    if tets.size == 0:
+        return set()
+    t = np.asarray(tets, dtype=np.int64)
+    # 4 facets per tet — index combos: (0,1,2),(0,1,3),(0,2,3),(1,2,3)
+    combos = np.array([[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]], dtype=np.int64)
+    # (T*4, 3)
+    faces = t[:, combos].reshape(-1, 3)
+    faces = np.sort(faces, axis=1)
+    return set(map(tuple, faces.tolist()))
 
 
 def bsp_insert_triangles_batch(
@@ -177,52 +181,54 @@ def bsp_insert_triangles_batch(
             tet_ids = np.where(crosses[li] & alive)[0]
             if tet_ids.size == 0:
                 continue
-            # 6 edge × tet_ids 의 plane intersection.
-            for (i0, i1) in pair_idx.tolist():
-                v0 = vv[tet_ids, i0]             # (k, 3)
-                v1 = vv[tet_ids, i1]
-                s0 = sd[li, tet_ids, i0]
-                s1 = sd[li, tet_ids, i1]
-                denom = s0 - s1
-                ok = np.abs(denom) > 1e-20
-                if not ok.any():
-                    continue
-                t = np.where(ok, s0 / np.where(ok, denom, 1.0), 0.0)
-                cross_mask = ok & (s0 * s1 < 0)
-                if not cross_mask.any():
-                    continue
-                P = v0 + t[:, None] * (v1 - v0)
-                # barycentric inside test wrt triangle i_global.
-                Ai = A[i_global]; Bi = B[i_global]; Ci = C[i_global]
-                v_ab = Bi - Ai; v_ac = Ci - Ai
-                v_ap = P - Ai
-                dot00 = float(np.dot(v_ac, v_ac))
-                dot01 = float(np.dot(v_ac, v_ab))
-                dot11 = float(np.dot(v_ab, v_ab))
-                dot02 = v_ap @ v_ac
-                dot12 = v_ap @ v_ab
-                inv = 1.0 / max(dot00 * dot11 - dot01 * dot01, 1e-30)
-                u = (dot11 * dot02 - dot01 * dot12) * inv
-                vb = (dot00 * dot12 - dot01 * dot02) * inv
-                inside = cross_mask & (u >= -1e-9) & (vb >= -1e-9) & (u + vb <= 1 + 1e-9)
-                if not inside.any():
-                    continue
-                for idx in np.where(inside)[0].tolist():
-                    if n_inserted >= max_inserts:
-                        break
-                    pt = P[idx]
-                    # 근접 중복 제거 (O(new_pts_global)).
-                    dup = False
-                    for existing in new_pts_global[-20:]:
-                        if float(np.linalg.norm(existing - pt)) < 1e-9:
-                            dup = True
-                            break
-                    if dup:
+            k = tet_ids.size
+            # --- vectorize all 6 edges simultaneously ---
+            # v0_all, v1_all: (6, k, 3); s0_all, s1_all: (6, k)
+            v0_all = vv[np.ix_(tet_ids, pair_idx[:, 0])].transpose(1, 0, 2)  # (6,k,3)
+            v1_all = vv[np.ix_(tet_ids, pair_idx[:, 1])].transpose(1, 0, 2)  # (6,k,3)
+            s0_all = sd[li][np.ix_(tet_ids, pair_idx[:, 0])].T  # (6,k)
+            s1_all = sd[li][np.ix_(tet_ids, pair_idx[:, 1])].T  # (6,k)
+            denom_all = s0_all - s1_all                          # (6,k)
+            ok_all = np.abs(denom_all) > 1e-20
+            t_all = np.where(ok_all, s0_all / np.where(ok_all, denom_all, 1.0), 0.0)
+            cross_all = ok_all & (s0_all * s1_all < 0)          # (6,k)
+            if not cross_all.any():
+                continue
+            # intersection points P: (6,k,3)
+            P_all = v0_all + t_all[:, :, None] * (v1_all - v0_all)
+            # barycentric inside test — scalars for triangle i_global
+            Ai = A[i_global]; Bi = B[i_global]; Ci = C[i_global]
+            v_ab = Bi - Ai; v_ac = Ci - Ai
+            dot00 = float(v_ac @ v_ac)
+            dot01 = float(v_ac @ v_ab)
+            dot11 = float(v_ab @ v_ab)
+            inv = 1.0 / max(dot00 * dot11 - dot01 * dot01, 1e-30)
+            # v_ap: (6,k,3)
+            v_ap = P_all - Ai
+            dot02 = v_ap @ v_ac   # (6,k)
+            dot12 = v_ap @ v_ab   # (6,k)
+            u_all = (dot11 * dot02 - dot01 * dot12) * inv   # (6,k)
+            vb_all = (dot00 * dot12 - dot01 * dot02) * inv  # (6,k)
+            inside_all = cross_all & (u_all >= -1e-9) & (vb_all >= -1e-9) & (u_all + vb_all <= 1 + 1e-9)
+            if not inside_all.any():
+                continue
+            # collect candidate points: shape (N_in, 3)
+            edge_idx, k_idx = np.where(inside_all)
+            P_cands = P_all[edge_idx, k_idx]    # (N_in, 3)
+            tet_cands = tet_ids[k_idx]           # (N_in,)
+            # vectorized duplicate check against last-20 new points
+            for ci in range(P_cands.shape[0]):
+                if n_inserted >= max_inserts:
+                    break
+                pt = P_cands[ci]
+                if new_pts_global:
+                    recent = np.asarray(new_pts_global[-20:])
+                    if np.any(np.linalg.norm(recent - pt, axis=1) < 1e-9):
                         continue
-                    new_pts_global.append(pt)
-                    pts_list.append(pt.tolist())
-                    n_inserted += 1
-                    subdivide_set.add(int(tet_ids[idx]))
+                new_pts_global.append(pt)
+                pts_list.append(pt.tolist())
+                n_inserted += 1
+                subdivide_set.add(int(tet_cands[ci]))
 
     for ti in subdivide_set:
         if alive[ti]:

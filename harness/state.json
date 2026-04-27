@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2192,
+  "beta": 2193,
   "max_round": 1000,
-  "round": 141,
+  "round": 142,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,13 +26,14 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 40.98,
+  "last_bench_time": 40.87,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "BSP_VEC",
     "MESHCHECKER1",
     "POLY_CACHE",
     "HEX_CACHE",
@@ -62,5 +63,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "TET_FLIP_VEC (R141) \u2014 vectorize flip primitives inner apply (flip_faces_23, flip_edges_32/44/54/76) via batch quality/vol numpy; 22/22 PASS 40.95s"
+  "plan_archive": "BSP_VEC (R142) — vectorize _tet_facet_keys (numpy sort) + bsp_insert_triangles_batch 6-edge loop (np.ix_ batch) + dup check; 22/22 PASS 40.87s"
 }
