@@ -4,12 +4,76 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 
 from core.utils.logging import get_logger
 
 log = get_logger(__name__)
+
+# HEX_CACHE (beta2177) — single-slot LRU adjacency cache keyed on hex_cells.tobytes().
+# Mirrors PERF3/4 (R113/R114) tet adjacency cache.  Default ON.
+# Set AUTO_TESSELL_HEX_CACHE_OFF=1 to disable.
+
+class _HexAdjCache(NamedTuple):
+    """Cached adjacency maps for a hex mesh."""
+    face_map: "dict[tuple[int, int, int, int], list[int]]"   # sorted-face → [cell_idx, ...]
+    edge_nbrs: "list[set[int]]"                               # vertex → neighbour vertex set
+    boundary_verts: "set[int]"                                # vertices on boundary faces
+
+
+_hex_adj_cache: tuple[bytes, _HexAdjCache] | None = None  # (key, cache)
+
+
+def _build_hex_adjacency(hex_cells: np.ndarray) -> _HexAdjCache:
+    """Build face_map + edge_nbrs + boundary_verts for *hex_cells*.
+
+    Single-slot LRU: if hex_cells.tobytes() matches the cached key,
+    return cached result without rebuilding.
+    """
+    import os as _os_cache
+    global _hex_adj_cache
+
+    if not _os_cache.environ.get("AUTO_TESSELL_HEX_CACHE_OFF"):
+        key = hex_cells.tobytes()
+        if _hex_adj_cache is not None and _hex_adj_cache[0] == key:
+            return _hex_adj_cache[1]
+
+    n_cells = hex_cells.shape[0]
+
+    # face_map: sorted 4-tuple → list of owner cell indices
+    face_map: dict[tuple[int, int, int, int], list[int]] = {}
+    for ci in range(n_cells):
+        for face_local in _HEX_FACES:
+            v = tuple(int(hex_cells[ci, k]) for k in face_local)
+            key_f: tuple[int, int, int, int] = tuple(sorted(v))  # type: ignore[assignment]
+            face_map.setdefault(key_f, []).append(ci)
+
+    # boundary vertices (faces with exactly 1 owner)
+    boundary_verts: set[int] = set()
+    for key_f, owners in face_map.items():
+        if len(owners) == 1:
+            boundary_verts.update(key_f)
+
+    # edge neighbour map for Laplacian smooth
+    _EDGE_PAIRS = [(0,1),(1,2),(2,3),(3,0),(4,5),(5,6),(6,7),(7,4),
+                   (0,4),(1,5),(2,6),(3,7)]
+    n_pts = int(hex_cells.max()) + 1 if n_cells > 0 else 0
+    edge_nbrs: list[set[int]] = [set() for _ in range(n_pts)]
+    for ci in range(n_cells):
+        for a, b in _EDGE_PAIRS:
+            va = int(hex_cells[ci, a]); vb = int(hex_cells[ci, b])
+            edge_nbrs[va].add(vb); edge_nbrs[vb].add(va)
+
+    result = _HexAdjCache(face_map=face_map, edge_nbrs=edge_nbrs,
+                          boundary_verts=boundary_verts)
+
+    if not _os_cache.environ.get("AUTO_TESSELL_HEX_CACHE_OFF"):
+        key = hex_cells.tobytes()
+        _hex_adj_cache = (key, result)
+
+    return result
 
 
 @dataclass
@@ -205,13 +269,9 @@ def _reduce_nonortho_post(
     pts = hex_pts.copy()
     n_cells = hex_cells.shape[0]
 
-    # Build face → owner/neighbour cell index map.
-    face_map: dict[tuple[int, int, int, int], list[int]] = {}
-    for ci in range(n_cells):
-        for face_local in _HEX_FACES:
-            v = tuple(int(hex_cells[ci, k]) for k in face_local)
-            key = tuple(sorted(v))  # type: ignore[assignment]
-            face_map.setdefault(key, []).append(ci)  # type: ignore[arg-type]
+    # HEX_CACHE: reuse cached face_map if hex_cells unchanged.
+    _adj = _build_hex_adjacency(hex_cells)
+    face_map = _adj.face_map
 
     def _face_nonortho(p: np.ndarray, v4: tuple[int, int, int, int]) -> float:
         """Non-orthogonality of a quad face between its two owner cells."""
@@ -572,29 +632,10 @@ def generate_native_hex(
             from core.generator.native_hex.quality import (  # noqa: PLC0415
                 hex_quality_report,
             )
-            # boundary vertex 식별 (1-owner face 의 vertex).
-            face_count: dict[tuple[int, int, int, int], int] = {}
-            for ci in range(final_hexes.shape[0]):
-                for face_local in _HEX_FACES:
-                    v = tuple(int(final_hexes[ci, k]) for k in face_local)
-                    key = tuple(sorted(v))
-                    face_count[key] = face_count.get(key, 0) + 1
-            boundary_v: set[int] = set()
-            for ci in range(final_hexes.shape[0]):
-                for face_local in _HEX_FACES:
-                    v = [int(final_hexes[ci, k]) for k in face_local]
-                    key = tuple(sorted(v))
-                    if face_count[key] == 1:
-                        boundary_v.update(v)
-            # vertex → 이웃 vertex (같은 hex 의 edge 인접).
-            edge_pairs = [(0,1),(1,2),(2,3),(3,0),(4,5),(5,6),(6,7),(7,4),
-                          (0,4),(1,5),(2,6),(3,7)]
-            n = final_pts.shape[0]
-            nbrs: list[set[int]] = [set() for _ in range(n)]
-            for ci in range(final_hexes.shape[0]):
-                for a, b in edge_pairs:
-                    va = int(final_hexes[ci, a]); vb = int(final_hexes[ci, b])
-                    nbrs[va].add(vb); nbrs[vb].add(va)
+            # HEX_CACHE: boundary_verts + edge_nbrs from cache.
+            _sm_adj = _build_hex_adjacency(final_hexes)
+            boundary_v: set[int] = _sm_adj.boundary_verts
+            nbrs: list[set[int]] = _sm_adj.edge_nbrs
             prev_pts_sm = final_pts.copy()
             try:
                 prev_skew_sm = hex_quality_report(final_pts, final_hexes).max_skewness
