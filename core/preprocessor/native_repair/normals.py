@@ -21,13 +21,27 @@ def fix_face_winding(
     if F.size == 0:
         return F, 0
 
-    # edge → face indices + edge direction
-    edge_faces: dict[tuple[int, int], list[tuple[int, tuple[int, int]]]] = defaultdict(list)
-    for fi in range(F.shape[0]):
-        f = F[fi]
-        for a, b in ((f[0], f[1]), (f[1], f[2]), (f[2], f[0])):
-            k = (int(min(a, b)), int(max(a, b)))
-            edge_faces[k].append((fi, (int(a), int(b))))
+    # edge → face indices + edge direction (vectorized)
+    nf = F.shape[0]
+    # 3 directed edges per face
+    src = np.concatenate([F[:, 0], F[:, 1], F[:, 2]])   # (3nf,)
+    dst = np.concatenate([F[:, 1], F[:, 2], F[:, 0]])
+    fi_all = np.tile(np.arange(nf), 3)
+    ea = np.minimum(src, dst)
+    eb = np.maximum(src, dst)
+    max_v = int(F.max()) + 1 if F.size > 0 else 1
+    keys = ea.astype(np.int64) * max_v + eb.astype(np.int64)
+    order = np.argsort(keys, kind="stable")
+    keys_s = keys[order]; src_s = src[order]; dst_s = dst[order]; fi_s = fi_all[order]
+    starts = np.where(np.diff(keys_s, prepend=keys_s[0] - 1))[0]
+    ends = np.append(starts[1:], len(keys_s))
+    edge_faces: dict[tuple[int, int], list[tuple[int, tuple[int, int]]]] = {}
+    for s, e in zip(starts, ends):
+        k = (int(ea[order[s]]), int(eb[order[s]]))
+        edge_faces[k] = [
+            (int(fi_s[i]), (int(src_s[i]), int(dst_s[i])))
+            for i in range(s, e)
+        ]
 
     visited = np.zeros(F.shape[0], dtype=bool)
     n_flipped = 0

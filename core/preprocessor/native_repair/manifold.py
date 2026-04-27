@@ -1,9 +1,39 @@
 """Non-manifold edge 해결 (3+ face 공유 edge 에서 일부 face 제거)."""
 from __future__ import annotations
 
-from collections import defaultdict
-
 import numpy as np
+
+
+def _build_edge_face_map(F: np.ndarray, active: np.ndarray) -> dict[int, list[int]]:
+    """active face 들의 undirected edge → face index 매핑을 numpy 로 벡터화 구축.
+
+    각 삼각형 3 edge 를 (min, max) 정렬 후 lexsort 로 그룹화.
+    Returns dict keyed by flat int (e0*max_v + e1) → list of fi.
+    """
+    active_idx = np.where(active)[0]
+    if active_idx.size == 0:
+        return {}
+    Fa = F[active_idx]          # (M, 3)
+    # 3 edges per face: (0,1), (1,2), (2,0)
+    e0 = np.stack([Fa[:, 0], Fa[:, 1], Fa[:, 2]], axis=0)  # (3, M)
+    e1 = np.stack([Fa[:, 1], Fa[:, 2], Fa[:, 0]], axis=0)
+    ea = np.minimum(e0, e1).ravel()          # (3M,)
+    eb = np.maximum(e0, e1).ravel()          # (3M,)
+    fi_rep = np.tile(active_idx, 3)          # (3M,) face indices
+
+    max_v = int(F.max()) + 1
+    keys = ea.astype(np.int64) * max_v + eb.astype(np.int64)
+    order = np.argsort(keys, kind="stable")
+    keys_s = keys[order]
+    fi_s = fi_rep[order]
+
+    edge_map: dict[int, list[int]] = {}
+    starts = np.where(np.diff(keys_s, prepend=keys_s[0] - 1))[0]
+    ends = np.append(starts[1:], len(keys_s))
+    for s, e in zip(starts, ends):
+        k = int(keys_s[s])
+        edge_map[k] = fi_s[s:e].tolist()
+    return edge_map
 
 
 def remove_non_manifold_faces(faces: np.ndarray) -> tuple[np.ndarray, int]:
@@ -26,15 +56,9 @@ def remove_non_manifold_faces(faces: np.ndarray) -> tuple[np.ndarray, int]:
     while changed and iter_count < 10:
         changed = False
         iter_count += 1
-        edge_faces: dict[tuple[int, int], list[int]] = defaultdict(list)
-        for fi in np.where(active)[0]:
-            f = F[fi]
-            for a, b in ((f[0], f[1]), (f[1], f[2]), (f[2], f[0])):
-                k = (int(min(a, b)), int(max(a, b)))
-                edge_faces[k].append(int(fi))
-        for _, fl in edge_faces.items():
+        edge_map = _build_edge_face_map(F, active)
+        for fl in edge_map.values():
             if len(fl) >= 3:
-                # 마지막 면 (인덱스 가장 큰 것) 제거
                 drop = max(fl)
                 if active[drop]:
                     active[drop] = False
