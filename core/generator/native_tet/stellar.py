@@ -2278,3 +2278,40 @@ def _priority_queue_init(
         result.append(idx)
 
     return result
+
+
+_VVV9K2_PRIORITY_QUEUE_POP: bool = False  # default OFF — caller added in VVV9K3
+
+
+def _priority_queue_pop_worst(heap: list, k: int = 1) -> list:
+    """Pop up to *k* worst-quality tet indices from an already-heapified min-heap.
+
+    Parameters
+    ----------
+    heap: list[tuple[float, int]]
+        Min-heap of (quality, tet_index) built by ``_priority_queue_init`` (VVV9K1).
+        Modified in-place via ``heapq.heappop``.
+    k:    int
+        Number of elements to pop.  Clamped to ``len(heap)`` automatically.
+
+    Returns
+    -------
+    list[int] — tet indices in worst-first order (length <= min(k, original len)).
+
+    Notes
+    -----
+    - NaN-safe: if a popped quality q satisfies ``q != q`` (IEEE NaN), the entry
+      is discarded and the next element is tried.
+    - mesh / quality arrays are **not** accessed — index-only output.
+    - fTetWild §3.3 Alg 2 incremental worst-first pop; amortized O(log N) per call.
+    """
+    if not heap or k <= 0:
+        return []
+
+    out: list[int] = []
+    for _ in range(min(k, len(heap))):
+        q, idx = heapq.heappop(heap)
+        if q != q:  # NaN guard
+            continue
+        out.append(int(idx))
+    return out
