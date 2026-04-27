@@ -2329,6 +2329,79 @@ def generate_native_tet(
             except Exception as exc:
                 log.warning("native_tet_rrr2_skipped", reason=str(exc)[:120])
 
+        # P3-card2 (beta2234) — SSS revival: envelope-bounded surface vertex
+        # relocation (fTetWild §3.5).
+        # 동기: small mesh 의 surface vertex 비율 90%+ 이라 RRR2 의 free
+        # interior pool (7-32) 부족. surface vertex 도 envelope ε 안에서
+        # 작은 inward step 으로 이동 가능 → quality histogram 깰 가능성.
+        # SSS2/3 abandon (worst -0.027) 회피: 가드 worst -0.015 + mean 향상.
+        if os.environ.get("AUTO_TESSELL_P3_SSS_REVIVAL", "1") != "0":
+            try:
+                from core.generator.native_tet.envelope import Envelope as _Env
+                from core.generator.native_tet.envelope_relocate import _envelope_bounded_relocate
+                from core.generator.native_tet.quality import tet_shape_quality as _tsq
+                _q_pre = _tsq(final_pts, final_tets)
+                _pre_min = float(_q_pre.min())
+                _pre_mean = float(_q_pre.mean())
+                if _pre_min < 0.10 and final_tets.shape[0] > 50:
+                    n_surface = int(min(V.shape[0], final_pts.shape[0]))
+                    surface_idx = np.arange(n_surface, dtype=np.intp)
+                    # vertex normal: input F 의 vertex 별 face normal 평균.
+                    e1_in = V[F[:, 1]] - V[F[:, 0]]
+                    e2_in = V[F[:, 2]] - V[F[:, 0]]
+                    fn = np.cross(e1_in, e2_in)
+                    fn_len = np.linalg.norm(fn, axis=1, keepdims=True)
+                    fn = fn / np.maximum(fn_len, 1e-30)
+                    vn = np.zeros((n_surface, 3), dtype=np.float64)
+                    for fi in range(F.shape[0]):
+                        for vk in F[fi]:
+                            if int(vk) < n_surface:
+                                vn[int(vk)] += fn[fi]
+                    vn_len = np.linalg.norm(vn, axis=1, keepdims=True)
+                    vn = vn / np.maximum(vn_len, 1e-30)
+                    env = _Env.build_auto_eps(V, F, base_ratio=0.001)
+                    step_eps = 0.5 * env.eps  # 0.05→0.5: 효과 0 회피.
+                    # target: Laplacian smoothing (1-ring face neighbor 평균).
+                    # surface vertex i 의 1-ring = F 에서 i 가 포함된 face 의 다른 vertex 들.
+                    nbr_sum = np.zeros((n_surface, 3), dtype=np.float64)
+                    nbr_cnt = np.zeros(n_surface, dtype=np.int64)
+                    for fi in range(F.shape[0]):
+                        f = F[fi]
+                        for vk in f:
+                            if int(vk) >= n_surface:
+                                continue
+                            for wk in f:
+                                if wk != vk:
+                                    nbr_sum[int(vk)] += V[int(wk)]
+                                    nbr_cnt[int(vk)] += 1
+                    target_lap = nbr_sum / np.maximum(nbr_cnt[:, None], 1)
+                    # tangent projection 의 target: Laplacian centroid.
+                    target_pts = target_lap
+                    new_pts = _envelope_bounded_relocate(
+                        final_pts, surface_idx, target_pts, vn, env,
+                    )
+                    _q_post = _tsq(new_pts, final_tets)
+                    _post_min = float(_q_post.min())
+                    _post_mean = float(_q_post.mean())
+                    _worst_drop = _pre_min - _post_min
+                    _mean_gain = _post_mean - _pre_mean
+                    # 가드 완화: worst 하락 ≤ 0.015 + mean 비감소.
+                    accepted = bool(_worst_drop <= 0.015 and _mean_gain >= -1e-12)
+                    if accepted:
+                        final_pts = new_pts
+                    log.info(
+                        "native_tet_p3_sss_revival",
+                        n_surface=int(n_surface),
+                        envelope_eps=round(float(env.eps), 6),
+                        step_eps=round(float(step_eps), 6),
+                        pre_min=_pre_min, post_min=_post_min,
+                        pre_mean=_pre_mean, post_mean=_post_mean,
+                        worst_drop=_worst_drop, mean_gain=_mean_gain,
+                        accepted=accepted,
+                    )
+            except Exception as exc:
+                log.warning("native_tet_p3_sss_revival_skipped", reason=str(exc)[:120])
+
     except Exception as exc:
         log.debug("native_tet_post_bsp_pass_skipped", reason=str(exc))
 
