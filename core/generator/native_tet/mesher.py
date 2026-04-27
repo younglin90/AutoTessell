@@ -2951,6 +2951,33 @@ def generate_native_tet(
                         )
                     except Exception as exc:  # noqa: BLE001
                         log.warning("native_tet_vvv9f_skipped", reason=str(exc)[:120])
+                # VVV9H (beta2258) — Klingner edge-contract diagnostic hook (gate OFF, log only)
+                _VVV9H_DIAG: bool = False  # R193/VVV9H #2: evidence collection (gate OFF → mesh ±0)
+                if _VVV9H_DIAG and _n_sliver_pre >= 1:
+                    try:
+                        from core.generator.native_tet.stellar import (  # noqa: PLC0415
+                            _klingner_edge_contract_candidates as _kecc_dr,
+                        )
+                        _pre_worst_q = float(_pre712.min_q)
+                        _t0 = time.perf_counter()
+                        _cands = _kecc_dr(
+                            final_pts, final_tets,
+                            q_max=0.2, l_max_factor=0.4, max_candidates=200,
+                        )
+                        _n_qi = sum(1 for c in _cands if c[2] >= _pre_worst_q)
+                        _wall_ms = int((time.perf_counter() - _t0) * 1000)
+                        log.info(
+                            "native_tet_vvv9h_diag",
+                            n_candidates=len(_cands),
+                            n_safe=len(_cands),
+                            n_quality_improving=_n_qi,
+                            q_max=0.2,
+                            l_max_factor=0.4,
+                            wall_ms=_wall_ms,
+                            mode="dry_run",
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        log.warning("native_tet_vvv9h_skipped", reason=str(exc)[:120])
         except Exception as exc:
             log.warning("native_tet_vvv12_skipped", reason=str(exc)[:120])
     log.info("native_tet_pass_timing", pass_name="VVV12", dt_ms=int((time.perf_counter() - _t_vvv12) * 1000))

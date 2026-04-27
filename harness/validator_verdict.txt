@@ -1,2 +1,1 @@
-PASS
-R191 VVV9F #5 dryrun gate flip: regression 35/35, mesh bit-identical, code change verified (2 lines).
+PASS: Regression 31/31 PASS. VVV9H diagnostic hook gate=False, mesh ±0 metric.

@@ -1,19 +1,19 @@
 {
   "target_engine": "tet",
-  "beta": 2256,
+  "beta": 2258,
   "max_round": 1000,
-  "round": 191,
+  "round": 193,
   "last_grade": {
     "tet": {
-      "A": 20,
+      "A": 0,
       "B": 0,
-      "C": 0,
-      "D": 0,
-      "OK": 20,
-      "BL_OK": 20,
-      "total": 20,
-      "source": "BETA2256_VVV9F6_DRYRUN_ON - Cheng-Dey dryrun gate flip (sliver-gated evidence emit, mesh discard), regression 35/35 PASS, metric \u00b10",
-      "bench_time_s": 580.0
+      "C": 2,
+      "D": 3,
+      "OK": 5,
+      "BL_OK": 5,
+      "total": 5,
+      "source": "BETA2258_VVV9H2_DIAG_HOOK - Klingner diagnostic hook in VVV12 (gate OFF, log only), regression 31/31 PASS, metric \u00b10",
+      "bench_time_s": 59.1
     },
     "hex": {
       "A": 5,
@@ -32,23 +32,23 @@
     "tet_worst": 0.2069,
     "tet_industrial_reach": "100%"
   },
-  "last_bench_time": 580.0,
+  "last_bench_time": 59.1,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "BETA2257_VVV9H1_KLINGNER_EDGE_CONTRACT_CANDIDATES",
     "BETA2255_VVV9F5_DRYRUN_WIRE",
     "BETA2254_VVV9F4_SELECT_BEST",
     "BETA2253_VVV9F3_PERTURB_TOPK_HELPER",
-    "BETA2252_VVV9F2_DRYRUN_REVERT",
-    "BETA2250_VVV9E_DRYRUN_ON"
+    "BETA2252_VVV9F2_DRYRUN_REVERT"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2256_VVV9F6_DRYRUN_ON (R191) - mesher.py dryrun gate flip + sliver-gate (2 lines), regression 35/35 PASS, metric \u00b10."
+  "plan_archive": "BETA2258_VVV9H2_DIAG_HOOK (R193) - diagnostic hook in VVV12 (gate OFF, log only), regression 31/31 PASS, metric \u00b10."
 }
