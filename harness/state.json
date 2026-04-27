@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2204,
+  "beta": 2205,
   "max_round": 1000,
-  "round": 153,
+  "round": 154,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,13 +26,14 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 42.40,
+  "last_bench_time": 39.52,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "REMESH_VEC",
     "PREPROC_HOLE_VEC",
     "OFF_READER_VEC",
     "TET_BL_SUBDIVIDE_VEC",
@@ -68,5 +69,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "PREPROC_HOLE_VEC (R153) — vectorized directed-edge extraction, boundary filter, shoelace area in hole_fill.py; 22/22 PASS 41.02s"
+  "plan_archive": "REMESH_VEC (R154) — vectorized _split_edges_above edge-length batch, _tangential_relocate np.add.at scatter in isotropic.py; 22/22 PASS 39.52s"
 }
