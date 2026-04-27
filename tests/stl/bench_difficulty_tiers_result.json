@@ -14,32 +14,11 @@
   "grade": "A",
   "max_no_deg": 23.292839335845635,
   "max_skew": 0.10642499032573924,
-  "elapsed": 0.17,
+  "elapsed": 0.14,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.02507169800810516,
+  "bl_elapsed": 0.02522389404475689,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=73.1, bl_side"
- },
- {
-  "tier": "easy",
-  "file_id": 100034,
-  "num_vertices": 84,
-  "num_facets": 188,
-  "num_components": 1,
-  "closed": true,
-  "file_path": "/home/younglin90/.cache/huggingface/datasets/downloads/extracted/cb25d355f882af690ea17260d8aa9dbd13cb97820bbaedd6d60dc03684335d21/npz/100034.npz",
-  "engine": "hex",
-  "with_bl": true,
-  "success": true,
-  "n_cells": 19,
-  "grade": "A",
-  "max_no_deg": 30.100183211218095,
-  "max_skew": 0.250182601172279,
-  "elapsed": 0.17,
-  "bl_success": true,
-  "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.038521612994372845,
-  "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=210, bl_side_"
  },
  {
   "tier": "easy",
@@ -56,11 +35,32 @@
   "grade": "A",
   "max_no_deg": 7.888915900219694,
   "max_skew": 0.1130808799809466,
-  "elapsed": 0.18,
+  "elapsed": 0.14,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.03744594193994999,
+  "bl_elapsed": 0.03910428797826171,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=13.6, bl_side"
+ },
+ {
+  "tier": "easy",
+  "file_id": 100034,
+  "num_vertices": 84,
+  "num_facets": 188,
+  "num_components": 1,
+  "closed": true,
+  "file_path": "/home/younglin90/.cache/huggingface/datasets/downloads/extracted/cb25d355f882af690ea17260d8aa9dbd13cb97820bbaedd6d60dc03684335d21/npz/100034.npz",
+  "engine": "hex",
+  "with_bl": true,
+  "success": true,
+  "n_cells": 19,
+  "grade": "A",
+  "max_no_deg": 30.100183211218095,
+  "max_skew": 0.250182601172279,
+  "elapsed": 0.14,
+  "bl_success": true,
+  "bl_n_prism_cells": 0,
+  "bl_elapsed": 0.04047592799179256,
+  "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=210, bl_side_"
  },
  {
   "tier": "easy",
@@ -80,7 +80,7 @@
   "elapsed": 0.08,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.05504119303077459,
+  "bl_elapsed": 0.05646797199733555,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=129, bl_side_"
  },
  {
@@ -98,10 +98,10 @@
   "grade": "A",
   "max_no_deg": 30.100183211218095,
   "max_skew": 0.250182601172279,
-  "elapsed": 0.44,
+  "elapsed": 0.4,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.041164111928083,
+  "bl_elapsed": 0.04235572402831167,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=210, bl_side_"
  },
  {
@@ -119,10 +119,10 @@
   "grade": "A",
   "max_no_deg": 23.292839335845635,
   "max_skew": 0.10642499032573924,
-  "elapsed": 0.48,
+  "elapsed": 0.49,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.021936677978374064,
+  "bl_elapsed": 0.02271173510234803,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=73.1, bl_side"
  },
  {
@@ -143,7 +143,7 @@
   "elapsed": 0.4,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.05576035100966692,
+  "bl_elapsed": 0.05789167294278741,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=129, bl_side_"
  },
  {
@@ -164,7 +164,7 @@
   "elapsed": 0.08,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.055416340939700603,
+  "bl_elapsed": 0.05752170493360609,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=129, bl_side_"
  },
  {
@@ -181,10 +181,10 @@
   "n_cells": 459,
   "grade": "C",
   "mq": 0.1646862158477195,
-  "elapsed": 1.06,
+  "elapsed": 1.04,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.07555055397097021,
+  "bl_elapsed": 0.08003186900168657,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=88.6, bl_side"
  },
  {
@@ -201,10 +201,10 @@
   "n_cells": 440,
   "grade": "D",
   "mq": 0.01223036579494033,
-  "elapsed": 0.62,
+  "elapsed": 0.63,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.0578370540169999,
+  "bl_elapsed": 0.05953827395569533,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.001, bbox=129, bl_side_fa"
  },
  {
@@ -222,10 +222,10 @@
   "grade": "A",
   "max_no_deg": 5.2199025308029604e-05,
   "max_skew": 1.917858764355178e-06,
-  "elapsed": 0.45,
+  "elapsed": 0.44,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.057454951922409236,
+  "bl_elapsed": 0.057378800003789365,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=129, bl_side_"
  },
  {
@@ -243,11 +243,31 @@
   "grade": "A",
   "max_no_deg": 6.541705140005673,
   "max_skew": 0.15790980943440466,
-  "elapsed": 0.44,
+  "elapsed": 0.45,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.009771066950634122,
+  "bl_elapsed": 0.010125408065505326,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=3.13, bl_side"
+ },
+ {
+  "tier": "easy",
+  "file_id": 100034,
+  "num_vertices": 84,
+  "num_facets": 188,
+  "num_components": 1,
+  "closed": true,
+  "file_path": "/home/younglin90/.cache/huggingface/datasets/downloads/extracted/cb25d355f882af690ea17260d8aa9dbd13cb97820bbaedd6d60dc03684335d21/npz/100034.npz",
+  "engine": "tet",
+  "with_bl": true,
+  "success": true,
+  "n_cells": 763,
+  "grade": "D",
+  "mq": 0.05140342270846129,
+  "elapsed": 1.52,
+  "bl_success": true,
+  "bl_n_prism_cells": 0,
+  "bl_elapsed": 0.14863187493756413,
+  "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=226, bl_side_"
  },
  {
   "tier": "easy",
@@ -267,28 +287,8 @@
   "elapsed": 1.68,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.03802740201354027,
+  "bl_elapsed": 0.038119571981951594,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=13.6, bl_side"
- },
- {
-  "tier": "easy",
-  "file_id": 100034,
-  "num_vertices": 84,
-  "num_facets": 188,
-  "num_components": 1,
-  "closed": true,
-  "file_path": "/home/younglin90/.cache/huggingface/datasets/downloads/extracted/cb25d355f882af690ea17260d8aa9dbd13cb97820bbaedd6d60dc03684335d21/npz/100034.npz",
-  "engine": "tet",
-  "with_bl": true,
-  "success": true,
-  "n_cells": 763,
-  "grade": "D",
-  "mq": 0.05140342270846129,
-  "elapsed": 1.58,
-  "bl_success": true,
-  "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.1367406309582293,
-  "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=226, bl_side_"
  },
  {
   "tier": "medium",
@@ -323,10 +323,10 @@
   "n_cells": 550,
   "grade": "D",
   "mq": 0.03516183673810155,
-  "elapsed": 1.49,
+  "elapsed": 1.53,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.08098264504224062,
+  "bl_elapsed": 0.08417022798676044,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=129, bl_side_"
  },
  {
@@ -344,10 +344,10 @@
   "grade": "A",
   "max_no_deg": 44.36969981712287,
   "max_skew": 0.31595499455011805,
-  "elapsed": 0.22,
+  "elapsed": 0.21,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.08661601203493774,
+  "bl_elapsed": 0.08640801603905857,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=159, bl_side_"
  },
  {
@@ -368,7 +368,7 @@
   "elapsed": 1.34,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.009762086090631783,
+  "bl_elapsed": 0.009689704980701208,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=3.13, bl_side"
  },
  {
@@ -389,7 +389,7 @@
   "elapsed": 0.21,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.08539367094635963,
+  "bl_elapsed": 0.08585518202744424,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=159, bl_side_"
  },
  {
@@ -407,10 +407,10 @@
   "grade": "A",
   "max_no_deg": 44.36969981712287,
   "max_skew": 0.31595499455011805,
-  "elapsed": 1.79,
+  "elapsed": 1.81,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.08140294498298317,
+  "bl_elapsed": 0.0860032340278849,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=159, bl_side_"
  },
  {
@@ -428,10 +428,10 @@
   "grade": "A",
   "max_no_deg": 29.55726969461726,
   "max_skew": 0.35451846561413203,
-  "elapsed": 1.8,
+  "elapsed": 2.19,
   "bl_success": true,
   "bl_n_prism_cells": 207,
-  "bl_elapsed": 0.17939543107058853,
+  "bl_elapsed": 0.1956838130718097,
   "bl_message": "native_bl Phase 2 OK — 207 prism cells inserted (3 layers × 69 wall triangles). total_thickness=0.00364, bbox=1.42, bl_s"
  },
  {
@@ -449,10 +449,10 @@
   "grade": "A",
   "max_no_deg": 44.36969981712287,
   "max_skew": 0.31595499455011805,
-  "elapsed": 1.58,
+  "elapsed": 1.6,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.08412246103398502,
+  "bl_elapsed": 0.0891088229836896,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=159, bl_side_"
  },
  {
@@ -470,10 +470,10 @@
   "grade": "A",
   "max_no_deg": 29.65523301416708,
   "max_skew": 0.11294646446998799,
-  "elapsed": 0.75,
+  "elapsed": 0.44,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.04400852299295366,
+  "bl_elapsed": 0.04581561405211687,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=69.2, bl_side"
  },
  {
@@ -490,10 +490,10 @@
   "n_cells": 1167,
   "grade": "D",
   "mq": 0.09642757467849149,
-  "elapsed": 4.44,
+  "elapsed": 4.57,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.3540736339055002,
+  "bl_elapsed": 0.35853583295829594,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=14.5, bl_side"
  },
  {
@@ -511,10 +511,10 @@
   "grade": "B",
   "max_no_deg": 54.93460365669908,
   "max_skew": 0.16666224178775801,
-  "elapsed": 0.25,
+  "elapsed": 0.27,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.1311746450373903,
+  "bl_elapsed": 0.13724242500029504,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.001, bbox=99.8, bl_side_f"
  },
  {
@@ -532,10 +532,10 @@
   "grade": "B",
   "max_no_deg": 54.93460365669908,
   "max_skew": 0.16666224178775801,
-  "elapsed": 1.15,
+  "elapsed": 1.2,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.12445287499576807,
+  "bl_elapsed": 0.13255435298196971,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.001, bbox=99.8, bl_side_f"
  },
  {
@@ -553,31 +553,11 @@
   "grade": "A",
   "max_no_deg": 0.0,
   "max_skew": 0.0,
-  "elapsed": 3.83,
+  "elapsed": 3.71,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.026191374054178596,
+  "bl_elapsed": 0.024785414920188487,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=59.9, bl_side"
- },
- {
-  "tier": "medium",
-  "file_id": 100045,
-  "num_vertices": 208,
-  "num_facets": 420,
-  "num_components": 3,
-  "closed": true,
-  "file_path": "/home/younglin90/.cache/huggingface/datasets/downloads/extracted/cb25d355f882af690ea17260d8aa9dbd13cb97820bbaedd6d60dc03684335d21/npz/100045.npz",
-  "engine": "tet",
-  "with_bl": true,
-  "success": true,
-  "n_cells": 1573,
-  "grade": "C",
-  "mq": 0.1364602439398663,
-  "elapsed": 7.18,
-  "bl_success": true,
-  "bl_n_prism_cells": 123,
-  "bl_elapsed": 0.4466873980127275,
-  "bl_message": "native_bl Phase 2 OK — 123 prism cells inserted (3 layers × 41 wall triangles). total_thickness=0.00364, bbox=8.71, bl_s"
  },
  {
   "tier": "hard",
@@ -594,11 +574,51 @@
   "grade": "A",
   "max_no_deg": 16.64578969297552,
   "max_skew": 0.6902125408729701,
-  "elapsed": 0.14,
+  "elapsed": 0.15,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.04153331997804344,
+  "bl_elapsed": 0.04036714101675898,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=262, bl_side_"
+ },
+ {
+  "tier": "medium",
+  "file_id": 100045,
+  "num_vertices": 208,
+  "num_facets": 420,
+  "num_components": 3,
+  "closed": true,
+  "file_path": "/home/younglin90/.cache/huggingface/datasets/downloads/extracted/cb25d355f882af690ea17260d8aa9dbd13cb97820bbaedd6d60dc03684335d21/npz/100045.npz",
+  "engine": "tet",
+  "with_bl": true,
+  "success": true,
+  "n_cells": 1573,
+  "grade": "C",
+  "mq": 0.1364602439398663,
+  "elapsed": 7.15,
+  "bl_success": true,
+  "bl_n_prism_cells": 123,
+  "bl_elapsed": 0.46789638802874833,
+  "bl_message": "native_bl Phase 2 OK — 123 prism cells inserted (3 layers × 41 wall triangles). total_thickness=0.00364, bbox=8.71, bl_s"
+ },
+ {
+  "tier": "medium",
+  "file_id": 100077,
+  "num_vertices": 264,
+  "num_facets": 528,
+  "num_components": 1,
+  "closed": true,
+  "file_path": "/home/younglin90/.cache/huggingface/datasets/downloads/extracted/cb25d355f882af690ea17260d8aa9dbd13cb97820bbaedd6d60dc03684335d21/npz/100077.npz",
+  "engine": "tet",
+  "with_bl": true,
+  "success": true,
+  "n_cells": 2204,
+  "grade": "C",
+  "mq": 0.16612496003906072,
+  "elapsed": 7.49,
+  "bl_success": true,
+  "bl_n_prism_cells": 3,
+  "bl_elapsed": 0.596670366008766,
+  "bl_message": "native_bl Phase 2 OK — 3 prism cells inserted (3 layers × 1 wall triangles). total_thickness=0.00364, bbox=1.74, bl_side"
  },
  {
   "tier": "hard",
@@ -615,31 +635,11 @@
   "grade": "A",
   "max_no_deg": 16.64578969297552,
   "max_skew": 0.6902125408729701,
-  "elapsed": 0.81,
+  "elapsed": 0.98,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.04219731502234936,
+  "bl_elapsed": 0.04206845397129655,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=262, bl_side_"
- },
- {
-  "tier": "medium",
-  "file_id": 100077,
-  "num_vertices": 264,
-  "num_facets": 528,
-  "num_components": 1,
-  "closed": true,
-  "file_path": "/home/younglin90/.cache/huggingface/datasets/downloads/extracted/cb25d355f882af690ea17260d8aa9dbd13cb97820bbaedd6d60dc03684335d21/npz/100077.npz",
-  "engine": "tet",
-  "with_bl": true,
-  "success": true,
-  "n_cells": 2204,
-  "grade": "C",
-  "mq": 0.16612496003906072,
-  "elapsed": 7.71,
-  "bl_success": true,
-  "bl_n_prism_cells": 3,
-  "bl_elapsed": 0.6000501529779285,
-  "bl_message": "native_bl Phase 2 OK — 3 prism cells inserted (3 layers × 1 wall triangles). total_thickness=0.00364, bbox=1.74, bl_side"
  },
  {
   "tier": "hard",
@@ -656,10 +656,10 @@
   "grade": "A",
   "max_no_deg": 40.983616403959026,
   "max_skew": 0.1403504847168331,
-  "elapsed": 1.13,
+  "elapsed": 1.02,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.13854491303209215,
+  "bl_elapsed": 0.1390389499720186,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=144, bl_side_"
  },
  {
@@ -676,10 +676,10 @@
   "n_cells": 1250,
   "grade": "D",
   "mq": 0.07051694814644636,
-  "elapsed": 6.04,
+  "elapsed": 6.14,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.6036288120085374,
+  "bl_elapsed": 0.61856223794166,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=263, bl_side_"
  },
  {
@@ -700,7 +700,7 @@
   "elapsed": 0.39,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.025560676935128868,
+  "bl_elapsed": 0.026099188020452857,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=166, bl_side_"
  },
  {
@@ -718,10 +718,10 @@
   "grade": "A",
   "max_no_deg": 0.0,
   "max_skew": 0.0,
-  "elapsed": 4.71,
+  "elapsed": 4.6,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.02655676705762744,
+  "bl_elapsed": 0.026489484938792884,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=124, bl_side_"
  },
  {
@@ -739,10 +739,10 @@
   "grade": "A",
   "max_no_deg": 41.78540080669303,
   "max_skew": 0.14261179421538459,
-  "elapsed": 2.5,
+  "elapsed": 2.51,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.026210918906144798,
+  "bl_elapsed": 0.026465922011993825,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=166, bl_side_"
  },
  {
@@ -763,7 +763,7 @@
   "elapsed": 0.05,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.05349740304518491,
+  "bl_elapsed": 0.0481476349523291,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=39.5, bl_side"
  },
  {
@@ -780,10 +780,10 @@
   "n_cells": 2066,
   "grade": "D",
   "mq": 0.09210822895076418,
-  "elapsed": 11.16,
+  "elapsed": 11.27,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.905567463953048,
+  "bl_elapsed": 0.9067508620209992,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=99.8, bl_side"
  },
  {
@@ -801,10 +801,10 @@
   "grade": "A",
   "max_no_deg": 14.942222647456145,
   "max_skew": 0.23337391191681023,
-  "elapsed": 0.72,
+  "elapsed": 0.74,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.02275317895691842,
+  "bl_elapsed": 0.023017949075438082,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=14.9, bl_side"
  },
  {
@@ -822,10 +822,10 @@
   "grade": "C",
   "max_no_deg": 75.8292422968097,
   "max_skew": 0.16933388282875347,
-  "elapsed": 1.09,
+  "elapsed": 1.08,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.032446949975565076,
+  "bl_elapsed": 0.03250184503849596,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=99.9, bl_side"
  },
  {
@@ -842,10 +842,10 @@
   "n_cells": 3570,
   "grade": "C",
   "mq": 0.15138936121131683,
-  "elapsed": 15.48,
+  "elapsed": 15.67,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.792001771973446,
+  "bl_elapsed": 0.797494885046035,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.002289, bbox=69.2, bl_sid"
  },
  {
@@ -862,10 +862,10 @@
   "n_cells": 4879,
   "grade": "C",
   "mq": 0.13894979008565062,
-  "elapsed": 23.69,
+  "elapsed": 23.84,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.8265426780562848,
+  "bl_elapsed": 0.8350980940740556,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.002698, bbox=165, bl_side"
  },
  {
@@ -882,10 +882,10 @@
   "n_cells": 4402,
   "grade": "D",
   "mq": 0.05465666877384964,
-  "elapsed": 15.27,
+  "elapsed": 15.71,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 1.3491892339661717,
+  "bl_elapsed": 1.1421534180408344,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.001, bbox=169, bl_side_fa"
  },
  {
@@ -906,7 +906,7 @@
   "elapsed": 0.81,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.01719180296640843,
+  "bl_elapsed": 0.01744080090429634,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=67.5, bl_side"
  },
  {
@@ -923,10 +923,10 @@
   "n_cells": 4960,
   "grade": "C",
   "mq": 0.13871589369965598,
-  "elapsed": 26.95,
+  "elapsed": 26.78,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.7959262250224128,
+  "bl_elapsed": 0.8136464280541986,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.001015, bbox=165, bl_side"
  },
  {
@@ -943,10 +943,10 @@
   "n_cells": 3033,
   "grade": "C",
   "mq": 0.20828322499370516,
-  "elapsed": 15.66,
+  "elapsed": 15.94,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.4582696129800752,
+  "bl_elapsed": 0.4713882830692455,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=44.8, bl_side"
  },
  {
@@ -967,7 +967,7 @@
   "elapsed": 1.18,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.03197263495530933,
+  "bl_elapsed": 0.031537084956653416,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.001, bbox=93.4, bl_side_f"
  },
  {
@@ -984,10 +984,10 @@
   "n_cells": 10974,
   "grade": "D",
   "mq": 0.0966261007569515,
-  "elapsed": 41.57,
+  "elapsed": 41.8,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 5.112478525959887,
+  "bl_elapsed": 5.41199787799269,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=144, bl_side_"
  },
  {
@@ -1005,10 +1005,10 @@
   "grade": "A",
   "max_no_deg": 9.840782712186348,
   "max_skew": 0.043339093132213465,
-  "elapsed": 1.07,
+  "elapsed": 0.9,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.019569225958548486,
+  "bl_elapsed": 0.01993824797682464,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=3.92, bl_side"
  },
  {
@@ -1028,7 +1028,7 @@
   "elapsed": 38.2,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 1.6888206310104579,
+  "bl_elapsed": 1.9119613349903375,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.001, bbox=110, bl_side_fa"
  },
  {
@@ -1045,10 +1045,10 @@
   "n_cells": 854,
   "grade": "D",
   "mq": 0.08602043547246097,
-  "elapsed": 37.65,
+  "elapsed": 38.68,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 1.4383619320578873,
+  "bl_elapsed": 1.4145795939257368,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.001074, bbox=112, bl_side"
  },
  {
@@ -1066,10 +1066,10 @@
   "grade": "A",
   "max_no_deg": 30.971441518858647,
   "max_skew": 0.1562380082303187,
-  "elapsed": 0.65,
+  "elapsed": 0.64,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.04286032100208104,
+  "bl_elapsed": 0.041145337047055364,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=78.2, bl_side"
  },
  {
@@ -1086,10 +1086,10 @@
   "n_cells": 2589,
   "grade": "C",
   "mq": 0.22001698740981807,
-  "elapsed": 32.67,
+  "elapsed": 32.53,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 2.3940059730084613,
+  "bl_elapsed": 2.397233458934352,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=84.8, bl_side"
  },
  {
@@ -1107,10 +1107,10 @@
   "grade": "A",
   "max_no_deg": 30.971441518858647,
   "max_skew": 0.1562380082303187,
-  "elapsed": 33.04,
+  "elapsed": 33.49,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.04083586297929287,
+  "bl_elapsed": 0.04105760296806693,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=78.2, bl_side"
  },
  {
@@ -1127,10 +1127,10 @@
   "n_cells": 2210,
   "grade": "D",
   "mq": 0.1136925039546736,
-  "elapsed": 77.3,
+  "elapsed": 78.11,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 6.19724828004837,
+  "bl_elapsed": 6.1386969269951805,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.001, bbox=98.9, bl_side_f"
  },
  {
@@ -1147,10 +1147,10 @@
   "n_cells": 9844,
   "grade": "C",
   "mq": 0.15677519009541696,
-  "elapsed": 233.53,
+  "elapsed": 235.4,
   "bl_success": true,
   "bl_n_prism_cells": 255,
-  "bl_elapsed": 9.021202817908488,
+  "bl_elapsed": 9.198800749960355,
   "bl_message": "native_bl Phase 2 OK — 255 prism cells inserted (3 layers × 85 wall triangles). total_thickness=0.002074, bbox=7.97, bl_"
  },
  {
@@ -1168,10 +1168,10 @@
   "grade": "A",
   "max_no_deg": 1.171209727579572,
   "max_skew": 0.016839435260925826,
-  "elapsed": 229.87,
+  "elapsed": 237.44,
   "bl_success": true,
   "bl_n_prism_cells": 36,
-  "bl_elapsed": 0.1261872979812324,
+  "bl_elapsed": 0.12522665096912533,
   "bl_message": "native_bl Phase 2 OK — 36 prism cells inserted (3 layers × 12 wall triangles). total_thickness=0.00364, bbox=2.78, bl_si"
  },
  {
@@ -1189,10 +1189,10 @@
   "grade": "A",
   "max_no_deg": 0.1376118729568824,
   "max_skew": 0.0014813673337039479,
-  "elapsed": 300.1,
+  "elapsed": 298.66,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.06611220899503678,
+  "bl_elapsed": 0.06701026693917811,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=32.3, bl_side"
  },
  {
@@ -1211,7 +1211,7 @@
   "max_no_deg": -1.0,
   "max_skew": -1.0,
   "message": "poly best-of-N 모든 후보 실패",
-  "elapsed": 575.67
+  "elapsed": 582.4
  },
  {
   "tier": "extreme",
@@ -1228,10 +1228,10 @@
   "grade": "A",
   "max_no_deg": 5.204524155976136,
   "max_skew": 0.05000470701251659,
-  "elapsed": 1057.18,
+  "elapsed": 1069.27,
   "bl_success": true,
   "bl_n_prism_cells": 0,
-  "bl_elapsed": 0.060571764945052564,
+  "bl_elapsed": 0.058617945993319154,
   "bl_message": "native_bl Phase 2 OK — 0 prism cells inserted (3 layers × 0 wall triangles). total_thickness=0.00364, bbox=40.3, bl_side"
  }
 ]

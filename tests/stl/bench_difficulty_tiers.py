@@ -61,6 +61,9 @@ def _worker_run(payload: tuple) -> dict:
     sys.path.insert(0, str(_REPO_ROOT))
     import warnings as _w
     _w.filterwarnings("ignore")
+    # P4-C (beta2236): pytetwild 가 fork-spawned worker 에서 segfault.
+    # worker 에서 P4-C fallback 끄기 — main process / 직접 호출에선 자동 활성.
+    os.environ["AUTO_TESSELL_P4C_PYTETWILD"] = "0"
 
     V = np.frombuffer(V_bytes, dtype=np.float64).reshape(V_shape)
     F = np.frombuffer(F_bytes, dtype=np.int64).reshape(F_shape)
