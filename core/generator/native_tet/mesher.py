@@ -3135,7 +3135,7 @@ def generate_native_tet(
             else:
                 log.info("native_tet_vvv9n_skipped_guard", n_sliver_pre=int(_n_sliver_pre), worst_pre=float(_worst_pre))
             # VVV9P #2 — multi-face removal diagnostic hook (gate OFF default, R226 ON flip)
-            _VVV9P_DIAG: bool = False  # R226 카드에서 ON
+            _VVV9P_DIAG: bool = True  # R226 ON (gate flip True)
             if _VVV9P_DIAG and _n_sliver_pre >= 1 and _worst_pre < 0.10:
                 try:
                     from core.generator.native_tet.stellar import _multi_face_removal_candidates as _mfrc_9p  # noqa: PLC0415

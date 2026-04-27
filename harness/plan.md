@@ -1,50 +1,47 @@
-# CARD BETA2277_VVV9J8_REAL_APPLY_ENV (beta2277) — VVV9J #8 SLIM real-apply env-gate (default OFF)
+# CARD BETA2291_VVV9P3_DIAG_ON (R226) — VVV9P #3 multi-face removal diag flip ON (sliver+worst guard)
 
 **target_engine**: tet
-**모티프**: Rabinovich 2017 SLIM §3 Algorithm 1 (apply path) + R197/R198 strict ratchet (per-fid pre/post) + env-only opt-in (CLAUDE.md `AUTO_TESSELL_*` 패턴)
+**모티프**: Klingner & Shewchuk 2008 §3.2 multi-face removal (read-only diag, sliver-pre + worst_mq guard)
 
 ## 이론적 근거 (≤30줄)
 
-- 현 evidence: bench.full.txt 는 2026-04-27 (R≤209 era) 산물 — R211 DIAG ON 이후 bench 미재생. `native_tet_vvv9j_diag` log key 0 회. R211 합격 근거는 pytest 31/31 (mesh<500 → VVV12 skip → DIAG never fires). 즉 SLIM global-pass 의 dE / Δworst_mq 분포는 **empirical 미관측**.
-- 결정: evidence 없음 → 무조건 mesh-mutating apply 금지. 그러나 #7 까지 7 카드 전부 PASS, 자료구조/Armijo guard 검증 완료 → opt-in 환경변수 gate 로 진보 허용.
-- 본 카드 핵심: 단일 환경변수 `AUTO_TESSELL_VVV9J_APPLY` 도입. unset (default) → 기존 #7 DIAG path 100% 동일 (mesh discard). set "1" → DIAG 직후 strict ratchet 검사 통과 시에만 final_pts ← _res_j6["new_pts"] 1회 commit.
-- Ratchet (Klingner 2008 §3.5 형식):
-  1. `pre.min_q <= 0.05` (sliver-prone hard mesh 만 진입 — easy mesh 영향 0).
-  2. `post.min_q >= pre.min_q` (worst 비감소 — strict ≥, ε margin 없음).
-  3. `post.mean_q >= pre.mean_q - 1e-3` (mean tolerance R198 답습).
-  4. `_count_neg_vol(post) == _count_neg_vol(pre)` (inversion equality).
-- 단조: 4 조건 동시 PASS 시에만 apply. revert log emit 시 `mode="reject_<reason>"`. apply 시 `mode="apply"`.
-- 레퍼런스: stellar.py:549 `_slim_global_pass` (R209, dE_total ≥ 0 by Armijo); R197 `_VVV9H_APPLY_DRYRUN` 패턴; R198 strict neg-vol equality.
-- 혁신성: novelty 1 (env-gate apply skeleton), rigor 3 (4-조건 ratchet + env-only + Armijo descent), impact 2 (수동 opt-in 으로 hard mesh 실험 가능 + 기본 default 회귀 0). 합 6.
+- **문제**: VVV9P #1 (R224) `_multi_face_removal_candidates` helper 추가, #2 (R225) diag hook gate OFF + sliver-pre>=1 wall safety. 이번 단계는 gate flip True 로 evidence 수집 활성. 셀-레벨 변경 없음 (helper 결과 discard).
+- **핵심 아이디어**:
+  1. mesher.py:3138 `_VVV9P_DIAG=False` → `True` (1줄 flip).
+  2. 기존 wall safety `_n_sliver_pre >= 1 and _worst_pre < 0.10` 그대로 유지 (R225 #2 guard, sliver-pre>=1 + worst<0.10).
+  3. 호출 시 `k_worst=64, q_thr=0.3` 로 dry-run 후보 수집, helper 결과 candidate 만 emit (mesh state 미변경).
+  4. log key `native_tet_vvv9p_diag` per-fid (n_candidates, top_quality, wall_ms, mode="dry_run").
+- **레퍼런스**: Klingner & Shewchuk 2008 §3.2 "Multi-face removal" — 슬리버 셀 5-face → 3-face 단순화 후보 enumeration (read-only).
+- **혁신성** (3+2+1=6, ≥5):
+  - novelty 3 (multi-face removal evidence-driven activation).
+  - rigor 2 (sliver-pre>=1 + worst<0.10 이중 wall safety, monotone safe).
+  - impact 1 (gate flip-only, mesh unchanged → 향후 apply 카드의 calibration 데이터).
 
 ## 변경
 
-- 파일: core/generator/native_tet/mesher.py (단일, ≤45줄 추가)
-- 위치: line 3053 직전 (discard 주석 전) — DIAG emit 직후
+- 파일: core/generator/native_tet/mesher.py (단일 파일, ≤2 LOC delta)
+- 함수: `_apply_vvv12` 내부 try-block (line ~3138)
 - 핵심 변경:
-  1. env 검사: `_apply_env = os.environ.get("AUTO_TESSELL_VVV9J_APPLY", "0") == "1"` (1 줄).
-  2. ratchet: `pre.min_q <= 0.05 AND post.min_q >= pre.min_q AND post.mean_q >= pre.mean_q - 1e-3 AND post_n_neg == pre_n_neg`.
-  3. apply: `final_pts = _res_j6["new_pts"]` (final_tets 미변경, topology 무손상).
-  4. log emit: `native_tet_vvv9j_apply` with mode in {"apply", "reject_min_q", "reject_mean_q", "reject_neg_vol", "reject_pre_gate", "skip_env_off"}.
-  5. _count_neg_vol import: 재사용 (`from core.generator.native_tet.stellar import _count_neg_vol`).
-- 단조 가드: 환경변수 unset → R211 path 정확 동일 (1-line if 분기 외 zero behavior change).
-- AVOID 준수: bench / pytest threshold / spec 무변경. ENV gate 패턴은 CLAUDE.md `AUTO_TESSELL_VVV13_OFF` 등 선례 따름. 단일 파일.
+  1. line 3138: `_VVV9P_DIAG: bool = False  # R226 카드에서 ON` → `_VVV9P_DIAG: bool = True  # R226 ON (gate flip True)`
+- 단조 가드: helper 결과 discard (mesh state 미변경 → pre/post mesh metric 동일 보장). sliver-pre>=1 + worst<0.10 wall safety guard 그대로 유지.
+- AVOID 준수: smooth_amips_analytic / collapse_short_edges / flip_edges_54 default-ON 미접촉.
 
-## 검증 명령
+## 검증 명령 (unit_tester 가 그대로 실행)
 
 ```bash
 timeout 90 python3 -m pytest tests/test_native_tet_amips.py tests/test_native_tet_chunked.py tests/test_native_tet_cdt_recovery.py tests/test_native_tet_hausdorff.py -q
 ```
 
-## 합격 기준
+## 합격 기준 (validator 가 평가)
 
-- 회귀 PASS (env unset 기본 → R211 정확 동일)
-- worst_mq 변동 ±0.005 (env unset 기본 → 0.208 정확 동일)
-- bench_time ≤ R211 + 5s tolerance (apply path 미진입; ratchet check overhead < 1ms)
-- log `native_tet_vvv9j_apply` 1+ emit (env unset 기본은 mode="skip_env_off")
+- 회귀 0 (35/35 PASS 유지)
+- bench 시간 ≤ 67.59s + 15% (≈77.7s)
+- worst_mq 0.208 ±0.005 (mesh unchanged 보장)
+- BL_OK 5/5 stable
+- log emit `native_tet_vvv9p_diag` per-fid 확인 (sliver-pre>=1 + worst<0.10 fid 한정)
+- AVOID 패턴 미접촉
 
 ## 카드 시퀀스 위치
 
-- VVV9J SLIM 시퀀스 8/N — **마지막 skeleton 카드**.
-  (#1 jacobian, #2 SD, #3 grad, #3B line-search, #4 Newton-compose, #5 global-pass, #6 DIAG hook, #7 DIAG ON, **#8 real-apply env-gate**).
-- 다음 후보 (R213): VVV9J9 evidence-driven default-ON 결정 — `AUTO_TESSELL_VVV9J_APPLY=1` 로 hard mesh bench 1회 수동 실행 + per-fid `mode="apply"` count 분석. `apply` 빈도 ≥ 3/5 hard mesh AND Δworst_mq > 0 시 default-ON 카드 추진. 실패 시 alt 라인 (fTetWild §3.3 priority queue mesh improvement, 또는 Du-Ying-Wang 2003 AABB-based delaunay refinement) skeleton.
+- VVV9P (Klingner §3.2 multi-face removal) 시퀀스의 #3/N (helper #1 → diag-hook OFF #2 → diag-ON #3).
+- 다음 카드 후보: BETA2292_VVV9P4_APPLY_DRYRUN_HOOK (apply path skeleton, gate OFF, single-face removal simulation).

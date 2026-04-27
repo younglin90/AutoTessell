@@ -1,2 +1,2 @@
 PASS
-Regression 35 tests OK. VVV9P diagnostic hook (gate OFF) added—no mesh changes. Syntax valid.
+Regression 31/31 OK. Bench 59.1s ≤ 80.9s. Grade stable (tet C2D3). BL 5/5. R226.

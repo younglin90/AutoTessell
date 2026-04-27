@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2290,
+  "beta": 2291,
   "max_round": 1000,
-  "round": 225,
+  "round": 226,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -12,8 +12,8 @@
       "OK": 5,
       "BL_OK": 5,
       "total": 5,
-      "source": "BETA2290_VVV9P2_DIAG_HOOK - diagnostic hook (gate OFF, read-only)",
-      "bench_time_s": 67.59
+      "source": "BETA2291_VVV9P3_DIAG_ON - VVV9P multi-face removal diag flip ON (gate True, read-only)",
+      "bench_time_s": 59.1
     },
     "hex": {
       "A": 5,
@@ -32,23 +32,23 @@
     "tet_worst": 0.208,
     "tet_industrial_reach": "100%"
   },
-  "last_bench_time": 67.45,
+  "last_bench_time": 59.1,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "BETA2291_VVV9P3_DIAG_ON",
     "BETA2290_VVV9P2_DIAG_HOOK",
     "BETA2289_VVV9P1_MULTI_FACE_REMOVAL_HELPER",
     "BETA2288_VVV9N3_DIAG_ON",
-    "BETA2287_VVV9N2_DIAG_HOOK",
-    "BETA2286_VVV9N1_LINE_COMPARE_HELPER"
+    "BETA2287_VVV9N2_DIAG_HOOK"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2290_VVV9P2_DIAG_HOOK (R225)"
+  "plan_archive": "BETA2291_VVV9P3_DIAG_ON (R226)"
 }
