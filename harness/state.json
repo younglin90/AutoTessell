@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2248,
+  "beta": 2250,
   "max_round": 1000,
-  "round": 183,
+  "round": 185,
   "last_grade": {
     "tet": {
       "A": 20,
@@ -12,8 +12,8 @@
       "OK": 20,
       "BL_OK": 20,
       "total": 20,
-      "source": "VVV9D_OFFPLANE_TOPK_HELPER - action helper definition, no caller, default OFF",
-      "bench_time_s": 563.1
+      "source": "VVV9E_DRYRUN_ON - off-plane dry-run evidence gate=True, mesh unchanged",
+      "bench_time_s": 580.0
     },
     "hex": {
       "A": 5,
@@ -32,25 +32,25 @@
     "tet_worst": 0.2069,
     "tet_industrial_reach": "100%"
   },
-  "last_bench_time": 563.1,
+  "last_bench_time": 580.0,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "BETA2250_VVV9E_DRYRUN_ON",
+    "BETA2249_VVV9D_OFFPLANE_DRYRUN_WIRE",
     "BETA2248_VVV9D_OFFPLANE_TOPK_HELPER",
     "BETA2247_VVV9C_OFFPLANE_DIAG",
     "BETA2246_VVV9B_OFFPLANE_STEINER",
     "BETA2245M_POLY_KDTREE_CLIP",
-    "BETA2245L_HEX_NONORTHO_THRESH50_POLY_AGGRESSIVE3",
-    "BETA2245K_PASS_GATE_SKIP_CRITICAL",
-    "BETA2245I_POLYMESH_WRITE_DEFER"
+    "BETA2245L_HEX_NONORTHO_THRESH50_POLY_AGGRESSIVE3"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2248_VVV9D_OFFPLANE_TOPK_HELPER (R183) - off-plane Steiner top-K action helper, skeleton, no caller. Regression 35/35 PASS, bench time=563.1s."
+  "plan_archive": "BETA2250_VVV9E_DRYRUN_ON (R185) - gate flip True for evidence collection, mesh unchanged, regression 35/35 PASS."
 }

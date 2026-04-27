@@ -2906,13 +2906,14 @@ def generate_native_tet(
                     flatness_thresh=1e-2,
                 )
                 # VVV9D (beta2249) — dry-run off-plane Steiner (mesh unchanged, log only)
-                _VVV9D_DRYRUN: bool = False  # default OFF; activated in next card (R185/VVV9F)
+                _VVV9D_DRYRUN: bool = True  # R185/VVV9E: dry-run evidence ON, mesh untouched (caller discards return)
                 if _VVV9D_DRYRUN:
                     try:
                         from core.generator.native_tet.stellar import (  # noqa: PLC0415
                             _apply_offplane_steiner_topK as _aost_dr,
                         )
                         _t_dr0 = time.perf_counter()
+                        # discard pts/tets copies (truly dry-run); retain only n_inserted_dr/wall_ms for R186 input
                         _, _, _n_ins_dr = _aost_dr(
                             final_pts, final_tets,
                             top_k=3, eps_factor=0.05, flatness_thresh=1e-2,

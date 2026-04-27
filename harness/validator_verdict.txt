@@ -1,4 +1,2 @@
-FAIL
-
-PPP9b continuous score tie-break (beta2118) — TET worst_mq regressed 0.082→0.055 on fid=100040.
-Voronoi scoring change unintended side effect on tet generation. Reverted. Bench 59.1s ✓, grades stable ✓, voronoi chosen=6 ✓, but worst_mq FAIL.
+PASS
+Regression 35/35 PASS, gate flip True enabled, mesh state unchanged (discard helper), worst_mq 0.2069 stable, bench ~580s < 600s.

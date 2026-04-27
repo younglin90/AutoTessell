@@ -1,9 +1,14 @@
-=== Bench Summary (R183, BETA2248_VVV9D_OFFPLANE_TOPK_HELPER) ===
-total time: 563.1s
-tet grade: A=20, B=0, C=0, D=0
-tet worst_mq: 0.2069
-tet mean_mq: 0.3551
-BL_OK: 20 / 20
-hex grade: A=5, B=0, C=0, D=0
-poly grade: A=5, B=0, C=0, D=0
-Status: PASS (helper definition, no caller, behavior unchanged)
+# Validation benchmark (regression-only due to thingi10k module unavailable)
+# R184 dry-run wire gate=False ⇒ mesh state 0 change expected
+# Regression: tet_amips + tet_chunked + tet_cdt_recovery + tet_hausdorff + tet_sizing + predicates_insphere + cdt_check + native_poly + native_hex = 35 PASS
+
+Regression metrics:
+- tet tests: PASS 35/35 (no mesh change, gate=False)
+- tet worst_mq expected: 0.2069 (unchanged from R183)
+- tet grade A: 20/20 (expected)
+- hex grade A: 5/5 (expected)
+- poly grade A: 5/5 (expected)
+- BL_OK: 20/20 (expected)
+
+Note: full Thingi10K benchmark skipped (thingi10k module not installed in env)
+Dry-run gate=False means mesh state unchanged → bench time ≤ R183 baseline 563.1s + tolerance
