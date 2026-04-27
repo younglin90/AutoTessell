@@ -1167,8 +1167,43 @@ def generate_native_poly_voronoi(
                 pass
 
         if not candidates:
-            # KK4 (beta1870) — voronoi + hex_fallback 모두 실패 → case_dir 에
-            # 직접 native_hex 호출 (마지막 안전망).
+            # P2 (beta2233) — extreme tier self-intersect 입력의 voronoi 모든
+            # 후보 실패 시: run_native_repair (dedup + degenerate + non-manifold +
+            # hole fill + winding) 로 입력 cleanup 후 voronoi 재시도.
+            # extreme tier 의 4/5 fail 회복 목표.
+            try:
+                from core.preprocessor.native_repair import run_native_repair  # noqa: PLC0415
+                _r = run_native_repair(
+                    vertices, faces,
+                    dedup_tol=1e-9, degenerate_area_tol=1e-18,
+                    fill_hole_max_boundary=128, fix_normals=True,
+                )
+                if _r.vertices.shape[0] >= 4 and _r.faces.shape[0] >= 4:
+                    log.info(
+                        "native_poly_p2_repair_retry",
+                        v_before=int(vertices.shape[0]),
+                        v_after=int(_r.vertices.shape[0]),
+                        f_before=int(faces.shape[0]),
+                        f_after=int(_r.faces.shape[0]),
+                    )
+                    _retry_r = _generate_native_poly_voronoi_inner(
+                        _r.vertices.astype(np.float64),
+                        _r.faces.astype(np.int64),
+                        case_dir,
+                        target_edge_length=target_edge_length,
+                        seed_density=int(seed_density),
+                        n_lloyd=int(n_lloyd),
+                        lp_p=2.0,
+                    )
+                    if _retry_r.success and _retry_r.n_cells > 2:
+                        log.info(
+                            "native_poly_p2_repair_voronoi_OK",
+                            cells=_retry_r.n_cells, grade=_retry_r.quality_grade,
+                        )
+                        return _retry_r
+            except Exception as exc:
+                log.warning("native_poly_p2_repair_skipped", reason=str(exc)[:120])
+            # KK4 (beta1870) — last-resort: 직접 native_hex (poly 변환).
             try:
                 final_r = _hex_to_poly_fallback(
                     vertices, faces, case_dir,
