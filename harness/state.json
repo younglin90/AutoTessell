@@ -5,14 +5,15 @@
   "round": 180,
   "last_grade": {
     "tet": {
-      "A": 19,
-      "B": 1,
+      "A": 20,
+      "B": 0,
       "C": 0,
       "D": 0,
       "OK": 20,
       "BL_OK": 20,
       "total": 20,
-      "source": "bench_tet_p4c_sequential.py (P4-C ON)"
+      "source": "bench_tet_p4c_sequential.py (P4-C ON, beta2245k)",
+      "bench_time_s": 564.7
     },
     "hex": {
       "A": 5,
@@ -28,11 +29,11 @@
     }
   },
   "last_mq": {
-    "tet_worst": 0.392,
-    "tet_industrial_reach": "95%",
+    "tet_worst": 0.424,
+    "tet_industrial_reach": "100%",
     "tet_per_mesh_time_102308": "264s → 31.4s (88% 단축, beta2245k)"
   },
-  "last_bench_time": 1135.7,
+  "last_bench_time": 564.7,
   "consecutive_fails": 0,
   "dones": [
     "hex",
