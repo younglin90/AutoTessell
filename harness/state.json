@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2191,
+  "beta": 2192,
   "max_round": 1000,
-  "round": 140,
+  "round": 141,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -62,5 +62,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "STRATEGIST_VEC (R140) \u2014 vectorize bbox_dims/issue-severity loops in complexity_analyzer.py via numpy; 22/22 PASS 39.91s"
+  "plan_archive": "TET_FLIP_VEC (R141) \u2014 vectorize flip primitives inner apply (flip_faces_23, flip_edges_32/44/54/76) via batch quality/vol numpy; 22/22 PASS 40.95s"
 }

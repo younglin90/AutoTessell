@@ -296,32 +296,24 @@ def flip_faces_23(
         if x == y:
             continue
 
-        # 기존 2 tet 의 min quality.
-        q_old = min(
-            _tet_quality(pts[a], pts[b], pts[c], pts[x]),
-            _tet_quality(pts[a], pts[b], pts[c], pts[y]),
-        )
+        # 기존 2 tet 의 min quality — batch (2 tets).
+        _old2 = np.array([[a, b, c, x], [a, b, c, y]], dtype=np.int64)
+        q_old = float(_tet_quality_batch_arr(pts, _old2).min())
 
-        # 새 3 tet.
+        # 새 3 tet — uniqueness check first (cheap).
         new_tets = [
             (a, b, x, y),
             (b, c, x, y),
             (c, a, x, y),
         ]
-        # 모두 양의 부피 + 중복 없어야 함.
-        ok = True
-        q_new_min = 1.0
-        for nt in new_tets:
-            if len(set(nt)) != 4:
-                ok = False; break
-            vol6 = _tet_signed_vol6(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
-            if abs(vol6) < 1e-20:
-                ok = False; break
-            q = _tet_quality(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
-            if q < q_new_min:
-                q_new_min = q
-        if not ok:
+        if any(len(set(nt)) != 4 for nt in new_tets):
             continue
+        # 모두 양의 부피 + quality — batch (3 tets).
+        _new3 = np.array(new_tets, dtype=np.int64)
+        _v3 = _tet_signed_vol6_batch_arr(pts, _new3)
+        if not np.all(np.abs(_v3) >= 1e-20):
+            continue
+        q_new_min = float(_tet_quality_batch_arr(pts, _new3).min())
         if q_new_min <= q_old + float(min_quality_improvement):
             continue
 
@@ -412,27 +404,19 @@ def flip_edges_32(
         if len(uniq) != 3:
             continue
         x, y, z = uniq
-        # 기존 quality.
-        q_old = min(
-            _tet_quality(pts[tets_list[ti][0]], pts[tets_list[ti][1]],
-                         pts[tets_list[ti][2]], pts[tets_list[ti][3]])
-            for ti in owners
-        )
-        # 새 2 tet.
+        # 기존 quality — batch over owners.
+        _old_arr = np.asarray([tets_list[ti] for ti in owners], dtype=np.int64)
+        q_old = float(_tet_quality_batch_arr(pts, _old_arr).min())
+        # 새 2 tet — uniqueness first.
         new_tets = [(u, x, y, z), (v, x, y, z)]
-        ok = True
-        q_new_min = 1.0
-        for nt in new_tets:
-            if len(set(nt)) != 4:
-                ok = False; break
-            vol6 = _tet_signed_vol6(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
-            if abs(vol6) < 1e-20:
-                ok = False; break
-            q = _tet_quality(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
-            if q < q_new_min:
-                q_new_min = q
-        if not ok:
+        if any(len(set(nt)) != 4 for nt in new_tets):
             continue
+        # batch vol6 + quality (2 tets).
+        _new2 = np.array(new_tets, dtype=np.int64)
+        _v2 = _tet_signed_vol6_batch_arr(pts, _new2)
+        if not np.all(np.abs(_v2) >= 1e-20):
+            continue
+        q_new_min = float(_tet_quality_batch_arr(pts, _new2).min())
         if q_new_min <= q_old + float(min_quality_improvement):
             continue
 
@@ -532,26 +516,17 @@ def flip_edges_44(
             t3 = (v, r[1], r[0], r[3])
             t4 = (v, r[1], r[3], r[2])
 
-        # quality 개선 검사.
-        q_old = min(
-            _tet_quality(pts[tets_list[ti][0]], pts[tets_list[ti][1]],
-                         pts[tets_list[ti][2]], pts[tets_list[ti][3]])
-            for ti in owners
-        )
+        # quality 개선 검사 — batch over owners and new tets.
+        _old_arr = np.asarray([tets_list[ti] for ti in owners], dtype=np.int64)
+        q_old = float(_tet_quality_batch_arr(pts, _old_arr).min())
         new_tets = (t1, t2, t3, t4)
-        ok = True
-        q_new_min = 1.0
-        for nt in new_tets:
-            if len(set(nt)) != 4:
-                ok = False; break
-            vol6 = _tet_signed_vol6(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
-            if abs(vol6) < 1e-20:
-                ok = False; break
-            q = _tet_quality(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
-            if q < q_new_min:
-                q_new_min = q
-        if not ok:
+        if any(len(set(nt)) != 4 for nt in new_tets):
             continue
+        _new4 = np.array(new_tets, dtype=np.int64)
+        _v4 = _tet_signed_vol6_batch_arr(pts, _new4)
+        if not np.all(np.abs(_v4) >= 1e-20):
+            continue
+        q_new_min = float(_tet_quality_batch_arr(pts, _new4).min())
         if q_new_min <= q_old + float(min_quality_improvement):
             continue
 
@@ -656,56 +631,35 @@ def flip_edges_54(
         order = np.argsort(angles)
         r = [uniq[i] for i in order]  # ordered ring of 5
 
-        # q_old = min quality over 5 incident tets
-        q_old = min(
-            _tet_quality(pts[tets_list[ti][0]], pts[tets_list[ti][1]],
-                         pts[tets_list[ti][2]], pts[tets_list[ti][3]])
-            for ti in owners
-        )
+        # q_old = min quality over 5 incident tets — batch.
+        _old5 = np.asarray([tets_list[ti] for ti in owners], dtype=np.int64)
+        q_old = float(_tet_quality_batch_arr(pts, _old5).min())
 
-        # 5-4 swap: pentagon r[0..4] → 3 possible triangulations of the "cap"
-        # The cap is triangulated into 3 triangles; combined with u and v → 4 tets each side → 8 but we pick 4.
-        # Standard Klingner 5-4: remove edge (u,v), add diagonal (r[0],r[2]) or (r[1],r[3]) or (r[2],r[4]).
-        # Each diagonal splits pentagon into triangle + quad (2 tris), giving 3+1=4 tets with u and 4 with v? No:
-        # 5-4: 5 tet → 4 tet by introducing one new internal diagonal among ring vertices.
-        # Each triangulation of pentagon gives 3 triangles; 3 tris × 1 apex (combined u+v) → but counts differ.
-        # Pragmatic: try all 5 "ear" diagonals (r[i], r[i+2]) → pick best min quality.
-        best_new_tets: list[tuple[int, int, int, int]] | None = None
-        best_q_new = -1.0
-
-        for diag_start in range(5):
-            # diagonal from r[diag_start] to r[(diag_start+2) % 5]
-            # splits pentagon into triangle r[d], r[d+1], r[d+2] and quad r[d], r[d+2], r[d+3], r[d+4]
-            d = diag_start
+        # 5-4 swap: build all 5 diagonal candidates as (5, 4, 4) array, batch quality.
+        # Each diagonal d gives 4 new tets.
+        all_cand_tets: list[list[tuple[int, int, int, int]]] = []
+        for d in range(5):
             tri1 = (r[d], r[(d+1) % 5], r[(d+2) % 5])
-            # quad split: r[d], r[(d+2)%5], r[(d+3)%5], r[(d+4)%5] → 2 triangles
             tri2 = (r[d], r[(d+2) % 5], r[(d+3) % 5])
             tri3 = (r[d], r[(d+3) % 5], r[(d+4) % 5])
-            # 3 triangles × {u, v} apex → 6 tets? That's 3-2 style giving 6.
-            # Correct 5-4: apex is not split; we get 4 tets by choosing one side.
-            # Standard: new tets are u+tri1, u+tri2, u+tri3 (3) + one v-tet that replaces the remaining.
-            # Actually per Klingner Table 1: 5→4 means we go from 5 tets to 4 tets total.
-            # Simplest valid approach: 4 tets = {u,tri1}, {u,tri2}, {u,tri3}, {v, r[d], r[(d+2)%5], r[(d+4)%5]}
-            # But that's 3+1=4.
-            cand_tets = [
+            all_cand_tets.append([
                 (u, tri1[0], tri1[1], tri1[2]),
                 (u, tri2[0], tri2[1], tri2[2]),
                 (u, tri3[0], tri3[1], tri3[2]),
                 (v, r[d], r[(d+2) % 5], r[(d+4) % 5]),
-            ]
-            ok = True
-            q_cand_min = 1.0
-            for nt in cand_tets:
-                if len(set(nt)) != 4:
-                    ok = False; break
-                vol6 = _tet_signed_vol6(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
-                if abs(vol6) < 1e-20:
-                    ok = False; break
-                q = _tet_quality(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
-                if q < q_cand_min:
-                    q_cand_min = q
-            if not ok:
+            ])
+
+        best_new_tets: list[tuple[int, int, int, int]] | None = None
+        best_q_new = -1.0
+
+        for cand_tets in all_cand_tets:
+            if any(len(set(nt)) != 4 for nt in cand_tets):
                 continue
+            _cand4 = np.array(cand_tets, dtype=np.int64)  # (4, 4)
+            _vc = _tet_signed_vol6_batch_arr(pts, _cand4)
+            if not np.all(np.abs(_vc) >= 1e-20):
+                continue
+            q_cand_min = float(_tet_quality_batch_arr(pts, _cand4).min())
             if q_cand_min > best_q_new:
                 best_q_new = q_cand_min
                 best_new_tets = cand_tets
@@ -814,61 +768,38 @@ def flip_edges_76(
         order = np.argsort(angles)
         r = [uniq[i] for i in order]  # ordered ring of 7
 
-        # q_old = min quality over 7 incident tets
-        q_old = min(
-            _tet_quality(pts[tets_list[ti][0]], pts[tets_list[ti][1]],
-                         pts[tets_list[ti][2]], pts[tets_list[ti][3]])
-            for ti in owners
-        )
+        # q_old = min quality over 7 incident tets — batch.
+        _old7 = np.asarray([tets_list[ti] for ti in owners], dtype=np.int64)
+        q_old = float(_tet_quality_batch_arr(pts, _old7).min())
 
-        # 7-6 swap: heptagon r[0..6] → try all "fan" triangulations from each root.
-        # Each fan from root r[d]: 5 triangles = (r[d],r[d+1],r[d+2]),
-        # (r[d],r[d+2],r[d+3]), (r[d],r[d+3],r[d+4]), (r[d],r[d+4],r[d+5]),
-        # (r[d],r[d+5],r[d+6]). Combined with apex u → 5 tets; need 1 more from v.
-        # Simpler valid 6-tet form: 3 tets with u + 3 tets with v using a diagonal split.
-        # We use: fan from r[0]: 5 tris × u = 5 tets, then drop one and add v-based tet.
-        # Best approach: pick a diagonal of heptagon, split into triangle (3 tets with u)
-        # and pentagon (handled as 3 tris with v → 3 tets). Total = 6 tets.
-        # Try all 7 diagonals r[d] - r[d+3] (skip-2 chord) splitting heptagon into
-        # a quad+triangle and pentagon (or triangle+pentagon).
-        best_new_tets: list[tuple[int, int, int, int]] | None = None
-        best_q_new = -1.0
-
+        # 7-6 swap: build all 7 diagonal candidates as (7, 6, 4) — batch quality.
+        all_cand_tets76: list[list[tuple[int, int, int, int]]] = []
         for d in range(7):
-            # Split heptagon with diagonal r[d] to r[(d+3)%7]:
-            # Side A (triangle): r[d], r[(d+1)%7], r[(d+2)%7], r[(d+3)%7] → 2 tris fan from r[d]
-            # Side B (pentagon): r[d], r[(d+3)%7], r[(d+4)%7], r[(d+5)%7], r[(d+6)%7] → 3 tris fan from r[d]
-            # Total 5 triangles → 3 with u, 2 with v (or any 3+3 split)
-            # Use: side A tris with u (2 tets), side B tris with v (3 tets) + 1 shared diagonal tet
-            # Simpler: fan all 5 from r[d] → 5 tris; 3 get u-apex, 2 get v-apex → 5 tets + 1 extra.
-            # For strict 6 tets: 3 tris × u + 3 tris × v via two sub-fans.
             tri_a0 = (r[d], r[(d+1)%7], r[(d+2)%7])
             tri_a1 = (r[d], r[(d+2)%7], r[(d+3)%7])
             tri_b0 = (r[d], r[(d+3)%7], r[(d+4)%7])
             tri_b1 = (r[d], r[(d+4)%7], r[(d+5)%7])
             tri_b2 = (r[d], r[(d+5)%7], r[(d+6)%7])
-
-            cand_tets = [
+            all_cand_tets76.append([
                 (u, tri_a0[0], tri_a0[1], tri_a0[2]),
                 (u, tri_a1[0], tri_a1[1], tri_a1[2]),
                 (u, tri_b0[0], tri_b0[1], tri_b0[2]),
                 (v, tri_b0[0], tri_b0[1], tri_b0[2]),
                 (v, tri_b1[0], tri_b1[1], tri_b1[2]),
                 (v, tri_b2[0], tri_b2[1], tri_b2[2]),
-            ]
-            ok = True
-            q_cand_min = 1.0
-            for nt in cand_tets:
-                if len(set(nt)) != 4:
-                    ok = False; break
-                vol6 = _tet_signed_vol6(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
-                if abs(vol6) < 1e-20:
-                    ok = False; break
-                q = _tet_quality(pts[nt[0]], pts[nt[1]], pts[nt[2]], pts[nt[3]])
-                if q < q_cand_min:
-                    q_cand_min = q
-            if not ok:
+            ])
+
+        best_new_tets: list[tuple[int, int, int, int]] | None = None
+        best_q_new = -1.0
+
+        for cand_tets in all_cand_tets76:
+            if any(len(set(nt)) != 4 for nt in cand_tets):
                 continue
+            _cand6 = np.array(cand_tets, dtype=np.int64)  # (6, 4)
+            _vc = _tet_signed_vol6_batch_arr(pts, _cand6)
+            if not np.all(np.abs(_vc) >= 1e-20):
+                continue
+            q_cand_min = float(_tet_quality_batch_arr(pts, _cand6).min())
             if q_cand_min > best_q_new:
                 best_q_new = q_cand_min
                 best_new_tets = cand_tets
