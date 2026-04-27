@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2195,
+  "beta": 2196,
   "max_round": 1000,
-  "round": 144,
+  "round": 145,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,13 +26,14 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 39.72,
+  "last_bench_time": 39.53,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "PIPELINE_VEC",
     "LAYERS_VEC",
     "BSP_VEC",
     "MESHCHECKER1",
@@ -64,5 +65,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "LAYERS_VEC (R144) — vectorize BL extrude inner-layer point generation via numpy broadcast (num_layers×W×3); 22/22 PASS 39.72s"
+  "plan_archive": "PIPELINE_VEC (R145) — vectorize domain volume product loop via numpy.prod in _apply_max_cells_limit; 22/22 PASS 39.53s"
 }

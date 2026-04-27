@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
+import numpy as np
+
 from core.analyzer.geometry_analyzer import GeometryAnalyzer
 from core.evaluator.fidelity import GeometryFidelityChecker
 from core.evaluator.metrics import AdditionalMetricsComputer
@@ -745,9 +747,11 @@ class PipelineOrchestrator:
         if base_cell <= 0:
             return
 
-        domain_vol = 1.0
-        for i in range(3):
-            domain_vol *= strategy.domain.max[i] - strategy.domain.min[i]
+        domain_vol = float(
+            np.prod(
+                np.asarray(strategy.domain.max) - np.asarray(strategy.domain.min)
+            )
+        )
 
         est_cells = domain_vol / (base_cell ** 3)
         if est_cells > max_cells:

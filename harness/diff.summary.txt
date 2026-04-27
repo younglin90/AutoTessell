@@ -1,4 +1,4 @@
-file: desktop/qt_app/mesh_viewer.py
-functions: _compute_and_emit_stats
-lines_added: 17
-lines_removed: 14
+file: core/pipeline/orchestrator.py
+functions: _apply_max_cells_limit
+lines_added: 5
+lines_removed: 3
