@@ -3078,6 +3078,29 @@ def generate_native_tet(
                     # discard _res_j6["new_pts"] if not applied — final_tets unchanged
                 except Exception as exc:  # noqa: BLE001
                     log.warning("native_tet_vvv9j6_skipped", reason=str(exc)[:120])
+            # VVV9K #5 — priority-queue main-loop diagnostic hook (gate OFF default, discard-only)
+            _VVV9K_DIAG: bool = False  # R217: default OFF
+            if _VVV9K_DIAG and _n_sliver_pre >= 1:
+                try:
+                    from core.generator.native_tet.stellar import _priority_queue_main_loop  # noqa: PLC0415
+                    from core.generator.native_tet.quality import snapshot as _qsnap_9k  # noqa: PLC0415
+                    _q_arr_9k = _qsnap_9k(final_pts, final_tets).q_per_tet
+                    _t0_9k = time.perf_counter()
+                    _pts2, _tets2, _n_imp, _n_it, _delta = _priority_queue_main_loop(
+                        final_pts, final_tets, _q_arr_9k, max_iters=10, time_budget_ms=100.0
+                    )
+                    _wall_ms_9k = int((time.perf_counter() - _t0_9k) * 1000)
+                    log.info(
+                        "native_tet_vvv9k_diag",
+                        n_improved=int(_n_imp),
+                        n_iters_used=int(_n_it),
+                        total_delta=float(_delta),
+                        wall_ms=_wall_ms_9k,
+                        mode="dry_run",
+                    )
+                    # results discard — final_pts/final_tets unchanged
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("native_tet_vvv9k_skipped", reason=str(exc)[:120])
         except Exception as exc:
             log.warning("native_tet_vvv12_skipped", reason=str(exc)[:120])
     log.info("native_tet_pass_timing", pass_name="VVV12", dt_ms=int((time.perf_counter() - _t_vvv12) * 1000))
