@@ -1529,44 +1529,77 @@ def generate_native_bl(
         new_pts = points.copy()
         wall_idx_arr_p = np.array(wall_vert_indices, dtype=np.int64)
 
+        # LAYERS_VEC: vectorized wall-vertex extrusion (beta2195)
+        # inward_normals: (W, 3) — -vnorm for each wall vertex
+        inward_normals = np.array([-vnorm[v] for v in wall_vert_indices], dtype=np.float64)  # (W,3)
+
         if use_per_v_cum_pass and vertex_cum_map_pass:
-            # per-vertex total thickness = vertex_cum_map_pass[v][-1]
-            for vi_idx, v in enumerate(wall_vert_indices):
-                v_total = float(vertex_cum_map_pass[v][-1]) if v in vertex_cum_map_pass else (
-                    total * vertex_scale_pass.get(v, 1.0)
-                )
-                new_pts[v] = points[v] + (-vnorm[v]) * v_total
+            # per-vertex total thickness vector: (W,)
+            v_totals = np.array(
+                [
+                    float(vertex_cum_map_pass[v][-1]) if v in vertex_cum_map_pass
+                    else total * vertex_scale_pass.get(v, 1.0)
+                    for v in wall_vert_indices
+                ],
+                dtype=np.float64,
+            )  # (W,)
+            new_pts[wall_idx_arr_p] = points[wall_idx_arr_p] + inward_normals * v_totals[:, None]
         else:
-            inward_v = np.array([-vnorm[v] for v in wall_vert_indices])
             scales_v = np.array(
                 [vertex_scale_pass.get(v, 1.0) for v in wall_vert_indices], dtype=np.float64,
-            )[:, None]
-            new_pts[wall_idx_arr_p] = points[wall_idx_arr_p] + inward_v * (total * scales_v)
+            )  # (W,)
+            new_pts[wall_idx_arr_p] = points[wall_idx_arr_p] + inward_normals * (total * scales_v[:, None])
 
+        # Build per-layer offset arrays: shape (num_layers, W) for inner layers
         lp_ids: list[dict[int, int]] = [{} for _ in range(cfg.num_layers + 1)]
-        extra_pts: list[np.ndarray] = []
         cursor_p = len(points)
-        for layer_i in range(cfg.num_layers + 1):
-            if layer_i == cfg.num_layers:
-                for v in wall_vert_indices:
-                    lp_ids[layer_i][v] = int(v)
-            else:
-                for v in wall_vert_indices:
-                    # beta95: per-vertex cum 있으면 그걸 사용, 없으면 기존 방식
-                    if use_per_v_cum_pass and vertex_cum_map_pass and v in vertex_cum_map_pass:
-                        offset_v = float(vertex_cum_map_pass[v][layer_i])
-                        # 이미 scale 포함됨 → 추가 v_scale 불필요
-                    else:
-                        offset_v = float(cum_pass[layer_i]) * vertex_scale_pass.get(v, 1.0)
-                    p_new = points[v] - vnorm[v] * offset_v
-                    extra_pts.append(p_new)
-                    lp_ids[layer_i][v] = cursor_p
-                    cursor_p += 1
+        n_wall = len(wall_vert_indices)
 
-        if extra_pts:
-            fp = np.vstack([new_pts, np.array(extra_pts)])
+        if n_wall > 0 and cfg.num_layers > 0:
+            if use_per_v_cum_pass and vertex_cum_map_pass:
+                # (num_layers, W) offset matrix — each row is layer_i cumulative offsets
+                offsets_mat = np.array(
+                    [
+                        [
+                            float(vertex_cum_map_pass[v][layer_i]) if v in vertex_cum_map_pass
+                            else float(cum_pass[layer_i]) * vertex_scale_pass.get(v, 1.0)
+                            for v in wall_vert_indices
+                        ]
+                        for layer_i in range(cfg.num_layers)
+                    ],
+                    dtype=np.float64,
+                )  # (num_layers, W)
+            else:
+                # broadcast: cum_pass[layer_i] * scales — (num_layers, W)
+                scales_v2 = np.array(
+                    [vertex_scale_pass.get(v, 1.0) for v in wall_vert_indices], dtype=np.float64,
+                )  # (W,)
+                cum_inner = np.array(
+                    [float(cum_pass[layer_i]) for layer_i in range(cfg.num_layers)],
+                    dtype=np.float64,
+                )  # (num_layers,)
+                offsets_mat = cum_inner[:, None] * scales_v2[None, :]  # (num_layers, W)
+
+            # new_positions: (num_layers, W, 3)
+            # points[wall_idx_arr_p]: (W, 3); inward_normals: (W, 3)
+            # offsets_mat: (num_layers, W) → offset per layer per vertex
+            base_pts = points[wall_idx_arr_p]                            # (W, 3)
+            new_layer_pts = base_pts[None, :, :] - inward_normals[None, :, :] * offsets_mat[:, :, None]
+            # new_layer_pts shape: (num_layers, W, 3)
+            extra_pts_arr = new_layer_pts.reshape(-1, 3)                 # (num_layers*W, 3)
+            fp = np.vstack([new_pts, extra_pts_arr])
+
+            # Build lp_ids dicts from contiguous index layout
+            for layer_i in range(cfg.num_layers):
+                base_idx = cursor_p + layer_i * n_wall
+                for wi_v, v in enumerate(wall_vert_indices):
+                    lp_ids[layer_i][v] = base_idx + wi_v
         else:
             fp = new_pts
+
+        # innermost layer maps to original vertex ids
+        for v in wall_vert_indices:
+            lp_ids[cfg.num_layers][v] = int(v)
 
         # 6) Prism cell 위상 구성
         p_int_faces: list[list[int]] = []

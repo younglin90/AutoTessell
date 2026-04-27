@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2194,
+  "beta": 2195,
   "max_round": 1000,
-  "round": 143,
+  "round": 144,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,13 +26,14 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 40.87,
+  "last_bench_time": 39.72,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "LAYERS_VEC",
     "BSP_VEC",
     "MESHCHECKER1",
     "POLY_CACHE",
@@ -63,5 +64,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "DESKTOP_HIST_VEC (R143) — vectorize Qt cell-type classification loop in _compute_and_emit_stats via np.isin; 22/22 PASS 39.49s"
+  "plan_archive": "LAYERS_VEC (R144) — vectorize BL extrude inner-layer point generation via numpy broadcast (num_layers×W×3); 22/22 PASS 39.72s"
 }
