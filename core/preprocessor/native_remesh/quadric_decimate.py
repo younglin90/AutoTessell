@@ -129,48 +129,55 @@ def _build_collapse_heap(
     return out
 
 
+def _build_v2f(F: NDArray[np.int64], n_v: int) -> list[set[int]]:
+    """vertex → set of incident face indices."""
+    v2f: list[set[int]] = [set() for _ in range(n_v)]
+    for fi in range(F.shape[0]):
+        v2f[int(F[fi, 0])].add(fi)
+        v2f[int(F[fi, 1])].add(fi)
+        v2f[int(F[fi, 2])].add(fi)
+    return v2f
+
+
 def _collapse_edge(
     V: NDArray[np.float64],
     F: NDArray[np.int64],
     Q: NDArray[np.float64],
+    v2f: list[set[int]],
     alive_v: NDArray[np.bool_],
     alive_f: NDArray[np.bool_],
     a: int,
     b: int,
     v_target: NDArray[np.float64],
 ) -> int:
-    """edge (a, b) 를 collapse — b 를 a 에 병합.
+    """edge (a, b) 를 collapse — b 를 a 에 병합. v2f index 동기화.
 
     Returns:
-        n_faces_removed (degenerate face 수).
-
-    Side effects:
-        V[a] = v_target[:3], Q[a] += Q[b] (이미 호출자가 Q_pair 를 v_target 계산에 사용).
-        F 에서 b → a 로 치환, 결과 degenerate face (두 vertex 가 같음) 비활성.
-        alive_v[b] = False, alive_f[degenerate_face_idx] = False.
+        n_faces_removed.
     """
-    V[a, 0] = v_target[0]
-    V[a, 1] = v_target[1]
-    V[a, 2] = v_target[2]
+    V[a, 0] = v_target[0]; V[a, 1] = v_target[1]; V[a, 2] = v_target[2]
     Q[a] = Q[a] + Q[b]
     alive_v[b] = False
 
     n_removed = 0
-    for fi in range(F.shape[0]):
+    incident_b = list(v2f[b])
+    for fi in incident_b:
         if not alive_f[fi]:
             continue
         v0, v1, v2 = int(F[fi, 0]), int(F[fi, 1]), int(F[fi, 2])
-        if b in (v0, v1, v2):
-            v0 = a if v0 == b else v0
-            v1 = a if v1 == b else v1
-            v2 = a if v2 == b else v2
-            if v0 == v1 or v1 == v2 or v0 == v2:
-                alive_f[fi] = False
-                n_removed += 1
-            else:
-                F[fi, 0] = v0
-                F[fi, 1] = v1
-                F[fi, 2] = v2
+        v0 = a if v0 == b else v0
+        v1 = a if v1 == b else v1
+        v2 = a if v2 == b else v2
+        if v0 == v1 or v1 == v2 or v0 == v2:
+            alive_f[fi] = False
+            n_removed += 1
+            for v in (int(F[fi, 0]), int(F[fi, 1]), int(F[fi, 2])):
+                v2f[v].discard(fi)
+        else:
+            F[fi, 0] = v0; F[fi, 1] = v1; F[fi, 2] = v2
+            v2f[a].add(fi)
+            v2f[b].discard(fi)
+    v2f[b].clear()
     return n_removed
 
 
@@ -178,6 +185,7 @@ def _push_incident_edges(
     V: NDArray[np.float64],
     F: NDArray[np.int64],
     Q: NDArray[np.float64],
+    v2f: list[set[int]],
     alive_f: NDArray[np.bool_],
     vertex_version: NDArray[np.int64],
     heap: list[tuple[float, int, int, int, NDArray[np.float64]]],
@@ -185,14 +193,13 @@ def _push_incident_edges(
 ) -> None:
     """vertex a 와 incident 한 모든 alive edge 의 신규 cost 를 heap 에 push."""
     nbrs: set[int] = set()
-    for fi in range(F.shape[0]):
+    for fi in v2f[a]:
         if not alive_f[fi]:
             continue
         v0, v1, v2 = int(F[fi, 0]), int(F[fi, 1]), int(F[fi, 2])
-        if a in (v0, v1, v2):
-            for x in (v0, v1, v2):
-                if x != a:
-                    nbrs.add(x)
+        for x in (v0, v1, v2):
+            if x != a:
+                nbrs.add(x)
     v_a = np.array([V[a, 0], V[a, 1], V[a, 2], 1.0], dtype=np.float64)
     for x in nbrs:
         Q_pair = Q[a] + Q[x]
@@ -244,6 +251,7 @@ def quadric_decimate(
     F_w = F.astype(np.int64).copy()
     Q = _vertex_quadrics(V_w, F_w)
     heap = _build_collapse_heap(V_w, F_w, Q)
+    v2f = _build_v2f(F_w, V_w.shape[0])
 
     alive_v = np.ones(V_w.shape[0], dtype=np.bool_)
     alive_f = np.ones(F_w.shape[0], dtype=np.bool_)
@@ -258,15 +266,13 @@ def quadric_decimate(
             continue
         cur_ver = int(vertex_version[a] + vertex_version[b])
         if cur_ver != ver:
-            # stale — 두 vertex 중 하나가 collapse 후 변경됨.
             continue
-        n_removed = _collapse_edge(V_w, F_w, Q, alive_v, alive_f, a, b, v_t)
+        n_removed = _collapse_edge(V_w, F_w, Q, v2f, alive_v, alive_f, a, b, v_t)
         if n_removed == 0:
-            # 비정상 — collapse 가 face 를 안 줄였으면 b 가 isolated 였음. 안전 가드.
             continue
         n_alive -= n_removed
         vertex_version[a] += 1
-        _push_incident_edges(V_w, F_w, Q, alive_f, vertex_version, heap, a)
+        _push_incident_edges(V_w, F_w, Q, v2f, alive_f, vertex_version, heap, a)
 
     # alive vertex 만 compact, F remap.
     new_v_idx = -np.ones(V_w.shape[0], dtype=np.int64)
