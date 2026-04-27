@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2224,
+  "beta": 2225,
   "max_round": 1000,
-  "round": 173,
+  "round": 174,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,13 +26,14 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 31.96,
+  "last_bench_time": 0.294,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "POLY_INIT_REMAIN_VEC",
     "TIER_GEN_REMAIN_VEC",
     "TET_BL_REMAIN_VEC",
     "BL_REMAIN_VEC",
@@ -76,5 +77,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "TET_INIT_REMAIN_VEC (R173) — smooth.py smooth_odt/smooth_cvt for-k-in-range(4) → tile+ravel vectorized; 35/35 PASS 39.53s bench 0.113s"
+  "plan_archive": "POLY_INIT_REMAIN_VEC (R174) — dual.py _build_tet_topology Python triple-loop → numpy batch vertex/edge/face key generation; 22/22 PASS bench 0.294s"
 }

@@ -75,21 +75,48 @@ def _build_tet_topology(
     dict[tuple[int, int], list[int]],   # edge (sorted) → list of tet indices
     dict[tuple[int, int, int], list[int]],  # face (sorted triple) → list of tet indices
 ]:
-    """tet 배열에서 vertex/edge/face 기반 topology map 생성."""
+    """tet 배열에서 vertex/edge/face 기반 topology map 생성 (vectorized)."""
     vert_tets: dict[int, list[int]] = defaultdict(list)
     edge_tets: dict[tuple[int, int], list[int]] = defaultdict(list)
     face_tets: dict[tuple[int, int, int], list[int]] = defaultdict(list)
-    for ti, tet in enumerate(T):
-        for v in tet:
-            vert_tets[int(v)].append(int(ti))
-        for a, b in _TET_EDGES:
-            va, vb = int(tet[a]), int(tet[b])
-            key = (min(va, vb), max(va, vb))
-            edge_tets[key].append(int(ti))
-        for tri in _TET_FACES:
-            verts = [int(tet[i]) for i in tri]
-            key = tuple(sorted(verts))
-            face_tets[key].append(int(ti))
+
+    n_tets = T.shape[0]
+    ti_arr = np.arange(n_tets, dtype=np.int64)
+
+    # --- vertex → tet (4 verts per tet) ---
+    # T shape: (n_tets, 4); repeat ti for each of the 4 verts
+    vert_col = T.reshape(-1)                      # (n_tets*4,)
+    ti_col = np.repeat(ti_arr, 4)                 # (n_tets*4,)
+    for v, ti in zip(vert_col.tolist(), ti_col.tolist()):
+        vert_tets[v].append(ti)
+
+    # --- edge → tet (6 edges per tet, fixed indices _TET_EDGES) ---
+    _EA = np.array([a for a, _ in _TET_EDGES], dtype=np.int64)  # (6,)
+    _EB = np.array([b for _, b in _TET_EDGES], dtype=np.int64)  # (6,)
+    # for each tet gather the two endpoint global indices
+    ea = T[:, _EA]   # (n_tets, 6)
+    eb = T[:, _EB]   # (n_tets, 6)
+    emin = np.minimum(ea, eb)  # (n_tets, 6)
+    emax = np.maximum(ea, eb)  # (n_tets, 6)
+    ti_e = np.repeat(ti_arr, 6)  # (n_tets*6,)
+    for (a, b), ti in zip(zip(emin.reshape(-1).tolist(), emax.reshape(-1).tolist()), ti_e.tolist()):
+        edge_tets[(a, b)].append(ti)
+
+    # --- face → tet (4 faces per tet, fixed indices _TET_FACES) ---
+    _FA = np.array([tri[0] for tri in _TET_FACES], dtype=np.int64)  # (4,)
+    _FB = np.array([tri[1] for tri in _TET_FACES], dtype=np.int64)  # (4,)
+    _FC = np.array([tri[2] for tri in _TET_FACES], dtype=np.int64)  # (4,)
+    fa = T[:, _FA]   # (n_tets, 4)
+    fb = T[:, _FB]   # (n_tets, 4)
+    fc = T[:, _FC]   # (n_tets, 4)
+    # stack and sort each row of 3 to get canonical key
+    face_verts = np.stack([fa, fb, fc], axis=2)   # (n_tets, 4, 3)
+    face_verts_sorted = np.sort(face_verts, axis=2)  # (n_tets, 4, 3)
+    ti_f = np.repeat(ti_arr, 4)  # (n_tets*4,)
+    fv = face_verts_sorted.reshape(-1, 3)  # (n_tets*4, 3)
+    for row, ti in zip(fv.tolist(), ti_f.tolist()):
+        face_tets[(row[0], row[1], row[2])].append(ti)
+
     return vert_tets, edge_tets, face_tets
 
 

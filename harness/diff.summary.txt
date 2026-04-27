@@ -1,5 +1,4 @@
-file: cli/main.py
-functions: (none)
-lines_added: 0
-lines_removed: 0
-note: no numeric loops found; cli/ is pure click/rich UI — no-op
+file: core/generator/native_poly/dual.py
+functions: _build_tet_topology
+lines_added: 28
+lines_removed: 11
