@@ -166,6 +166,26 @@ def _tet_signed_vol6_batch_arr(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
     return np.einsum("ij,ij->i", BA, cr)
 
 
+def _boundary_edges_from_fmap(
+    fmap: dict[tuple[int, int, int], list[int]],
+) -> set[tuple[int, int]]:
+    """Vectorized: extract boundary edges from face→owners dict.
+
+    A face with exactly 1 owner is a boundary face; its 3 edges are boundary edges.
+    Builds numpy arrays from the boundary-face keys then sorts pairs in bulk.
+    """
+    bfaces = [k for k, lst in fmap.items() if len(lst) == 1]
+    if not bfaces:
+        return set()
+    bf_arr = np.array(bfaces, dtype=np.int64)  # (F, 3) already sorted (from _face_map_vectorized)
+    # 3 edge pairs per face: (0,1), (0,2), (1,2)
+    ep0 = bf_arr[:, [0, 1]]  # (F, 2)
+    ep1 = bf_arr[:, [0, 2]]
+    ep2 = bf_arr[:, [1, 2]]
+    all_edges = np.concatenate([ep0, ep1, ep2], axis=0)  # (3F, 2) — already sorted (face keys are sorted)
+    return {(int(row[0]), int(row[1])) for row in all_edges}
+
+
 def _edge_to_tets_map(T: np.ndarray) -> dict[tuple[int, int], list[int]]:
     """6 edges per tet → dict edge→[tet_ids].  C kernel if available."""
     if T.size == 0:
@@ -358,24 +378,15 @@ def flip_edges_32(
 
     tets_list = tets.tolist()
     alive = np.ones(tets.shape[0], dtype=bool)
-    e2t = _edge_to_tets_map(np.asarray(tets_list, dtype=np.int64))
-    fmap = _face_map_vectorized(np.asarray(tets_list, dtype=np.int64))
+    T_np0 = np.asarray(tets_list, dtype=np.int64)
+    e2t = _edge_to_tets_map(T_np0)
+    fmap = _face_map_vectorized(T_np0)
 
-    # boundary edge 는 한쪽 face 가 boundary (len(face owners)==1) 인 경우.
-    # Round 20: boundary edge set 을 1 번만 구성 (edge tuple 소속).
-    boundary_edges: set[tuple[int, int]] = set()
-    for fk, lst in fmap.items():
-        if len(lst) == 1:
-            a_, b_, c_ = fk
-            for u_, v_ in ((a_, b_), (a_, c_), (b_, c_)):
-                key = (u_, v_) if u_ < v_ else (v_, u_)
-                boundary_edges.add(key)
-
-    def _edge_on_boundary(u: int, v: int) -> bool:
-        key = (u, v) if u < v else (v, u)
-        return key in boundary_edges
+    # boundary edges — vectorized via helper
+    boundary_edges: set[tuple[int, int]] = _boundary_edges_from_fmap(fmap)
 
     n_flip = 0
+    new_tets_buf: list[list[int]] = []
 
     for (u, v), owners in list(e2t.items()):
         if n_flip >= max_flips:
@@ -384,13 +395,12 @@ def flip_edges_32(
             continue
         if not all(alive[t] for t in owners):
             continue
-        if _edge_on_boundary(u, v):
+        key_uv = (u, v) if u < v else (v, u)
+        if key_uv in boundary_edges:
             continue
         # Round 63: 입력 surface edge 는 flip 으로 제거 금지.
-        if protected_edges:
-            key = (u, v) if u < v else (v, u)
-            if key in protected_edges:
-                continue
+        if protected_edges and key_uv in protected_edges:
+            continue
         # 3 tet 의 반대편 vertex 3 개.
         opposite: list[int] = []
         for ti in owners:
@@ -422,15 +432,13 @@ def flip_edges_32(
 
         for ti in owners:
             alive[ti] = False
-        for nt in new_tets:
-            tets_list.append(list(nt))
-            alive = np.append(alive, True)
+        new_tets_buf.extend([list(nt) for nt in new_tets])
         n_flip += 1
 
-    out = np.asarray(
-        [tets_list[i] for i in range(len(tets_list)) if alive[i]],
-        dtype=np.int64,
-    )
+    if new_tets_buf:
+        tets_list.extend(new_tets_buf)
+        alive = np.concatenate([alive, np.ones(len(new_tets_buf), dtype=bool)])
+    out = np.asarray(tets_list, dtype=np.int64)[alive]
     return out, n_flip
 
 
@@ -458,19 +466,16 @@ def flip_edges_44(
 
     tets_list = tets.tolist()
     alive = np.ones(tets.shape[0], dtype=bool)
-    e2t = _edge_to_tets_map(np.asarray(tets_list, dtype=np.int64))
+    T_np0 = np.asarray(tets_list, dtype=np.int64)
+    e2t = _edge_to_tets_map(T_np0)
 
-    # 간이 boundary edge 체크.
-    fmap = _face_map_vectorized(np.asarray(tets_list, dtype=np.int64))
-    boundary_edges: set[tuple[int, int]] = set()
-    for fk, lst in fmap.items():
-        if len(lst) == 1:
-            a_, b_, c_ = fk
-            for u_, v_ in ((a_, b_), (a_, c_), (b_, c_)):
-                key = (u_, v_) if u_ < v_ else (v_, u_)
-                boundary_edges.add(key)
+    # 간이 boundary edge 체크 — vectorized via helper.
+    fmap = _face_map_vectorized(T_np0)
+    boundary_edges: set[tuple[int, int]] = _boundary_edges_from_fmap(fmap)
 
     n_flip = 0
+    new_tets_buf: list[list[int]] = []
+
     for (u, v), owners in list(e2t.items()):
         if n_flip >= max_flips:
             break
@@ -478,9 +483,10 @@ def flip_edges_44(
             continue
         if not all(alive[t] for t in owners):
             continue
-        if (u, v) in boundary_edges:
+        key_uv = (u, v) if u < v else (v, u)
+        if key_uv in boundary_edges:
             continue
-        if protected_edges and (u, v) in protected_edges:
+        if protected_edges and key_uv in protected_edges:
             continue
         # 각 tet 의 반대 2 vertex 수집.
         ring: list[int] = []
@@ -504,13 +510,11 @@ def flip_edges_44(
         d02 = float(np.linalg.norm(pts[r[0]] - pts[r[2]]))
         d13 = float(np.linalg.norm(pts[r[1]] - pts[r[3]]))
         if d02 <= d13:
-            new_pivot = (r[0], r[2])
             t1 = (u, r[0], r[1], r[2])
             t2 = (u, r[0], r[2], r[3])
             t3 = (v, r[0], r[1], r[2])
             t4 = (v, r[0], r[2], r[3])
         else:
-            new_pivot = (r[1], r[3])
             t1 = (u, r[1], r[0], r[3])
             t2 = (u, r[1], r[3], r[2])
             t3 = (v, r[1], r[0], r[3])
@@ -532,16 +536,13 @@ def flip_edges_44(
 
         for ti in owners:
             alive[ti] = False
-        for nt in new_tets:
-            tets_list.append(list(nt))
-            alive = np.append(alive, True)
+        new_tets_buf.extend([list(nt) for nt in new_tets])
         n_flip += 1
-        _ = new_pivot
 
-    out = np.asarray(
-        [tets_list[i] for i in range(len(tets_list)) if alive[i]],
-        dtype=np.int64,
-    )
+    if new_tets_buf:
+        tets_list.extend(new_tets_buf)
+        alive = np.concatenate([alive, np.ones(len(new_tets_buf), dtype=bool)])
+    out = np.asarray(tets_list, dtype=np.int64)[alive]
     return out, n_flip
 
 
@@ -569,19 +570,15 @@ def flip_edges_54(
 
     tets_list = tets.tolist()
     alive = np.ones(tets.shape[0], dtype=bool)
-    e2t = _edge_to_tets_map(np.asarray(tets_list, dtype=np.int64))
+    T_np0 = np.asarray(tets_list, dtype=np.int64)
+    e2t = _edge_to_tets_map(T_np0)
 
-    # boundary edge detection
-    fmap = _face_map_vectorized(np.asarray(tets_list, dtype=np.int64))
-    boundary_edges: set[tuple[int, int]] = set()
-    for fk, lst in fmap.items():
-        if len(lst) == 1:
-            a_, b_, c_ = fk
-            for u_, v_ in ((a_, b_), (a_, c_), (b_, c_)):
-                key = (u_, v_) if u_ < v_ else (v_, u_)
-                boundary_edges.add(key)
+    # boundary edge detection — vectorized via helper
+    fmap = _face_map_vectorized(T_np0)
+    boundary_edges: set[tuple[int, int]] = _boundary_edges_from_fmap(fmap)
 
     n_flip = 0
+    new_tets_buf54: list[list[int]] = []
 
     for (u, v), owners in list(e2t.items()):
         if n_flip >= max_flips:
@@ -590,9 +587,10 @@ def flip_edges_54(
             continue
         if not all(alive[t] for t in owners):
             continue
-        if (u, v) in boundary_edges:
+        key_uv = (u, v) if u < v else (v, u)
+        if key_uv in boundary_edges:
             continue
-        if protected_edges and (u, v) in protected_edges:
+        if protected_edges and key_uv in protected_edges:
             continue
 
         # Collect opposite vertices (ring of 5 around edge u-v)
@@ -672,15 +670,13 @@ def flip_edges_54(
 
         for ti in owners:
             alive[ti] = False
-        for nt in best_new_tets:
-            tets_list.append(list(nt))
-            alive = np.append(alive, True)
+        new_tets_buf54.extend([list(nt) for nt in best_new_tets])
         n_flip += 1
 
-    out = np.asarray(
-        [tets_list[i] for i in range(len(tets_list)) if alive[i]],
-        dtype=np.int64,
-    )
+    if new_tets_buf54:
+        tets_list.extend(new_tets_buf54)
+        alive = np.concatenate([alive, np.ones(len(new_tets_buf54), dtype=bool)])
+    out = np.asarray(tets_list, dtype=np.int64)[alive]
     return pts, out, n_flip
 
 
@@ -708,19 +704,15 @@ def flip_edges_76(
 
     tets_list = tets.tolist()
     alive = np.ones(tets.shape[0], dtype=bool)
-    e2t = _edge_to_tets_map(np.asarray(tets_list, dtype=np.int64))
+    T_np0 = np.asarray(tets_list, dtype=np.int64)
+    e2t = _edge_to_tets_map(T_np0)
 
-    # boundary edge detection
-    fmap = _face_map_vectorized(np.asarray(tets_list, dtype=np.int64))
-    boundary_edges: set[tuple[int, int]] = set()
-    for fk, lst in fmap.items():
-        if len(lst) == 1:
-            a_, b_, c_ = fk
-            for u_, v_ in ((a_, b_), (a_, c_), (b_, c_)):
-                key = (u_, v_) if u_ < v_ else (v_, u_)
-                boundary_edges.add(key)
+    # boundary edge detection — vectorized via helper
+    fmap = _face_map_vectorized(T_np0)
+    boundary_edges: set[tuple[int, int]] = _boundary_edges_from_fmap(fmap)
 
     n_flip = 0
+    new_tets_buf76: list[list[int]] = []
 
     for (u, v), owners in list(e2t.items()):
         if n_flip >= max_flips:
@@ -729,9 +721,10 @@ def flip_edges_76(
             continue
         if not all(alive[t] for t in owners):
             continue
-        if (u, v) in boundary_edges:
+        key_uv = (u, v) if u < v else (v, u)
+        if key_uv in boundary_edges:
             continue
-        if protected_edges and (u, v) in protected_edges:
+        if protected_edges and key_uv in protected_edges:
             continue
 
         # Collect opposite vertices (ring of 7 around edge u-v)
@@ -812,15 +805,13 @@ def flip_edges_76(
 
         for ti in owners:
             alive[ti] = False
-        for nt in best_new_tets:
-            tets_list.append(list(nt))
-            alive = np.append(alive, True)
+        new_tets_buf76.extend([list(nt) for nt in best_new_tets])
         n_flip += 1
 
-    out = np.asarray(
-        [tets_list[i] for i in range(len(tets_list)) if alive[i]],
-        dtype=np.int64,
-    )
+    if new_tets_buf76:
+        tets_list.extend(new_tets_buf76)
+        alive = np.concatenate([alive, np.ones(len(new_tets_buf76), dtype=bool)])
+    out = np.asarray(tets_list, dtype=np.int64)[alive]
     return pts, out, n_flip
 
 
