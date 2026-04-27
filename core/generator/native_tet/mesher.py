@@ -1036,9 +1036,10 @@ def generate_native_tet(
     # Phase C 가 켜져 있으면 envelope-guarded + quality stop 으로 승격.
     _prog("phase_a_done", 0.6, n_tets=int(final_tets.shape[0]))
 
-    # P4-B-5 (beta2245) — Phase A grade D (mean_q < 0.05) + P4-C fallback ON 시
-    # Phase B/C 스킵. extreme tier 자가-impl 시도 무용 → bench time 큰 폭 단축.
-    # env AUTO_TESSELL_PHASE_BC_SKIP=0 으로 비활성 가능.
+    # P4-B-5 (beta2245) — Phase A mean_q < 임계 + P4-C fallback ON 시 Phase B/C 스킵.
+    # extreme/hard tier 자가-impl 시도 무용 → bench time 큰 폭 단축.
+    # env AUTO_TESSELL_PHASE_BC_SKIP_MQ (default 0.10) — 이 미만이면 skip.
+    # env AUTO_TESSELL_PHASE_BC_SKIP=0 으로 완전 비활성 가능.
     _phase_bc_skip = False
     try:
         if (
@@ -1049,13 +1050,18 @@ def generate_native_tet(
             from core.generator.native_tet.quality import snapshot as _qsnap_pa
             _pa_q = _qsnap_pa(final_pts, final_tets)
             _pa_mean = float(getattr(_pa_q, "mean_q", 0.0))
-            if _pa_mean < 0.05:
+            # 기본 0.18 — A grade 임계 0.20 직전. Phase A 가 0.18 미만이면 B/C 가
+            # 0.20 도달할 가능성 낮음 (bench 19/20 fallback 케이스 중 0건). 보수적
+            # 사용시 env 로 0.10 또는 0.05 로 낮추면 self-impl 우선.
+            _skip_thresh = float(os.environ.get("AUTO_TESSELL_PHASE_BC_SKIP_MQ", "0.18"))
+            if _pa_mean < _skip_thresh:
                 _phase_bc_skip = True
                 log.info(
                     "native_tet_phase_bc_skip",
                     phase_a_mean_q=round(_pa_mean, 4),
+                    skip_thresh=round(_skip_thresh, 3),
                     n_tets=int(final_tets.shape[0]),
-                    reason="grade_d_p4c_fallback_will_rescue",
+                    reason="below_threshold_p4c_fallback_will_rescue",
                 )
     except Exception as exc:
         log.debug("native_tet_phase_bc_skip_eval_failed", reason=str(exc))
