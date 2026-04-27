@@ -30,7 +30,7 @@
   "last_mq": {
     "tet_worst": 0.392,
     "tet_industrial_reach": "95%",
-    "tet_per_mesh_time_102308": "264s → ~95s (62% 단축, beta2245k)"
+    "tet_per_mesh_time_102308": "264s → 31.4s (88% 단축, beta2245k)"
   },
   "last_bench_time": 1135.7,
   "consecutive_fails": 0,
