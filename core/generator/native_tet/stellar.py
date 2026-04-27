@@ -1679,3 +1679,88 @@ def _envelope_point_projection(
         "snap_map": snap_map,
         "applied": False,
     }
+
+
+# fTetWild §3.2 envelope distance primitive (VVV9I2)
+# Default OFF — no caller wired in this card.
+# ---------------------------------------------------------------------------
+
+def _envelope_distance_to_triangles(
+    pts,
+    V_in,
+    F_in,
+) -> "np.ndarray":
+    """Return centroid-based distance from each point in *pts* to the surface S=(V_in, F_in).
+
+    This is a **lower-bound approximation** of the true point-to-surface distance
+    d(p, S) = min_{T∈F_in} dist(p, T).  Each triangle T is represented by its
+    centroid c_T = (V[F[i,0]] + V[F[i,1]] + V[F[i,2]]) / 3, and the returned
+    distance is d_c(p) = min_T ‖p − c_T‖.
+
+    **Limitation (centroid approximation)**:
+    - d_c(p) is NOT a strict lower-bound of the true point-to-surface distance.
+      The relationship is: d(p,S) ≤ d_c(p) + r_max, where r_max is the maximum
+      inradius (≈ max_edge_length / 2) of the triangulation.  For coarse meshes
+      d_c may *overestimate* d(p,S), causing false negatives in envelope tests.
+    - This approximation is intentional for the scaffold phase.  A follow-up card
+      (VVV9I3) will replace this with Eberly 2003 region-classification
+      point-to-triangle exact distance after KDTree pre-filtering.
+
+    Parameters
+    ----------
+    pts : np.ndarray, shape (N, 3)
+        Query points.
+    V_in : np.ndarray, shape (M, 3)
+        Input surface vertex positions (float64 or float32).
+    F_in : np.ndarray, shape (K, 3), dtype int-like
+        Triangle face indices into V_in.  Each row is (i0, i1, i2).
+
+    Returns
+    -------
+    dists : np.ndarray, shape (N,), dtype float64
+        Centroid-distance from each query point to the nearest triangle centroid.
+
+    Raises
+    ------
+    ImportError
+        If ``scipy`` is not available.
+    ValueError
+        If *pts*, *V_in*, or *F_in* have unexpected shapes.
+    """
+    # Lazy import — avoid hard dependency at module load time.
+    try:
+        from scipy.spatial import cKDTree  # type: ignore[import]
+    except ImportError as exc:  # pragma: no cover
+        raise ImportError(
+            "_envelope_distance_to_triangles requires scipy.spatial.cKDTree"
+        ) from exc
+
+    import numpy as np  # already imported at module level; re-import is a no-op
+
+    # --- Input validation ---
+    pts = np.asarray(pts, dtype=np.float64)
+    V_in = np.asarray(V_in, dtype=np.float64)
+    F_in = np.asarray(F_in, dtype=np.intp)
+
+    if pts.ndim != 2 or pts.shape[1] != 3:
+        raise ValueError(
+            f"pts must have shape (N, 3); got {pts.shape}"
+        )
+    if V_in.ndim != 2 or V_in.shape[1] != 3:
+        raise ValueError(
+            f"V_in must have shape (M, 3); got {V_in.shape}"
+        )
+    if F_in.ndim != 2 or F_in.shape[1] != 3:
+        raise ValueError(
+            f"F_in must have shape (K, 3); got {F_in.shape}"
+        )
+
+    # --- Centroid computation: (K, 3) ---
+    # V_in[F_in] → shape (K, 3, 3); mean over axis=1 → (K, 3)
+    centroids = V_in[F_in].mean(axis=1)
+
+    # --- KDTree query ---
+    tree = cKDTree(centroids)
+    dists, _ = tree.query(pts, k=1, workers=1)
+
+    return dists.astype(np.float64)
