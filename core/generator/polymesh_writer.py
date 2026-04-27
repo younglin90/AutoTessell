@@ -439,16 +439,18 @@ def write_generic_polymesh(
         internal_owner.append(owner_c)
         internal_nbr.append(nbr_c)
 
-    int_order = sorted(
-        range(len(internal_faces)),
-        key=lambda i: (internal_owner[i], internal_nbr[i]),
-    )
-    bnd_order = sorted(range(len(boundary_faces)), key=lambda i: boundary_owner[i])
+    # Vectorized sort: np.lexsort on owner/neighbour arrays (secondary key first)
+    _int_owner_arr = np.array(internal_owner, dtype=np.int64)
+    _int_nbr_arr = np.array(internal_nbr, dtype=np.int64)
+    int_order = np.lexsort((_int_nbr_arr, _int_owner_arr)).tolist() if len(internal_owner) else []
+
+    _bnd_owner_arr = np.array(boundary_owner, dtype=np.int64)
+    bnd_order = np.argsort(_bnd_owner_arr, kind="stable").tolist() if len(boundary_owner) else []
 
     # PMW1 — coplanar internal-face merge (before write)
     sorted_int_faces = [internal_faces[i] for i in int_order]
-    sorted_int_owner = [internal_owner[i] for i in int_order]
-    sorted_int_nbr = [internal_nbr[i] for i in int_order]
+    sorted_int_owner = _int_owner_arr[int_order].tolist() if int_order else []
+    sorted_int_nbr = _int_nbr_arr[int_order].tolist() if int_order else []
 
     _n_int_before = len(sorted_int_faces)
     if not _PMW1_OFF and _n_int_before >= 100:
