@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2188,
+  "beta": 2189,
   "max_round": 1000,
-  "round": 137,
+  "round": 138,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -53,12 +53,13 @@
     "PERF4",
     "PERF5",
     "POLYMESHWRITER_VEC",
-    "STL_READER_VEC"
+    "STL_READER_VEC",
+    "OBJ_PLY_READER_VEC"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "STL_READER_VEC (R137) — vectorize binary STL reader: path.read_bytes()+np.frombuffer+_BINARY_STL_DTYPE, _is_binary_stl np.frombuffer; 22/22 PASS 40.98s 0.57ms/call"
+  "plan_archive": "OBJ_PLY_READER_VEC (R138) \u2014 vectorize OBJ/PLY readers: batch v-lines np.array, PLY binary np.frombuffer structured dtype; 67/67 PASS OBJ 2.37ms PLY 1.81ms"
 }
