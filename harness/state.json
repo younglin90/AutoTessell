@@ -29,7 +29,8 @@
   },
   "last_mq": {
     "tet_worst": 0.392,
-    "tet_industrial_reach": "95%"
+    "tet_industrial_reach": "95%",
+    "tet_per_mesh_time_102308": "264s → ~95s (62% 단축, beta2245k)"
   },
   "last_bench_time": 1135.7,
   "consecutive_fails": 0,
@@ -95,5 +96,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "P4-B-5 Phase B/C skip + polymesh write deferred (R180) — _phase_bc_skip 시 18 env vars OFF + W3/NN1/RR1/BSP/EEE try-block guard + JJ3/drop_extreme_slivers gate + critical fix: polymesh write defer (이전: skip 케이스 disk 의 polyMesh 가 Phase A 잘못된 mesh, 이제: P4-C 후 한 번만 write). 회귀 22/22 PASS. native_tet 95% A grade 유지."
+  "plan_archive": "P4-B-5k pass_gate skip 추가 (R181) — 진짜 bottleneck 발견: pass_gate (cdt_check + hausdorff + plane_coverage) 가 9859 tet × 2536 input F × hausdorff KDTree → 3+ 분. _phase_bc_skip 시 grade=D 하드코딩 + raise 로 skip. 102308 mesh 단일 측정: 264s → ~95s (62% 단축). 누적 skip 가드: 18 env vars OFF + W3/NN1/RR1/BSP/EEE/pass_gate try raise + fix_inverted/JJ3/drop_extreme_slivers gate + polymesh write defer + post-P4C re-write. 회귀 22/22 PASS. native_tet 95% A grade 유지, 시간 대폭 단축."
 }
