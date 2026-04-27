@@ -2905,6 +2905,28 @@ def generate_native_tet(
                     n_offplane_candidates=_n_offp,
                     flatness_thresh=1e-2,
                 )
+                # VVV9D (beta2249) — dry-run off-plane Steiner (mesh unchanged, log only)
+                _VVV9D_DRYRUN: bool = False  # default OFF; activated in next card (R185/VVV9F)
+                if _VVV9D_DRYRUN:
+                    try:
+                        from core.generator.native_tet.stellar import (  # noqa: PLC0415
+                            _apply_offplane_steiner_topK as _aost_dr,
+                        )
+                        _t_dr0 = time.perf_counter()
+                        _, _, _n_ins_dr = _aost_dr(
+                            final_pts, final_tets,
+                            top_k=3, eps_factor=0.05, flatness_thresh=1e-2,
+                        )
+                        _wall_ms_dr = int((time.perf_counter() - _t_dr0) * 1000)
+                        log.info(
+                            "native_tet_vvv9d_dryrun",
+                            n_offplane_candidates=int(_n_offp),
+                            n_inserted_dr=int(_n_ins_dr),
+                            wall_ms=int(_wall_ms_dr),
+                            mode="dry_run",
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        log.warning("native_tet_vvv9d_skipped", reason=str(exc)[:120])
         except Exception as exc:
             log.warning("native_tet_vvv12_skipped", reason=str(exc)[:120])
     log.info("native_tet_pass_timing", pass_name="VVV12", dt_ms=int((time.perf_counter() - _t_vvv12) * 1000))
