@@ -2976,8 +2976,8 @@ def generate_native_tet(
                             wall_ms=_wall_ms,
                             mode="dry_run",
                         )
-                        # VVV9H5 (beta2261) — apply dryrun wire (gate OFF, mesh unchanged)
-                        _VVV9H_APPLY_DRYRUN: bool = False  # R196: default OFF, flip in R197
+                        # VVV9H6 (beta2262) — apply dryrun gate ON (evidence collection, mesh unchanged)
+                        _VVV9H_APPLY_DRYRUN: bool = True  # R197: flip ON
                         if _VVV9H_APPLY_DRYRUN and _n_sliver_pre >= 1 and len(_cands) >= 1:
                             try:
                                 from core.generator.native_tet.stellar import _apply_klingner_edge_contract_topK as _akec_dr  # noqa: PLC0415
