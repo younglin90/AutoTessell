@@ -1764,3 +1764,92 @@ def _envelope_distance_to_triangles(
     dists, _ = tree.query(pts, k=1, workers=1)
 
     return dists.astype(np.float64)
+
+
+# ---------------------------------------------------------------------------
+# VVV9J1 — SLIM local Jacobian helper (skeleton, caller 없음)
+# Rabinovich et al. 2017 §3.1-§3.3
+# ---------------------------------------------------------------------------
+
+_VVV9J_SLIM: bool = False  # default OFF — no caller yet
+
+
+def _slim_local_jacobian_per_tet(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    ref_edges_inv: "np.ndarray | None" = None,
+) -> dict:
+    """Compute per-tet local Jacobian F = ∂φ/∂x (SLIM §3).
+
+    Parameters
+    ----------
+    pts : (N, 3) float64
+        Vertex coordinates.
+    tets : (T, 4) int
+        Tet connectivity (each row = 4 vertex indices).
+    ref_edges_inv : (3, 3) float64, optional
+        Inverse of the reference regular-tet edge matrix.
+        Computed once from a regular tet if not supplied.
+
+    Returns
+    -------
+    dict with keys:
+        "F"          : (T, 3, 3) per-tet Jacobian matrices
+        "det_F"      : (T,)      det(F), sign-aware
+        "frob_F2"    : (T,)      ||F||_F²  per tet
+        "n_inverted" : int       number of tets with det(F) <= 0
+        "wall_ms"    : int       wall time in milliseconds
+    """
+    import time as _time
+
+    t0 = _time.perf_counter()
+
+    if pts.ndim != 2 or pts.shape[1] != 3:
+        raise ValueError(f"pts must have shape (N, 3); got {pts.shape}")
+    if tets.ndim != 2 or tets.shape[1] != 4:
+        raise ValueError(f"tets must have shape (T, 4); got {tets.shape}")
+
+    pts = np.asarray(pts, dtype=np.float64)
+    tets = np.asarray(tets, dtype=np.int64)
+
+    # --- Reference regular-tet edge matrix inverse (once-only cache) ---
+    if ref_edges_inv is None:
+        # Regular tet vertices: v0=(0,0,0), v1=(1,0,0), v2=(0.5, sqrt(3)/2, 0),
+        # v3=(0.5, sqrt(3)/6, sqrt(6)/3)
+        s3 = np.sqrt(3.0)
+        s6 = np.sqrt(6.0)
+        v_ref = np.array(
+            [
+                [0.0, 0.0, 0.0],
+                [1.0, 0.0, 0.0],
+                [0.5, s3 / 2.0, 0.0],
+                [0.5, s3 / 6.0, s6 / 3.0],
+            ],
+            dtype=np.float64,
+        )
+        E_ref = (v_ref[1:] - v_ref[0]).T  # (3, 3): columns = edge vectors
+        ref_edges_inv = np.linalg.inv(E_ref)  # (3, 3)
+
+    # --- Physical edge matrix: V_phys[t] = pts[tets[t,1:]] - pts[tets[t,0]] ---
+    # pts[tets[:, 1:]] → (T, 3, 3);  pts[tets[:, :1]] → (T, 1, 3)
+    V_phys = pts[tets[:, 1:]] - pts[tets[:, :1]]  # (T, 3, 3) row-wise edges
+
+    # E_phys[t] = V_phys[t].T → (3, 3) columns = edge vectors; batched: (T, 3, 3)
+    E_phys = V_phys.transpose(0, 2, 1)  # (T, 3, 3)
+
+    # F_t = E_phys[t] @ ref_edges_inv  (maps ref → physical)
+    F = E_phys @ ref_edges_inv  # (T, 3, 3)
+
+    det_F = np.linalg.det(F)                             # (T,)
+    frob_F2 = np.einsum("tij,tij->t", F, F)             # (T,)
+    n_inverted = int((det_F <= 0.0).sum())
+
+    wall_ms = int(((_time.perf_counter() - t0) * 1000) + 0.5)
+
+    return {
+        "F": F,
+        "det_F": det_F,
+        "frob_F2": frob_F2,
+        "n_inverted": n_inverted,
+        "wall_ms": wall_ms,
+    }

@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2268,
+  "beta": 2269,
   "max_round": 1000,
-  "round": 203,
+  "round": 204,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -12,7 +12,7 @@
       "OK": 5,
       "BL_OK": 5,
       "total": 5,
-      "source": "BETA2268_VVV9I4_DIAG_ON - fTetWild §3.2 envelope distance diagnostic gate flip + sliver-pre guard, regression 31/31 PASS (67.3s), worst_mq 0.208±0.005 maintained, mesh ±0",
+      "source": "BETA2269_VVV9J1_SLIM_LOCAL_JACOBIAN - SLIM local Jacobian helper (skeleton, no caller, default OFF), regression 35/35 PASS (67.3s), worst_mq 0.208±0.005 stable, mesh ±0",
       "bench_time_s": 3.22
     },
     "hex": {
@@ -39,16 +39,16 @@
     "poly"
   ],
   "recent_cards": [
+    "BETA2269_VVV9J1_SLIM_LOCAL_JACOBIAN",
     "BETA2268_VVV9I4_DIAG_ON",
     "BETA2267_VVV9I3_DIAG_HOOK",
     "BETA2266_VVV9I2_ENVELOPE_DISTANCE_HELPER",
-    "BETA2265_VVV9I1_ENVELOPE_PROJECT_HELPER",
-    "BETA2263_VVV9H7_APPLY_HARDEN_AFFECTED"
+    "BETA2265_VVV9I1_ENVELOPE_PROJECT_HELPER"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2268_VVV9I4_DIAG_ON (R203) - envelope distance diagnostic gate ON + sliver-pre>=1 guard (metric 0.208, bench 3.22s, sphere quick)"
+  "plan_archive": "BETA2269_VVV9J1_SLIM_LOCAL_JACOBIAN (R204) - SLIM local Jacobian helper skeleton (metric 0.208, bench 3.22s, tet target)"
 }

@@ -1,3 +1,2 @@
 PASS
-
-R202 BETA2267_VVV9I3_DIAG_HOOK: regression 31/31 PASS (66s), worst_mq 0.208±0.005 stable, gate OFF → mesh ±0, commit 4a57688
+Regression 35/35 PASS (67.3s). Skeleton SLIM Jacobian helper, no mesh change. Metrics stable (worst_mq 0.208, bench 3.22s).
