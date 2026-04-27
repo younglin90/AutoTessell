@@ -595,13 +595,14 @@ class PolyMeshWriter:
         )
 
         # Step 1: build cell_faces (각 cell 의 외향 face 4 개) — generic writer 위임.
-        cell_faces: list[list[list[int]]] = []
-        for tet in tets:
-            faces = [
-                [int(tet[lf[0]]), int(tet[lf[1]]), int(tet[lf[2]])]
-                for lf in _TET_FACES
-            ]
-            cell_faces.append(faces)
+        # Vectorized: build all 4*M triangle faces at once via numpy index selection.
+        _tf = np.array(_TET_FACES, dtype=np.int64)  # (4, 3)
+        # tets[:, _tf] → shape (M, 4, 3) — all face vertex indices in one op
+        _all_face_verts: np.ndarray = tets[:, _tf]  # (M, 4, 3)
+        cell_faces: list[list[list[int]]] = [
+            [row.tolist() for row in cell_row]
+            for cell_row in _all_face_verts.tolist()
+        ]
 
         stats = write_generic_polymesh(vertices, cell_faces, case_dir)
 
