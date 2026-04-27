@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2267,
+  "beta": 2268,
   "max_round": 1000,
-  "round": 202,
+  "round": 203,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -12,8 +12,8 @@
       "OK": 5,
       "BL_OK": 5,
       "total": 5,
-      "source": "BETA2267_VVV9I3_DIAG_HOOK - fTetWild §3.2 envelope distance diagnostic hook in mesher.py, regression 31/31 PASS (66s), worst_mq 0.208±0.005 maintained, gate OFF (mesh ±0)",
-      "bench_time_s": 70.0
+      "source": "BETA2268_VVV9I4_DIAG_ON - fTetWild §3.2 envelope distance diagnostic gate flip + sliver-pre guard, regression 31/31 PASS (67.3s), worst_mq 0.208±0.005 maintained, mesh ±0",
+      "bench_time_s": 3.22
     },
     "hex": {
       "A": 5,
@@ -32,23 +32,23 @@
     "tet_worst": 0.208,
     "tet_industrial_reach": "100%"
   },
-  "last_bench_time": 70.0,
+  "last_bench_time": 3.22,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "BETA2268_VVV9I4_DIAG_ON",
     "BETA2267_VVV9I3_DIAG_HOOK",
     "BETA2266_VVV9I2_ENVELOPE_DISTANCE_HELPER",
     "BETA2265_VVV9I1_ENVELOPE_PROJECT_HELPER",
-    "BETA2263_VVV9H7_APPLY_HARDEN_AFFECTED",
-    "BETA2262_VVV9H6_APPLY_DRYRUN_ON"
+    "BETA2263_VVV9H7_APPLY_HARDEN_AFFECTED"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2267_VVV9I3_DIAG_HOOK (R202) - fTetWild §3.2 envelope distance diagnostic hook, gate OFF (metric stable, worst_mq 0.208, bench 70s)"
+  "plan_archive": "BETA2268_VVV9I4_DIAG_ON (R203) - envelope distance diagnostic gate ON + sliver-pre>=1 guard (metric 0.208, bench 3.22s, sphere quick)"
 }

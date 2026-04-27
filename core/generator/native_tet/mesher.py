@@ -3006,8 +3006,8 @@ def generate_native_tet(
                     except Exception as exc:  # noqa: BLE001
                         log.warning("native_tet_vvv9h_skipped", reason=str(exc)[:120])
             # VVV9I #3 — envelope distance diagnostic hook (gate OFF by default)
-            _VVV9I_DIAG: bool = False
-            if _VVV9I_DIAG:
+            _VVV9I_DIAG: bool = True
+            if _VVV9I_DIAG and _n_sliver_pre >= 1:
                 _t0 = time.perf_counter()
                 try:
                     from core.generator.native_tet.stellar import (  # noqa: PLC0415
