@@ -20,6 +20,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 import numpy as np
 
@@ -33,6 +34,55 @@ _NATIVE_POLY_PPP4_ENABLE: bool = True  # PPP5 — clipping activated
 # TTT1 — BL integration sequence skeleton (default OFF)
 # TTT1 → TTT2 prism layer insertion → TTT3 stitch
 _TTT1_POLY_BL_ENABLE: bool = True
+
+# POLY_CACHE (beta2178) — single-slot LRU adjacency cache for poly cell lists.
+# Mirrors HEX_CACHE (R125, beta2177).  Default ON.
+# Set AUTO_TESSELL_POLY_CACHE_OFF=1 to disable.
+
+
+class _PolyAdjCache(NamedTuple):
+    """Cached adjacency maps for a polyhedral mesh (list-of-cells representation)."""
+    face_map: "dict[frozenset, list[int]]"   # frozenset(face_verts) → [cell_idx, ...]
+    adj: "list[set[int]]"                    # cell_idx → set of neighbour cell indices
+
+
+_poly_adj_cache: tuple[int, _PolyAdjCache] | None = None  # (id(cells), cache)
+
+
+def _build_poly_adjacency(cells: "list[list[list[int]]]") -> _PolyAdjCache:
+    """Build face_map + cell adjacency for *cells* (list-of-faces representation).
+
+    Single-slot LRU keyed on ``id(cells)``.  Call-sites that mutate *cells*
+    must pass the new list object so the cache is invalidated automatically.
+
+    Set ``AUTO_TESSELL_POLY_CACHE_OFF=1`` to disable caching (always rebuild).
+    """
+    import os as _os_pc
+    global _poly_adj_cache
+
+    if not _os_pc.environ.get("AUTO_TESSELL_POLY_CACHE_OFF"):
+        key = id(cells)
+        if _poly_adj_cache is not None and _poly_adj_cache[0] == key:
+            return _poly_adj_cache[1]
+
+    n = len(cells)
+    face_map: dict[frozenset, list[int]] = {}
+    for ci, cell_faces in enumerate(cells):
+        for face in cell_faces:
+            k = frozenset(face)
+            face_map.setdefault(k, []).append(ci)
+
+    adj: list[set[int]] = [set() for _ in range(n)]
+    for owners in face_map.values():
+        if len(owners) == 2:
+            a, b = owners
+            adj[a].add(b)
+            adj[b].add(a)
+
+    result = _PolyAdjCache(face_map=face_map, adj=adj)
+    if not _os_pc.environ.get("AUTO_TESSELL_POLY_CACHE_OFF"):
+        _poly_adj_cache = (id(cells), result)
+    return result
 
 
 def _find_wall_adjacent_cells(
@@ -318,21 +368,9 @@ def _find_merge_candidates(
         merge 대상 (low_quality_cell_idx, neighbor_cell_idx) pair 목록.
         호출되지 않음 — skeleton only (TTT9 gate OFF).
     """
-    n = len(cells)
-    # face vertex set → (cell_i, cell_j) adjacency
-    face_map: dict[frozenset, list[int]] = {}
-    for ci, faces in enumerate(cells):
-        for face in faces:
-            key = frozenset(face)
-            face_map.setdefault(key, []).append(ci)
-
-    # build adjacency list
-    adj: list[set[int]] = [set() for _ in range(n)]
-    for owners in face_map.values():
-        if len(owners) == 2:
-            a, b = owners
-            adj[a].add(b)
-            adj[b].add(a)
+    # POLY_CACHE: reuse cached adjacency if cells list unchanged.
+    _cadj = _build_poly_adjacency(cells)
+    adj = _cadj.adj
 
     candidates: list[tuple[int, int]] = []
     for ci, faces in enumerate(cells):

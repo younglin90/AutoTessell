@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2177,
+  "beta": 2178,
   "max_round": 1000,
-  "round": 125,
+  "round": 126,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,13 +26,15 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 41.20,
+  "last_bench_time": 41.93,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "POLY_CACHE",
+    "HEX_CACHE",
     "BSP_ORIENT_FIX",
     "HEX_BL_TANGENT",
     "POL_BL_TANGENT",
@@ -48,14 +50,12 @@
     "VVV13",
     "PERF3",
     "PERF4",
-    "PERF5",
-    "PERF9",
-    "PERF10"
+    "PERF5"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "HEX_CACHE (R125) — single-slot LRU adjacency cache for hex passes; _build_hex_adjacency keyed on hex_cells.tobytes(); refactored _reduce_nonortho_post + enable_post_smooth callsites; 22/22 PASS; bench 41.20s"
+  "plan_archive": "POLY_CACHE (R126) — single-slot LRU adjacency cache for poly passes; _build_poly_adjacency keyed on id(cells); refactored _poly_merge_candidates callsite; 22/22 PASS; bench 41.93s"
 }

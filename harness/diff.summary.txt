@@ -1,4 +1,4 @@
-file: core/generator/native_hex/mesher.py
-functions: _build_hex_adjacency (new), _reduce_nonortho_post, generate_native_hex (enable_post_smooth block)
-lines_added: 71
-lines_removed: 30
+file: core/generator/native_poly/voronoi.py
+functions: _build_poly_adjacency (new), _poly_merge_candidates (refactored)
+lines_added: 47
+lines_removed: 14
