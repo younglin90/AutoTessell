@@ -279,6 +279,38 @@ def generate_native_tet(
             except Exception as exc:
                 log.debug("native_tet_auto_fix_skipped", reason=str(exc))
 
+            # P4-B-4 (beta2243) — quadric error decimation pre-pass.
+            # 입력 face > AUTO_TESSELL_QED_MIN_F (default 2000) + env QED=1 시
+            # face 수 절반으로 감소 (G&H 1997). MM1 직전 sliver 격감.
+            try:
+                _qed_on = os.environ.get("AUTO_TESSELL_QED", "0") == "1"
+                _qed_min = int(os.environ.get("AUTO_TESSELL_QED_MIN_F", "2000"))
+                if _qed_on and F.shape[0] > _qed_min:
+                    from core.preprocessor.native_remesh.quadric_decimate import (
+                        quadric_decimate,
+                    )
+                    _f_before = int(F.shape[0])
+                    _v_before = int(V.shape[0])
+                    _target = max(int(_f_before * 0.5), 200)
+                    V_qed, F_qed = quadric_decimate(
+                        V, F, target_n_faces=_target, max_iters=20000,
+                    )
+                    if (
+                        F_qed.shape[0] > 50
+                        and V_qed.shape[0] > 30
+                        and F_qed.shape[0] < _f_before
+                    ):
+                        log.info(
+                            "native_tet_qed_decimate",
+                            v_before=_v_before, v_after=int(V_qed.shape[0]),
+                            f_before=_f_before, f_after=int(F_qed.shape[0]),
+                            target=_target,
+                        )
+                        V = V_qed.astype(np.float64)
+                        F = F_qed.astype(np.int64)
+            except Exception as exc:
+                log.debug("native_tet_qed_decimate_skipped", reason=str(exc))
+
             # MM1 (beta1900) — hard self-intersect input 의 사전 isotropic remesh.
             # V > 500 + (boundary>0 또는 nonmanifold>0) 면 input 단순화로 sliver 격감.
             try:
