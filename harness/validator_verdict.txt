@@ -1,2 +1,2 @@
 PASS
-BETA2263_VVV9H7_APPLY_HARDEN_AFFECTED: regression 35/35, worst_mq 0.208 ±0.005, bench 59.1s (stable), BL 5/5.
+BETA2264_VVV9H8_REAL_APPLY_ENV_GATE (R199): Env-only gate (default OFF) for Klingner edge-contract real apply—regression 35/35, worst_mq 0.208 stable, mesh unchanged.

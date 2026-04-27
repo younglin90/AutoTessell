@@ -2978,6 +2978,8 @@ def generate_native_tet(
                         )
                         # VVV9H6 (beta2262) — apply dryrun gate ON (evidence collection, mesh unchanged)
                         _VVV9H_APPLY_DRYRUN: bool = True  # R197: flip ON
+                        # VVV9H8 (beta2264) — real apply env-only gate (default OFF)
+                        _VVV9H_APPLY_REAL: bool = bool(os.environ.get("AUTO_TESSELL_VVV9H_APPLY", "0") == "1")
                         if _VVV9H_APPLY_DRYRUN and _n_sliver_pre >= 1 and len(_cands) >= 1:
                             try:
                                 from core.generator.native_tet.stellar import _apply_klingner_edge_contract_topK as _akec_dr  # noqa: PLC0415
@@ -2993,6 +2995,12 @@ def generate_native_tet(
                                     wall_ms=_wall_ms,
                                     mode="dry_run",
                                 )
+                                if _VVV9H_APPLY_REAL and _st.get("accepted", False):
+                                    final_pts, final_tets = _np, _nt
+                                    log.info(
+                                        "native_tet_vvv9h8_real_apply",
+                                        n_apply=int(_st.get("n_apply_accepted", 0)),
+                                    )
                             except Exception as exc:  # noqa: BLE001
                                 log.warning("native_tet_vvv9h4_skipped", reason=str(exc)[:120])
                     except Exception as exc:  # noqa: BLE001

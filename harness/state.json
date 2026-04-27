@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2263,
+  "beta": 2264,
   "max_round": 1000,
-  "round": 198,
+  "round": 199,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -50,5 +50,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2262_VVV9H6_APPLY_DRYRUN_ON (R197) - Klingner apply dryrun gate True (evidence collect, mesh unchanged), regression 35/35 PASS, worst_mq 0.208 \u00b10.005, bench 59.1s."
+  "plan_archive": "BETA2263_VVV9H7_APPLY_HARDEN_AFFECTED (R198) - Klingner apply helper hardening (star-local quality + strict neg-vol equality), regression 35/35 PASS, worst_mq 0.208 \u00b10.005, bench 59.1s stable"
 }
