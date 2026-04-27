@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2254,
+  "beta": 2255,
   "max_round": 1000,
-  "round": 189,
+  "round": 190,
   "last_grade": {
     "tet": {
       "A": 20,
@@ -12,7 +12,7 @@
       "OK": 20,
       "BL_OK": 20,
       "total": 20,
-      "source": "BETA2254_VVV9F4_SELECT_BEST - Cheng-Dey helper #3 (best-of-K argmax), caller 0, mesh unchanged",
+      "source": "BETA2255_VVV9F5_DRYRUN_WIRE - Cheng-Dey dry-run wire (diagnostic log-only, gate OFF), regression 31/31 PASS, metric ±0",
       "bench_time_s": 580.0
     },
     "hex": {
@@ -39,16 +39,16 @@
     "poly"
   ],
   "recent_cards": [
+    "BETA2255_VVV9F5_DRYRUN_WIRE",
     "BETA2254_VVV9F4_SELECT_BEST",
     "BETA2253_VVV9F3_PERTURB_TOPK_HELPER",
     "BETA2252_VVV9F2_DRYRUN_REVERT",
-    "BETA2250_VVV9E_DRYRUN_ON",
-    "BETA2249_VVV9D_OFFPLANE_DRYRUN_WIRE"
+    "BETA2250_VVV9E_DRYRUN_ON"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2254_VVV9F4_SELECT_BEST (R189) - stellar.py _select_best_weight_assignment helper (40 lines), regression 31/31 PASS, metric ±0, bench time ~580s (unchanged)."
+  "plan_archive": "BETA2255_VVV9F5_DRYRUN_WIRE (R190) - mesher.py wire dry-run exudation (25 lines, gate OFF), regression 31/31 PASS, metric ±0, bench ~580s (unchanged)."
 }

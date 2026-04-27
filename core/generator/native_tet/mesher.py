@@ -2928,6 +2928,29 @@ def generate_native_tet(
                         )
                     except Exception as exc:  # noqa: BLE001
                         log.warning("native_tet_vvv9d_skipped", reason=str(exc)[:120])
+                # VVV9F (beta2255) — dry-run exudation wire (mesh unchanged, log only)
+                _VVV9F_EXUDATION_DRYRUN: bool = False  # R190/VVV9F #4 default OFF — gate ON in R191
+                if _VVV9F_EXUDATION_DRYRUN:
+                    try:
+                        from core.generator.native_tet.stellar import (  # noqa: PLC0415
+                            _perturb_weights_topK as _pwk_dr,
+                            _select_best_weight_assignment as _sbw_dr,
+                        )
+                        _t0 = time.perf_counter()
+                        _W = _pwk_dr(final_pts, final_tets, n_samples=8, alpha=0.3, seed=0)
+                        _bidx, _bmq = _sbw_dr(final_pts, final_tets, _W, alpha=0.3)
+                        _wall_ms = int((time.perf_counter() - _t0) * 1000)
+                        log.info(
+                            "native_tet_vvv9f_dryrun",
+                            n_samples=8,
+                            alpha=0.3,
+                            best_idx=int(_bidx),
+                            best_min_q=float(_bmq),
+                            wall_ms=int(_wall_ms),
+                            mode="dry_run",
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        log.warning("native_tet_vvv9f_skipped", reason=str(exc)[:120])
         except Exception as exc:
             log.warning("native_tet_vvv12_skipped", reason=str(exc)[:120])
     log.info("native_tet_pass_timing", pass_name="VVV12", dt_ms=int((time.perf_counter() - _t_vvv12) * 1000))
