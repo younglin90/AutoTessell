@@ -34,36 +34,49 @@ def read_obj(path: str | Path) -> CoreSurfaceMesh:
     if not p.exists():
         raise FileNotFoundError(f"OBJ 파일 없음: {p}")
 
-    vertices: list[tuple[float, float, float]] = []
-    faces: list[tuple[int, int, int]] = []  # 0-indexed 로 저장
+    # OBJ_READER_VEC: batch-collect v/f lines then vectorize vertex parse.
+    v_lines: list[str] = []
+    face_tokens: list[list[str]] = []  # parts[1:] for each f line
+    # track vertex count at each f-line for negative-index resolution
+    vert_count_at_face: list[int] = []
+
     with p.open("r", encoding="utf-8", errors="replace") as f:
         for raw in f:
-            line = raw.strip()
-            if not line or line.startswith("#"):
-                continue
-            if line.startswith("v "):
-                parts = line.split()
-                if len(parts) >= 4:
-                    vertices.append((float(parts[1]), float(parts[2]), float(parts[3])))
-            elif line.startswith("f "):
-                parts = line.split()
-                idxs = [_parse_face_token(t) for t in parts[1:]]
-                # 음수 인덱스 (OBJ 는 끝에서부터 상대 인덱스 허용) → 현재 vertex 수 기준
-                resolved = [
-                    (i - 1) if i > 0 else (len(vertices) + i)
-                    for i in idxs
-                ]
-                if len(resolved) < 3:
-                    continue
-                # fan triangulation
-                v0 = resolved[0]
-                for k in range(1, len(resolved) - 1):
-                    faces.append((v0, resolved[k], resolved[k + 1]))
-            # vn, vt, g, usemtl, s 등은 현재 무시
+            if raw[0:2] == "v ":
+                v_lines.append(raw)
+            elif raw[0:2] == "f ":
+                vert_count_at_face.append(len(v_lines))
+                face_tokens.append(raw.split()[1:])
+            # vn, vt, g, usemtl, s 등은 무시
 
-    V = np.array(vertices, dtype=np.float64) if vertices else np.zeros((0, 3))
+    # --- Vectorized vertex parse ---
+    if v_lines:
+        # Extract x y z columns (col 1,2,3) via numpy; ignore optional w.
+        # Split all lines at once using numpy string operations.
+        # Each line: "v x y z[\n]"  — split on whitespace, take cols 1-3.
+        arr = np.array(
+            [ln.split()[1:4] for ln in v_lines], dtype=np.float64
+        )  # (N,3)
+        V = arr
+    else:
+        V = np.zeros((0, 3), dtype=np.float64)
+
+    n_verts = V.shape[0]
+
+    # --- Face parse (per-line; tokens need split on '/') ---
+    faces: list[tuple[int, int, int]] = []
+    for fi, parts in enumerate(face_tokens):
+        vc = vert_count_at_face[fi]
+        idxs = [_parse_face_token(t) for t in parts]
+        resolved = [(i - 1) if i > 0 else (vc + i) for i in idxs]
+        if len(resolved) < 3:
+            continue
+        v0 = resolved[0]
+        for k in range(1, len(resolved) - 1):
+            faces.append((v0, resolved[k], resolved[k + 1]))
+
     F = np.array(faces, dtype=np.int64) if faces else np.zeros((0, 3), dtype=np.int64)
     return CoreSurfaceMesh(
         vertices=V, faces=F,
-        metadata={"format": "obj", "path": str(p)},
+        metadata={"format": "obj", "path": str(p), "n_vertices": n_verts},
     )

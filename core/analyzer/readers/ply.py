@@ -118,7 +118,6 @@ def _read_ascii_body(
         props = elem["props"]
         if name == "vertex":
             # 각 라인: property 순서대로 값 나열.
-            # x,y,z 인덱스 찾기
             prop_names = [p["name"] for p in props]
             try:
                 ix, iy, iz = (
@@ -126,9 +125,11 @@ def _read_ascii_body(
                 )
             except ValueError as exc:
                 raise ValueError(f"vertex element 에 x/y/z 누락: {prop_names}") from exc
-            for _ in range(count):
-                toks = f.readline().split()
-                vertices.append((float(toks[ix]), float(toks[iy]), float(toks[iz])))
+            # PLY_ASCII_VEC: batch-read vertex lines then np.array parse
+            v_lines = [f.readline() for _ in range(count)]
+            arr = np.array([ln.split() for ln in v_lines], dtype=np.float64)  # (count, n_props)
+            if arr.size:
+                vertices.extend(zip(arr[:, ix].tolist(), arr[:, iy].tolist(), arr[:, iz].tolist()))
         elif name == "face":
             # face 에 list property (vertex_indices) + 뒤에 추가 scalar properties
             # (예: ushort stl) 가 있을 수 있음. 모두 토큰 기준 라인 단위로 파싱.
@@ -165,30 +166,31 @@ def _read_binary_body(
 
         if name == "vertex":
             # 모두 scalar 이어야 함 (list vertex 는 비표준).
-            fmt_chars: list[str] = []
-            sizes: list[int] = []
             prop_names: list[str] = []
-            for p in props:
-                if p["kind"] != "scalar":
+            dt_fields: list[tuple[str, str]] = []
+            for pp in props:
+                if pp["kind"] != "scalar":
                     raise ValueError("vertex 에 list property 미지원")
-                t = _TYPE_MAP[p["type"]]
-                fmt_chars.append(t[2])
-                sizes.append(t[1])
-                prop_names.append(p["name"])
-            row_fmt = prefix + "".join(fmt_chars)
-            row_size = sum(sizes)
+                np_dtype = _TYPE_MAP[pp["type"]][0]
+                prop_names.append(pp["name"])
+                dt_fields.append((pp["name"], prefix + np_dtype))
             try:
                 ix, iy, iz = (
                     prop_names.index("x"), prop_names.index("y"), prop_names.index("z"),
                 )
             except ValueError as exc:
                 raise ValueError("vertex 에 x/y/z 없음") from exc
-            data = f.read(row_size * count)
-            for r in range(count):
-                unpacked = struct.unpack_from(row_fmt, data, r * row_size)
-                vertices_acc.append(
-                    [float(unpacked[ix]), float(unpacked[iy]), float(unpacked[iz])]
-                )
+            # PLY_READER_VEC: single np.frombuffer call (mirror STL_READER_VEC pattern)
+            row_dtype = np.dtype(dt_fields)
+            raw_bytes = f.read(row_dtype.itemsize * count)
+            vdata = np.frombuffer(raw_bytes, dtype=row_dtype, count=count)
+            xyz_names = [prop_names[ix], prop_names[iy], prop_names[iz]]
+            V_block = np.column_stack([
+                vdata[xyz_names[0]].astype(np.float64),
+                vdata[xyz_names[1]].astype(np.float64),
+                vdata[xyz_names[2]].astype(np.float64),
+            ])
+            vertices_acc.extend(V_block.tolist())
         elif name == "face":
             # 여러 property 가 있을 수 있음. 각 face 에 대해 모든 property 를 순서대로
             # 파싱하되, vertex_indices 이름의 list property 만 index 수집에 사용.
