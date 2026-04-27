@@ -2490,3 +2490,54 @@ def _priority_queue_attempt_improvement(
         "sim_tets": best_sim_tets,
         "n_star_tets": n_star,
     }
+
+
+# ---------------------------------------------------------------------------
+# VVV9K4 — priority-queue main loop helper (default OFF, no caller)
+# Klingner & Shewchuk 2008 §3.5 Algorithm 1 skeleton
+# ---------------------------------------------------------------------------
+
+_VVV9K4_MAIN_LOOP: bool = False  # default OFF — caller added in VVV9K5+
+
+
+def _priority_queue_main_loop(
+    pts: "np.ndarray",
+    tets: "np.ndarray",
+    qualities: "np.ndarray",
+    *,
+    max_iters: int = 100,
+    time_budget_ms: float = 200.0,
+) -> "tuple[np.ndarray, np.ndarray, int, int, float]":
+    """Priority-queue main loop helper skeleton (Klingner 2008 §3.5 Alg 1).
+
+    Returns (new_pts, new_tets, n_improved, n_iters_used, total_delta).
+    pts/tets are deep-copied — mesh is never mutated.
+    Gate _VVV9K4_MAIN_LOOP=False → immediate no-op return.
+    """
+    if not _VVV9K4_MAIN_LOOP:
+        return pts.copy(), tets.copy(), 0, 0, 0.0
+
+    import time  # noqa: PLC0415
+
+    t0 = time.perf_counter()
+    heap = _priority_queue_init(qualities, k=max_iters)  # VVV9K1
+    n_improved: int = 0
+    total_delta: float = 0.0
+    n_iters_used: int = 0
+
+    for _i in range(max_iters):
+        elapsed_ms = (time.perf_counter() - t0) * 1000.0
+        if elapsed_ms > time_budget_ms:
+            break
+        popped = _priority_queue_pop_worst(heap, k=1)  # VVV9K2
+        if not popped:
+            break
+        n_iters_used += 1
+        q_old, cell_idx = popped[0]  # noqa: F841
+        res = _priority_queue_attempt_improvement(pts, tets, qualities, cell_idx)  # VVV9K3
+        if res.get("success", False):
+            n_improved += 1
+            total_delta += res.get("delta", 0.0)
+
+    # mesh unchanged — return copies of original input
+    return pts.copy(), tets.copy(), n_improved, n_iters_used, total_delta
