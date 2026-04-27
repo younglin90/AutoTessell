@@ -2777,3 +2777,124 @@ def _multi_face_removal_candidates(
     # Step 4: tie-break — star_size DESC, min_q ASC.
     candidates.sort(key=lambda c: (-c["star_size"], c["min_q"]))
     return candidates
+
+
+# ── Line Q: Klingner & Shewchuk 2008 §3.4 Multi-Face Removal — apply helper ──
+def _multi_face_removal_apply(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    candidates: list[dict],
+    *,
+    top_k: int = 3,
+) -> tuple[np.ndarray, np.ndarray, int, float]:
+    """Apply helper for multi-face removal (sim-only, default OFF, no caller).
+
+    Simulates 3-face (star_size=2) and 5-face (star_size=3) Stellar transitions
+    for the top_k candidates from ``_multi_face_removal_candidates``, applying a
+    monotone quality guard per face.  Input arrays are **never mutated**
+    (copy-on-write); the returned arrays are always independent copies of the
+    inputs because no caller exists yet (gate wiring = VVV9P5).
+
+    Parameters
+    ----------
+    pts        : (N, 3) float64 vertex positions — untouched.
+    tets       : (M, 4) int64 tet connectivity — untouched.
+    candidates : output of ``_multi_face_removal_candidates`` (sorted).
+    top_k      : number of leading candidates to examine (wall-time bound).
+
+    Returns
+    -------
+    new_pts      : copy of pts (unchanged, no caller).
+    new_tets     : copy of tets (unchanged, no caller).
+    n_applied    : number of faces that passed the monotone guard (sim count).
+    energy_delta : sum of (min_q_post - min_q_pre) over accepted faces.
+    """
+    new_pts = pts.copy()
+    new_tets = tets.copy()
+    n_applied: int = 0
+    energy_delta: float = 0.0
+
+    if len(tets) == 0 or not candidates:
+        return new_pts, new_tets, n_applied, energy_delta
+
+    face_map = compute_face_incident_tets_cached(tets)
+
+    for cand in candidates[:top_k]:
+        face_key: tuple[int, int, int] = cand["face"]
+        star_size: int = cand["star_size"]
+
+        star_indices = face_map.get(face_key, [])
+        if len(star_indices) != star_size:
+            continue  # stale map entry — skip
+
+        # ── Pre-quality of star tets ──────────────────────────────────────────
+        star_tets = [tets[i] for i in star_indices]
+        q_pre_list = [float(_tet_quality(pts, t)) for t in star_tets]
+        min_q_pre = min(q_pre_list)
+        mean_q_pre = sum(q_pre_list) / len(q_pre_list)
+
+        # ── Enumerate opposite vertices for simulated retriangulation ─────────
+        # Gather all unique vertices in the star, then find vertices NOT in face.
+        fa, fb, fc = face_key
+        face_verts: set[int] = {fa, fb, fc}
+        star_all_verts: set[int] = set()
+        for t in star_tets:
+            for v in t:
+                star_all_verts.add(int(v))
+        opp_verts = sorted(star_all_verts - face_verts)
+
+        # 3-face removal: 1 opposite vertex expected (star_size=2 → 2 tets share face).
+        # 5-face removal: 2 opposite vertices expected (star_size=3 → 3 tets share face).
+        expected_opp = star_size - 1
+        if len(opp_verts) != expected_opp:
+            continue  # topology mismatch — skip
+
+        # ── Build simulated post-star tets ────────────────────────────────────
+        # 3-face removal (star_size=2): replace 2 tets across shared face with
+        #   3 tets pivoting on the edge connecting the two opposite vertices.
+        #   opp_verts = [v0, v1]; new tets = (fa,fb,v0,v1), (fb,fc,v0,v1), (fa,fc,v0,v1).
+        # 5-face removal (star_size=3): replace 3 tets across shared edge (= face interior
+        #   diagonal) with 5 tets; opp_verts = [v0, v1]; enumerate all face triples from
+        #   {fa, fb, fc, v0, v1} choosing vertex pairs to complete each tet with the edge.
+        post_tets_sim: list[np.ndarray] = []
+        if star_size == 2:
+            v0, v1 = opp_verts
+            post_tets_sim = [
+                np.array([fa, fb, v0, v1], dtype=np.int64),
+                np.array([fb, fc, v0, v1], dtype=np.int64),
+                np.array([fa, fc, v0, v1], dtype=np.int64),
+            ]
+        elif star_size == 3:
+            v0, v1 = opp_verts
+            # 5-face star: enumerate all 4-subsets from {fa,fb,fc,v0,v1} that include
+            # the edge (v0,v1) — yielding C(3,2)=3 base faces × each completed by edge.
+            face_ring = [fa, fb, fc]
+            for i in range(len(face_ring)):
+                for j in range(i + 1, len(face_ring)):
+                    va, vb = face_ring[i], face_ring[j]
+                    post_tets_sim.append(
+                        np.array([va, vb, v0, v1], dtype=np.int64)
+                    )
+            # Additional pivot tets to cover the full 5-tet star (one per face vertex).
+            for vf in face_ring:
+                post_tets_sim.append(
+                    np.array([vf, v0, v1, fa if vf != fa else fb], dtype=np.int64)
+                )
+        else:
+            continue  # unsupported star_size
+
+        # ── Post-quality of simulated tets ────────────────────────────────────
+        q_post_list = [float(_tet_quality(new_pts, t)) for t in post_tets_sim]
+        if not q_post_list:
+            continue
+        min_q_post = min(q_post_list)
+        mean_q_post = sum(q_post_list) / len(q_post_list)
+
+        # ── Monotone guard ────────────────────────────────────────────────────
+        if min_q_post >= min_q_pre and mean_q_post >= mean_q_pre - 1e-9:
+            n_applied += 1
+            energy_delta += min_q_post - min_q_pre
+            # Sim-only: local simulation arrays are discarded here.
+            # new_tets remains an unmodified copy of tets (no caller yet).
+
+    return new_pts, new_tets, n_applied, energy_delta
