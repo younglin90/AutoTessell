@@ -2507,37 +2507,66 @@ def _priority_queue_main_loop(
     *,
     max_iters: int = 100,
     time_budget_ms: float = 200.0,
-) -> "tuple[np.ndarray, np.ndarray, int, int, float]":
+) -> "tuple[np.ndarray, np.ndarray, int, int, float, int, str]":
     """Priority-queue main loop helper skeleton (Klingner 2008 §3.5 Alg 1).
 
-    Returns (new_pts, new_tets, n_improved, n_iters_used, total_delta).
+    Returns (new_pts, new_tets, n_improved, n_iters_used, total_delta,
+             n_rejected, early_exit_reason).
     pts/tets are deep-copied — mesh is never mutated.
     Gate _VVV9K4_MAIN_LOOP=False → immediate no-op return.
+
+    Monotone hardening (BETA2285_VVV9K8):
+    - delta <= 1e-9 on success → rejected (n_rejected++), stagnation counter++
+    - n_no_improve >= 8 → early exit ("stagnation") per Klingner §3.5 K=8
     """
     if not _VVV9K4_MAIN_LOOP:
-        return pts.copy(), tets.copy(), 0, 0, 0.0
+        return pts.copy(), tets.copy(), 0, 0, 0.0, 0, ""
 
     import time  # noqa: PLC0415
+
+    _MONOTONE_EPS: float = 1e-9
+    _STAGNATION_K: int = 8
 
     t0 = time.perf_counter()
     heap = _priority_queue_init(qualities, k=max_iters)  # VVV9K1
     n_improved: int = 0
+    n_rejected: int = 0
+    n_no_improve: int = 0
     total_delta: float = 0.0
     n_iters_used: int = 0
+    early_exit_reason: str = ""
 
     for _i in range(max_iters):
         elapsed_ms = (time.perf_counter() - t0) * 1000.0
         if elapsed_ms > time_budget_ms:
+            early_exit_reason = "time_budget"
             break
         popped = _priority_queue_pop_worst(heap, k=1)  # VVV9K2
         if not popped:
+            early_exit_reason = "heap_empty"
             break
         n_iters_used += 1
         q_old, cell_idx = popped[0]  # noqa: F841
         res = _priority_queue_attempt_improvement(pts, tets, qualities, cell_idx)  # VVV9K3
         if res.get("success", False):
-            n_improved += 1
-            total_delta += res.get("delta", 0.0)
+            delta = res.get("delta", 0.0)
+            if delta > _MONOTONE_EPS:
+                # Real improvement — monotone invariant satisfied
+                n_improved += 1
+                total_delta += delta
+                n_no_improve = 0
+            else:
+                # Nominally successful but sub-threshold delta → reject
+                n_rejected += 1
+                n_no_improve += 1
+        else:
+            n_no_improve += 1
+
+        if n_no_improve >= _STAGNATION_K:
+            early_exit_reason = "stagnation"
+            break
+    else:
+        early_exit_reason = "max_iters"
 
     # mesh unchanged — return copies of original input
-    return pts.copy(), tets.copy(), n_improved, n_iters_used, total_delta
+    return pts.copy(), tets.copy(), n_improved, n_iters_used, total_delta, n_rejected, early_exit_reason
