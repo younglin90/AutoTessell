@@ -190,24 +190,37 @@ def _apply_op_queue(
     """
     from .flip import flip_edges_32, flip_edges_44  # noqa: PLC0415
 
-    # Collect worst-tier tet indices (quality < 0.3, queue is sorted ascending).
+    # PERF11: vectorized per-op screening (replaces Python nested loop).
+    # Step 1 — filter worst entries (quality < 0.3) and extract valid tet indices.
+    n_tets = tets.shape[0]
     worst_entries = [e for e in queue if e["quality"] < 0.3]
     if not worst_entries:
         return pts, tets, 0
 
-    # Gather candidate edges from worst tets, dedup.
-    candidate_edge_set: set[tuple[int, int]] = set()
-    for entry in worst_entries:
-        ti = entry["tet_idx"]
-        if ti >= tets.shape[0]:
-            continue
-        tet = tets[ti]
-        for i in range(4):
-            for j in range(i + 1, 4):
-                u, v = int(tet[i]), int(tet[j])
-                if u > v:
-                    u, v = v, u
-                candidate_edge_set.add((u, v))
+    raw_indices = np.array([e["tet_idx"] for e in worst_entries], dtype=np.intp)
+    valid_mask = raw_indices < n_tets
+    tet_indices = raw_indices[valid_mask]
+    if tet_indices.size == 0:
+        return pts, tets, 0
+
+    # Step 2 — gather all 6 edge pairs per worst tet via numpy indexing.
+    # _EDGE_PAIRS: shape (6,2), the 6 combinations of (i,j) from 4 verts.
+    _EDGE_PAIRS = np.array([[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]], dtype=np.intp)
+    worst_tets = tets[tet_indices]           # (W, 4)
+    # edges shape: (W, 6, 2) — vertex indices for each of the 6 edge slots
+    edges = worst_tets[:, _EDGE_PAIRS]       # (W, 6, 2)
+    edges = edges.reshape(-1, 2)             # (W*6, 2)
+    # Canonical ordering: ensure u < v.
+    u = np.minimum(edges[:, 0], edges[:, 1])
+    v = np.maximum(edges[:, 0], edges[:, 1])
+    # Pack into single int64 for fast dedup (stride = n_pts+1 guarantees unique encoding).
+    n_pts = pts.shape[0]
+    _stride = np.int64(n_pts + 1)
+    packed = u.astype(np.int64) * _stride + v.astype(np.int64)
+    unique_packed = np.unique(packed)
+    u_uniq = (unique_packed // _stride)
+    v_uniq = (unique_packed  % _stride)
+    candidate_edge_set: set[tuple[int, int]] = set(zip(u_uniq.tolist(), v_uniq.tolist()))
 
     # Remove protected edges (input surface edges).
     if protected_edges:
