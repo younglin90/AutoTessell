@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2225,
+  "beta": 2226,
   "max_round": 1000,
-  "round": 174,
+  "round": 175,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,13 +26,14 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 0.294,
+  "last_bench_time": 0.245,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "HEX_INIT_REMAIN_VEC",
     "POLY_INIT_REMAIN_VEC",
     "TIER_GEN_REMAIN_VEC",
     "TET_BL_REMAIN_VEC",
@@ -77,5 +78,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "POLY_INIT_REMAIN_VEC (R174) — dual.py _build_tet_topology Python triple-loop → numpy batch vertex/edge/face key generation; 22/22 PASS bench 0.294s"
+  "plan_archive": "HEX_INIT_REMAIN_VEC (R175) — quality.py face-key generation loop + aspect loop → numpy batch; 22/22 PASS bench 0.245s"
 }

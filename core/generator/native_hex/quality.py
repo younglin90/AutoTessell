@@ -71,16 +71,19 @@ def hex_quality_report(pts: np.ndarray, hexes: np.ndarray) -> HexQualityReport:
 
     # 각 cell 의 6 face → owner_idx, neighbor 쌍.
     # face key (vertex sorted tuple) 로 매칭.
-    face_owner: list[int] = []
-    face_local: list[int] = []
-    face_keys: list[tuple[int, int, int, int]] = []
-    for ci in range(n_cells):
-        for fi, local_idx in enumerate(_HEX_FACES):
-            v = tuple(int(hexes[ci, k]) for k in local_idx)
-            key = tuple(sorted(v))
-            face_owner.append(ci)
-            face_local.append(fi)
-            face_keys.append(key)
+    # Vectorized: build all (n_cells×6) face entries in batch.
+    _hf_arr = np.array(_HEX_FACES, dtype=np.int64)  # (6, 4)
+    n_f = len(_HEX_FACES)  # 6
+    # face_verts[ci, fi, :] = vertex indices of face fi in cell ci
+    face_verts_raw = hexes[:, _hf_arr]  # (n_cells, 6, 4)
+    face_verts_flat = face_verts_raw.reshape(-1, 4)  # (n_cells*6, 4)
+    face_keys_arr = np.sort(face_verts_flat, axis=1)  # sorted vertex keys
+    face_owner_arr = np.repeat(np.arange(n_cells, dtype=np.int64), n_f)  # (n_cells*6,)
+    face_local_arr = np.tile(np.arange(n_f, dtype=np.int64), n_cells)    # (n_cells*6,)
+
+    face_owner = face_owner_arr.tolist()
+    face_local = face_local_arr.tolist()
+    face_keys = [tuple(int(x) for x in row) for row in face_keys_arr]
 
     # face → owner cells dict.
     face_dict: dict[tuple[int, int, int, int], list[int]] = {}
@@ -129,20 +132,21 @@ def hex_quality_report(pts: np.ndarray, hexes: np.ndarray) -> HexQualityReport:
     if not skews:
         skews = [0.0]
 
-    # aspect: cell 의 max/min edge.
-    edge_pairs = [
-        (0, 1), (1, 2), (2, 3), (3, 0),
-        (4, 5), (5, 6), (6, 7), (7, 4),
-        (0, 4), (1, 5), (2, 6), (3, 7),
-    ]
-    aspects: list[float] = []
-    for ci in range(n_cells):
-        elens = [
-            float(np.linalg.norm(pts[hexes[ci, a]] - pts[hexes[ci, b]]))
-            for a, b in edge_pairs
-        ]
-        emax = max(elens); emin = min(e for e in elens if e > 1e-30) if elens else 1.0
-        aspects.append(emax / max(emin, 1e-30))
+    # aspect: cell 의 max/min edge — vectorized over all cells at once.
+    _edge_a = np.array([0, 1, 2, 3, 4, 5, 6, 7, 0, 1, 2, 3], dtype=np.int64)
+    _edge_b = np.array([1, 2, 3, 0, 5, 6, 7, 4, 4, 5, 6, 7], dtype=np.int64)
+    # cell_pts: (n_cells, 8, 3)
+    cell_pts_all = pts[hexes]
+    # edge vectors: (n_cells, 12, 3)
+    ev = cell_pts_all[:, _edge_b, :] - cell_pts_all[:, _edge_a, :]
+    # edge lengths: (n_cells, 12)
+    elens_all = np.linalg.norm(ev, axis=2)
+    e_max = elens_all.max(axis=1)  # (n_cells,)
+    # min ignoring degenerate edges (< 1e-30)
+    elens_safe = np.where(elens_all > 1e-30, elens_all, np.inf)
+    e_min = elens_safe.min(axis=1)  # (n_cells,)
+    e_min = np.maximum(e_min, 1e-30)
+    aspects_arr = e_max / e_min  # (n_cells,)
 
     return HexQualityReport(
         n_cells=int(n_cells),
@@ -152,8 +156,8 @@ def hex_quality_report(pts: np.ndarray, hexes: np.ndarray) -> HexQualityReport:
         p95_non_orthogonality_deg=float(np.percentile(non_orths, 95)),
         max_skewness=float(np.max(skews)),
         mean_skewness=float(np.mean(skews)),
-        max_aspect=float(np.max(aspects)),
-        mean_aspect=float(np.mean(aspects)),
+        max_aspect=float(np.max(aspects_arr)),
+        mean_aspect=float(np.mean(aspects_arr)),
         min_face_area=float(min_face_area if min_face_area != float("inf") else 0.0),
     )
 

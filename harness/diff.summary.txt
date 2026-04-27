@@ -1,4 +1,4 @@
-file: core/generator/native_poly/dual.py
-functions: _build_tet_topology
-lines_added: 28
-lines_removed: 11
+file: core/generator/native_hex/quality.py
+functions: hex_quality_report
+lines_added: 16
+lines_removed: 14
