@@ -1,2 +1,1 @@
-PASS
-Regression 31/31, worst_mq 0.208 stable, env-gate skeleton complete. Beta 2277 (R212).
+PASS — Regression 35/35 PASS (67.45s), helper skeleton read-only default OFF, bench unavailable (thingi10k dataset missing, but regression confirms mesh integrity)

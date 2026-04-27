@@ -2315,3 +2315,178 @@ def _priority_queue_pop_worst(heap: list, k: int = 1) -> list:
             continue
         out.append(int(idx))
     return out
+
+
+_VVV9K3_IMPROVEMENT_ATTEMPT: bool = False  # default OFF — activated in VVV9K6+
+
+
+def _priority_queue_attempt_improvement(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    cell_idx: int,
+    qualities: np.ndarray,
+) -> dict:
+    """Simulate the best 1-op improvement for the worst tet (fTetWild §3.3 Alg 2, Klingner §3).
+
+    Parameters
+    ----------
+    pts:       (V, 3) float array — vertex positions.
+    tets:      (T, 4) int array  — tet vertex indices.
+    cell_idx:  int               — index of the worst tet (from _priority_queue_pop_worst).
+    qualities: (T,) float array  — pre-op AMIPS quality array.
+
+    Returns
+    -------
+    dict with keys:
+        success       bool   — True if a monotone-improving op was found.
+        op_type       str    — "vertex_smooth" | "edge_collapse" | "none".
+        energy_delta  float  — ΔE = E_post − E_pre (negative = improvement).
+        sim_pts       ndarray | None  — simulated vertex positions (star only).
+        sim_tets      ndarray | None  — simulated tet connectivity (star only).
+        n_star_tets   int    — number of tets in the 1-ring star.
+
+    Notes
+    -----
+    - Read-only simulation: original pts / tets are **never** modified.
+    - Monotone guard: success only when
+        post_min_q_star >= pre_min_q_star AND
+        post_n_neg_star == pre_n_neg_star AND
+        ΔE < 0.
+    - Ops evaluated: vertex_smooth (1-ring Laplacian), edge_collapse (shortest edge).
+    - flip_3_2 / flip_4_4 deferred to future cards (VVV9K4+).
+    - fTetWild §3.3 Alg 2 line 5-10; Klingner 2008 §3 Table 1.
+    """
+    _FAIL: dict = {
+        "success": False,
+        "op_type": "none",
+        "energy_delta": 0.0,
+        "sim_pts": None,
+        "sim_tets": None,
+        "n_star_tets": 0,
+    }
+
+    if not _VVV9K3_IMPROVEMENT_ATTEMPT:
+        return _FAIL
+
+    T = len(tets)
+    if cell_idx < 0 or cell_idx >= T:
+        return _FAIL
+
+    # --- identify 1-ring star: all tets sharing any vertex of cell_idx ---
+    cell_verts = set(int(v) for v in tets[cell_idx])
+    star_mask = np.zeros(T, dtype=bool)
+    for vi in cell_verts:
+        star_mask |= np.any(tets == vi, axis=1)
+    star_indices = np.where(star_mask)[0]
+    n_star = int(star_mask.sum())
+
+    if n_star == 0:
+        return _FAIL
+
+    star_pts_indices = np.unique(tets[star_indices])
+    pre_q_star = qualities[star_indices]
+    pre_min_q = float(np.nanmin(pre_q_star)) if len(pre_q_star) else 0.0
+    pre_n_neg = int(np.sum(pre_q_star < 0.0))
+
+    def _amips_energy_tet(p0: np.ndarray, p1: np.ndarray,
+                          p2: np.ndarray, p3: np.ndarray,
+                          alpha: float = 1.0) -> float:
+        """Single-tet AMIPS energy (fTetWild eq.1)."""
+        J = np.column_stack([p1 - p0, p2 - p0, p3 - p0])
+        det = float(np.linalg.det(J))
+        if abs(det) < 1e-15:
+            return 1e18
+        tr_val = float(np.trace(J.T @ J))
+        return (tr_val ** (alpha / 2.0)) / (abs(det) ** (2.0 * alpha / 3.0))
+
+    def _star_energy(sim_pts_local: np.ndarray) -> tuple[float, float, int]:
+        """Return (total_E_star, min_q_star, n_neg_star) for the star tets."""
+        total_e = 0.0
+        min_q = float("inf")
+        n_neg = 0
+        for ti in star_indices:
+            a, b, c, d = (int(v) for v in tets[ti])
+            e = _amips_energy_tet(
+                sim_pts_local[a], sim_pts_local[b],
+                sim_pts_local[c], sim_pts_local[d],
+            )
+            q_approx = -e  # proxy: lower energy → higher quality
+            total_e += e
+            min_q = min(min_q, q_approx)
+            if q_approx < 0.0:
+                n_neg += 1
+        return total_e, min_q, n_neg
+
+    pre_e_star, _, _ = _star_energy(pts)
+
+    best_op: str = "none"
+    best_delta: float = 0.0
+    best_sim_pts: np.ndarray | None = None
+    best_sim_tets: np.ndarray | None = None
+
+    # --- Op 1: vertex_smooth (1-ring Laplacian of cell centroid vertex) ---
+    # Smooth the vertex with lowest quality contribution (heuristic: vid 0 of cell).
+    smooth_vid = int(tets[cell_idx][0])
+    ring_verts = np.unique(tets[star_indices])
+    ring_pos = pts[ring_verts]
+    new_pos_smooth = pts.copy()
+    new_pos_smooth[smooth_vid] = ring_pos.mean(axis=0)
+
+    e_smooth, post_min_q_smooth, post_n_neg_smooth = _star_energy(new_pos_smooth)
+    delta_smooth = e_smooth - pre_e_star
+
+    pre_min_q_proxy = -pre_e_star / max(n_star, 1)
+    if (
+        delta_smooth < 0.0
+        and post_min_q_smooth >= pre_min_q_proxy
+        and post_n_neg_smooth <= pre_n_neg
+    ):
+        if delta_smooth < best_delta:
+            best_delta = delta_smooth
+            best_op = "vertex_smooth"
+            best_sim_pts = new_pos_smooth[star_pts_indices]
+            best_sim_tets = tets[star_indices]
+
+    # --- Op 2: edge_collapse (shortest edge of cell_idx, envelope-check skipped in sim) ---
+    cell_v = [int(v) for v in tets[cell_idx]]
+    edges = [(cell_v[i], cell_v[j]) for i in range(4) for j in range(i + 1, 4)]
+    shortest_len = float("inf")
+    short_edge: tuple[int, int] | None = None
+    for vi, vj in edges:
+        d = float(np.linalg.norm(pts[vi] - pts[vj]))
+        if d < shortest_len:
+            shortest_len = d
+            short_edge = (vi, vj)
+
+    if short_edge is not None:
+        vi_col, vj_col = short_edge
+        mid = (pts[vi_col] + pts[vj_col]) * 0.5
+        new_pts_col = pts.copy()
+        new_pts_col[vi_col] = mid
+        new_pts_col[vj_col] = mid  # both collapsed to midpoint (sim only)
+
+        e_col, post_min_q_col, post_n_neg_col = _star_energy(new_pts_col)
+        delta_col = e_col - pre_e_star
+
+        if (
+            delta_col < 0.0
+            and post_min_q_col >= pre_min_q_proxy
+            and post_n_neg_col <= pre_n_neg
+        ):
+            if delta_col < best_delta:
+                best_delta = delta_col
+                best_op = "edge_collapse"
+                best_sim_pts = new_pts_col[star_pts_indices]
+                best_sim_tets = tets[star_indices]
+
+    if best_op == "none":
+        return {**_FAIL, "n_star_tets": n_star}
+
+    return {
+        "success": True,
+        "op_type": best_op,
+        "energy_delta": best_delta,
+        "sim_pts": best_sim_pts,
+        "sim_tets": best_sim_tets,
+        "n_star_tets": n_star,
+    }

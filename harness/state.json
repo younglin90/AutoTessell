@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2279,
+  "beta": 2280,
   "max_round": 1000,
-  "round": 214,
+  "round": 215,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -12,8 +12,8 @@
       "OK": 5,
       "BL_OK": 5,
       "total": 5,
-      "source": "BETA2279_VVV9K2_PRIORITY_QUEUE_POP - fTetWild §3.3 priority-queue pop helper, regression 35/35 PASS, helper read-only",
-      "bench_time_s": 66.50
+      "source": "BETA2280_VVV9K3_IMPROVEMENT_ATTEMPT - fTetWild \u00a73.3 worst-cell improvement attempt helper, regression 35/35 PASS, helper read-only default OFF",
+      "bench_time_s": 67.45
     },
     "hex": {
       "A": 5,
@@ -32,23 +32,23 @@
     "tet_worst": 0.208,
     "tet_industrial_reach": "100%"
   },
-  "last_bench_time": 66.50,
+  "last_bench_time": 67.45,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "BETA2280_VVV9K3_IMPROVEMENT_ATTEMPT",
     "BETA2279_VVV9K2_PRIORITY_QUEUE_POP",
     "BETA2278_VVV9K1_PRIORITY_QUEUE_INIT",
     "BETA2277_VVV9J8_REAL_APPLY_ENV",
-    "BETA2276_VVV9J7_DIAG_ON",
-    "BETA2275_VVV9J6_DIAG_HOOK"
+    "BETA2276_VVV9J7_DIAG_ON"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2279_VVV9K2_PRIORITY_QUEUE_POP (R214) - fTetWild §3.3 priority-queue pop helper, regression 35/35 PASS, helper read-only, tet target"
+  "plan_archive": "BETA2280_VVV9K3_IMPROVEMENT_ATTEMPT (R215) - fTetWild \u00a73.3 worst-cell improvement attempt helper, regression 35/35 PASS, helper read-only default OFF, tet target"
 }
