@@ -1,4 +1,5 @@
-file: desktop/qt_app/compare_dialog.py
-functions: _make_placeholder_stats, _metric_value
-lines_added: 5
-lines_removed: 4
+file: cli/main.py
+functions: (none)
+lines_added: 0
+lines_removed: 0
+note: no numeric loops found; cli/ is pure click/rich UI — no-op
