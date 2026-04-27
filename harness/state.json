@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2206,
+  "beta": 2207,
   "max_round": 1000,
-  "round": 155,
+  "round": 156,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,13 +26,14 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 40.80,
+  "last_bench_time": 40.76,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "POLYMESH_OWNER_VEC",
     "CHECKER_REMAIN_VEC",
     "REMESH_VEC",
     "PREPROC_HOLE_VEC",
@@ -69,5 +70,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "CHECKER_REMAIN_VEC (R155) — vectorized vidx build in _compute_face_centres/_compute_face_normals_areas (np.fromiter+reshape), CSR-style dedup scatter in _compute_max_aspect_ratio; 22/22 PASS 40.80s"
+  "plan_archive": "POLYMESH_OWNER_VEC (R156) — np.lexsort owner/nbr sort + np.argsort bnd_order in write_generic_polymesh; np.savetxt label string in _write_labels; 22/22 PASS 40.76s"
 }
