@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2258,
+  "beta": 2259,
   "max_round": 1000,
-  "round": 193,
+  "round": 194,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -12,8 +12,8 @@
       "OK": 5,
       "BL_OK": 5,
       "total": 5,
-      "source": "BETA2258_VVV9H2_DIAG_HOOK - Klingner diagnostic hook in VVV12 (gate OFF, log only), regression 31/31 PASS, metric \u00b10",
-      "bench_time_s": 59.1
+      "source": "BETA2259_VVV9H3_DIAG_ON - Klingner diagnostic gate ON, evidence collection enabled, regression 35/35 PASS, metric \u00b10",
+      "bench_time_s": 61.78
     },
     "hex": {
       "A": 5,
@@ -32,7 +32,7 @@
     "tet_worst": 0.2069,
     "tet_industrial_reach": "100%"
   },
-  "last_bench_time": 59.1,
+  "last_bench_time": 61.78,
   "consecutive_fails": 0,
   "dones": [
     "hex",
@@ -50,5 +50,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2258_VVV9H2_DIAG_HOOK (R193) - diagnostic hook in VVV12 (gate OFF, log only), regression 31/31 PASS, metric \u00b10."
+  "plan_archive": "BETA2259_VVV9H3_DIAG_ON (R194) - Klingner edge-contraction evidence gate flip True, regression 35/35 PASS, worst_mq 0.2069 \u00b10.005, bench 61.78s."
 }

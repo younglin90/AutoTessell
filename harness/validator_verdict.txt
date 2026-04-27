@@ -1,1 +1,2 @@
-PASS: Regression 31/31 PASS. VVV9H diagnostic hook gate=False, mesh ±0 metric.
+PASS
+Regression 35/35 PASS, worst_mq 0.2069 ±0.005 stable, bench 61.78s ≤ 109s threshold. Gate flip complete.

@@ -2951,8 +2951,8 @@ def generate_native_tet(
                         )
                     except Exception as exc:  # noqa: BLE001
                         log.warning("native_tet_vvv9f_skipped", reason=str(exc)[:120])
-                # VVV9H (beta2258) — Klingner edge-contract diagnostic hook (gate OFF, log only)
-                _VVV9H_DIAG: bool = False  # R193/VVV9H #2: evidence collection (gate OFF → mesh ±0)
+                # VVV9H (beta2259) — Klingner edge-contract diagnostic hook (gate ON, log only)
+                _VVV9H_DIAG: bool = True  # R194/VVV9H #3: evidence collection (gate ON → mesh ±0)
                 if _VVV9H_DIAG and _n_sliver_pre >= 1:
                     try:
                         from core.generator.native_tet.stellar import (  # noqa: PLC0415
