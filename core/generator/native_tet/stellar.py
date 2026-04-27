@@ -2049,3 +2049,85 @@ def _slim_armijo_line_search(
         "accepted": False,
         "n_inverted": -1,
     }
+
+
+# ---------------------------------------------------------------------------
+# CARD BETA2273_VVV9J4_NEWTON_COMPOSE — Full SLIM Newton step compose helper
+# Gate: default OFF, no caller → mesh unchanged.
+# ---------------------------------------------------------------------------
+_VVV9J4_NEWTON_COMPOSE: bool = False
+
+
+def _slim_newton_step_one_vertex(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    v_idx: int,
+    max_step: float = 0.1,
+) -> dict:
+    """Compose one full SLIM Newton step for a single vertex (simulation only).
+
+    Chains: jac → SD energy → local gradient → Armijo line-search → step apply.
+    pts and tets are NEVER mutated; result is returned as new_pos.
+
+    Parameters
+    ----------
+    pts      : (N, 3) float64 vertex positions — NOT mutated.
+    tets     : (T, 4) int    tetrahedra indices.
+    v_idx    : target vertex index.
+    max_step : initial Armijo step size α_0 (default 0.1).
+
+    Returns
+    -------
+    dict with keys:
+        new_pos      : (3,) float64 — proposed new position (pts[v_idx] if rejected).
+        energy_delta : float        — E_pre - E_post (0.0 if rejected).
+        n_iter_used  : int          — Armijo iterations consumed.
+        accepted     : bool         — True if step was accepted.
+    """
+    _REJECT = {
+        "new_pos": pts[v_idx].copy() if pts is not None and v_idx < len(pts) else np.zeros(3),
+        "energy_delta": 0.0,
+        "n_iter_used": 0,
+        "accepted": False,
+    }
+
+    # Guard: empty input
+    if pts is None or tets is None or pts.shape[0] == 0 or tets.shape[0] == 0:
+        return _REJECT
+
+    # Step 1: star(v) extraction
+    mask = np.any(tets == v_idx, axis=1)
+    star = tets[mask]
+    if star.shape[0] == 0:
+        return _REJECT
+
+    # Step 2: jacobian + SD energy pre-step (copy — never mutate pts)
+    V_pre = pts.copy()
+    jac_pre = _slim_local_jacobian_per_tet(V_pre, star)
+    E_pre = float(np.sum(_slim_symmetric_dirichlet_energy(jac_pre)))
+
+    # Step 3: local gradient → descent direction d_v ∈ ℝ^3
+    # grad_per_tet shape: (T, 3, 3); column-0 is ∂E/∂x_v (1st column projection)
+    grad_per_tet = _slim_compute_local_gradient(jac_pre)
+    d_v = -np.sum(grad_per_tet[:, :, 0], axis=0)  # (3,) descent direction
+
+    if np.linalg.norm(d_v) < 1e-14:
+        return _REJECT
+
+    # Step 4: Armijo line-search
+    ls = _slim_armijo_line_search(V_pre, tets, v_idx, d_v, max_step)
+
+    # Step 5: compose result (no pts mutation)
+    if ls["accepted"]:
+        new_pos = pts[v_idx].copy() + ls["alpha"] * d_v
+        energy_delta = E_pre - ls["E_post"]
+    else:
+        new_pos = pts[v_idx].copy()
+        energy_delta = 0.0
+
+    return {
+        "new_pos": new_pos,
+        "energy_delta": energy_delta,
+        "n_iter_used": ls["n_iter_used"],
+        "accepted": ls["accepted"],
+    }
