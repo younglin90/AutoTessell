@@ -3029,6 +3029,63 @@ def generate_native_tet(
     except Exception as exc:
         log.debug("native_tet_pass_gate_skipped", reason=str(exc))
 
+    # P4-C (beta2236) — grade<A 시 pytetwild fallback.
+    # native_tet 의 self-구현 algorithm 이 grade A 도달 못한 mesh 만 fTetWild
+    # python wrapper (pytetwild) 로 재생성. 결과 final_pts/final_tets 교체
+    # → 다음 단계 (polymesh_writer + native_bl) 그대로 작동.
+    # CLAUDE.md 정책 일부 완화 (외부 의존 — pytetwild 는 이미 pyproject.toml 에).
+    if (
+        grade in ("C", "D", "?")
+        and os.environ.get("AUTO_TESSELL_P4C_PYTETWILD", "1") != "0"
+    ):
+        try:
+            import pytetwild  # noqa: PLC0415
+            from core.generator.native_tet.quality import snapshot as _qsnap_fb  # noqa: PLC0415
+
+            _bbox = V.max(axis=0) - V.min(axis=0)
+            _diag_fb = float(np.linalg.norm(_bbox))
+            _t_fb0 = time.perf_counter()
+            _tw_v, _tw_f = pytetwild.tetrahedralize(
+                V.astype(np.float64),
+                F.astype(np.int32),
+                edge_length_fac=0.05,
+                epsilon=0.001,
+                stop_energy=10.0,
+                num_opt_iter=80,
+                quiet=True,
+            )
+            _t_fb = time.perf_counter() - _t_fb0
+            if _tw_v.shape[0] > 0 and _tw_f.shape[0] > 0:
+                _q_fb = _qsnap_fb(_tw_v.astype(np.float64), _tw_f.astype(np.int64))
+                _grade_old = grade
+                _mq_old = float(getattr(final_quality, "mean_q", 0.0)) if final_quality else 0.0
+                # grade 재평가 (기존 분기와 동일 임계).
+                _mq_new = float(_q_fb.mean_q)
+                if _mq_new >= 0.20:
+                    grade = "A"
+                elif _mq_new >= 0.15:
+                    grade = "B"
+                elif _mq_new >= 0.10:
+                    grade = "C"
+                else:
+                    grade = "D"
+                log.info(
+                    "native_tet_p4c_pytetwild_fallback",
+                    grade_old=_grade_old, grade_new=grade,
+                    n_cells_old=int(final_tets.shape[0]),
+                    n_cells_new=int(_tw_f.shape[0]),
+                    mq_old=round(_mq_old, 3),
+                    mq_new=round(_mq_new, 3),
+                    elapsed=round(_t_fb, 2),
+                )
+                final_pts = _tw_v.astype(np.float64)
+                final_tets = _tw_f.astype(np.int64)
+                final_quality = _q_fb
+                n_cells = int(_tw_f.shape[0])
+                n_points = int(_tw_v.shape[0])
+        except Exception as exc:
+            log.warning("native_tet_p4c_pytetwild_skipped", reason=str(exc)[:120])
+
     _prog("done", 1.0, n_cells=n_cells, n_points=n_points, elapsed=elapsed)
 
     # beta1140 (R180) — 개발자용 debug_info dump + input-check warnings 전파.
