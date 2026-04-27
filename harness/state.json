@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2186,
+  "beta": 2187,
   "max_round": 1000,
-  "round": 135,
+  "round": 136,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -60,5 +60,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "POLYMESHWRITER_VEC (R135) — vectorize PolyMeshWriter.write() cell_faces loop via tets[:,_tf] numpy index (M,4,3); 22/22 PASS 41.01s"
+  "plan_archive": "HEX_BUILD_VEC (R136) — vectorize build_octree_hex_cells fine_cells_idx via meshgrid+broadcast; 22/22 PASS 41.50s"
 }
