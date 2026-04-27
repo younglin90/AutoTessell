@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2199,
+  "beta": 2200,
   "max_round": 1000,
-  "round": 148,
+  "round": 149,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,13 +26,14 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 39.81,
+  "last_bench_time": 41.91,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "TET_BL_SUBDIVIDE_VEC",
     "REPORT_VEC",
     "PIPELINE_VEC",
     "LAYERS_VEC",
@@ -58,13 +59,12 @@
     "PERF5",
     "POLYMESHWRITER_VEC",
     "STL_READER_VEC",
-    "OBJ_PLY_READER_VEC",
-    "POLYMESH_READER_VEC"
+    "OBJ_PLY_READER_VEC"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "REPORT_VEC (R148) — report.py has no numeric array loops; no-op clean pass; 22/22 PASS 39.81s"
+  "plan_archive": "TET_BL_SUBDIVIDE_VEC (R149) — vectorized 3 Python for-loops in tet_bl_subdivide.py; 55/55 PASS 41.91s"
 }

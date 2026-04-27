@@ -198,14 +198,14 @@ def subdivide_prism_layers_to_tet(
         # Prism aspect = max_edge / min_edge across bottom-tri + lateral edges.
         outer_pts = points[outer]
         inner_pts = points[inner]
-        _edges: list[float] = []
-        for _k in range(3):
-            _k2 = (_k + 1) % 3
-            _edges.append(float(np.linalg.norm(outer_pts[_k2] - outer_pts[_k])))  # bottom tri
-            _edges.append(float(np.linalg.norm(inner_pts[_k2] - inner_pts[_k])))  # top tri
-            _edges.append(float(np.linalg.norm(inner_pts[_k] - outer_pts[_k])))   # lateral
-        _min_e = min(_edges) if _edges else 1.0
-        _max_e = max(_edges) if _edges else 1.0
+        _idx = np.array([0, 1, 2])
+        _idx2 = np.array([1, 2, 0])
+        _e_outer = np.linalg.norm(outer_pts[_idx2] - outer_pts[_idx], axis=1)
+        _e_inner = np.linalg.norm(inner_pts[_idx2] - inner_pts[_idx], axis=1)
+        _e_lat = np.linalg.norm(inner_pts - outer_pts, axis=1)
+        _all_edges = np.concatenate([_e_outer, _e_inner, _e_lat])
+        _min_e = float(_all_edges.min())
+        _max_e = float(_all_edges.max())
         _aspect = _max_e / (_min_e + 1e-30)
         if _aspect > 50.0:
             _n_rejected_aspect += 1
@@ -259,10 +259,9 @@ def subdivide_prism_layers_to_tet(
             # First thickness = mean lateral edge length of layer-1 prisms.
             _lat_edges: list[float] = []
             for _cid0, (_o0, _i0) in prism_pairs.items():
-                for _k0 in range(3):
-                    _lat_edges.append(float(np.linalg.norm(
-                        points[_i0[_k0]] - points[_o0[_k0]]
-                    )))
+                _lat_edges.extend(
+                    np.linalg.norm(points[_i0] - points[_o0], axis=1).tolist()
+                )
             _first_t = float(np.mean(_lat_edges)) if _lat_edges else 0.01
             _layer_ts = _glt(_first_t, _TET_LAYERS_N, growth_ratio=1.2)
             # layer 0 thickness = _layer_ts[0] (approx. same as layer-1 prism height).
@@ -297,14 +296,14 @@ def subdivide_prism_layers_to_tet(
                     _inner_pts_li = _outer_pts_li + _lat_dirs * _step_li
 
                     # TET_BL1 guard 1 — aspect ratio
-                    _edges_li: list[float] = []
-                    for _k in range(3):
-                        _k2 = (_k + 1) % 3
-                        _edges_li.append(float(np.linalg.norm(_outer_pts_li[_k2] - _outer_pts_li[_k])))
-                        _edges_li.append(float(np.linalg.norm(_inner_pts_li[_k2] - _inner_pts_li[_k])))
-                        _edges_li.append(float(np.linalg.norm(_inner_pts_li[_k] - _outer_pts_li[_k])))
-                    _min_e_li = min(_edges_li) if _edges_li else 1.0
-                    _max_e_li = max(_edges_li) if _edges_li else 1.0
+                    _idx_li = np.array([0, 1, 2])
+                    _idx2_li = np.array([1, 2, 0])
+                    _eo_li = np.linalg.norm(_outer_pts_li[_idx2_li] - _outer_pts_li[_idx_li], axis=1)
+                    _ei_li = np.linalg.norm(_inner_pts_li[_idx2_li] - _inner_pts_li[_idx_li], axis=1)
+                    _el_li = np.linalg.norm(_inner_pts_li - _outer_pts_li, axis=1)
+                    _all_e_li = np.concatenate([_eo_li, _ei_li, _el_li])
+                    _min_e_li = float(_all_e_li.min())
+                    _max_e_li = float(_all_e_li.max())
                     _aspect_li = _max_e_li / (_min_e_li + 1e-30)
                     if _aspect_li > 50.0:
                         _n_rej_asp_li += 1
