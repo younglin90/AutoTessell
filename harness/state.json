@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2174,
+  "beta": 2175,
   "max_round": 1000,
-  "round": 122,
+  "round": 123,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -57,5 +57,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "PERF10 (R122) — VVV11 lookahead_2flip_chain _q_arr vectorized (numpy batch mean-ratio, 108x speedup); 22/22 PASS; bench 41.77s; worst_mq=0.127 unchanged"
+  "plan_archive": "HEX_BL_UNIFORM (R123) — validate_bl_thickness_uniformity helper; logs stats always, warns if std/mean >5%; called post BL1+BL3 combined_thick; 22/22 PASS; bench 42.05s"
 }

@@ -624,6 +624,58 @@ def _smooth_top_layer_tangential(
     return fp, n_moved
 
 
+def validate_bl_thickness_uniformity(
+    thickness_array: np.ndarray,
+    *,
+    max_rel_variation: float = 0.05,
+) -> float:
+    """HEX_BL_UNIFORM — validate first-layer prism thickness variation ≤5% (CFD y+ standard).
+
+    Computes std/mean ratio of first-layer per-vertex thicknesses.
+    Always logs stats for observability; warns if variation exceeds threshold.
+
+    Args:
+        thickness_array: 1-D ndarray of per-vertex first-layer thicknesses.
+        max_rel_variation: allowed relative variation (default 0.05 = 5%).
+
+    Returns:
+        rel_variation (std / mean); 0.0 if array is empty or degenerate.
+    """
+    arr = np.asarray(thickness_array, dtype=np.float64).ravel()
+    if arr.size == 0:
+        return 0.0
+    t_min = float(arr.min())
+    t_max = float(arr.max())
+    t_mean = float(arr.mean())
+    t_std = float(arr.std())
+    rel_variation = float(t_std / t_mean) if t_mean > 1e-30 else 0.0
+    log.info(
+        "native_bl_thickness_stats",
+        component="native_bl",
+        phase="HEX_BL_UNIFORM",
+        n_verts=int(arr.size),
+        t_min=round(t_min, 8),
+        t_max=round(t_max, 8),
+        t_mean=round(t_mean, 8),
+        t_std=round(t_std, 8),
+        rel_variation=round(rel_variation, 6),
+    )
+    if rel_variation > max_rel_variation:
+        log.warning(
+            "native_bl_thickness_warning",
+            component="native_bl",
+            phase="HEX_BL_UNIFORM",
+            rel_variation=round(rel_variation, 6),
+            max_rel_variation=max_rel_variation,
+            t_min=round(t_min, 8),
+            t_max=round(t_max, 8),
+            t_mean=round(t_mean, 8),
+            t_std=round(t_std, 8),
+            msg="first-layer thickness variation exceeds CFD y+ uniformity threshold",
+        )
+    return rel_variation
+
+
 def _geometric_layer_thickness(
     first_thickness: float | np.ndarray,
     n_layers: int,
@@ -1430,6 +1482,8 @@ def generate_native_bl(
                 thickness_mean=round(_adap_mean, 6),
                 bl3_relative_active=rel_valid,
             )
+            # HEX_BL_UNIFORM: validate first-layer thickness uniformity (CFD y+ standard)
+            validate_bl_thickness_uniformity(combined_thick)
         except Exception as _bl1_exc:
             import logging as _lg
             _lg.getLogger(__name__).warning(
