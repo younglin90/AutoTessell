@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2211,
+  "beta": 2212,
   "max_round": 1000,
-  "round": 160,
+  "round": 161,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -73,5 +73,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "STELLAR_REMAIN_VEC (R160) — vectorized _build_op_queue, _count_slivers, _count_anisotropic in stellar.py; 22/22 PASS 34.48s"
+  "plan_archive": "LAPLACIAN_REMAIN_VEC (R161) — vectorized vert_tets build + vert_neighbors build in laplacian.py (both smooth_interior_laplacian and smooth_boundary_envelope); 22/22 PASS 34.12s"
 }

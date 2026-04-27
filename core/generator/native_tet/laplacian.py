@@ -103,11 +103,18 @@ def smooth_interior_laplacian(
 
     # ── 1. Build vert → incident-tet adjacency (vectorised) ──────────────────
     # vert_tets[v] = list of tet indices containing v.
+    # Vectorised: sort by vertex index, then split at boundaries.
+    _ti_all = np.repeat(np.arange(n_tets, dtype=np.int64), 4)  # (n_tets*4,)
+    _v_all = tets.ravel()  # (n_tets*4,)
+    _order = np.argsort(_v_all, kind="stable")
+    _v_sorted = _v_all[_order]
+    _ti_sorted = _ti_all[_order]
+    _split_pts = np.where(np.diff(_v_sorted))[0] + 1
+    _groups = np.split(_ti_sorted, _split_pts)
+    _unique_v = _v_sorted[np.concatenate(([0], _split_pts))]
     vert_tets: list[list[int]] = [[] for _ in range(n_verts)]
-    # Vectorised: iterate over 4 columns of tets array.
-    for col in range(4):
-        for ti, v in enumerate(tets[:, col]):
-            vert_tets[v].append(ti)
+    for _vi, _grp in zip(_unique_v, _groups):
+        vert_tets[_vi] = _grp.tolist()
 
     # ── 2. Identify boundary faces (appear in exactly 1 tet) ─────────────────
     # TET_CACHE1: reuse cached result when tets topology hasn't changed.
@@ -139,13 +146,14 @@ def smooth_interior_laplacian(
     # interior_safe_mask[v] = True iff depth[v] >= 2.
     interior_safe_mask = depth >= 2
 
-    # Build vert_neighbors (still needed per-vert in the apply loop).
+    # Build vert_neighbors (edge-connected) — vectorised over 6 edge pairs.
+    _PAIRS6 = ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3))
     vert_neighbors: list[set[int]] = [set() for _ in range(n_verts)]
-    for tet in tets:
-        for i in range(4):
-            for j in range(i + 1, 4):
-                vert_neighbors[tet[i]].add(tet[j])
-                vert_neighbors[tet[j]].add(tet[i])
+    for _a, _b in _PAIRS6:
+        _ua = tets[:, _a]; _ub = tets[:, _b]
+        for _va, _vb in zip(_ua.tolist(), _ub.tolist()):
+            vert_neighbors[_va].add(_vb)
+            vert_neighbors[_vb].add(_va)
 
     interior_safe = set(int(v) for v in np.where(interior_safe_mask)[0])
 
@@ -425,11 +433,18 @@ def smooth_boundary_envelope(
     if n_tets == 0 or n_verts == 0 or surface_faces.shape[0] == 0:
         return pts, tets, 0
 
-    # ── 1. Build adjacency (vectorised over 4 tet columns) ───────────────────
+    # ── 1. Build adjacency (fully vectorised) ────────────────────────────────
+    _ti_all2 = np.repeat(np.arange(n_tets, dtype=np.int64), 4)
+    _v_all2 = tets.ravel()
+    _order2 = np.argsort(_v_all2, kind="stable")
+    _v_sorted2 = _v_all2[_order2]
+    _ti_sorted2 = _ti_all2[_order2]
+    _split2 = np.where(np.diff(_v_sorted2))[0] + 1
+    _grps2 = np.split(_ti_sorted2, _split2)
+    _uv2 = _v_sorted2[np.concatenate(([0], _split2))]
     vert_tets: list[list[int]] = [[] for _ in range(n_verts)]
-    for col in range(4):
-        for ti, v in enumerate(tets[:, col]):
-            vert_tets[v].append(ti)
+    for _vi2, _g2 in zip(_uv2, _grps2):
+        vert_tets[_vi2] = _g2.tolist()
 
     # TET_CACHE1: reuse cached boundary-face result when tets topology unchanged.
     _fc2, boundary_verts = _compute_boundary_faces_cached(tets)
@@ -442,13 +457,14 @@ def smooth_boundary_envelope(
     boundary_mask = np.zeros(n_verts, dtype=bool)
     boundary_mask[boundary_verts_arr] = True
 
-    # ── 2. Vert neighbors (edge-connected) ───────────────────────────────────
+    # ── 2. Vert neighbors (edge-connected) — vectorised over 6 edge pairs ────
+    _PAIRS6b = ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3))
     vert_neighbors: list[set[int]] = [set() for _ in range(n_verts)]
-    for tet in tets:
-        for i in range(4):
-            for j in range(i + 1, 4):
-                vert_neighbors[tet[i]].add(tet[j])
-                vert_neighbors[tet[j]].add(tet[i])
+    for _a2, _b2 in _PAIRS6b:
+        _ua2 = tets[:, _a2]; _ub2 = tets[:, _b2]
+        for _va2, _vb2 in zip(_ua2.tolist(), _ub2.tolist()):
+            vert_neighbors[_va2].add(_vb2)
+            vert_neighbors[_vb2].add(_va2)
 
     # ── 3. Candidate verts: boundary + incident to top-K worst tets (vectorised)
     q_all = _tet_shape_quality(pts, tets)
