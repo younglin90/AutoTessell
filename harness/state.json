@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2220,
+  "beta": 2221,
   "max_round": 1000,
-  "round": 169,
+  "round": 170,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -76,5 +76,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "UTILS_REMAIN_VEC (R169) — boundary_classifier.py face-center/normal loop vectorized by face-size group; 22/22 PASS 33.69s"
+  "plan_archive": "GEOM_FIDELITY_VEC (R170) — fidelity.py fan-triangulation + patch-index loops vectorized (size-grouped numpy); 22/22 PASS 32.30s"
 }

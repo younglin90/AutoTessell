@@ -403,33 +403,46 @@ class GeometryFidelityChecker:
             selected_patch_names=selected_names,
         )
 
-        # 선택된 경계 패치의 face 인덱스 수집
-        boundary_face_indices: list[int] = []
+        # 선택된 경계 패치의 face 인덱스 수집 (vectorized via numpy arange)
+        index_parts: list[np.ndarray] = []
         for patch in selected_patches:
             start = int(patch["startFace"])
             n = int(patch["nFaces"])
-            boundary_face_indices.extend(range(start, start + n))
-
-        if not boundary_face_indices:
+            if n > 0:
+                index_parts.append(np.arange(start, start + n, dtype=np.intp))
+        if not index_parts:
+            log.debug("경계 패치 face 없음")
+            return None
+        boundary_face_indices_arr = np.concatenate(index_parts)
+        n_all = len(all_faces)
+        boundary_face_indices_arr = boundary_face_indices_arr[
+            boundary_face_indices_arr < n_all
+        ]
+        if boundary_face_indices_arr.size == 0:
             log.debug("경계 패치 face 없음")
             return None
 
-        # 폴리곤 → 삼각형 fan-triangulation
-        triangles: list[list[int]] = []
-        for fi in boundary_face_indices:
-            if fi >= len(all_faces):
-                continue
-            verts = all_faces[fi]
-            if len(verts) < 3:
-                continue
-            # fan triangulation: (0,1,2), (0,2,3), ...
-            for k in range(1, len(verts) - 1):
-                triangles.append([verts[0], verts[k], verts[k + 1]])
-
-        if not triangles:
+        # 폴리곤 → 삼각형 fan-triangulation (size-grouped vectorize)
+        # 폴리곤 크기별로 그룹화하여 numpy로 일괄 처리 (inner loop 제거).
+        valid_faces = [all_faces[fi] for fi in boundary_face_indices_arr if len(all_faces[fi]) >= 3]
+        tri_parts: list[np.ndarray] = []
+        if valid_faces:
+            from itertools import groupby  # noqa: PLC0415
+            # 크기별 그룹
+            sorted_faces = sorted(valid_faces, key=len)
+            for poly_len, group in groupby(sorted_faces, key=len):
+                group_list = list(group)
+                # (M, poly_len) 배열로 stack
+                face_arr = np.array(group_list, dtype=np.intp)  # (M, poly_len)
+                # fan: k in 1..poly_len-2 → (poly_len-2) triangles per face
+                v0 = face_arr[:, 0]  # (M,)
+                for k in range(1, poly_len - 1):
+                    tris = np.stack([v0, face_arr[:, k], face_arr[:, k + 1]], axis=1)
+                    tri_parts.append(tris)
+        if not tri_parts:
             return None
 
-        tri_array = np.array(triangles, dtype=int)
+        tri_array = np.concatenate(tri_parts, axis=0)
         try:
             mesh = trimesh.Trimesh(vertices=vertices, faces=tri_array, process=False)
         except Exception as exc:  # noqa: BLE001
