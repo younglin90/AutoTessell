@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2285,
+  "beta": 2286,
   "max_round": 1000,
-  "round": 220,
+  "round": 221,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -12,7 +12,7 @@
       "OK": 5,
       "BL_OK": 5,
       "total": 5,
-      "source": "BETA2285_VVV9K8_HARDEN_MONOTONE - helper-only monotone + early-exit hardening",
+      "source": "BETA2286_VVV9N1_LINE_COMPARE_HELPER - evidence-comparison helper (read-only, default OFF)",
       "bench_time_s": 67.59
     },
     "hex": {
@@ -39,16 +39,16 @@
     "poly"
   ],
   "recent_cards": [
+    "BETA2286_VVV9N1_LINE_COMPARE_HELPER",
     "BETA2285_VVV9K8_HARDEN_MONOTONE",
     "BETA2284_VVV9K7_REAL_APPLY_ENV",
     "BETA2283_VVV9K6_DIAG_ON",
-    "BETA2282_VVV9K5_DIAG_HOOK",
-    "BETA2281_VVV9K4_MAIN_LOOP"
+    "BETA2282_VVV9K5_DIAG_HOOK"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2285_VVV9K8_HARDEN_MONOTONE (R220)"
+  "plan_archive": "BETA2286_VVV9N1_LINE_COMPARE_HELPER (R221)"
 }

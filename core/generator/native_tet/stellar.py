@@ -2570,3 +2570,130 @@ def _priority_queue_main_loop(
 
     # mesh unchanged — return copies of original input
     return pts.copy(), tets.copy(), n_improved, n_iters_used, total_delta, n_rejected, early_exit_reason
+
+
+# CARD BETA2286_VVV9N1_LINE_COMPARE_HELPER — evidence-comparison helper
+# Default OFF: no caller added.  Klingner 2008 §6 ablation methodology.
+
+
+def _evidence_compare_lines(
+    pts: "np.ndarray",
+    tets: "np.ndarray",
+    sliver_q_thr: float = 0.10,
+    max_apply: int = 10,
+) -> "dict":
+    """Dry-simulate H / J / K VVV9 lines on a single mesh and compare worst_mq delta.
+
+    Each line is applied to an independent deepcopy of (pts, tets); the
+    original arrays are **never mutated**.  Returns the line with the largest
+    positive Δworst_mq and per-line delta measurements.
+
+    Parameters
+    ----------
+    pts          : (N, 3) float64 vertex positions — NOT mutated.
+    tets         : (T, 4) int64 tet index array — NOT mutated.
+    sliver_q_thr : quality threshold for sliver detection (passed to H candidates).
+    max_apply    : cap on operations per line (wall-time protection).
+
+    Returns
+    -------
+    dict with keys:
+        best_line  : str  — 'H', 'J', 'K', or 'none' (no positive delta found).
+        delta_H    : float — worst_mq improvement from line H (0.0 if n/a).
+        delta_J    : float — worst_mq improvement from line J (0.0 if n/a).
+        delta_K    : float — worst_mq improvement from line K (0.0 if n/a).
+        wall_ms    : float — total wall time in milliseconds.
+
+    Notes
+    -----
+    - Callers: none (gate OFF).  Planner activates in VVV9N2+ cards.
+    - Monotone safety: each simulate helper already guards against quality
+      regression (R197/R208/R220 hardening); this wrapper adds no extra ops.
+    - Reference: Klingner & Shewchuk 2008 §6 ablation; R197/R208/R220.
+    """
+    import copy  # noqa: PLC0415
+    import time  # noqa: PLC0415
+
+    t0 = time.perf_counter()
+
+    def _worst_mq(p: "np.ndarray", t: "np.ndarray") -> float:
+        """Return min per-tet quality (worst_mq) over all tets."""
+        if len(t) == 0:
+            return 0.0
+        return float(min(_tet_quality(p, t[i]) for i in range(len(t))))
+
+    pre_worst = _worst_mq(pts, tets)
+
+    # ── Line H: Klingner edge-contract (top-K short edges) ──────────────────
+    delta_H: float = 0.0
+    try:
+        pts_h = copy.deepcopy(pts)
+        tets_h = copy.deepcopy(tets)
+        cands = _klingner_edge_contract_candidates(
+            pts_h, tets_h, q_max=sliver_q_thr, max_candidates=max_apply * 4
+        )
+        if cands:
+            _, tets_h, _ = _apply_klingner_edge_contract_topK(
+                pts_h, tets_h, cands, k=max_apply
+            )
+        post_h = _worst_mq(pts_h, tets_h)
+        delta_H = max(0.0, post_h - pre_worst)
+    except Exception:  # noqa: BLE001
+        delta_H = 0.0
+
+    # ── Line J: SLIM Newton step on top-K worst-quality vertices ────────────
+    delta_J: float = 0.0
+    try:
+        pts_j = copy.deepcopy(pts)
+        tets_j = copy.deepcopy(tets)
+        # Identify top-K worst vertices by min incident tet quality
+        n_verts = len(pts_j)
+        vert_min_q = np.ones(n_verts, dtype=np.float64)
+        for ti in range(len(tets_j)):
+            q = _tet_quality(pts_j, tets_j[ti])
+            for vi in tets_j[ti]:
+                if q < vert_min_q[vi]:
+                    vert_min_q[vi] = q
+        worst_verts = list(np.argsort(vert_min_q)[:max_apply])
+        for v in worst_verts:
+            res = _slim_newton_step_one_vertex(pts_j, tets_j, int(v))
+            if res.get("accepted", False):
+                pts_j[v] = res["new_pos"]
+        post_j = _worst_mq(pts_j, tets_j)
+        delta_J = max(0.0, post_j - pre_worst)
+    except Exception:  # noqa: BLE001
+        delta_J = 0.0
+
+    # ── Line K: priority-queue main loop (VVV9K4 skeleton) ──────────────────
+    delta_K: float = 0.0
+    try:
+        pts_k = copy.deepcopy(pts)
+        tets_k = copy.deepcopy(tets)
+        qs_k = np.array([_tet_quality(pts_k, tets_k[i]) for i in range(len(tets_k))], dtype=np.float64)
+        _, tets_k, _ni, _nu, _td, _nr, _er = _priority_queue_main_loop(
+            pts_k, tets_k, qs_k, max_iters=max_apply, time_budget_ms=200.0
+        )
+        post_k = _worst_mq(pts_k, tets_k)
+        delta_K = max(0.0, post_k - pre_worst)
+    except Exception:  # noqa: BLE001
+        delta_K = 0.0
+
+    # ── Best-line selection ──────────────────────────────────────────────────
+    best_delta = max(delta_H, delta_J, delta_K)
+    if best_delta <= 0.0:
+        best_line = "none"
+    elif delta_H >= delta_J and delta_H >= delta_K:
+        best_line = "H"
+    elif delta_J >= delta_K:
+        best_line = "J"
+    else:
+        best_line = "K"
+
+    wall_ms = (time.perf_counter() - t0) * 1000.0
+    return {
+        "best_line": best_line,
+        "delta_H": delta_H,
+        "delta_J": delta_J,
+        "delta_K": delta_K,
+        "wall_ms": wall_ms,
+    }
