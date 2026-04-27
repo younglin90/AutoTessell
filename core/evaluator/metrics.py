@@ -39,10 +39,9 @@ class AdditionalMetricsComputer:
     # ------------------------------------------------------------------
 
     def _compute_internal(self, case_dir: Path) -> AdditionalMetrics:
-        import pyvista as pv  # noqa: PLC0415
-        import numpy as np  # noqa: PLC0415
-
-        # Strategy 1: Try ofpp (polyMesh 직접 파싱, OpenFOAM 불필요)
+        # Strategy 1: ofpp (polyMesh 직접 파싱, OpenFOAM/PyVista 불필요)
+        # PyVista/VTK는 GUI 백그라운드 스레드에서 concurrent하게 호출하면 SIGSEGV를
+        # 유발하므로 (X11/VTK global state 비thread-safe), Strategy 2를 비활성화한다.
         try:
             metrics = self._compute_from_polymesh(case_dir)
             if metrics is not None:
@@ -51,42 +50,8 @@ class AdditionalMetricsComputer:
         except Exception as exc:  # noqa: BLE001
             log.debug("ofpp polyMesh parsing failed", error=str(exc))
 
-        # Strategy 2: Fall back to foamToVTK + pyvista
-        vtk_dir = case_dir / "VTK"
-        if not vtk_dir.exists():
-            self._run_foam_to_vtk(case_dir)
-
-        vtk_file = self._find_vtk_file(vtk_dir)
-        if vtk_file is None:
-            log.warning("VTK 파일 없음 — AdditionalMetrics 생략")
-            return AdditionalMetrics()
-
-        mesh = pv.read(str(vtk_file))
-        cell_sizes = mesh.compute_cell_sizes(volume=True, length=False, area=False)
-        volumes = cell_sizes["Volume"]
-
-        min_vol = float(volumes.min())
-        max_vol = float(volumes.max())
-        mean_vol = float(volumes.mean())
-        std_vol = float(volumes.std())
-        ratio = max_vol / max(abs(min_vol), 1e-30) if min_vol != 0 else float("inf")
-
-        cell_volume_stats = CellVolumeStats(
-            min=min_vol,
-            max=max_vol,
-            mean=mean_vol,
-            std=std_vol,
-            ratio_max_min=ratio,
-        )
-
-        # BL 검사: 벽면 경계 근처 셀 높이 추정
-        bl_enabled = self._check_bl_enabled(case_dir)
-        bl_stats = self._compute_bl_stats(mesh, bl_enabled)
-
-        return AdditionalMetrics(
-            cell_volume_stats=cell_volume_stats,
-            boundary_layer=bl_stats,
-        )
+        log.debug("AdditionalMetrics 생략 — ofpp 파싱 실패, PyVista fallback 비활성화")
+        return AdditionalMetrics()
 
     def _compute_from_polymesh(self, case_dir: Path) -> AdditionalMetrics | None:
         """ofpp를 사용하여 polyMesh에서 직접 추가 메트릭 계산.
@@ -243,3 +208,51 @@ class AdditionalMetricsComputer:
 
         except Exception:  # noqa: BLE001
             return None
+
+
+def tet_mean_ratio_quality(pts: object, tets: object) -> float:
+    """Compute mean-ratio quality (worst) for all tets.
+
+    Args:
+        pts: (n_pts, 3) array of tet vertices.
+        tets: (n_tets, 4) array of tet indices.
+
+    Returns:
+        Worst (minimum) mean-ratio quality across all tets.
+    """
+    import numpy as np  # noqa: PLC0415
+
+    pts = np.asarray(pts, dtype=np.float64)
+    tets = np.asarray(tets, dtype=np.int32)
+
+    if len(tets) == 0:
+        return 1.0
+
+    # Vectorized: gather all tet vertices at once — shape (n_tets, 4, 3)
+    v = pts[tets]  # (N, 4, 3)
+    a, b, c, d = v[:, 0], v[:, 1], v[:, 2], v[:, 3]
+    e0, e1, e2 = b - a, c - a, d - a  # (N, 3) each
+
+    # Signed volume × 6 via scalar triple product
+    cross_e1_e2 = np.cross(e1, e2)  # (N, 3)
+    vol6 = np.einsum("ij,ij->i", e0, cross_e1_e2)  # (N,)
+    vol = np.abs(vol6) / 6.0  # (N,)
+
+    # Sum of squared edge lengths (6 edges per tet)
+    l_sq = (
+        np.einsum("ij,ij->i", e0, e0)
+        + np.einsum("ij,ij->i", e1, e1)
+        + np.einsum("ij,ij->i", e2, e2)
+        + np.einsum("ij,ij->i", b - c, b - c)
+        + np.einsum("ij,ij->i", b - d, b - d)
+        + np.einsum("ij,ij->i", c - d, c - d)
+    )  # (N,)
+
+    degenerate = (np.abs(vol6) < 1e-30) | (l_sq < 1e-30)
+    mr = np.where(
+        degenerate,
+        0.0,
+        12.0 * (3.0 * vol) ** (2.0 / 3.0) / l_sq,
+    )
+    qualities = np.clip(mr, 0.0, 1.0)
+    return float(np.min(qualities))

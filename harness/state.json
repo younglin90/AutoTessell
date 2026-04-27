@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2197,
+  "beta": 2198,
   "max_round": 1000,
-  "round": 146,
+  "round": 147,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -65,5 +65,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "PREDICATES_VEC (R146) — vectorize _det5 inner loop + add insphere_staged_batch; 22/22 PASS 39.47s"
+  "plan_archive": "METRICS_VEC (R147) — vectorize tet_mean_ratio_quality Python loop → numpy batch einsum; 22/22 PASS 39.53s"
 }
