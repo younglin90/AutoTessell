@@ -324,8 +324,12 @@ class ParamOptimizer:
         # 첫 번째 레이어 두께
         y_first = L * target_y_plus * (Re ** -0.9) * 6.0
 
-        # 전체 두께
-        total = y_first * sum(growth_ratio ** i for i in range(num_layers))
+        # 전체 두께 — geometric series closed-form: sum(r^i, i=0..n-1)
+        if abs(growth_ratio - 1.0) < 1e-12 or num_layers == 0:
+            _geo_sum = float(num_layers)
+        else:
+            _geo_sum = (growth_ratio ** num_layers - 1.0) / (growth_ratio - 1.0)
+        total = y_first * _geo_sum
 
         cfg = BoundaryLayerConfig(
             enabled=True,

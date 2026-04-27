@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2202,
+  "beta": 2203,
   "max_round": 1000,
-  "round": 151,
+  "round": 152,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -67,5 +67,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "TOPOLOGY_VEC (R151) — vectorized _edge_face_map Python loop → numpy lexsort+groupby in topology.py; 22/22 PASS 39.64s"
+  "plan_archive": "STRATEGIST_DECISION_VEC (R152) — vectorized BL geometric series loop → closed-form in param_optimizer.py; 22/22 PASS 41.39s"
 }

@@ -1,5 +1,4 @@
-file: core/evaluator/report.py
-functions: (none — no vectorizable numeric loops found)
-lines_added: 0
-lines_removed: 0
-note: all loops iterate over small fixed dicts/Rich UI rows; no numpy vectorization applicable
+file: core/strategist/param_optimizer.py
+functions: compute_boundary_layers
+lines_added: 4
+lines_removed: 1
