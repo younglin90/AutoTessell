@@ -2873,10 +2873,15 @@ def generate_native_tet(
                 from core.generator.native_tet.stellar import (  # noqa: PLC0415
                     split_sliver_longest_edge as _ssl,
                     _count_slivers as _cs,
+                    _count_offplane_sliver_candidates as _cofp,
                 )
                 from core.generator.native_tet.quality import snapshot as _qsnap712  # noqa: PLC0415
                 _pre712 = _qsnap712(final_pts, final_tets)
                 _n_sliver_pre = _cs(final_pts, final_tets)
+                try:
+                    _n_offp = int(_cofp(final_pts, final_tets, flatness_thresh=1e-2))
+                except Exception:
+                    _n_offp = -1
                 _pts712, _tets712, _n712 = _ssl(
                     final_pts, final_tets,
                     sliver_ratio=1e-3,
@@ -2897,6 +2902,8 @@ def generate_native_tet(
                     pre_min=float(_pre712.min_q),
                     post_min=float(_post712.min_q),
                     accepted=bool(_acc712),
+                    n_offplane_candidates=_n_offp,
+                    flatness_thresh=1e-2,
                 )
         except Exception as exc:
             log.warning("native_tet_vvv12_skipped", reason=str(exc)[:120])
