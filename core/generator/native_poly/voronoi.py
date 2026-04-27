@@ -1237,6 +1237,51 @@ def generate_native_poly_voronoi(
             n_candidates=len(candidates),
             cont_score=round(-candidates[0][1], 4),
         )
+
+        # beta2245n — best 가 grade != A 이고 not hex fallback 시 P2 repair retry 시도.
+        # 입력 self-intersect 등으로 voronoi 가 grade B/C 에 머무르는 경우 회복 가능성.
+        if (
+            best_result.quality_grade != "A"
+            and not best_label.startswith("hex")
+            and best_result.success
+        ):
+            try:
+                from core.preprocessor.native_repair import run_native_repair  # noqa: PLC0415
+                _r2 = run_native_repair(
+                    vertices, faces,
+                    dedup_tol=1e-9, degenerate_area_tol=1e-18,
+                    fill_hole_max_boundary=256, fix_normals=True,
+                    aggressive=2,
+                )
+                if (
+                    _r2.vertices.shape[0] >= 4 and _r2.faces.shape[0] >= 4
+                    and (_r2.vertices.shape[0] != vertices.shape[0]
+                         or _r2.faces.shape[0] != faces.shape[0])
+                ):
+                    log.info(
+                        "native_poly_p2_grade_retry",
+                        old_grade=best_result.quality_grade,
+                        v_before=int(vertices.shape[0]), v_after=int(_r2.vertices.shape[0]),
+                        f_before=int(faces.shape[0]), f_after=int(_r2.faces.shape[0]),
+                    )
+                    _retry_r2 = _generate_native_poly_voronoi_inner(
+                        _r2.vertices.astype(np.float64),
+                        _r2.faces.astype(np.int64),
+                        case_dir,
+                        target_edge_length=target_edge_length,
+                        seed_density=int(seed_density),
+                        n_lloyd=int(n_lloyd), lp_p=2.0,
+                    )
+                    # grade A 만 채택 (grade B/C 는 기존 best 유지).
+                    if _retry_r2.success and _retry_r2.quality_grade == "A":
+                        log.info(
+                            "native_poly_p2_grade_retry_accepted",
+                            new_grade=_retry_r2.quality_grade,
+                            new_cells=_retry_r2.n_cells,
+                        )
+                        return _retry_r2
+            except Exception as exc:
+                log.debug("native_poly_p2_grade_retry_skipped", reason=str(exc)[:120])
         # voronoi 가 chosen 이면 case_dir 가 이미 그 결과로 채워짐.
         # hex fallback 이 chosen 이면 voronoi 결과를 hex 결과로 덮어 써야.
         if best_label.startswith("hex"):
