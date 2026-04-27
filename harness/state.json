@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2176,
+  "beta": 2177,
   "max_round": 1000,
-  "round": 124,
+  "round": 125,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,7 +26,7 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 41.77,
+  "last_bench_time": 41.20,
   "consecutive_fails": 0,
   "dones": [
     "hex",
@@ -57,5 +57,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "POL_BL_UNIFORM (R124) — poly+BL thickness uniformity validator; reuses validate_bl_thickness_uniformity from native_bl.py; called post first-layer extrude in voronoi.py; 22/22 PASS; bench 41.06s"
+  "plan_archive": "HEX_CACHE (R125) — single-slot LRU adjacency cache for hex passes; _build_hex_adjacency keyed on hex_cells.tobytes(); refactored _reduce_nonortho_post + enable_post_smooth callsites; 22/22 PASS; bench 41.20s"
 }

@@ -1,4 +1,4 @@
-file: core/generator/native_tet/stellar.py
-functions: lookahead_2flip_chain._q_arr
-lines_added: 13
-lines_removed: 1
+file: core/generator/native_hex/mesher.py
+functions: _build_hex_adjacency (new), _reduce_nonortho_post, generate_native_hex (enable_post_smooth block)
+lines_added: 71
+lines_removed: 30
