@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2223,
+  "beta": 2224,
   "max_round": 1000,
-  "round": 172,
+  "round": 173,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -76,5 +76,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "CLI_REMAIN_VEC (R172) — cli/main.py no numeric loops found; no-op; 22/22 PASS 32.33s"
+  "plan_archive": "TET_INIT_REMAIN_VEC (R173) — smooth.py smooth_odt/smooth_cvt for-k-in-range(4) → tile+ravel vectorized; 35/35 PASS 39.53s bench 0.113s"
 }

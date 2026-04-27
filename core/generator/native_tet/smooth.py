@@ -238,9 +238,13 @@ def smooth_odt(
         C, W = _circumcenter_and_vol(v[:, 0], v[:, 1], v[:, 2], v[:, 3])
         sum_wc = np.zeros_like(pts)
         sum_w = np.zeros(n, dtype=np.float64)
-        for k in range(4):
-            np.add.at(sum_wc, tets[:, k], W[:, None] * C)
-            np.add.at(sum_w, tets[:, k], W)
+        # each tet contributes W*C to all 4 vertices — tile across k=0..3.
+        WC = W[:, None] * C  # (T,3)
+        flat_idx = tets.ravel(order="C")  # (T*4,) — v0,v1,v2,v3 of each tet
+        WC_rep = np.tile(WC, (1, 4)).reshape(-1, 3)  # (T*4,3)
+        W_rep = np.repeat(W, 4)  # (T*4,)
+        np.add.at(sum_wc, flat_idx, WC_rep)
+        np.add.at(sum_w, flat_idx, W_rep)
         valid = (sum_w > 1e-30) & (~locked_mask)
         if not valid.any():
             break
@@ -294,9 +298,13 @@ def smooth_cvt(
         ))
         sum_wc = np.zeros_like(pts)
         sum_w = np.zeros(n, dtype=np.float64)
-        for k in range(4):
-            np.add.at(sum_wc, tets[:, k], vol6[:, None] * centroid)
-            np.add.at(sum_w, tets[:, k], vol6)
+        # each tet contributes vol6*centroid to all 4 vertices — tile across k=0..3.
+        WC_cvt = vol6[:, None] * centroid  # (T,3)
+        flat_idx_cvt = tets.ravel(order="C")  # (T*4,)
+        WC_cvt_rep = np.tile(WC_cvt, (1, 4)).reshape(-1, 3)  # (T*4,3)
+        W_cvt_rep = np.repeat(vol6, 4)  # (T*4,)
+        np.add.at(sum_wc, flat_idx_cvt, WC_cvt_rep)
+        np.add.at(sum_w, flat_idx_cvt, W_cvt_rep)
         valid = (sum_w > 1e-30) & (~locked_mask)
         if not valid.any():
             break
