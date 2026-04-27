@@ -2697,3 +2697,83 @@ def _evidence_compare_lines(
         "delta_K": delta_K,
         "wall_ms": wall_ms,
     }
+
+
+# ── Line P: Klingner & Shewchuk 2008 §3.4 Multi-Face Removal ────────────────
+def _multi_face_removal_candidates(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    k_worst: int = 64,
+    q_thr: float = 0.3,
+) -> list[dict]:
+    """Enumerate multi-face removal candidates (Klingner §3.4, read-only).
+
+    For each of the k_worst tets, iterate over its 4 faces and compute the
+    incident-tet star S_f.  Faces whose star min-quality q*(f) < q_thr are
+    returned as candidates sorted by (star_size DESC, min_q ASC).
+
+    Parameters
+    ----------
+    pts:     (N, 3) float64 vertex array.
+    tets:    (M, 4) int32/int64 tet connectivity array.
+    k_worst: top-K worst tets to examine (wall-time bound).
+    q_thr:   quality threshold; only faces with star min_q < q_thr are kept.
+
+    Returns
+    -------
+    list[dict] each with keys:
+        "face"      : (a, b, c) sorted int tuple
+        "star_size" : number of tets incident to the face
+        "min_q"     : minimum quality among incident tets
+        "owner_tet" : index of the worst tet that exposed this face
+    """
+    if len(tets) == 0:
+        return []
+
+    # Step 1: vectorised quality array → top-K worst tet indices.
+    q_arr = np.array(
+        [_tet_quality(pts, tets[i]) for i in range(len(tets))], dtype=np.float64
+    )
+    worst_indices = np.argsort(q_arr)[: k_worst]
+
+    # Step 2: face → incident-tet map (LRU cache hit O(1) if already built).
+    face_map = compute_face_incident_tets_cached(tets)
+
+    # Step 3: enumerate face stars of worst tets.
+    seen: set[tuple[int, int, int]] = set()
+    candidates: list[dict] = []
+
+    for ti in worst_indices:
+        t = tets[ti]
+        for fi, fj, fk in _FACES4:
+            a, b, c = int(t[fi]), int(t[fj]), int(t[fk])
+            # Sort triple for canonical key (same logic as compute_face_incident_tets_cached).
+            if a > b:
+                a, b = b, a
+            if b > c:
+                b, c = c, b
+            if a > b:
+                a, b = b, a
+            key = (a, b, c)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            star = face_map.get(key, [])
+            if not star:
+                continue
+            star_min_q = min(float(q_arr[s]) for s in star)
+            if star_min_q < q_thr:
+                candidates.append(
+                    {
+                        "face": key,
+                        "star_size": len(star),
+                        "min_q": star_min_q,
+                        "owner_tet": int(ti),
+                    }
+                )
+
+    # Step 4: tie-break — star_size DESC, min_q ASC.
+    candidates.sort(key=lambda c: (-c["star_size"], c["min_q"]))
+    return candidates
