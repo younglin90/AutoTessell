@@ -41,13 +41,29 @@ def _edges_per_face(faces: np.ndarray) -> np.ndarray:
 
 
 def _edge_face_map(faces: np.ndarray) -> dict[tuple[int, int], list[int]]:
-    """edge (sorted tuple) → list of face indices sharing that edge."""
-    result: dict[tuple[int, int], list[int]] = defaultdict(list)
-    for fi in range(faces.shape[0]):
-        f = faces[fi]
-        for a, b in ((f[0], f[1]), (f[1], f[2]), (f[2], f[0])):
-            k = (int(min(a, b)), int(max(a, b)))
-            result[k].append(fi)
+    """edge (sorted tuple) → list of face indices sharing that edge.
+
+    Vectorized: builds all (3F,) edges + face indices via numpy, then
+    groups with np.lexsort + np.searchsorted to avoid per-face Python loop.
+    """
+    F = int(faces.shape[0])
+    e = _edges_per_face(faces)          # (3F, 2) sorted
+    face_idx = np.repeat(np.arange(F, dtype=np.int64), 3)  # (3F,)
+
+    # Lexicographic sort so identical edges are contiguous
+    order = np.lexsort((e[:, 1], e[:, 0]))
+    e_s = e[order]          # (3F, 2)
+    fi_s = face_idx[order]  # (3F,)
+
+    # Find group boundaries: where adjacent rows differ
+    diff = np.any(e_s[1:] != e_s[:-1], axis=1)  # (3F-1,) bool
+    starts = np.concatenate(([0], np.where(diff)[0] + 1))  # (G,)
+    ends = np.concatenate((starts[1:], [3 * F]))             # (G,)
+
+    result: dict[tuple[int, int], list[int]] = {}
+    for s, end in zip(starts.tolist(), ends.tolist()):
+        k = (int(e_s[s, 0]), int(e_s[s, 1]))
+        result[k] = fi_s[s:end].tolist()
     return result
 
 

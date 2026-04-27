@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2200,
+  "beta": 2202,
   "max_round": 1000,
-  "round": 149,
+  "round": 151,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,13 +26,14 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 41.91,
+  "last_bench_time": 42.40,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "OFF_READER_VEC",
     "TET_BL_SUBDIVIDE_VEC",
     "REPORT_VEC",
     "PIPELINE_VEC",
@@ -66,5 +67,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "TET_BL_SUBDIVIDE_VEC (R149) — vectorized 3 Python for-loops in tet_bl_subdivide.py; 55/55 PASS 41.91s"
+  "plan_archive": "TOPOLOGY_VEC (R151) — vectorized _edge_face_map Python loop → numpy lexsort+groupby in topology.py; 22/22 PASS 39.64s"
 }
