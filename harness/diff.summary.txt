@@ -1,4 +1,4 @@
-file: core/generator/native_tet/laplacian.py
-functions: smooth_interior_laplacian, smooth_boundary_envelope
-lines_added: 28
-lines_removed: 18
+file: core/generator/native_tet/stellar.py
+functions: lookahead_2flip_chain._q_arr
+lines_added: 13
+lines_removed: 1

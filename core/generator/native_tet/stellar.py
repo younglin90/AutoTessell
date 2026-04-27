@@ -502,7 +502,20 @@ def lookahead_2flip_chain(
     }
 
     def _q_arr(p: np.ndarray, t: np.ndarray) -> np.ndarray:
-        return np.array([_tet_quality(p, t[i]) for i in range(t.shape[0])], dtype=np.float64)
+        """PERF10 — vectorized mean-ratio quality for all tets (matches _tet_quality exactly)."""
+        if t.shape[0] == 0:
+            return np.empty(0, dtype=np.float64)
+        v = p[t]  # (N,4,3)
+        a = v[:, 0]; b = v[:, 1]; c = v[:, 2]; d = v[:, 3]
+        e0 = b - a; e1 = c - a; e2 = d - a
+        vol6 = (np.cross(e1, e2) * e0).sum(axis=1)  # scalar triple product
+        vol = np.abs(vol6) / 6.0
+        l_sq = (
+            (e0 ** 2).sum(1) + (e1 ** 2).sum(1) + (e2 ** 2).sum(1)
+            + ((b - c) ** 2).sum(1) + ((b - d) ** 2).sum(1) + ((c - d) ** 2).sum(1)
+        )
+        q = np.where(l_sq > 1e-30, 12.0 * (3.0 * vol) ** (2.0 / 3.0) / l_sq, 0.0)
+        return np.clip(q, 0.0, 1.0)
 
     def _try_first_valid_op(
         p: np.ndarray, t: np.ndarray, ops: tuple[str, ...]

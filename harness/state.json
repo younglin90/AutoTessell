@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2173,
+  "beta": 2174,
   "max_round": 1000,
-  "round": 121,
+  "round": 122,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,7 +26,7 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 41.06,
+  "last_bench_time": 41.77,
   "consecutive_fails": 0,
   "dones": [
     "hex",
@@ -49,12 +49,13 @@
     "PERF3",
     "PERF4",
     "PERF5",
-    "PERF9"
+    "PERF9",
+    "PERF10"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "PERF9 (R121) — VVV7+VVV8 Laplacian screening vectorised (numpy scatter-min BFS + mask filter); 22/22 PASS; bench 41.1s; worst_mq=0.127 unchanged"
+  "plan_archive": "PERF10 (R122) — VVV11 lookahead_2flip_chain _q_arr vectorized (numpy batch mean-ratio, 108x speedup); 22/22 PASS; bench 41.77s; worst_mq=0.127 unchanged"
 }
