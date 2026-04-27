@@ -1073,9 +1073,9 @@ def generate_native_tet(
                     "AUTO_TESSELL_VVV12_OFF",
                     "AUTO_TESSELL_VVV13_OFF",
                     "AUTO_TESSELL_VVV14_OFF",
+                    "AUTO_TESSELL_TET_QUALITY1_OFF",
                 ]
-                # ON-by-default (NNN1_DRYRUN/RRR2_TARGETED/P3_SSS_REVIVAL/VVV2_QUEUE)
-                # 는 "0" 으로, OFF-by-default (VVV5B/6~14_OFF) 는 "1" 로.
+                # ON-by-default 패스 (env=0 으로 OFF) vs OFF-by-default (env=1 으로 OFF).
                 _on_by_default = {
                     "AUTO_TESSELL_NNN1_DRYRUN", "AUTO_TESSELL_RRR2_TARGETED",
                     "AUTO_TESSELL_P3_SSS_REVIVAL", "AUTO_TESSELL_VVV2_QUEUE",
