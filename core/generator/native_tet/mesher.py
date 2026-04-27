@@ -66,6 +66,27 @@ def _seed_points_uniform(
 from core.utils.geometry import inside_winding_number as _inside_winding_number
 
 
+def _surf_edges_from_faces(F: np.ndarray) -> set:
+    """F (N,3) → sorted edge set. Vectorized (beta2210)."""
+    if F.shape[0] == 0:
+        return set()
+    e0 = np.stack([F[:, 0], F[:, 1]], axis=1)
+    e1 = np.stack([F[:, 1], F[:, 2]], axis=1)
+    e2 = np.stack([F[:, 2], F[:, 0]], axis=1)
+    all_e = np.concatenate([e0, e1, e2], axis=0)
+    all_e_s = np.sort(all_e, axis=1)
+    return set(map(tuple, all_e_s.tolist()))
+
+
+def _surf_faces_from_F(F: np.ndarray) -> set:
+    """F (N,3) → sorted canonical face set. Vectorized (beta2210)."""
+    if F.shape[0] == 0:
+        return set()
+    Fs = np.sort(F, axis=1)
+    return set(map(tuple, Fs.tolist()))
+
+
+
 def generate_native_tet(
     vertices: np.ndarray,
     faces: np.ndarray,
@@ -454,11 +475,7 @@ def generate_native_tet(
     if enable_edge_steiner and F.shape[0] > 0:
         try:
             from core.generator.native_tet.cdt_check import _tet_edges  # noqa
-            surf_edges_set: set[tuple[int, int]] = set()
-            for ti in range(F.shape[0]):
-                a, b, c = (int(x) for x in F[ti])
-                for u, vv in ((a, b), (b, c), (c, a)):
-                    surf_edges_set.add((u, vv) if u < vv else (vv, u))
+            surf_edges_set: set[tuple[int, int]] = _surf_edges_from_faces(F)
             extras: list[list[float]] = []
             n_per = max(1, int(edge_steiner_count))
             for (u, vv) in surf_edges_set:
@@ -645,11 +662,7 @@ def generate_native_tet(
                 # Round 58: 현재 tet edge set 중 surface edge 인 것은 보호.
                 # recovered 된 surface edge 가 B-W cavity 로 다시 제거되지
                 # 않도록 protected set 전달.
-                surf_edges_all: set[tuple[int, int]] = set()
-                for ti in range(F.shape[0]):
-                    a, b, c = int(F[ti, 0]), int(F[ti, 1]), int(F[ti, 2])
-                    for u, v in ((a, b), (b, c), (c, a)):
-                        surf_edges_all.add((u, v) if u < v else (v, u))
+                surf_edges_all: set[tuple[int, int]] = _surf_edges_from_faces(F)
                 for rec_i in range(int(edge_recovery_max_iter)):
                     if not cur_missing:
                         break
@@ -1031,10 +1044,10 @@ def generate_native_tet(
             metric_full = np.zeros((final_pts.shape[0], 3, 3), dtype=np.float64)
             inv_e2 = 1.0 / (float(target_edge_length) ** 2)
             metric_full[:] = np.eye(3) * inv_e2
-            for old_id in range(n_surface):
-                new_id = remap[old_id]
-                if new_id >= 0 and new_id < metric_full.shape[0]:
-                    metric_full[new_id] = surf_M[old_id]
+            _old_ids = np.arange(n_surface, dtype=np.int64)
+            _new_ids = remap[_old_ids]
+            _valid = (_new_ids >= 0) & (_new_ids < metric_full.shape[0])
+            metric_full[_new_ids[_valid]] = surf_M[_old_ids[_valid]]
             log.info(
                 "native_tet_anisotropic_metric",
                 aniso_ratio=float(anisotropic_ratio),
@@ -1095,11 +1108,7 @@ def generate_native_tet(
                 prev_area_phb = -1.0
 
             # Round 66: split 에도 surface edge 보호.
-            _split_surf_edges: set[tuple[int, int]] = set()
-            for _ti in range(F.shape[0]):
-                _a, _b, _c = int(F[_ti, 0]), int(F[_ti, 1]), int(F[_ti, 2])
-                for _u, _v in ((_a, _b), (_b, _c), (_c, _a)):
-                    _split_surf_edges.add((_u, _v) if _u < _v else (_v, _u))
+            _split_surf_edges: set[tuple[int, int]] = _surf_edges_from_faces(F)
             final_pts, final_tets, n_s = split_long_edges(
                 final_pts, final_tets,
                 target_edge=effective_target if enable_phase_b else float(target_edge_length),
@@ -1113,11 +1122,7 @@ def generate_native_tet(
                 and metric_full.shape[0] == final_pts.shape[0]
             ) else None
             # Round 64: 입력 surface edge 는 collapse 금지.
-            _cur_surf_edges: set[tuple[int, int]] = set()
-            for _ti in range(F.shape[0]):
-                _a, _b, _c = int(F[_ti, 0]), int(F[_ti, 1]), int(F[_ti, 2])
-                for _u, _v in ((_a, _b), (_b, _c), (_c, _a)):
-                    _cur_surf_edges.add((_u, _v) if _u < _v else (_v, _u))
+            _cur_surf_edges: set[tuple[int, int]] = _surf_edges_from_faces(F)
             final_pts, final_tets, n_c = collapse_short_edges(
                 final_pts, final_tets,
                 target_edge=effective_target if enable_phase_b else float(target_edge_length),
@@ -1144,13 +1149,8 @@ def generate_native_tet(
                 break
             # Round 62/63: 입력 surface face + edge 를 protected set 으로
             # 전달해 2-3/3-2/4-4 flip 모두에서 제거되지 않도록.
-            surf_face_set: set[tuple[int, int, int]] = set()
-            surf_edge_set: set[tuple[int, int]] = set()
-            for ti in range(F.shape[0]):
-                a, b, c = int(F[ti, 0]), int(F[ti, 1]), int(F[ti, 2])
-                surf_face_set.add(tuple(sorted((a, b, c))))   # type: ignore[arg-type]
-                for u, v in ((a, b), (b, c), (c, a)):
-                    surf_edge_set.add((u, v) if u < v else (v, u))
+            surf_face_set: set[tuple[int, int, int]] = _surf_faces_from_F(F)  # type: ignore[assignment]
+            surf_edge_set: set[tuple[int, int]] = _surf_edges_from_faces(F)
             final_tets, fr2 = face_flip_pass(
                 final_pts, final_tets,
                 n_iter=int(flip_iterations),
@@ -1253,10 +1253,10 @@ def generate_native_tet(
             vn_old = _vertex_normal_from_faces(V, F)
             # remap 으로 new-index 기반 법선 재매핑.
             vn_new = np.zeros((final_pts.shape[0], 3), dtype=np.float64)
-            for old_id in range(n_surface):
-                new_id = remap[old_id]
-                if new_id >= 0:
-                    vn_new[new_id] = vn_old[old_id]
+            _remap_oids = np.arange(n_surface, dtype=np.int64)
+            _remap_nids = remap[_remap_oids]
+            _remap_valid = (_remap_nids >= 0) & (_remap_nids < vn_new.shape[0])
+            vn_new[_remap_nids[_remap_valid]] = vn_old[_remap_oids[_remap_valid]]
             srt = smooth_tangent_surface(
                 final_pts, final_tets,
                 surface_vertex_ids=surface_new_ids2,
@@ -1871,13 +1871,10 @@ def generate_native_tet(
             # input F 의 triangle (input vertex indexing — final_pts 의 처음 n_surface_in 와 매칭).
             n_surf_v = min(int(n_surface_in), int(final_pts.shape[0]))
             Fs = np.sort(F, axis=1)
-            missing = []
-            for i in range(F.shape[0]):
-                a, b, c = int(Fs[i, 0]), int(Fs[i, 1]), int(Fs[i, 2])
-                if a >= n_surf_v or b >= n_surf_v or c >= n_surf_v:
-                    continue
-                if (a, b, c) not in tf_set:
-                    missing.append(i)
+            _in_range = (Fs[:, 0] < n_surf_v) & (Fs[:, 1] < n_surf_v) & (Fs[:, 2] < n_surf_v)
+            _cand_idx = np.where(_in_range)[0]
+            missing = [int(i) for i in _cand_idx
+                       if (int(Fs[i, 0]), int(Fs[i, 1]), int(Fs[i, 2])) not in tf_set]
         else:
             missing = []
         # FFF1 (beta2060) — BSP insert 한계 확장: missing<1000, max_inserts=800.
@@ -2090,20 +2087,23 @@ def generate_native_tet(
                 n_worst = min(200, int(sliver_mask.sum()))
                 worst_idx = np.argsort(pre_q_arr)[:n_worst]
 
-                cands = []
-                for ti in worst_idx:
-                    tet_pts = final_pts[final_tets[ti]]  # (4, 3)
-                    try:
-                        # circumcenter via linear solve: 4×3 system
-                        A = 2.0 * (tet_pts[1:] - tet_pts[0])
-                        b = np.sum(tet_pts[1:] ** 2, axis=1) - np.sum(tet_pts[0] ** 2)
-                        cc = np.linalg.lstsq(A, b, rcond=None)[0]
-                    except Exception:
-                        cc = tet_pts.mean(axis=0)
-                    cands.append(cc)
+                if len(worst_idx) > 0:
+                    _wpts = final_pts[final_tets[worst_idx]]  # (K,4,3)
+                    _A = 2.0 * (_wpts[:, 1:, :] - _wpts[:, :1, :])  # (K,3,3)
+                    _b = (np.sum(_wpts[:, 1:, :] ** 2, axis=2)
+                          - np.sum(_wpts[:, :1, :] ** 2, axis=2))  # (K,3)
+                    cands_list = []
+                    for _ki in range(len(worst_idx)):
+                        try:
+                            _cc = np.linalg.lstsq(_A[_ki], _b[_ki], rcond=None)[0]
+                        except Exception:
+                            _cc = _wpts[_ki].mean(axis=0)
+                        cands_list.append(_cc)
+                    cands = np.array(cands_list) if cands_list else np.zeros((0, 3))
+                else:
+                    cands = np.zeros((0, 3))
 
-                if cands:
-                    cands = np.array(cands)
+                if len(cands) > 0:
                     try:
                         mask_inside = envelope.contains_points(cands)
                     except Exception:
@@ -2167,19 +2167,22 @@ def generate_native_tet(
                 n_worst = min(200, int(sliver_mask.sum()))
                 worst_idx = np.argsort(pre_q_arr)[:n_worst]
 
-                cands = []
-                for ti in worst_idx:
-                    tet_pts = final_pts[final_tets[ti]]
-                    try:
-                        A = 2.0 * (tet_pts[1:] - tet_pts[0])
-                        b = np.sum(tet_pts[1:] ** 2, axis=1) - np.sum(tet_pts[0] ** 2)
-                        cc = np.linalg.lstsq(A, b, rcond=None)[0]
-                    except Exception:
-                        cc = tet_pts.mean(axis=0)
-                    cands.append(cc)
+                if len(worst_idx) > 0:
+                    _wpts3 = final_pts[final_tets[worst_idx]]  # (K,4,3)
+                    _A3 = 2.0 * (_wpts3[:, 1:, :] - _wpts3[:, :1, :])
+                    _b3 = (np.sum(_wpts3[:, 1:, :] ** 2, axis=2)
+                           - np.sum(_wpts3[:, :1, :] ** 2, axis=2))
+                    _cl3 = []
+                    for _ki3 in range(len(worst_idx)):
+                        try:
+                            _cl3.append(np.linalg.lstsq(_A3[_ki3], _b3[_ki3], rcond=None)[0])
+                        except Exception:
+                            _cl3.append(_wpts3[_ki3].mean(axis=0))
+                    cands = np.array(_cl3) if _cl3 else np.zeros((0, 3))
+                else:
+                    cands = np.zeros((0, 3))
 
-                if cands:
-                    cands = np.array(cands)
+                if len(cands) > 0:
                     try:
                         mask_inside = envelope.contains_points(cands)
                     except Exception:

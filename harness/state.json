@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2209,
+  "beta": 2210,
   "max_round": 1000,
-  "round": 158,
+  "round": 159,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,13 +26,14 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 34.57,
+  "last_bench_time": 34.07,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "TET_MESHER_REMAIN_VEC",
     "HEX_OCTREE_REMAIN_VEC",
     "POLY_VORONOI_VEC",
     "POLYMESH_OWNER_VEC",
@@ -72,5 +73,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "HEX_OCTREE_REMAIN_VEC (R158) — vectorized _refine_at_features inner loop (slab broadcast), _count_neg_vol_hex (5-tet numpy), cells triple loop (meshgrid) in octree.py+mesher.py; 22/22 PASS 34.57s"
+  "plan_archive": "TET_MESHER_REMAIN_VEC (R159) — vectorized surf_edges_set(x5), surf_face_set, metric_full remap, vn_new remap, missing-face detection, NNN2/NNN3 circumcenter batch in mesher.py; 22/22 PASS 34.07s"
 }
