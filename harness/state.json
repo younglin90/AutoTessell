@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2274,
+  "beta": 2275,
   "max_round": 1000,
-  "round": 209,
+  "round": 210,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -12,7 +12,7 @@
       "OK": 5,
       "BL_OK": 5,
       "total": 5,
-      "source": "BETA2274_VVV9J5_GLOBAL_PASS - SLIM global pass helper (R209, helper-only, no callers, mesh identical), regression 35/35 PASS, worst_mq 0.208 stable",
+      "source": "BETA2275_VVV9J6_DIAG_HOOK - VVV9J diagnostic evidence (R210, gate OFF, mesh unchanged), regression 31/31 PASS, worst_mq 0.208 stable",
       "bench_time_s": 67.93
     },
     "hex": {
@@ -39,16 +39,16 @@
     "poly"
   ],
   "recent_cards": [
+    "BETA2275_VVV9J6_DIAG_HOOK",
+    "BETA2274_VVV9J5_GLOBAL_PASS",
     "BETA2272_VVV9J3B_LINE_SEARCH",
     "BETA2271_VVV9J3_SLIM_LOCAL_GRADIENT",
-    "BETA2270_VVV9J2_SLIM_SD_ENERGY",
-    "BETA2269_VVV9J1_SLIM_LOCAL_JACOBIAN",
-    "BETA2268_VVV9I4_DIAG_ON"
+    "BETA2270_VVV9J2_SLIM_SD_ENERGY"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2274_VVV9J5_GLOBAL_PASS (R209) - SLIM global pass helper, helper-only (metric 0.208, bench 67.93s, tet target)"
+  "plan_archive": "BETA2275_VVV9J6_DIAG_HOOK (R210) - VVV9J diagnostic evidence, gate OFF (metric 0.208, bench -, tet target)"
 }

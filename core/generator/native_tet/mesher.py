@@ -3029,6 +3029,30 @@ def generate_native_tet(
                     )
                 except Exception as exc:  # noqa: BLE001
                     log.warning("native_tet_vvv9i_skipped", reason=str(exc)[:120])
+            # VVV9J #6 — SLIM global-pass diagnostic hook (gate OFF by default, discard-only)
+            _VVV9J_DIAG: bool = False
+            if _VVV9J_DIAG and _n_sliver_pre >= 1:
+                try:
+                    from core.generator.native_tet.stellar import _slim_global_pass  # noqa: PLC0415
+                    from core.generator.native_tet.quality import snapshot as _qsnap_j6  # noqa: PLC0415
+                    _pre_j6 = _qsnap_j6(final_pts, final_tets)
+                    _t0_j6 = time.perf_counter()
+                    _res_j6 = _slim_global_pass(final_pts, final_tets, max_iters=2, eps=1e-6)
+                    _post_j6 = _qsnap_j6(_res_j6["new_pts"], final_tets)
+                    _wall_ms_j6 = int((time.perf_counter() - _t0_j6) * 1000)
+                    log.info(
+                        "native_tet_vvv9j_diag",
+                        n_vertex=N,
+                        pre_worst_mq=float(_pre_j6.min_q),
+                        post_worst_mq=float(_post_j6.min_q),
+                        energy_delta=float(_res_j6["total_energy_delta"]),
+                        wall_ms=_wall_ms_j6,
+                        n_iters=int(_res_j6["n_iters_used"]),
+                        mode="dry_run",
+                    )
+                    # discard _res_j6["new_pts"] — final_pts/final_tets unchanged
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("native_tet_vvv9j6_skipped", reason=str(exc)[:120])
         except Exception as exc:
             log.warning("native_tet_vvv12_skipped", reason=str(exc)[:120])
     log.info("native_tet_pass_timing", pass_name="VVV12", dt_ms=int((time.perf_counter() - _t_vvv12) * 1000))

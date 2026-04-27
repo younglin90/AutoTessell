@@ -1,2 +1,2 @@
 PASS
-R209: regression 35/35 PASS, helper-only, worst_mq 0.208 stable, commit ready.
+R210: regression 31/31 PASS, diagnostic hook (gate OFF), worst_mq 0.208 stable, commit ready.
