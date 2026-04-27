@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2272,
+  "beta": 2273,
   "max_round": 1000,
-  "round": 207,
+  "round": 208,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -12,8 +12,8 @@
       "OK": 5,
       "BL_OK": 5,
       "total": 5,
-      "source": "BETA2272_VVV9J3B_LINE_SEARCH - Armijo backtracking line-search helper (R207, helper-only, no callers, mesh identical to R206), regression 35/35 PASS (67.75s), worst_mq 0.208±0.005 stable",
-      "bench_time_s": 0.72
+      "source": "BETA2273_VVV9J4_NEWTON_COMPOSE - SLIM Newton step compose helper (R208, helper-only, no callers, mesh identical to R207), regression 31/31 PASS (65.38s), worst_mq 0.127 stable",
+      "bench_time_s": 59.1
     },
     "hex": {
       "A": 5,
@@ -50,5 +50,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2272_VVV9J3B_LINE_SEARCH (R207) - Armijo line-search helper, helper-only (metric 0.208, bench 0.72s, tet target)"
+  "plan_archive": "BETA2273_VVV9J4_NEWTON_COMPOSE (R208) - Newton step compose helper, helper-only (metric 0.127, bench 59.1s, tet target)"
 }
