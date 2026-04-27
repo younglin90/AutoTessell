@@ -1531,7 +1531,11 @@ def generate_native_bl(
 
         # LAYERS_VEC: vectorized wall-vertex extrusion (beta2195)
         # inward_normals: (W, 3) — -vnorm for each wall vertex
-        inward_normals = np.array([-vnorm[v] for v in wall_vert_indices], dtype=np.float64)  # (W,3)
+        # 빈 list 일 때 np.array 가 (0,) 로 만들어 broadcast (0,0) 오류 → reshape (0, 3) 강제.
+        if len(wall_vert_indices) == 0:
+            inward_normals = np.zeros((0, 3), dtype=np.float64)
+        else:
+            inward_normals = np.array([-vnorm[v] for v in wall_vert_indices], dtype=np.float64).reshape(-1, 3)  # (W,3)
 
         if use_per_v_cum_pass and vertex_cum_map_pass:
             # per-vertex total thickness vector: (W,)

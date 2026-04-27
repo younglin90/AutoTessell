@@ -601,10 +601,9 @@ class PolyMeshWriter:
         _tf = np.array(_TET_FACES, dtype=np.int64)  # (4, 3)
         # tets[:, _tf] → shape (M, 4, 3) — all face vertex indices in one op
         _all_face_verts: np.ndarray = tets[:, _tf]  # (M, 4, 3)
-        cell_faces: list[list[list[int]]] = [
-            [row.tolist() for row in cell_row]
-            for cell_row in _all_face_verts.tolist()
-        ]
+        # _all_face_verts.tolist() 가 이미 list[list[list[int]]] 반환.
+        # 직전 vectorize 카드의 잔존 회귀 (row.tolist() — row 가 list 라 AttributeError).
+        cell_faces: list[list[list[int]]] = _all_face_verts.tolist()
 
         stats = write_generic_polymesh(vertices, cell_faces, case_dir)
 
