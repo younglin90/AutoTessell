@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2212,
+  "beta": 2213,
   "max_round": 1000,
-  "round": 161,
+  "round": 162,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -73,5 +73,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "LAPLACIAN_REMAIN_VEC (R161) — vectorized vert_tets build + vert_neighbors build in laplacian.py (both smooth_interior_laplacian and smooth_boundary_envelope); 22/22 PASS 34.12s"
+  "plan_archive": "FLIP_REMAIN_VEC (R162) — added _boundary_edges_from_fmap() vectorized helper; replaced per-flip np.append + list-comprehension output with batch extend + np.concatenate in flip_edges_32/44/54/76; 22/22 PASS 34.07s bench 1.875s"
 }
