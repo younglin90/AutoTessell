@@ -1,4 +1,4 @@
-file: core/generator/native_poly/quality.py
-functions: _polygon_normal_centroid_area, _batch_internal_face_metrics, poly_quality_report
-lines_added: 72
-lines_removed: 23
+file: core/evaluator/native_checker.py
+functions: _compute_face_centres, _compute_face_normals_areas, _compute_cell_volumes
+lines_added: 42
+lines_removed: 22

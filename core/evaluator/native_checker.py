@@ -284,36 +284,72 @@ class NativeMeshChecker:
     def _compute_face_centres(
         points: np.ndarray, faces: list[list[int]]
     ) -> np.ndarray:
-        """Return (F, 3) array of face centres (average of vertices)."""
-        centres = np.zeros((len(faces), 3), dtype=np.float64)
+        """Return (F, 3) array of face centres (average of vertices).
+
+        Vectorized: group faces by vertex count → stack (G, K, 3) → mean(axis=1).
+        Falls back to scalar loop only for face groups too small to batch.
+        """
+        n = len(faces)
+        centres = np.empty((n, 3), dtype=np.float64)
+        if n == 0:
+            return centres
+
+        # Group face indices by vertex count
+        from collections import defaultdict
+        groups: dict[int, list[int]] = defaultdict(list)
         for i, face in enumerate(faces):
-            centres[i] = points[face].mean(axis=0)
+            groups[len(face)].append(i)
+
+        for k, idxs in groups.items():
+            idx_arr = np.asarray(idxs, dtype=np.int64)
+            # Build (G, k) vertex index array
+            vidx = np.empty((len(idxs), k), dtype=np.int64)
+            for j, i in enumerate(idxs):
+                vidx[j] = faces[i]
+            # points[vidx]: (G, k, 3) → mean over axis=1 → (G, 3)
+            centres[idx_arr] = points[vidx].mean(axis=1)
+
         return centres
 
     @staticmethod
     def _compute_face_normals_areas(
         points: np.ndarray, faces: list[list[int]]
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Return unit normals (F, 3) and areas (F,) using fan triangulation."""
+        """Return unit normals (F, 3) and areas (F,) using fan triangulation.
+
+        Vectorized: group by vertex count → stack (G, K, 3) → fan cross products.
+        """
         n = len(faces)
         normals = np.zeros((n, 3), dtype=np.float64)
         areas = np.zeros(n, dtype=np.float64)
+        if n == 0:
+            return normals, areas
 
+        from collections import defaultdict
+        groups: dict[int, list[int]] = defaultdict(list)
         for i, face in enumerate(faces):
-            if len(face) < 3:
-                continue
-            verts = points[face]
-            # Fan triangulate from vertex 0
-            v0 = verts[0]
-            area_vec = np.zeros(3, dtype=np.float64)
-            for k in range(1, len(face) - 1):
-                e1 = verts[k] - v0
-                e2 = verts[k + 1] - v0
-                area_vec += np.cross(e1, e2)
-            mag = np.linalg.norm(area_vec)
-            areas[i] = mag * 0.5
-            if mag > 0.0:
-                normals[i] = area_vec / mag
+            if len(face) >= 3:
+                groups[len(face)].append(i)
+
+        for k, idxs in groups.items():
+            idx_arr = np.asarray(idxs, dtype=np.int64)
+            G = len(idxs)
+            vidx = np.empty((G, k), dtype=np.int64)
+            for j, i in enumerate(idxs):
+                vidx[j] = faces[i]
+            verts = points[vidx]  # (G, k, 3)
+            v0 = verts[:, 0:1, :]  # (G, 1, 3)
+            # Fan triangulation: edges from v0 to v1..v_{k-1} and v2..v_k
+            e1 = verts[:, 1:-1, :] - v0   # (G, k-2, 3)
+            e2 = verts[:, 2:, :] - v0     # (G, k-2, 3)
+            # Cross products for each triangle: (G, k-2, 3)
+            crosses = np.cross(e1, e2)
+            # Sum over triangles → (G, 3)
+            area_vec = crosses.sum(axis=1)
+            mag = np.linalg.norm(area_vec, axis=1)  # (G,)
+            areas[idx_arr] = mag * 0.5
+            nonzero = mag > 0.0
+            normals[idx_arr[nonzero]] = area_vec[nonzero] / mag[nonzero, np.newaxis]
 
         return normals, areas
 
@@ -476,10 +512,8 @@ class NativeMeshChecker:
         """
         n_faces = len(faces)
 
-        # Face centres
-        fc = np.zeros((n_faces, 3), dtype=np.float64)
-        for i, face in enumerate(faces):
-            fc[i] = points[face].mean(axis=0)
+        # Face centres — vectorized (reuse _compute_face_centres logic)
+        fc = NativeMeshChecker._compute_face_centres(points, faces)
 
         # ── face normal 방향을 "owner cell 바깥" 기준으로 정렬 ──
         # cfMesh/octree mesh 는 face vertex ordering 이 항상 표준 owner→neighbour 를

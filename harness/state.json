@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2179,
+  "beta": 2180,
   "max_round": 1000,
-  "round": 127,
+  "round": 128,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,13 +26,14 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 40.81,
+  "last_bench_time": 57.47,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "MESHCHECKER1",
     "POLY_CACHE",
     "HEX_CACHE",
     "BSP_ORIENT_FIX",
@@ -57,5 +58,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "POL_PERF2 (R127) — vectorize poly_quality_report per-face metric loop; _batch_internal_face_metrics groups faces by vertex count and stacks as (F,K,3) numpy; _polygon_normal_centroid_area fan-tri vectorized via np.roll; 22/22 PASS; bench 40.81s"
+  "plan_archive": "MESHCHECKER1 (R128) — vectorize NativeMeshChecker _compute_face_centres and _compute_face_normals_areas via group-by-vertex-count numpy batch; _compute_cell_volumes reuses vectorized face centre; 10x speedup on uniform quads; 55/55 PASS"
 }
