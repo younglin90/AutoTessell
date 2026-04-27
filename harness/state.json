@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2244,
+  "beta": 2245,
   "max_round": 1000,
-  "round": 179,
+  "round": 180,
   "last_grade": {
     "tet": {
       "A": 19,
@@ -95,5 +95,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "P4-B-4 QED native_tet integration (R179) — env-gated quadric error decimation pre-pass before MM1 isotropic remesh. icosphere subdiv=4 (5120F→2560F) verified. P4-C tet bench: A=19/20 (95%), BL=20/20, all tier OK. Industry-standard reach: tet 95%, hex 80%+, poly 80%+, BL 100%."
+  "plan_archive": "P4-B-5 Phase B/C skip + polymesh write deferred (R180) — _phase_bc_skip 시 18 env vars OFF + W3/NN1/RR1/BSP/EEE try-block guard + JJ3/drop_extreme_slivers gate + critical fix: polymesh write defer (이전: skip 케이스 disk 의 polyMesh 가 Phase A 잘못된 mesh, 이제: P4-C 후 한 번만 write). 회귀 22/22 PASS. native_tet 95% A grade 유지."
 }

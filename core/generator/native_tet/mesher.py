@@ -1062,6 +1062,7 @@ def generate_native_tet(
                     "AUTO_TESSELL_NNN1_DRYRUN",
                     "AUTO_TESSELL_NNN2_INSERT",
                     "AUTO_TESSELL_NNN3_INSERT",
+                    "AUTO_TESSELL_NNN4_AMIPS",
                     "AUTO_TESSELL_RRR2_TARGETED",
                     "AUTO_TESSELL_P3_SSS_REVIVAL",
                     "AUTO_TESSELL_VVV2_QUEUE",
@@ -1080,7 +1081,8 @@ def generate_native_tet(
                 # ON-by-default 패스 (env=0 으로 OFF) vs OFF-by-default (env=1 으로 OFF).
                 _on_by_default = {
                     "AUTO_TESSELL_NNN1_DRYRUN", "AUTO_TESSELL_NNN2_INSERT",
-                    "AUTO_TESSELL_NNN3_INSERT", "AUTO_TESSELL_RRR2_TARGETED",
+                    "AUTO_TESSELL_NNN3_INSERT", "AUTO_TESSELL_NNN4_AMIPS",
+                    "AUTO_TESSELL_RRR2_TARGETED",
                     "AUTO_TESSELL_P3_SSS_REVIVAL", "AUTO_TESSELL_VVV2_QUEUE",
                 }
                 _orig_env: dict[str, str | None] = {}
