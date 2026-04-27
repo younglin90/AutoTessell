@@ -932,6 +932,73 @@ def insert_face_centroid_steiner(
 
 
 # ---------------------------------------------------------------------------
+# VVV9B (beta2246) — off-plane sliver Steiner skeleton (default OFF)
+# fTetWild §3.4 + Klingner & Shewchuk 2008 §4 + Du & Wang 2003 sliver exudation
+# ---------------------------------------------------------------------------
+
+_VVV9B_OFFPLANE: bool = False  # skeleton gate — activated in next card (VVV9C)
+
+
+def compute_offplane_steiner_point(
+    pts: "np.ndarray",
+    tet: "np.ndarray",
+    *,
+    eps_factor: float = 0.05,
+    flatness_thresh: float = 1e-2,
+) -> "tuple[np.ndarray | None, float]":
+    """Compute an off-plane Steiner point for a coplanar (sliver) tet.
+
+    Uses SVD of the centred 4-vertex matrix to find the plane normal (smallest
+    singular vector).  Returns (None, flatness) when the tet is *not* coplanar
+    enough (flatness >= flatness_thresh).  Otherwise returns
+    (c + eps_factor * l_max * n_hat, flatness).
+
+    Parameters
+    ----------
+    pts:             full point array  (N, 3)
+    tet:             4-element index array
+    eps_factor:      fraction of l_max to offset Steiner from centroid
+    flatness_thresh: flatness ratio above which tet is not considered a sliver
+
+    Returns
+    -------
+    (steiner_point | None, flatness)
+    """
+    verts = pts[tet]                            # (4, 3)
+    c = verts.mean(axis=0)
+    centered = verts - c
+    _U, _S, Vt = np.linalg.svd(centered, full_matrices=False)
+    n_hat = Vt[-1]                              # smallest-singular-value direction = plane normal
+    pairs = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
+    l_max = max(float(np.linalg.norm(verts[i] - verts[j])) for i, j in pairs)
+    h = float(np.abs(centered @ n_hat).max())
+    flatness = h / max(l_max, 1e-30)
+    if flatness >= flatness_thresh:
+        return None, flatness                   # not coplanar enough — skip
+    return c + (eps_factor * l_max) * n_hat, flatness
+
+
+def _count_offplane_sliver_candidates(
+    pts: "np.ndarray",
+    tets: "np.ndarray",
+    *,
+    flatness_thresh: float = 1e-2,
+) -> int:
+    """Count tets whose flatness ratio is below *flatness_thresh* (diagnostic).
+
+    Not called by any active path — reserved for VVV9C activation card.
+    """
+    count = 0
+    for tet in tets:
+        _, flatness = compute_offplane_steiner_point(
+            pts, tet, flatness_thresh=flatness_thresh
+        )
+        if flatness < flatness_thresh:
+            count += 1
+    return count
+
+
+# ---------------------------------------------------------------------------
 # VAL1 (beta2147) — global negative-volume tet detection + auto-flip
 # ---------------------------------------------------------------------------
 # VAL3 (beta2158) — per-pass negative-volume counter
