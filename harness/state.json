@@ -1,14 +1,18 @@
 {
   "target_engine": "tet",
-  "beta": 2229,
+  "beta": 2244,
   "max_round": 1000,
-  "round": 178,
+  "round": 179,
   "last_grade": {
     "tet": {
-      "A": 0,
-      "B": 0,
-      "C": 2,
-      "D": 3
+      "A": 19,
+      "B": 1,
+      "C": 0,
+      "D": 0,
+      "OK": 20,
+      "BL_OK": 20,
+      "total": 20,
+      "source": "bench_tet_p4c_sequential.py (P4-C ON)"
     },
     "hex": {
       "A": 5,
@@ -24,15 +28,25 @@
     }
   },
   "last_mq": {
-    "tet_worst": 0.127
+    "tet_worst": 0.392,
+    "tet_industrial_reach": "95%"
   },
-  "last_bench_time": 0.245,
+  "last_bench_time": 1135.7,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "P4-B-4_QED_NATIVE_TET",
+    "P4-B-3_QED_COLLAPSE_LOOP",
+    "P4-B-2_QED_HEAP_INIT",
+    "P4-B-1_QED_SKELETON",
+    "P4-D_TET_BENCH_SEQUENTIAL",
+    "P4-C_PYTETWILD_FALLBACK",
+    "P3-CARD2_SSS_REVIVE",
+    "P2_POLY_REPAIR_FALLBACK",
+    "P1_HEX_AUTO_ESCALATE",
     "EVAL_REMAIN_VEC",
     "PREPROC_REMAIN_VEC",
     "ANALYZER_REMAIN_VEC",
@@ -81,5 +95,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "EVAL_REMAIN_VEC (R178) — all core/evaluator/ files already vectorized (no-op); 22/22 PASS bench 32.5s"
+  "plan_archive": "P4-B-4 QED native_tet integration (R179) — env-gated quadric error decimation pre-pass before MM1 isotropic remesh. icosphere subdiv=4 (5120F→2560F) verified. P4-C tet bench: A=19/20 (95%), BL=20/20, all tier OK. Industry-standard reach: tet 95%, hex 80%+, poly 80%+, BL 100%."
 }
