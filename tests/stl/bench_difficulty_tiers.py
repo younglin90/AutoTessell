@@ -78,9 +78,11 @@ def _worker_run(payload: tuple) -> dict:
                     enable_phase_c=True, enable_amips_smooth=True,
                 )
                 out["success"] = bool(r.success)
-                out["n_cells"] = int(getattr(r, "n_tets", 0))
+                out["n_cells"] = int(getattr(r, "n_cells", 0) or getattr(r, "n_tets", 0))
                 out["grade"] = str(getattr(r, "quality_grade", "?"))
-                out["mq"] = float(getattr(r, "mean_q", -1.0))
+                # NativeTetResult 의 mean_q 는 r.quality.mean_q 에 있음.
+                _q = getattr(r, "quality", None)
+                out["mq"] = float(getattr(_q, "mean_q", -1.0)) if _q is not None else -1.0
                 if not r.success:
                     out["message"] = str(getattr(r, "message", ""))[:120]
             elif engine == "hex":
@@ -169,9 +171,9 @@ def _select_meshes() -> dict[str, list[dict]]:
             break
         out["hard"].append(_row_to_info(row, "hard"))
 
-    # extreme
+    # extreme — face cap 8000 → 5000 으로 축소 (1017016 V=2994 F=5934 같은 mesh 회피).
     for row in thingi10k.dataset(
-        self_intersecting=True, manifold=False, num_facets=(2000, 8000),
+        self_intersecting=True, manifold=False, num_facets=(2000, 5000),
     ):
         if len(out["extreme"]) >= 5:
             break
@@ -215,8 +217,9 @@ def main():
             jobs.append((info, engine, True,
                          (V_bytes, V_shape, F_bytes, F_shape, engine, True)))
 
-    n_workers = min(4, max(1, (os.cpu_count() or 1) // 2))
-    per_cell_timeout = 180.0
+    # 권장 보정: workers 4→8, per-cell timeout 180→90s.
+    n_workers = min(8, max(1, (os.cpu_count() or 1)))
+    per_cell_timeout = 90.0
     print(f"workers={n_workers} per_cell_timeout={per_cell_timeout}s "
           f"jobs={len(jobs)}\n", flush=True)
 
