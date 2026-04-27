@@ -1238,15 +1238,15 @@ def generate_native_poly_voronoi(
             cont_score=round(-candidates[0][1], 4),
         )
 
-        # beta2245n — best 가 grade != A 이고 not hex fallback 시 P2 repair retry 시도.
+        # beta2245n — best 가 grade != A 시 P2 repair retry 시도.
         # 입력 self-intersect 등으로 voronoi 가 grade B/C 에 머무르는 경우 회복 가능성.
+        # hex_fallback 도 retry 대상 — repair 후 voronoi 가 작동할 가능성.
         # 보호 가드: 큰 mesh (F > 5000) 는 retry 시간 비용 폭주 → skip.
         # env AUTO_TESSELL_POLY_GRADE_RETRY=0 으로 비활성 가능.
         _grade_retry_on = _os_poly.environ.get("AUTO_TESSELL_POLY_GRADE_RETRY", "1") != "0"
         if (
             _grade_retry_on
             and best_result.quality_grade != "A"
-            and not best_label.startswith("hex")
             and best_result.success
             and faces.shape[0] <= 5000
         ):
@@ -1277,10 +1277,16 @@ def generate_native_poly_voronoi(
                         seed_density=int(seed_density),
                         n_lloyd=int(n_lloyd), lp_p=2.0,
                     )
-                    # grade A 만 채택 (grade B/C 는 기존 best 유지).
-                    if _retry_r2.success and _retry_r2.quality_grade == "A":
+                    # 채택 정책: 새 grade 가 더 좋으면 (A > B > C > D > ?) 채택.
+                    _grade_rank = {"A": 4, "B": 3, "C": 2, "D": 1, "?": 0}
+                    if (
+                        _retry_r2.success
+                        and _grade_rank.get(_retry_r2.quality_grade, 0)
+                        > _grade_rank.get(best_result.quality_grade, 0)
+                    ):
                         log.info(
                             "native_poly_p2_grade_retry_accepted",
+                            old_grade=best_result.quality_grade,
                             new_grade=_retry_r2.quality_grade,
                             new_cells=_retry_r2.n_cells,
                         )
