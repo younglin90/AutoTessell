@@ -1853,3 +1853,64 @@ def _slim_local_jacobian_per_tet(
         "n_inverted": n_inverted,
         "wall_ms": wall_ms,
     }
+
+
+# ---------------------------------------------------------------------------
+# VVV9J2 — SLIM Symmetric Dirichlet energy helper (caller 없음)
+# Rabinovich et al. 2017 §3 eq.(3)
+# E_SD(F) = 0.5 * ( ||F||_F^2 + ||F^{-1}||_F^2 )
+#          = 0.5 * ( frob_F2 + ||cof(F)||_F^2 / det(F)^2 )
+# ---------------------------------------------------------------------------
+
+_VVV9J_SD: bool = False  # default OFF — no caller yet
+
+
+def _slim_symmetric_dirichlet_energy(jac_dict: dict) -> np.ndarray:
+    """Compute per-tet Symmetric Dirichlet energy (Rabinovich 2017 §3 eq.3).
+
+    Parameters
+    ----------
+    jac_dict : dict
+        Output of :func:`_slim_local_jacobian_per_tet`.  Required keys:
+        ``"F"`` (T, 3, 3), ``"det_F"`` (T,), ``"frob_F2"`` (T,).
+
+    Returns
+    -------
+    E_SD : np.ndarray, shape (T,), dtype float64
+        Per-tet Symmetric Dirichlet energy.
+        Inverted or degenerate tets (det F ≤ 0 or |det F| < 1e-14) → +inf.
+    """
+    F: np.ndarray = np.asarray(jac_dict["F"], dtype=np.float64)      # (T, 3, 3)
+    det_F: np.ndarray = np.asarray(jac_dict["det_F"], dtype=np.float64)  # (T,)
+    frob_F2: np.ndarray = np.asarray(jac_dict["frob_F2"], dtype=np.float64)  # (T,)
+
+    T = F.shape[0]
+
+    # --- Cofactor (adjugate) matrix: cof(F) closed-form 3×3 minor expansion ---
+    # cof_F[t, i, j] = (-1)^(i+j) * M_ij  where M_ij = 2×2 minor det.
+    cof_F = np.empty_like(F)
+
+    # Row 0
+    cof_F[:, 0, 0] =  F[:, 1, 1] * F[:, 2, 2] - F[:, 1, 2] * F[:, 2, 1]
+    cof_F[:, 0, 1] = -(F[:, 1, 0] * F[:, 2, 2] - F[:, 1, 2] * F[:, 2, 0])
+    cof_F[:, 0, 2] =  F[:, 1, 0] * F[:, 2, 1] - F[:, 1, 1] * F[:, 2, 0]
+    # Row 1
+    cof_F[:, 1, 0] = -(F[:, 0, 1] * F[:, 2, 2] - F[:, 0, 2] * F[:, 2, 1])
+    cof_F[:, 1, 1] =  F[:, 0, 0] * F[:, 2, 2] - F[:, 0, 2] * F[:, 2, 0]
+    cof_F[:, 1, 2] = -(F[:, 0, 0] * F[:, 2, 1] - F[:, 0, 1] * F[:, 2, 0])
+    # Row 2
+    cof_F[:, 2, 0] =  F[:, 0, 1] * F[:, 1, 2] - F[:, 0, 2] * F[:, 1, 1]
+    cof_F[:, 2, 1] = -(F[:, 0, 0] * F[:, 1, 2] - F[:, 0, 2] * F[:, 1, 0])
+    cof_F[:, 2, 2] =  F[:, 0, 0] * F[:, 1, 1] - F[:, 0, 1] * F[:, 1, 0]
+
+    frob_cof2 = np.einsum("tij,tij->t", cof_F, cof_F)  # (T,)
+
+    # --- Mask: valid tets have det_F > 0 and |det_F| >= 1e-14 ---
+    mask = (det_F > 0.0) & (np.abs(det_F) >= 1e-14)
+
+    inv_term = np.full(T, np.inf, dtype=np.float64)
+    inv_term[mask] = frob_cof2[mask] / (det_F[mask] ** 2)
+
+    E_SD = 0.5 * (frob_F2 + inv_term)  # (T,) — +inf where mask is False
+
+    return E_SD
