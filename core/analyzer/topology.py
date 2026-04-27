@@ -194,27 +194,60 @@ def dihedral_angles(
 ) -> tuple[np.ndarray, np.ndarray]:
     """internal edge 별 dihedral angle (라디안). 0 = 평평, π = 완전히 접힌 상태.
 
+    완전 numpy 벡터화: per-edge Python loop 없음.
+
     Returns:
         (edges, angles) — edges: (K, 2) int64, angles: (K,) float64.
     """
     if faces.size == 0:
         return np.zeros((0, 2), dtype=np.int64), np.zeros(0, dtype=np.float64)
-    normals = _face_normals_unit(vertices, faces)
-    edge_map = _edge_face_map(faces)
-    edges_out: list[tuple[int, int]] = []
-    angles_out: list[float] = []
-    for (a, b), fl in edge_map.items():
-        if len(fl) != 2:
-            continue
-        n1 = normals[fl[0]]; n2 = normals[fl[1]]
-        c = float(np.clip(np.dot(n1, n2), -1.0, 1.0))
-        ang = float(np.arccos(c))
-        edges_out.append((a, b))
-        angles_out.append(ang)
-    return (
-        np.array(edges_out, dtype=np.int64) if edges_out else np.zeros((0, 2), dtype=np.int64),
-        np.array(angles_out, dtype=np.float64),
-    )
+    normals = _face_normals_unit(vertices, faces)  # (F, 3)
+
+    # Build (3F, 2) sorted edges + face index per half-edge — all numpy
+    F = faces.shape[0]
+    face_idx = np.repeat(np.arange(F, dtype=np.int64), 3)   # (3F,)
+    e_raw = _edges_per_face(faces)                           # (3F, 2) sorted
+
+    # Lexicographic sort on (e0, e1) to group shared edges together
+    order = np.lexsort((e_raw[:, 1], e_raw[:, 0]))
+    e_sorted = e_raw[order]        # (3F, 2)
+    fi_sorted = face_idx[order]    # (3F,)
+
+    # Find runs: positions where adjacent rows are equal → shared edge
+    same = np.all(e_sorted[1:] == e_sorted[:-1], axis=1)  # (3F-1,) bool
+    # Indices where a run of 2 starts (same[i] True means row i and i+1 match)
+    run_start = np.where(same)[0]  # positions i where e[i]==e[i+1]
+
+    # Keep only pairs where exactly 2 faces share an edge (manifold interior)
+    # A non-manifold edge would appear 3+ times; we take consecutive pairs.
+    # Filter: run_start[j]+1 must not also be in run_start (i.e. no triple)
+    if run_start.size == 0:
+        return np.zeros((0, 2), dtype=np.int64), np.zeros(0, dtype=np.float64)
+
+    # Exclude starts that are themselves part of a longer run
+    is_triple_start = np.zeros(run_start.size, dtype=bool)
+    if run_start.size > 1:
+        # if run_start[k]+1 == run_start[k+1], then we have ≥3 consecutive
+        is_triple_start[:-1] = (run_start[1:] == run_start[:-1] + 1)
+        is_triple_start[1:] |= (run_start[1:] == run_start[:-1] + 1)
+    valid = ~is_triple_start
+    rs = run_start[valid]           # valid pair starts
+
+    if rs.size == 0:
+        return np.zeros((0, 2), dtype=np.int64), np.zeros(0, dtype=np.float64)
+
+    # Extract edge endpoints and face pairs — vectorized
+    edge_verts = e_sorted[rs]              # (K, 2)
+    fi0 = fi_sorted[rs]                   # (K,) face index 0
+    fi1 = fi_sorted[rs + 1]               # (K,) face index 1
+
+    # Dot product of normals — fully vectorized
+    n0 = normals[fi0]                     # (K, 3)
+    n1 = normals[fi1]                     # (K, 3)
+    cos_a = np.clip((n0 * n1).sum(axis=1), -1.0, 1.0)  # (K,)
+    angles = np.arccos(cos_a)             # (K,)
+
+    return edge_verts.astype(np.int64), angles
 
 
 def count_sharp_edges(

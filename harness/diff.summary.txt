@@ -1,4 +1,4 @@
-file: core/evaluator/native_checker.py
-functions: _compute_face_centres, _compute_face_normals_areas, _compute_cell_volumes
-lines_added: 42
-lines_removed: 22
+file: core/analyzer/topology.py
+functions: dihedral_angles
+lines_added: 44
+lines_removed: 14
