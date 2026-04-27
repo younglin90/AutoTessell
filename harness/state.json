@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2196,
+  "beta": 2197,
   "max_round": 1000,
-  "round": 145,
+  "round": 146,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -65,5 +65,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "PIPELINE_VEC (R145) — vectorize domain volume product loop via numpy.prod in _apply_max_cells_limit; 22/22 PASS 39.53s"
+  "plan_archive": "PREDICATES_VEC (R146) — vectorize _det5 inner loop + add insphere_staged_batch; 22/22 PASS 39.47s"
 }

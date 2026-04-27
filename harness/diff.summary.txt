@@ -1,4 +1,4 @@
-file: core/pipeline/orchestrator.py
-functions: _apply_max_cells_limit
-lines_added: 5
-lines_removed: 3
+file: core/utils/predicates_staged.py
+functions: insphere_staged._det5, insphere_staged_batch (new)
+lines_added: 43
+lines_removed: 6

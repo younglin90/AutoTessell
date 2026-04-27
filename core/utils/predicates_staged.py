@@ -27,21 +27,34 @@ _ORIENT3D_ERROR_BOUND_COEF = 7.0 * (2.0 ** -53)
 _SHEWCHUK_ORIENT3D = None
 _SHEWCHUK_INSPHERE = None
 
-for _modname in ("robust_predicates", "shewchuk_predicates", "predicates"):
-    try:
-        _mod = __import__(_modname)
-    except Exception:
-        continue
-    for _ot in ("orient3d", "orientation3d", "orient_3d"):
-        if hasattr(_mod, _ot):
-            _SHEWCHUK_ORIENT3D = getattr(_mod, _ot)
+# 1순위: 번들된 Shewchuk C 구현 (core/utils/_shewchuk/).
+# .so 가 없으면 자동 컴파일 시도 후 ctypes 로 로드.
+try:
+    from core.utils._shewchuk import orient3d as _sw_o3d, insphere as _sw_isp
+    if _sw_o3d is not None:
+        _SHEWCHUK_ORIENT3D = _sw_o3d
+    if _sw_isp is not None:
+        _SHEWCHUK_INSPHERE = _sw_isp
+except Exception:
+    pass
+
+# 2순위: PyPI 외부 패키지 (robust_predicates / shewchuk_predicates / predicates).
+if _SHEWCHUK_ORIENT3D is None:
+    for _modname in ("robust_predicates", "shewchuk_predicates", "predicates"):
+        try:
+            _mod = __import__(_modname)
+        except Exception:
+            continue
+        for _ot in ("orient3d", "orientation3d", "orient_3d"):
+            if hasattr(_mod, _ot):
+                _SHEWCHUK_ORIENT3D = getattr(_mod, _ot)
+                break
+        for _is in ("insphere", "in_sphere", "insphere3d"):
+            if hasattr(_mod, _is):
+                _SHEWCHUK_INSPHERE = getattr(_mod, _is)
+                break
+        if _SHEWCHUK_ORIENT3D is not None:
             break
-    for _is in ("insphere", "in_sphere", "insphere3d"):
-        if hasattr(_mod, _is):
-            _SHEWCHUK_INSPHERE = getattr(_mod, _is)
-            break
-    if _SHEWCHUK_ORIENT3D is not None:
-        break
 
 
 def _orient3d_via_shewchuk(a, b, c, d) -> int | None:
@@ -161,11 +174,17 @@ def insphere_staged(a, b, c, d, e) -> int:
 
     # Stage 1: double.
     def _det5(A_, B_, C_, D_, E_, dtype):
+        # vectorised: build 4×4 matrix without Python loop
+        ABCD = np.stack([
+            np.asarray(A_, dtype=dtype),
+            np.asarray(B_, dtype=dtype),
+            np.asarray(C_, dtype=dtype),
+            np.asarray(D_, dtype=dtype),
+        ])  # (4, 3)
+        d = ABCD - np.asarray(E_, dtype=dtype)  # (4, 3)
         M = np.empty((4, 4), dtype=dtype)
-        for i, P in enumerate([A_, B_, C_, D_]):
-            d = np.asarray(P, dtype=dtype) - np.asarray(E_, dtype=dtype)
-            M[i, 0] = d[0]; M[i, 1] = d[1]; M[i, 2] = d[2]
-            M[i, 3] = d[0] * d[0] + d[1] * d[1] + d[2] * d[2]
+        M[:, :3] = d
+        M[:, 3] = (d * d).sum(axis=1)
         return np.linalg.det(M)
 
     det = float(_det5(A, B, C, D, E, np.float64))
@@ -263,4 +282,47 @@ def orient3d_staged_batch(
     if uncertain.any():
         for i in np.where(uncertain)[0].tolist():
             out[i] = orient3d_staged(A[i], B[i], C[i], D[i])
+    return out
+
+
+def insphere_staged_batch(
+    A: np.ndarray, B: np.ndarray, C: np.ndarray,
+    D: np.ndarray, E: np.ndarray,
+) -> np.ndarray:
+    """Batch insphere Stage 1 (vectorised); uncertain rows fall back to scalar.
+
+    A/B/C/D/E: (N,3) float64 arrays — tet vertices + query points.
+    Returns int8 array ∈ {-1, 0, +1}.
+    """
+    A = np.asarray(A, dtype=np.float64)
+    B = np.asarray(B, dtype=np.float64)
+    C = np.asarray(C, dtype=np.float64)
+    D = np.asarray(D, dtype=np.float64)
+    E = np.asarray(E, dtype=np.float64)
+
+    N = A.shape[0]
+    # Build (N,4,4) matrix in one vectorised pass.
+    ABCD = np.stack([A, B, C, D], axis=1)  # (N,4,3)
+    d = ABCD - E[:, np.newaxis, :]         # (N,4,3)
+    M = np.empty((N, 4, 4), dtype=np.float64)
+    M[:, :, :3] = d
+    M[:, :, 3] = (d * d).sum(axis=2)      # squared distance column
+    det = np.linalg.det(M)                 # (N,)
+
+    scale_pts = (
+        np.abs(A - E).sum(axis=1)
+        + np.abs(B - E).sum(axis=1)
+        + np.abs(C - E).sum(axis=1)
+        + np.abs(D - E).sum(axis=1)
+    ) ** 4
+    bound = _INSPHERE_ERROR_BOUND_COEF * np.maximum(scale_pts, 1.0)
+
+    out = np.zeros(N, dtype=np.int8)
+    out[det > bound] = 1
+    out[det < -bound] = -1
+
+    uncertain = (det <= bound) & (det >= -bound)
+    if uncertain.any():
+        for i in np.where(uncertain)[0].tolist():
+            out[i] = insphere_staged(A[i], B[i], C[i], D[i], E[i])
     return out
