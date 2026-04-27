@@ -1,9 +1,4 @@
-file: core/generator/native_poly/quality.py
-functions: smooth_poly_in_memory, drop_degenerate_poly_cells._face_normal
-lines_added: 14
-lines_removed: 11
-
-file: core/generator/native_poly/smooth.py
-functions: smooth_poly_mesh._face_centroid_area
-lines_added: 5
-lines_removed: 5
+file: core/generator/tier_wildmesh.py
+functions: _tet_boundary_faces_vec (new), _boundary_vertices, _hausdorff_log
+lines_added: 17
+lines_removed: 14

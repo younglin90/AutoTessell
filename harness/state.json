@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2217,
+  "beta": 2218,
   "max_round": 1000,
-  "round": 166,
+  "round": 167,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,13 +26,14 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 38.34,
+  "last_bench_time": 31.96,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "TIER_GEN_REMAIN_VEC",
     "TET_BL_REMAIN_VEC",
     "BL_REMAIN_VEC",
     "TET_MESHER_REMAIN_VEC",
@@ -75,5 +76,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "POLY_GEN_REMAIN_VEC (R166) — vectorized loops in quality.py (smooth_poly_in_memory np.add.at, _face_normal cross, drop_degenerate _face_normal) and smooth.py (_face_centroid_area fan-tri); 22/22 PASS 31.82s"
+  "plan_archive": "TIER_GEN_REMAIN_VEC (R167) — vectorized _boundary_vertices/_hausdorff_log double-loops in tier_wildmesh.py via _tet_boundary_faces_vec (np gather+sort+unique); 22/22 PASS 31.96s"
 }
