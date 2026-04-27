@@ -1371,9 +1371,15 @@ def generate_native_bl(
             aspect_threshold=cfg.aspect_ratio_threshold,
         )
         # Rebuild dependent sets after filtering.
+        # BL_FIX (beta2238): wall_face_indices 에서 모든 vertex 가 vnorm 에
+        # 없는 face 제거 — _ltri (line 1641) 의 KeyError 회피.
+        wall_face_indices = [
+            fi for fi in wall_face_indices
+            if all(v in vnorm for v in faces[fi])
+        ]
         wall_set = set(wall_face_indices)
         wall_vert_indices = sorted(
-            {v for fi in wall_face_indices for v in faces[fi] if v in vnorm}
+            {v for fi in wall_face_indices for v in faces[fi]}
         )
     except Exception as _hex_bl1_exc:
         log.warning("hex_bl1_guard_skipped", reason=str(_hex_bl1_exc)[:120])
