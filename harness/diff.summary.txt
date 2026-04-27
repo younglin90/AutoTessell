@@ -1,4 +1,4 @@
-file: core/strategist/param_optimizer.py
-functions: compute_boundary_layers
-lines_added: 4
-lines_removed: 1
+file: core/preprocessor/native_repair/hole_fill.py
+functions: _extract_boundary_loops, _ear_clip_2d, fill_small_holes
+lines_added: 32
+lines_removed: 23

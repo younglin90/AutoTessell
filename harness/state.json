@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2203,
+  "beta": 2204,
   "max_round": 1000,
-  "round": 152,
+  "round": 153,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -33,6 +33,7 @@
     "poly"
   ],
   "recent_cards": [
+    "PREPROC_HOLE_VEC",
     "OFF_READER_VEC",
     "TET_BL_SUBDIVIDE_VEC",
     "REPORT_VEC",
@@ -67,5 +68,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "STRATEGIST_DECISION_VEC (R152) — vectorized BL geometric series loop → closed-form in param_optimizer.py; 22/22 PASS 41.39s"
+  "plan_archive": "PREPROC_HOLE_VEC (R153) — vectorized directed-edge extraction, boundary filter, shoelace area in hole_fill.py; 22/22 PASS 41.02s"
 }
