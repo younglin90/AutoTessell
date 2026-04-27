@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2273,
+  "beta": 2274,
   "max_round": 1000,
-  "round": 208,
+  "round": 209,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -12,8 +12,8 @@
       "OK": 5,
       "BL_OK": 5,
       "total": 5,
-      "source": "BETA2273_VVV9J4_NEWTON_COMPOSE - SLIM Newton step compose helper (R208, helper-only, no callers, mesh identical to R207), regression 31/31 PASS (65.38s), worst_mq 0.127 stable",
-      "bench_time_s": 59.1
+      "source": "BETA2274_VVV9J5_GLOBAL_PASS - SLIM global pass helper (R209, helper-only, no callers, mesh identical), regression 35/35 PASS, worst_mq 0.208 stable",
+      "bench_time_s": 67.93
     },
     "hex": {
       "A": 5,
@@ -32,7 +32,7 @@
     "tet_worst": 0.208,
     "tet_industrial_reach": "100%"
   },
-  "last_bench_time": 0.72,
+  "last_bench_time": 67.93,
   "consecutive_fails": 0,
   "dones": [
     "hex",
@@ -50,5 +50,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2273_VVV9J4_NEWTON_COMPOSE (R208) - Newton step compose helper, helper-only (metric 0.127, bench 59.1s, tet target)"
+  "plan_archive": "BETA2274_VVV9J5_GLOBAL_PASS (R209) - SLIM global pass helper, helper-only (metric 0.208, bench 67.93s, tet target)"
 }

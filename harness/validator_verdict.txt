@@ -1,2 +1,2 @@
 PASS
-Regression 35/35 PASS, worst_mq 0.208 stable (helper-only, no mesh change), bench 0.72s OK.
+R209: regression 35/35 PASS, helper-only, worst_mq 0.208 stable, commit ready.

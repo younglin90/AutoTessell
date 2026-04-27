@@ -539,6 +539,92 @@ def lookahead_2flip_chain(
         "flip44": lambda p, t: (p,) + flip_edges_44(p, t, min_quality_improvement=-1.0, max_flips=1),
     }
 
+
+# ---------------------------------------------------------------------------
+# Module-level flag — default OFF; no caller site added (helper-only).
+# ---------------------------------------------------------------------------
+_VVV9J5_GLOBAL_PASS: bool = False
+
+
+def _slim_global_pass(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    *,
+    max_iters: int = 5,
+    eps: float = 1e-6,
+) -> dict:
+    """SLIM global pass: sweep all interior vertices via Newton step.
+
+    Rabinovich 2017 §3 Algorithm 1 outer loop; Klingner 2008 §3 vertex-smoothing.
+    Input pts/tets are never mutated — returns pts_work copy only.
+
+    Returns
+    -------
+    dict with keys:
+        new_pts              : np.ndarray, shape == pts.shape
+        total_energy_delta   : float (≥ 0 by Armijo guarantee)
+        n_inverted_avoided   : int
+        n_iters_used         : int
+    """
+    N = pts.shape[0]
+    empty_result = {
+        "new_pts": pts.copy(),
+        "total_energy_delta": 0.0,
+        "n_inverted_avoided": 0,
+        "n_iters_used": 0,
+    }
+
+    # Guard: degenerate inputs
+    if N == 0 or tets.shape[0] == 0 or max_iters <= 0:
+        return empty_result
+
+    # --- Boundary vertex detection (faces appearing exactly once) ---
+    # Build all 4 faces per tet: combinations of columns (0,1,2,3) taken 3 at a time
+    face_indices = [(0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3)]
+    face_list: list[tuple[int, int, int]] = []
+    for fi in face_indices:
+        faces = np.sort(tets[:, fi], axis=1)  # (T, 3) sorted
+        for row in faces:
+            face_list.append((int(row[0]), int(row[1]), int(row[2])))
+
+    from collections import Counter
+    face_count = Counter(face_list)
+    boundary_set: set[int] = set()
+    for (a, b, c), cnt in face_count.items():
+        if cnt == 1:
+            boundary_set.update([a, b, c])
+
+    interior_idx = sorted(set(range(N)) - boundary_set)
+
+    # Guard: no interior vertices
+    if not interior_idx:
+        return empty_result
+
+    pts_work = pts.copy()
+    dE_total = 0.0
+    n_inverted_avoided = 0
+    it = 0
+
+    for it in range(max_iters):
+        dE_iter = 0.0
+        for v in interior_idx:
+            result = _slim_newton_step_one_vertex(pts_work, tets, v)
+            if result.get("accepted", False):
+                pts_work[v] = result["new_pos"]
+                dE_iter += float(result.get("energy_delta", 0.0))
+            else:
+                n_inverted_avoided += 1
+        dE_total += dE_iter
+        if dE_iter < eps:
+            break
+
+    return {
+        "new_pts": pts_work,
+        "total_energy_delta": dE_total,
+        "n_inverted_avoided": n_inverted_avoided,
+        "n_iters_used": it + 1,
+    }
+
     def _q_arr(p: np.ndarray, t: np.ndarray) -> np.ndarray:
         """PERF10 — vectorized mean-ratio quality for all tets (matches _tet_quality exactly)."""
         if t.shape[0] == 0:
