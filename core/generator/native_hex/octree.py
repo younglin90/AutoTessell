@@ -630,10 +630,19 @@ def build_octree_hex_cells(
 
     # Fine cell centroids
     n_fine_total = nfx * nfy * nfz
-    fine_cells_idx = np.array([
-        _hex8(i, j, k, nfy1, nfz1)
-        for i in range(nfx) for j in range(nfy) for k in range(nfz)
-    ], dtype=np.int64)  # (N_fine, 8)
+    # HEX_BUILD_VEC: vectorized hex8 index construction (beta2187)
+    # _fid(i,j,k) = i*nfy1*nfz1 + j*nfz1 + k
+    _ia = np.arange(nfx, dtype=np.int64)
+    _ja = np.arange(nfy, dtype=np.int64)
+    _ka = np.arange(nfz, dtype=np.int64)
+    _I, _J, _K = np.meshgrid(_ia, _ja, _ka, indexing="ij")
+    _base = _I.ravel() * (nfy1 * nfz1) + _J.ravel() * nfz1 + _K.ravel()
+    # 8 vertex offsets for hex (OpenFOAM order): di,dj,dk in _hex8
+    _off_di = np.array([0, 1, 1, 0, 0, 1, 1, 0], dtype=np.int64)
+    _off_dj = np.array([0, 0, 1, 1, 0, 0, 1, 1], dtype=np.int64)
+    _off_dk = np.array([0, 0, 0, 0, 1, 1, 1, 1], dtype=np.int64)
+    _vert_offsets = _off_di * (nfy1 * nfz1) + _off_dj * nfz1 + _off_dk  # (8,)
+    fine_cells_idx = (_base[:, None] + _vert_offsets[None, :]).astype(np.int64)  # (N_fine, 8)
 
     centroids = fine_pts[fine_cells_idx].mean(axis=1)  # (N_fine, 3)
 
