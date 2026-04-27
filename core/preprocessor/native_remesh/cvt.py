@@ -7,8 +7,6 @@
 """
 from __future__ import annotations
 
-from collections import defaultdict
-
 import numpy as np
 
 
@@ -47,13 +45,6 @@ def lloyd_cvt(
     if F.size == 0 or V.size == 0:
         return V
 
-    # vertex 당 face list 미리 계산
-    vert_faces: dict[int, list[int]] = defaultdict(list)
-    for fi, f in enumerate(F):
-        vert_faces[int(f[0])].append(fi)
-        vert_faces[int(f[1])].append(fi)
-        vert_faces[int(f[2])].append(fi)
-
     # KDTree (옵션)
     tree = None
     orig_V = None
@@ -65,18 +56,30 @@ def lloyd_cvt(
         except Exception:
             tree = None
 
+    # Vectorized scatter: build (n_faces*3,) index and weight arrays once
+    F_flat = F.ravel()  # shape (3*nF,)
+    # For each face-vertex pair, the weight is the face area
+    # We'll scatter-accumulate weighted centroids and total weights per vertex
+    n_verts = V.shape[0]
+
     for _ in range(max(1, int(n_iter))):
         centroids, areas = _face_centroids_areas(V, F)
-        new_V = V.copy()
-        for v_idx, fl in vert_faces.items():
-            if not fl:
-                continue
-            w = areas[fl]
-            if w.sum() < 1e-30:
-                continue
-            target = (centroids[fl] * w[:, np.newaxis]).sum(axis=0) / w.sum()
-            new_V[v_idx] = V[v_idx] + lam * (target - V[v_idx])
-        V = new_V
+        # Each face contributes its area-weighted centroid to its 3 vertices
+        # face_idx for each (face, local_vert) pair
+        face_idx = np.repeat(np.arange(len(F), dtype=np.int64), 3)  # (3*nF,)
+        w_flat = areas[face_idx]  # weight per (face, vert) pair
+
+        w_centroids = centroids[face_idx] * w_flat[:, np.newaxis]  # (3*nF, 3)
+
+        weighted_sum = np.zeros((n_verts, 3), dtype=np.float64)
+        weight_total = np.zeros(n_verts, dtype=np.float64)
+        np.add.at(weighted_sum, F_flat, w_centroids)
+        np.add.at(weight_total, F_flat, w_flat)
+
+        valid = weight_total > 1e-30
+        target = np.where(valid[:, np.newaxis], weighted_sum / np.where(valid[:, np.newaxis], weight_total[:, np.newaxis], 1.0), V)
+        V = V + lam * (target - V)
+
         if tree is not None and orig_V is not None:
             _, idx = tree.query(V, k=1)
             V = orig_V[idx]

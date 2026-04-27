@@ -1,9 +1,9 @@
-file: core/preprocessor/native_repair/manifold.py
-functions: _build_edge_face_map, remove_non_manifold_faces
-lines_added: 30
-lines_removed: 9
+file: core/preprocessor/native_remesh/cvt.py
+functions: lloyd_cvt
+lines_added: 15
+lines_removed: 14
 
-file: core/preprocessor/native_repair/normals.py
-functions: fix_face_winding
-lines_added: 16
-lines_removed: 5
+file: core/preprocessor/native_remesh/isotropic.py
+functions: _collapse_edges_below
+lines_added: 12
+lines_removed: 9

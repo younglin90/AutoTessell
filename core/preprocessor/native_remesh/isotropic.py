@@ -135,19 +135,22 @@ def _collapse_edges_below(
             v = merged_into[v]
         return v
 
-    # edge 목록 (고유)
-    edges = set()
+    # edge 목록 (고유) — vectorized length computation
+    edges_set: set[tuple[int, int]] = set()
     for f in F_list:
         for a, b in ((f[0], f[1]), (f[1], f[2]), (f[2], f[0])):
-            edges.add(_edge_key(int(a), int(b)))
-    # 짧은 edge 순회
-    edge_lens = []
-    for a, b in edges:
-        p = np.array(V_list[a]); q = np.array(V_list[b])
-        L = float(np.linalg.norm(p - q))
-        if L < h_lo:
-            edge_lens.append((L, a, b))
-    edge_lens.sort()
+            edges_set.add(_edge_key(int(a), int(b)))
+    edges_arr = np.array(list(edges_set), dtype=np.int64)  # (E, 2)
+    if edges_arr.size > 0:
+        V_np = np.array(V_list, dtype=np.float64)
+        lens = np.linalg.norm(V_np[edges_arr[:, 0]] - V_np[edges_arr[:, 1]], axis=1)
+        short_mask = lens < h_lo
+        edge_lens = sorted(
+            [(float(lens[i]), int(edges_arr[i, 0]), int(edges_arr[i, 1]))
+             for i in np.where(short_mask)[0]]
+        )
+    else:
+        edge_lens = []
 
     for _, a, b in edge_lens:
         ra = _resolve(a); rb = _resolve(b)
