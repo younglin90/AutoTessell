@@ -1,3 +1,2 @@
 PASS
-
-Regression 31/31 PASS. Diag flag flip (line 3033 False→True) + sliver-pre>=1 gate. Worst_mq 0.208 stable. Wall ≤70s within tolerance (+100s budget). SLIM global-pass evidence path enabled.
+Regression 31/31, worst_mq 0.208 stable, env-gate skeleton complete. Beta 2277 (R212).
