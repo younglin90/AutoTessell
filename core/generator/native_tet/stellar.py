@@ -1473,6 +1473,8 @@ def _apply_klingner_edge_contract_topK(
     n_reverted = 0
     n_conflict = 0
     applied_endpoints: set = set()
+    _last_pre_min_q_star: float = 0.0
+    _last_post_min_q_star: float = 0.0
 
     for a, b, _q in candidates[:k]:
         # --- conflict check ---------------------------------------------------
@@ -1480,8 +1482,10 @@ def _apply_klingner_edge_contract_topK(
             n_conflict += 1
             continue
 
-        # --- pre-snapshot -----------------------------------------------------
-        pre_qs = [_tet_quality(pts_out, tets_out[i]) for i in range(tets_out.shape[0])]
+        # --- pre-snapshot (star-local: tets incident to a or b) ---------------
+        pre_mask = ((tets_out == a) | (tets_out == b)).any(axis=1)
+        pre_idx = np.flatnonzero(pre_mask)
+        pre_qs = [_tet_quality(pts_out, tets_out[i]) for i in pre_idx]
         pre_min_q = min(pre_qs) if pre_qs else 0.0
         pre_n_neg = _count_neg_vol(pts_out, tets_out)
 
@@ -1491,13 +1495,19 @@ def _apply_klingner_edge_contract_topK(
         keep = np.array([(len(set(row)) == 4) for row in t_new], dtype=bool)
         t_new = t_new[keep]
 
-        # --- post-snapshot ----------------------------------------------------
-        post_qs = [_tet_quality(pts_out, t_new[i]) for i in range(t_new.shape[0])]
-        post_min_q = min(post_qs) if post_qs else 0.0
+        # --- post-snapshot (star-local: tets incident to a in t_new) ----------
+        post_mask = (t_new == a).any(axis=1)
+        post_idx = np.flatnonzero(post_mask)
+        post_qs = [_tet_quality(pts_out, t_new[i]) for i in post_idx]
+        post_min_q = min(post_qs) if post_qs else pre_min_q
         post_n_neg = _count_neg_vol(pts_out, t_new)
 
+        _last_pre_min_q_star = float(pre_min_q)
+        _last_post_min_q_star = float(post_min_q)
+
         # --- monotone guard + revert / commit ---------------------------------
-        if post_min_q < pre_min_q - 0.005 or post_n_neg > pre_n_neg:
+        # strict neg-vol equality: no inversions allowed, no spurious sign flips
+        if post_min_q < pre_min_q - 0.005 or post_n_neg != pre_n_neg:
             n_reverted += 1
             continue  # outer pts_out / tets_out unchanged (implicit revert)
 
@@ -1505,7 +1515,17 @@ def _apply_klingner_edge_contract_topK(
         applied_endpoints |= {a, b}
         n_applied += 1
 
-    return (pts_out, tets_out, {"n_applied": n_applied, "n_reverted": n_reverted, "n_conflict": n_conflict})
+    return (
+        pts_out,
+        tets_out,
+        {
+            "n_applied": n_applied,
+            "n_reverted": n_reverted,
+            "n_conflict": n_conflict,
+            "pre_min_q_star": _last_pre_min_q_star,
+            "post_min_q_star": _last_post_min_q_star,
+        },
+    )
 
 
 # ---------------------------------------------------------------------------

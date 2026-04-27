@@ -1,2 +1,2 @@
 PASS
-BETA2261_VVV9H5_APPLY_DRYRUN_WIRE: regression 31/31, metric 0.2069 ±0, bench 61.78s nominal.
+BETA2263_VVV9H7_APPLY_HARDEN_AFFECTED: regression 35/35, worst_mq 0.208 ±0.005, bench 59.1s (stable), BL 5/5.

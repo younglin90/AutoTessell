@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2262,
+  "beta": 2263,
   "max_round": 1000,
-  "round": 197,
+  "round": 198,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -12,7 +12,7 @@
       "OK": 5,
       "BL_OK": 5,
       "total": 5,
-      "source": "BETA2262_VVV9H6_APPLY_DRYRUN_ON - Klingner apply dryrun gate True (evidence collect, mesh unchanged), regression 35/35 PASS, worst_mq 0.208 \u00b10.005",
+      "source": "BETA2263_VVV9H7_APPLY_HARDEN_AFFECTED - Klingner apply helper hardening (star-local quality + strict neg-vol equality), regression 35/35 PASS, worst_mq 0.208 \u00b10.005, bench 59.1s stable",
       "bench_time_s": 59.1
     },
     "hex": {
@@ -39,16 +39,16 @@
     "poly"
   ],
   "recent_cards": [
+    "BETA2263_VVV9H7_APPLY_HARDEN_AFFECTED",
+    "BETA2262_VVV9H6_APPLY_DRYRUN_ON",
     "BETA2261_VVV9H5_APPLY_DRYRUN_WIRE",
     "BETA2260_VVV9H4_EDGE_CONTRACT_APPLY_SKEL",
-    "BETA2259_VVV9H3_DIAG_ON",
-    "BETA2258_VVV9H2_HOOK_OFF",
-    "BETA2257_VVV9H1_KLINGNER_EDGE_CONTRACT_CANDIDATES"
+    "BETA2259_VVV9H3_DIAG_ON"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2261_VVV9H5_APPLY_DRYRUN_WIRE (R196) - Klingner apply helper dryrun wire (gate OFF), regression 31/31 PASS, worst_mq 0.2069 \u00b10, bench 61.78s."
+  "plan_archive": "BETA2262_VVV9H6_APPLY_DRYRUN_ON (R197) - Klingner apply dryrun gate True (evidence collect, mesh unchanged), regression 35/35 PASS, worst_mq 0.208 \u00b10.005, bench 59.1s."
 }
