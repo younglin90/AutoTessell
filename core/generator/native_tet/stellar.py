@@ -1427,6 +1427,88 @@ def _klingner_edge_contract_candidates(
 
 
 # ---------------------------------------------------------------------------
+# VVV9H #4 (beta2260) — apply helper skeleton (default OFF, no caller)
+# Klingner & Shewchuk 2008 §4.1 short-edge contraction *application*
+# ---------------------------------------------------------------------------
+
+def _apply_klingner_edge_contract_topK(
+    pts: "np.ndarray",
+    tets: "np.ndarray",
+    candidates: list,
+    k: int = 10,
+) -> "tuple[np.ndarray, np.ndarray, dict]":
+    """Apply top-K short-edge contractions from *candidates* to the mesh.
+
+    Parameters
+    ----------
+    pts        : (N, 3) float64 vertex array
+    tets       : (T, 4) int32/int64 tet index array
+    candidates : list of (a, b, post_min_q) tuples sorted desc by post_min_q,
+                 as returned by ``_klingner_edge_contract_candidates``.
+    k          : maximum number of contractions to attempt (default 10).
+
+    Returns
+    -------
+    pts_out  : pts (unchanged — contraction does not move vertices)
+    tets_out : updated tet connectivity after committed contractions
+    stats    : dict with keys ``n_applied``, ``n_reverted``, ``n_conflict``
+
+    Notes
+    -----
+    *No caller* — mesher.py is unchanged.  This helper is wired in R196
+    (gate=False dryrun) and enabled in R197+.
+
+    Algorithm (per contraction):
+    1. Conflict check: skip if *a* or *b* already appear in applied endpoints.
+    2. Pre-snapshot: record min quality and negative-volume count.
+    3. Apply: replace all occurrences of vertex *b* with *a*; drop degenerate
+       tets (rows where any two indices are equal).
+    4. Post-snapshot: recompute min quality and negative-volume count.
+    5. Monotone guard: revert if ``post_min_q < pre_min_q - 0.005`` or
+       ``post_n_neg > pre_n_neg``; otherwise commit.
+    """
+    pts_out = pts.copy()
+    tets_out = tets.copy()
+    n_applied = 0
+    n_reverted = 0
+    n_conflict = 0
+    applied_endpoints: set = set()
+
+    for a, b, _q in candidates[:k]:
+        # --- conflict check ---------------------------------------------------
+        if a in applied_endpoints or b in applied_endpoints:
+            n_conflict += 1
+            continue
+
+        # --- pre-snapshot -----------------------------------------------------
+        pre_qs = [_tet_quality(pts_out, tets_out[i]) for i in range(tets_out.shape[0])]
+        pre_min_q = min(pre_qs) if pre_qs else 0.0
+        pre_n_neg = _count_neg_vol(pts_out, tets_out)
+
+        # --- apply: b -> a reindex + degenerate drop --------------------------
+        t_new = np.where(tets_out == b, a, tets_out)
+        # drop degenerate tets (any two identical vertex indices in a row)
+        keep = np.array([(len(set(row)) == 4) for row in t_new], dtype=bool)
+        t_new = t_new[keep]
+
+        # --- post-snapshot ----------------------------------------------------
+        post_qs = [_tet_quality(pts_out, t_new[i]) for i in range(t_new.shape[0])]
+        post_min_q = min(post_qs) if post_qs else 0.0
+        post_n_neg = _count_neg_vol(pts_out, t_new)
+
+        # --- monotone guard + revert / commit ---------------------------------
+        if post_min_q < pre_min_q - 0.005 or post_n_neg > pre_n_neg:
+            n_reverted += 1
+            continue  # outer pts_out / tets_out unchanged (implicit revert)
+
+        tets_out = t_new
+        applied_endpoints |= {a, b}
+        n_applied += 1
+
+    return (pts_out, tets_out, {"n_applied": n_applied, "n_reverted": n_reverted, "n_conflict": n_conflict})
+
+
+# ---------------------------------------------------------------------------
 # VAL1 (beta2147) — global negative-volume tet detection + auto-flip
 # ---------------------------------------------------------------------------
 # VAL3 (beta2158) — per-pass negative-volume counter
