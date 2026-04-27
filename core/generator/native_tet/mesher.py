@@ -1423,7 +1423,8 @@ def generate_native_tet(
     # 4d) Round 10 — inverted tet 안전판 (local op 반복 후 numerical edge).
     # V4 (beta1540) — surface-aware swap revert: fix_inverted 후 plane_area
     # coverage 가 5%+ 떨어지면 swap 결과를 버린다 (inverted tet 그대로 둔다).
-    if enable_phase_a:
+    # P4-B-5j: _phase_bc_skip 시 P4-C 가 mesh 통째 재생성 — fix_inverted 무의미.
+    if enable_phase_a and not _phase_bc_skip:
         from core.generator.native_tet.validate import fix_inverted_tets
 
         prev_tets = final_tets.copy()
