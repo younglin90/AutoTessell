@@ -389,8 +389,8 @@ class GeometryAnalyzer:
             )
 
         # 0b. Critical: Degenerate bounding box (collapsed to line/point)
-        bbox_dims = [bbox.max[i] - bbox.min[i] for i in range(3)]
-        bbox_dims_sorted = sorted(bbox_dims)
+        bbox_dims = np.subtract(bbox.max, bbox.min)
+        bbox_dims_sorted = np.sort(bbox_dims)
         # 가장 작은 차원이 0에 가까우면 2D 또는 더 심한 문제
         if bbox_dims_sorted[0] < 1e-6 and bbox_dims_sorted[1] < 1e-6:
             issues.append(

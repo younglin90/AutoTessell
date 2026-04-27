@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2226,
+  "beta": 2227,
   "max_round": 1000,
-  "round": 175,
+  "round": 176,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -33,6 +33,7 @@
     "poly"
   ],
   "recent_cards": [
+    "ANALYZER_REMAIN_VEC",
     "HEX_INIT_REMAIN_VEC",
     "POLY_INIT_REMAIN_VEC",
     "TIER_GEN_REMAIN_VEC",
@@ -78,5 +79,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "HEX_INIT_REMAIN_VEC (R175) — quality.py face-key generation loop + aspect loop → numpy batch; 22/22 PASS bench 0.245s"
+  "plan_archive": "ANALYZER_REMAIN_VEC (R176) — geometry_analyzer.py bbox_dims list comprehension → np.subtract/np.sort; 22/22 PASS bench 32.38s"
 }
