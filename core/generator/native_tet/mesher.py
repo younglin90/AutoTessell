@@ -3005,6 +3005,30 @@ def generate_native_tet(
                                 log.warning("native_tet_vvv9h4_skipped", reason=str(exc)[:120])
                     except Exception as exc:  # noqa: BLE001
                         log.warning("native_tet_vvv9h_skipped", reason=str(exc)[:120])
+            # VVV9I #3 — envelope distance diagnostic hook (gate OFF by default)
+            _VVV9I_DIAG: bool = False
+            if _VVV9I_DIAG:
+                _t0 = time.perf_counter()
+                try:
+                    from core.generator.native_tet.stellar import (  # noqa: PLC0415
+                        _envelope_distance_to_triangles as _edt,
+                    )
+                    _dists = _edt(final_pts, V, F)
+                    _eps = float(env.eps)
+                    _n_invasion = int((_dists > _eps).sum())
+                    _max_dist = float(_dists.max())
+                    _wall_ms = int((time.perf_counter() - _t0) * 1000)
+                    log.info(
+                        "native_tet_vvv9i_diag",
+                        n_pts=N,
+                        n_invasion=_n_invasion,
+                        max_dist=_max_dist,
+                        eps=_eps,
+                        wall_ms=_wall_ms,
+                        mode="dry_run",
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("native_tet_vvv9i_skipped", reason=str(exc)[:120])
         except Exception as exc:
             log.warning("native_tet_vvv12_skipped", reason=str(exc)[:120])
     log.info("native_tet_pass_timing", pass_name="VVV12", dt_ms=int((time.perf_counter() - _t_vvv12) * 1000))
