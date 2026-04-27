@@ -934,20 +934,50 @@ def _lloyd_3d_iteration(
             vor = Voronoi(seeds_inside)
         except Exception:
             break
-        # POL_PERF1 — vectorize centroid computation for lp_p==2.0 (common path).
-        # Classify regions: open (has -1 or empty) → keep seed; closed → compute centroid.
+        # POL_PERF3 — vectorize centroid computation for lp_p==2.0 (common path).
+        # Build CSR-style flat index array: closed_si[], flat_vidx[], region_sizes[].
+        # np.add.at accumulates vertex coords grouped by seed → batch mean in O(total_verts).
         n_seeds = seeds_inside.shape[0]
         new_seeds_arr = seeds_inside.copy()  # default: keep originals
         n_regions = len(vor.regions)
-        for si, region_idx in enumerate(vor.point_region):
-            if region_idx < 0 or region_idx >= n_regions:
-                continue
-            region = vor.regions[region_idx]
-            if -1 in region or len(region) == 0:
-                continue  # keep seed (already in new_seeds_arr)
-            if lp_p == 2.0:
-                new_seeds_arr[si] = vor.vertices[region].mean(axis=0)
-            else:
+        if lp_p == 2.0:
+            # --- vectorized path ---
+            closed_si: list[int] = []
+            flat_vidx: list[int] = []
+            region_sizes: list[int] = []
+            for si, region_idx in enumerate(vor.point_region):
+                if region_idx < 0 or region_idx >= n_regions:
+                    continue
+                region = vor.regions[region_idx]
+                if -1 in region or len(region) == 0:
+                    continue
+                closed_si.append(si)
+                flat_vidx.extend(region)
+                region_sizes.append(len(region))
+            if closed_si:
+                cs_arr = np.array(closed_si, dtype=np.intp)
+                fv_arr = np.array(flat_vidx, dtype=np.intp)
+                sz_arr = np.array(region_sizes, dtype=np.intp)
+                # repeat each seed index sz times for np.add.at accumulation
+                si_rep = np.repeat(cs_arr, sz_arr)   # shape: (total_verts,)
+                vcoords = vor.vertices[fv_arr]         # shape: (total_verts, 3)
+                acc = np.zeros((n_seeds, 3), dtype=np.float64)
+                np.add.at(acc, si_rep, vcoords)
+                # compute per-seed mean
+                cnt = np.zeros(n_seeds, dtype=np.float64)
+                np.add.at(cnt, cs_arr, sz_arr.astype(np.float64))
+                # only overwrite closed seeds
+                safe_cnt = cnt[cs_arr]
+                centroids = acc[cs_arr] / safe_cnt[:, None]
+                new_seeds_arr[cs_arr] = centroids
+        else:
+            # --- scalar path for lp_p != 2.0 ---
+            for si, region_idx in enumerate(vor.point_region):
+                if region_idx < 0 or region_idx >= n_regions:
+                    continue
+                region = vor.regions[region_idx]
+                if -1 in region or len(region) == 0:
+                    continue
                 try:
                     vs = vor.vertices[region]
                     d = np.linalg.norm(vs - seeds_inside[si], axis=1)
