@@ -3082,7 +3082,13 @@ def generate_native_tet(
     plane_cov_val = -1.0
     plane_area_cov_val = -1.0
     haus_rel = -1.0
+    # P4-B-5k (beta2245k) — _phase_bc_skip 시 pass_gate 자체가 bottleneck.
+    # Phase A 9859 tet × 2536 input F 의 hausdorff + cdt_check 가 3+ 분.
+    # 어차피 grade 가 D 라서 P4-C 가 호출됨. 여기서 grade="D" 로 하드코딩하고 skip.
     try:
+        if _phase_bc_skip:
+            grade = "D"
+            raise RuntimeError("_phase_bc_skip")
         from core.generator.native_tet.cdt_check import (
             check_edge_recovery, check_edge_recovery_chained,
             cdt_ratio as _cdt_ratio, cdt_face_ratio as _cdt_face_ratio,
