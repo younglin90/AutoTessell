@@ -1,4 +1,5 @@
-file: core/generator/native_tet/mesher.py
-functions: _surf_edges_from_faces (new), _surf_faces_from_F (new), generate_native_tet
-lines_added: 47
-lines_removed: 28
+file: core/generator/native_tet/quality.py
+functions: (none — no-op)
+lines_added: 0
+lines_removed: 0
+note: all numeric loops already vectorized (PERF1/beta2151 fused snapshot); should_stop history loop is O(window=3) not per-tet; _quality_percentiles is dead code (no callers)
