@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2168,
+  "beta": 2172,
   "max_round": 1000,
-  "round": 116,
+  "round": 120,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,7 +26,7 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 85.7,
+  "last_bench_time": 84.0,
   "consecutive_fails": 0,
   "dones": [
     "hex",
@@ -47,12 +47,13 @@
     "TET_QUALITY1",
     "VVV13",
     "PERF3",
-    "PERF4"
+    "PERF4",
+    "PERF5"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "TET_TIMING2 (R116 OBS) — post-PERF3/4 timing snapshot: VVV13=7496ms, VVV12=5009ms, VVV10=3432ms (sum/10 runs); bench 85.7s; 22/22 PASS"
+  "plan_archive": "PERF8 (R120) — VVV9 insert_steiner_flip14 vectorized quality screen 107x speedup; 22/22 PASS; bench 45.2s (5-file); worst_mq=0.127 unchanged"
 }

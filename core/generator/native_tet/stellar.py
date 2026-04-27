@@ -261,8 +261,21 @@ def insert_steiner_flip14(
     if n_tets == 0:
         return pts, tets, 0
 
-    # Compute quality for all tets.
-    qualities = np.array([_tet_quality(pts, tets[i]) for i in range(n_tets)], dtype=np.float64)
+    # PERF8 Step 1 — vectorized per-tet quality screen (mirrors _tet_quality mean-ratio).
+    verts_all = pts[tets]                           # (N,4,3)
+    _a = verts_all[:, 0]; _b = verts_all[:, 1]
+    _c = verts_all[:, 2]; _d = verts_all[:, 3]
+    _e0 = _b - _a; _e1 = _c - _a; _e2 = _d - _a
+    _vol6 = (np.cross(_e1, _e2) * _e0).sum(axis=1)
+    _l_sq = (
+        (_e0 ** 2).sum(1) + (_e1 ** 2).sum(1) + (_e2 ** 2).sum(1)
+        + ((_b - _c) ** 2).sum(1) + ((_b - _d) ** 2).sum(1) + ((_c - _d) ** 2).sum(1)
+    )
+    qualities = np.where(
+        _l_sq > 1e-30,
+        np.clip(12.0 * (3.0 * np.abs(_vol6) / 6.0) ** (2.0 / 3.0) / _l_sq, 0.0, 1.0),
+        0.0,
+    )
 
     # Pick top_k worst (ascending quality → smallest first).
     worst_indices = np.argsort(qualities)[: top_k]
