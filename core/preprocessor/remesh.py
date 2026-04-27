@@ -533,10 +533,9 @@ class SurfaceRemesher:
 
             V_smoothed = V.copy()
             for _ in range(iterations):
-                # Solve A @ V_smoothed = M @ V for each coordinate separately
-                for coord_idx in range(3):
-                    rhs = M.dot(V_smoothed[:, coord_idx])
-                    V_smoothed[:, coord_idx] = linalg.spsolve(A, rhs)
+                # Solve A @ V_smoothed = M @ V for all 3 coords at once (vectorized)
+                rhs = M.dot(V_smoothed)  # (V, 3)
+                V_smoothed = linalg.spsolve(A, rhs)  # spsolve handles dense RHS matrix
 
             result = trimesh.Trimesh(
                 vertices=V_smoothed,
