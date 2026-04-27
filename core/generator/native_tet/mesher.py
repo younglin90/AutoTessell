@@ -1036,7 +1036,31 @@ def generate_native_tet(
     # Phase C 가 켜져 있으면 envelope-guarded + quality stop 으로 승격.
     _prog("phase_a_done", 0.6, n_tets=int(final_tets.shape[0]))
 
-    if enable_phase_b and local_ops_iterations > 0:
+    # P4-B-5 (beta2245) — Phase A grade D (mean_q < 0.05) + P4-C fallback ON 시
+    # Phase B/C 스킵. extreme tier 자가-impl 시도 무용 → bench time 큰 폭 단축.
+    # env AUTO_TESSELL_PHASE_BC_SKIP=0 으로 비활성 가능.
+    _phase_bc_skip = False
+    try:
+        if (
+            os.environ.get("AUTO_TESSELL_PHASE_BC_SKIP", "1") != "0"
+            and os.environ.get("AUTO_TESSELL_P4C_PYTETWILD", "1") != "0"
+            and final_tets.shape[0] > 0
+        ):
+            from core.generator.native_tet.quality import snapshot as _qsnap_pa
+            _pa_q = _qsnap_pa(final_pts, final_tets)
+            _pa_mean = float(getattr(_pa_q, "mean_q", 0.0))
+            if _pa_mean < 0.05:
+                _phase_bc_skip = True
+                log.info(
+                    "native_tet_phase_bc_skip",
+                    phase_a_mean_q=round(_pa_mean, 4),
+                    n_tets=int(final_tets.shape[0]),
+                    reason="grade_d_p4c_fallback_will_rescue",
+                )
+    except Exception as exc:
+        log.debug("native_tet_phase_bc_skip_eval_failed", reason=str(exc))
+
+    if enable_phase_b and local_ops_iterations > 0 and not _phase_bc_skip:
         from core.generator.native_tet.local_ops import (
             collapse_short_edges, compact_unused_vertices, split_long_edges,
         )
