@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2210,
+  "beta": 2211,
   "max_round": 1000,
-  "round": 159,
+  "round": 160,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -73,5 +73,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "TET_MESHER_REMAIN_VEC (R159) — vectorized surf_edges_set(x5), surf_face_set, metric_full remap, vn_new remap, missing-face detection, NNN2/NNN3 circumcenter batch in mesher.py; 22/22 PASS 34.07s"
+  "plan_archive": "STELLAR_REMAIN_VEC (R160) — vectorized _build_op_queue, _count_slivers, _count_anisotropic in stellar.py; 22/22 PASS 34.48s"
 }

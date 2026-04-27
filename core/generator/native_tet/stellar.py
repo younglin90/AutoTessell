@@ -153,19 +153,43 @@ def _build_op_queue(pts: np.ndarray, tets: np.ndarray) -> list[dict]:
     Returns list of dicts:
         {"quality": float, "tet_idx": int, "candidate_ops": list[str]}
     Lower quality → processed first (worst cells first).
+
+    STELLAR_REMAIN_VEC: vectorized mean-ratio quality for all tets at once.
     """
+    n = tets.shape[0]
+    if n == 0:
+        return []
+
+    # Vectorized mean-ratio quality (mirrors _tet_quality exactly).
+    v = pts[tets]  # (N,4,3)
+    _a = v[:, 0]; _b = v[:, 1]; _c = v[:, 2]; _d = v[:, 3]
+    e0 = _b - _a; e1 = _c - _a; e2 = _d - _a
+    vol6 = (np.cross(e1, e2) * e0).sum(axis=1)
+    l_sq = (
+        (e0 ** 2).sum(1) + (e1 ** 2).sum(1) + (e2 ** 2).sum(1)
+        + ((_b - _c) ** 2).sum(1) + ((_b - _d) ** 2).sum(1) + ((_c - _d) ** 2).sum(1)
+    )
+    q_arr = np.where(
+        l_sq > 1e-30,
+        np.clip(12.0 * (3.0 * np.abs(vol6) / 6.0) ** (2.0 / 3.0) / l_sq, 0.0, 1.0),
+        0.0,
+    )
+
+    _OPS_LOW  = ["collapse", "split", "swap", "smooth"]
+    _OPS_MID  = ["swap", "smooth"]
+    _OPS_HIGH = ["smooth"]
+
+    order = np.argsort(q_arr)
     queue: list[dict] = []
-    for i, tet in enumerate(tets):
-        q = _tet_quality(pts, tet)
-        candidate_ops: list[str] = []
+    for i in order:
+        q = float(q_arr[i])
         if q < 0.3:
-            candidate_ops = ["collapse", "split", "swap", "smooth"]
+            ops = _OPS_LOW
         elif q < 0.6:
-            candidate_ops = ["swap", "smooth"]
+            ops = _OPS_MID
         else:
-            candidate_ops = ["smooth"]
-        queue.append({"quality": q, "tet_idx": i, "candidate_ops": candidate_ops})
-    queue.sort(key=lambda x: x["quality"])
+            ops = _OPS_HIGH
+        queue.append({"quality": q, "tet_idx": int(i), "candidate_ops": ops})
     return queue
 
 
@@ -473,21 +497,22 @@ def split_sliver_longest_edge(
 
 # expose sliver detection count for logging
 def _count_slivers(pts: np.ndarray, tets: np.ndarray, sliver_ratio: float = 1e-3) -> int:
-    """Count sliver tets by V/L_max^3 < sliver_ratio."""
-    count = 0
-    for i in range(tets.shape[0]):
-        a, b, c, d = pts[tets[i, 0]], pts[tets[i, 1]], pts[tets[i, 2]], pts[tets[i, 3]]
-        e0, e1, e2 = b - a, c - a, d - a
-        vol = abs(float(np.dot(e0, np.cross(e1, e2)))) / 6.0
-        verts = [a, b, c, d]
-        pairs = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
-        lmax = max(float(np.dot(verts[pi] - verts[pj], verts[pi] - verts[pj])) ** 0.5
-                   for pi, pj in pairs)
-        if lmax < 1e-15:
-            continue
-        if vol / (lmax ** 3) < sliver_ratio:
-            count += 1
-    return count
+    """Count sliver tets by V/L_max^3 < sliver_ratio.
+
+    STELLAR_REMAIN_VEC: fully vectorized — no Python loop over tets.
+    """
+    if tets.shape[0] == 0:
+        return 0
+    v = pts[tets]  # (N,4,3)
+    e0 = v[:, 1] - v[:, 0]; e1 = v[:, 2] - v[:, 0]; e2 = v[:, 3] - v[:, 0]
+    vol = np.abs((np.cross(e0, e1) * e2).sum(axis=1)) / 6.0
+    _PAIR_I = np.array([0, 0, 0, 1, 1, 2], dtype=np.intp)
+    _PAIR_J = np.array([1, 2, 3, 2, 3, 3], dtype=np.intp)
+    edge_vecs = v[:, _PAIR_J] - v[:, _PAIR_I]  # (N,6,3)
+    l_max = np.sqrt((edge_vecs ** 2).sum(axis=2)).max(axis=1)  # (N,)
+    valid = l_max >= 1e-15
+    score = np.where(valid, vol / np.maximum(l_max ** 3, 1e-30), 1.0)
+    return int((valid & (score < sliver_ratio)).sum())
 
 
 def lookahead_2flip_chain(
@@ -719,22 +744,34 @@ def split_anisotropic_tet_edges(
 def _count_anisotropic(
     pts: np.ndarray, tets: np.ndarray, ar_threshold: float = 5.0
 ) -> int:
-    """Count anisotropic tets (AR > ar_threshold AND quality < 0.3)."""
-    _PAIRS = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
-    count = 0
-    for i in range(tets.shape[0]):
-        q = _tet_quality(pts, tets[i])
-        if q >= 0.3:
-            continue
-        verts = [pts[tets[i, k]] for k in range(4)]
-        lengths = [float(np.dot(verts[pi] - verts[pj], verts[pi] - verts[pj])) ** 0.5
-                   for pi, pj in _PAIRS]
-        l_min = min(lengths)
-        l_max = max(lengths)
-        ar = l_max / l_min if l_min > 1e-15 else float("inf")
-        if ar > ar_threshold:
-            count += 1
-    return count
+    """Count anisotropic tets (AR > ar_threshold AND quality < 0.3).
+
+    STELLAR_REMAIN_VEC: fully vectorized — no Python loop over tets.
+    """
+    if tets.shape[0] == 0:
+        return 0
+    v = pts[tets]  # (N,4,3)
+    _PAIR_I = np.array([0, 0, 0, 1, 1, 2], dtype=np.intp)
+    _PAIR_J = np.array([1, 2, 3, 2, 3, 3], dtype=np.intp)
+    edge_vecs = v[:, _PAIR_J] - v[:, _PAIR_I]  # (N,6,3)
+    edge_lens = np.sqrt((edge_vecs ** 2).sum(axis=2))  # (N,6)
+    l_max = edge_lens.max(axis=1)
+    l_min = edge_lens.min(axis=1)
+    ar = l_max / np.maximum(l_min, 1e-15)
+    # Vectorized mean-ratio quality.
+    _a = v[:, 0]; _b = v[:, 1]; _c = v[:, 2]; _d = v[:, 3]
+    e0 = _b - _a; e1 = _c - _a; e2 = _d - _a
+    vol6 = (np.cross(e1, e2) * e0).sum(axis=1)
+    l_sq = (
+        (e0 ** 2).sum(1) + (e1 ** 2).sum(1) + (e2 ** 2).sum(1)
+        + ((_b - _c) ** 2).sum(1) + ((_b - _d) ** 2).sum(1) + ((_c - _d) ** 2).sum(1)
+    )
+    q_all = np.where(
+        l_sq > 1e-30,
+        np.clip(12.0 * (3.0 * np.abs(vol6) / 6.0) ** (2.0 / 3.0) / l_sq, 0.0, 1.0),
+        0.0,
+    )
+    return int(((ar > ar_threshold) & (q_all < 0.3)).sum())
 
 
 # ---------------------------------------------------------------------------
