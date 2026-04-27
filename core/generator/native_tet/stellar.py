@@ -4,6 +4,7 @@ Klingner & Shewchuk 2008 §3.
 """
 from __future__ import annotations
 
+import heapq
 import time
 from typing import Optional
 
@@ -2217,3 +2218,63 @@ def _slim_newton_step_one_vertex(
         "n_iter_used": ls["n_iter_used"],
         "accepted": ls["accepted"],
     }
+
+
+# ---------------------------------------------------------------------------
+# CARD VVV9K1 (beta2278) — fTetWild §3.3 worst-quality-first priority queue
+# helper skeleton.  Default OFF.  No caller added — VVV9K2 will wire this in.
+# Hu et al. 2020 fTetWild §3.3 Algorithm 2; Klingner & Shewchuk 2008 §3.
+# ---------------------------------------------------------------------------
+_VVV9K1_PRIORITY_QUEUE_INIT: bool = False
+
+
+def _priority_queue_init(
+    tets: np.ndarray,
+    qualities: np.ndarray,
+    *,
+    k_worst: int = 128,
+) -> list[int]:
+    """Return indices of the *k_worst* tetrahedra sorted worst-quality first.
+
+    Parameters
+    ----------
+    tets:      (N, 4) int array — tetrahedron vertex indices (unused here but
+               kept for signature parity with VVV9K2+ callers).
+    qualities: (N,) float array — per-tet quality scalar (higher = better).
+    k_worst:   number of worst tets to return.
+
+    Returns
+    -------
+    list[int] — tet indices in worst-first order (length ≤ min(k_worst, N)).
+
+    Algorithm (fTetWild §3.3 Algorithm 2)
+    --------------------------------------
+    1. Build min-heap keyed by quality (lower quality → popped first).
+    2. NaN / Inf / non-positive entries are skipped (NaN-safe guard).
+    3. heappop k_worst times → worst-first index list.
+    Time: O(N) heapify + O(k log N) pops.
+    """
+    n = len(qualities)
+    if n == 0 or k_worst <= 0:
+        return []
+
+    heap: list[tuple[float, int]] = []
+    for i in range(n):
+        q = float(qualities[i])
+        # NaN-safe: q != q is True only for NaN; also skip non-positive.
+        if q != q or q <= 0.0:
+            continue
+        heap.append((q, i))
+
+    if not heap:
+        return []
+
+    heapq.heapify(heap)
+
+    k = min(k_worst, len(heap))
+    result: list[int] = []
+    for _ in range(k):
+        _, idx = heapq.heappop(heap)
+        result.append(idx)
+
+    return result
