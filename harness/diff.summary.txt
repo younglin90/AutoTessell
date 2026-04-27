@@ -1,4 +1,5 @@
-file: core/evaluator/metrics.py
-functions: tet_mean_ratio_quality
-lines_added: 22
-lines_removed: 18
+file: core/evaluator/report.py
+functions: (none — no vectorizable numeric loops found)
+lines_added: 0
+lines_removed: 0
+note: all loops iterate over small fixed dicts/Rich UI rows; no numpy vectorization applicable
