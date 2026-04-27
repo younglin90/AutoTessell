@@ -91,6 +91,39 @@ def _optimal_target(
         return np.array([mid[0], mid[1], mid[2], 1.0], dtype=np.float64)
 
 
+def _enumerate_edges(F: NDArray[np.int64]) -> set[tuple[int, int]]:
+    """face 의 unique edge set. canonical (min, max) tuple."""
+    edges: set[tuple[int, int]] = set()
+    for fi in range(F.shape[0]):
+        a, b, c = int(F[fi, 0]), int(F[fi, 1]), int(F[fi, 2])
+        edges.add((min(a, b), max(a, b)))
+        edges.add((min(b, c), max(b, c)))
+        edges.add((min(c, a), max(c, a)))
+    return edges
+
+
+def _build_collapse_heap(
+    V: NDArray[np.float64], F: NDArray[np.int64], Q: NDArray[np.float64],
+) -> list[tuple[float, int, int, NDArray[np.float64]]]:
+    """모든 unique edge 의 collapse cost + optimal target heap.
+
+    P4-B-2 (beta2241): heap init 만 — 실제 collapse loop 는 P4-B-3.
+    Returns:
+        list[(cost, a, b, v_target_4d)] sorted by cost ascending (heap 사용 가능).
+    """
+    edges = _enumerate_edges(F)
+    out: list[tuple[float, int, int, NDArray[np.float64]]] = []
+    for (a, b) in edges:
+        Q_pair = Q[a] + Q[b]
+        v_a = np.array([V[a, 0], V[a, 1], V[a, 2], 1.0], dtype=np.float64)
+        v_b = np.array([V[b, 0], V[b, 1], V[b, 2], 1.0], dtype=np.float64)
+        v_t = _optimal_target(Q_pair, v_a, v_b)
+        c = _edge_cost(Q_pair, v_t)
+        out.append((c, a, b, v_t))
+    out.sort(key=lambda t: t[0])
+    return out
+
+
 def quadric_decimate(
     V: NDArray[np.float64],
     F: NDArray[np.int64],
@@ -102,7 +135,7 @@ def quadric_decimate(
     """Garland & Heckbert 1997 surface simplification.
 
     skeleton (P4-B-1, beta2240): 본 함수는 정의만, 실제 collapse loop 는
-    다음 카드 (P4-B-2) 에서. 현재는 입력을 그대로 반환 (no-op).
+    다음 카드 (P4-B-3) 에서. 현재는 입력을 그대로 반환 (no-op).
 
     Args:
         V: input vertices (N, 3).
@@ -114,10 +147,11 @@ def quadric_decimate(
     Returns:
         (V_new, F_new). 현재 skeleton 은 (V, F) 그대로.
     """
-    # 다음 카드에서 활성화: priority queue + collapse loop.
     if not _QED_ENABLED:
         return V.astype(np.float64).copy(), F.astype(np.int64).copy()
 
-    # placeholder — 다음 카드 (P4-B-2) 에서 구현.
+    # P4-B-2 (beta2241) — heap init (collapse loop 없음).
     Q = _vertex_quadrics(V, F)
+    heap = _build_collapse_heap(V, F, Q)
+    # P4-B-3 (beta2242) 에서 heap pop + collapse 적용.
     return V.astype(np.float64).copy(), F.astype(np.int64).copy()
