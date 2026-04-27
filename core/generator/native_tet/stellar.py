@@ -1327,6 +1327,106 @@ def _select_best_weight_assignment(
 
 
 # ---------------------------------------------------------------------------
+# VVV9H #1 (beta2257) — Klingner 2008 §4.1 short-edge contraction candidates
+# Skeleton helper: candidate enumeration only, no mesh mutation, no caller.
+# Default OFF — apply logic deferred to sequence #4 (R195).
+# ---------------------------------------------------------------------------
+
+
+def _klingner_edge_contract_candidates(
+    pts: "np.ndarray",
+    tets: "np.ndarray",
+    *,
+    q_max: float = 0.2,
+    l_max_factor: float = 0.4,
+    max_candidates: int = 200,
+) -> "list[tuple[int, int, float]]":
+    """Enumerate short-edge contraction candidates per Klingner & Shewchuk 2008 §4.1.
+
+    For each edge (a, b) with length < l_max_factor * median_edge_length and at
+    least one incident tet with quality < q_max:
+      - Weak-link pre-check: shared-neighbour count <= 2 (full link condition
+        deferred to sequence #2, R193).
+      - Simulate b→a contraction: reindex tets, drop degenerate tets (both
+        endpoints), recompute _tet_quality for affected tets only.
+      - Accept if post_min_q >= pre_min_q - 0.005 (monotone guard).
+
+    Returns list of (min(a,b), max(a,b), post_min_q) sorted desc by
+    post_min_q, capped at max_candidates.  No mesh mutation.
+    """
+    if tets.shape[0] == 0:
+        return []
+
+    # --- edge enumeration ---
+    edge_dict = compute_edge_incident_tets_cached(tets)
+
+    # --- median edge length (vectorized) ---
+    ea_list: list[int] = []
+    eb_list: list[int] = []
+    for a, b in edge_dict:
+        ea_list.append(a)
+        eb_list.append(b)
+    ea_arr = np.asarray(ea_list, dtype=np.int64)
+    eb_arr = np.asarray(eb_list, dtype=np.int64)
+    edge_lengths = np.linalg.norm(pts[ea_arr] - pts[eb_arr], axis=1)
+    median_len = float(np.median(edge_lengths))
+    l_max = l_max_factor * median_len
+
+    # --- vertex→neighbour map (for weak-link check) ---
+    v_nbr: dict[int, set[int]] = {}
+    for a, b in edge_dict:
+        v_nbr.setdefault(a, set()).add(b)
+        v_nbr.setdefault(b, set()).add(a)
+
+    candidates: list[tuple[int, int, float]] = []
+
+    for idx, ((a, b), inc_tets) in enumerate(edge_dict.items()):
+        # length filter
+        if edge_lengths[idx] >= l_max:
+            continue
+
+        # low-quality incident tet filter
+        pre_qs = [_tet_quality(pts, tets[ti]) for ti in inc_tets]
+        pre_min_q = min(pre_qs)
+        if not any(q < q_max for q in pre_qs):
+            continue
+
+        # weak-link pre-check: |N(a) ∩ N(b)| <= 2
+        shared = v_nbr.get(a, set()) & v_nbr.get(b, set())
+        if len(shared) > 2:
+            continue
+
+        # simulate contraction b → a
+        t_remap = np.where(tets == b, a, tets)
+        # drop degenerate tets (a appears >= 2 times in row)
+        keep = np.array(
+            [(len(set(row)) == 4) for row in t_remap], dtype=bool
+        )
+        if not keep.any():
+            continue
+        t_remapped = t_remap[keep]
+
+        # recompute quality for affected tets (contain a in remapped)
+        affected_mask = (t_remapped == a).any(axis=1)
+        if not affected_mask.any():
+            post_min_q = pre_min_q
+        else:
+            t_affected = t_remapped[affected_mask]
+            post_qs = [_tet_quality(pts, t_affected[i]) for i in range(len(t_affected))]
+            post_min_q = min(post_qs) if post_qs else pre_min_q
+
+        # monotone guard
+        if post_min_q < pre_min_q - 0.005:
+            continue
+
+        candidates.append((min(a, b), max(a, b), post_min_q))
+
+    # sort desc by post_min_q, cap
+    candidates.sort(key=lambda x: x[2], reverse=True)
+    return candidates[:max_candidates]
+
+
+# ---------------------------------------------------------------------------
 # VAL1 (beta2147) — global negative-volume tet detection + auto-flip
 # ---------------------------------------------------------------------------
 # VAL3 (beta2158) — per-pass negative-volume counter
