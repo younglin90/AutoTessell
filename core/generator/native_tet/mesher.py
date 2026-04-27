@@ -1533,14 +1533,23 @@ def generate_native_tet(
 
     _prog("write", 0.9, n_tets=int(final_tets.shape[0]))
 
-    # 5) polyMesh 쓰기
-    try:
-        stats = PolyMeshWriter().write(final_pts, final_tets, case_dir)
-    except Exception as exc:
-        return NativeTetResult(
-            False, time.perf_counter() - t0,
-            message=f"polyMesh 쓰기 실패: {exc}",
-        )
+    # 5) polyMesh 쓰기.
+    # P4-B-5h (beta2245i): _phase_bc_skip 시 P4-C 가 mesh 통째 재생성하므로
+    # 여기서 쓰지 말고 P4-C 직후 재시도. 9859 tet (skip 케이스 평균) write
+    # 시간 (3+ min) 절약 + 결과 polyMesh on-disk 가 P4-C 의 정확한 출력.
+    if _phase_bc_skip:
+        stats = {"num_cells": int(final_tets.shape[0]),
+                 "num_points": int(final_pts.shape[0])}
+        log.info("native_tet_polymesh_write_deferred",
+                 reason="_phase_bc_skip", n_tets=int(final_tets.shape[0]))
+    else:
+        try:
+            stats = PolyMeshWriter().write(final_pts, final_tets, case_dir)
+        except Exception as exc:
+            return NativeTetResult(
+                False, time.perf_counter() - t0,
+                message=f"polyMesh 쓰기 실패: {exc}",
+            )
 
     elapsed = time.perf_counter() - t0
     n_cells = int(stats.get("num_cells", final_tets.shape[0]))
@@ -3209,6 +3218,23 @@ def generate_native_tet(
                 n_points = int(_tw_v.shape[0])
         except Exception as exc:
             log.warning("native_tet_p4c_pytetwild_skipped", reason=str(exc)[:120])
+
+    # P4-B-5h (beta2245i): _phase_bc_skip 으로 deferred 된 경우 (또는 P4-C 가
+    # final_pts/tets 를 재할당한 경우) polyMesh 를 정확한 최종 mesh 로 write.
+    if _phase_bc_skip:
+        try:
+            stats = PolyMeshWriter().write(final_pts, final_tets, case_dir)
+            n_cells = int(stats.get("num_cells", final_tets.shape[0]))
+            n_points = int(stats.get("num_points", final_pts.shape[0]))
+            log.info(
+                "native_tet_polymesh_write_post_p4c",
+                num_cells=n_cells, num_points=n_points,
+            )
+        except Exception as exc:
+            return NativeTetResult(
+                False, time.perf_counter() - t0,
+                message=f"polyMesh post-P4C 쓰기 실패: {exc}",
+            )
 
     _prog("done", 1.0, n_cells=n_cells, n_points=n_points, elapsed=elapsed)
 

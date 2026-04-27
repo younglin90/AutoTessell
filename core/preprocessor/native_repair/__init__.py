@@ -57,6 +57,7 @@ def run_native_repair(
     degenerate_area_tol: float = 1e-18,
     fill_hole_max_boundary: int = 64,
     fix_normals: bool = True,
+    aggressive: int = 1,
 ) -> NativeRepairResult:
     """L1 표면 수리 파이프라인 — 모든 단계 자체 구현.
 
@@ -67,6 +68,10 @@ def run_native_repair(
         4) fill_small_holes (boundary loop ≤ max_boundary → fan)
         5) fix_face_winding (optional — BFS 로 winding 통일)
 
+    Args:
+        aggressive: 반복 회수 (default 1). 2+ 시 dedup tol 점진 완화 +
+                    파이프라인 다시 적용. 매우 broken 한 self-intersect mesh 용.
+
     Returns:
         NativeRepairResult. 원본은 변경하지 않음.
     """
@@ -76,31 +81,44 @@ def run_native_repair(
     V = np.asarray(vertices, dtype=np.float64)
     F = np.asarray(faces, dtype=np.int64)
 
-    # 1) dedup
-    V2, F2, ndup = dedup_vertices(V, F, tol=dedup_tol)
-    steps.append({"step": "dedup_vertices", "merged": int(ndup)})
+    n_passes = max(1, int(aggressive))
+    bbox_diag = float(np.linalg.norm(V.max(axis=0) - V.min(axis=0))) if V.size > 0 else 1.0
 
-    # 2) degenerate
-    F3, ndeg = remove_degenerate_faces(V2, F2, area_tol=degenerate_area_tol)
-    steps.append({"step": "remove_degenerate_faces", "removed": int(ndeg)})
+    V_cur, F_cur = V, F
+    for pass_idx in range(n_passes):
+        # aggressive 시 dedup tol 을 bbox 기준 점진 완화 (1e-9 → 1e-6 × diag).
+        cur_dedup = dedup_tol if pass_idx == 0 else max(dedup_tol, bbox_diag * (10 ** (pass_idx - 6)))
 
-    # 3) non-manifold
-    F4, nnm = remove_non_manifold_faces(F3)
-    steps.append({"step": "remove_non_manifold_faces", "removed": int(nnm)})
+        V2, F2, ndup = dedup_vertices(V_cur, F_cur, tol=cur_dedup)
+        steps.append({"step": f"dedup_vertices_p{pass_idx}", "merged": int(ndup), "tol": cur_dedup})
 
-    # 4) hole fill
-    F5, nadd = fill_small_holes(V2, F4, max_boundary=fill_hole_max_boundary)
-    steps.append({"step": "fill_small_holes", "added": int(nadd)})
+        F3, ndeg = remove_degenerate_faces(V2, F2, area_tol=degenerate_area_tol)
+        steps.append({"step": f"remove_degenerate_faces_p{pass_idx}", "removed": int(ndeg)})
 
-    # 5) winding
-    if fix_normals:
-        F6, nflip = fix_face_winding(V2, F5)
-        steps.append({"step": "fix_face_winding", "flipped": int(nflip)})
-    else:
-        F6 = F5
+        F4, nnm = remove_non_manifold_faces(F3)
+        steps.append({"step": f"remove_non_manifold_faces_p{pass_idx}", "removed": int(nnm)})
+
+        F5, nadd = fill_small_holes(V2, F4, max_boundary=fill_hole_max_boundary)
+        steps.append({"step": f"fill_small_holes_p{pass_idx}", "added": int(nadd)})
+
+        if fix_normals:
+            F6, nflip = fix_face_winding(V2, F5)
+            steps.append({"step": f"fix_face_winding_p{pass_idx}", "flipped": int(nflip)})
+        else:
+            F6 = F5
+
+        V_cur, F_cur = V2, F6
+        # early-stop: pass 결과 이미 watertight + manifold 면 더 안 함.
+        if pass_idx + 1 < n_passes:
+            try:
+                if is_watertight(F_cur) and is_manifold(F_cur):
+                    steps.append({"step": f"early_stop_p{pass_idx}", "reason": "wt+mf"})
+                    break
+            except Exception:
+                pass
 
     return NativeRepairResult(
-        vertices=V2, faces=F6, steps=steps,
-        watertight=bool(is_watertight(F6)),
-        manifold=bool(is_manifold(F6)),
+        vertices=V_cur, faces=F_cur, steps=steps,
+        watertight=bool(is_watertight(F_cur)),
+        manifold=bool(is_manifold(F_cur)),
     )
