@@ -1457,7 +1457,8 @@ def generate_native_tet(
 
     # JJ3 (beta1820) — drop_extreme_slivers 전에 smooth_then_drop_slivers 호출
     # (drop 대신 주변 vertex 이동으로 sliver 회복 시도). hard mesh quality ↑.
-    if enable_phase_a and final_tets.shape[0] > 0:
+    # P4-B-5e (beta2245e): _phase_bc_skip 시 후속 sliver 처리도 무의미 (P4-C 가 통째 재생성).
+    if enable_phase_a and final_tets.shape[0] > 0 and not _phase_bc_skip:
         try:
             from core.generator.native_tet.validate import (
                 smooth_then_drop_slivers,
@@ -1485,7 +1486,7 @@ def generate_native_tet(
             log.debug("native_tet_smooth_then_drop_skipped", reason=str(exc))
 
     # Round 73-74: extreme sliver 제거 (파라미터 노출). V5 — surface-aware revert.
-    if enable_phase_a:
+    if enable_phase_a and not _phase_bc_skip:
         try:
             from core.generator.native_tet.validate import drop_extreme_slivers
             from core.generator.native_tet.plane_coverage import (
