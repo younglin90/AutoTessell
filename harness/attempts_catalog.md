@@ -78,3 +78,5 @@
 | R77 | WWW7 | hex | PASS | n/a | feature edge snap (nFeatureSnapIter style), dihedral>30° segs, top_k=200, quality guard per-cell, hex A=5/5 stable, BL fail=0, bench 70.5s |
 | R116 | TET_TIMING2 | tet | OBS | n/a | post-PERF3/4 timing snapshot: top-3 = VVV13=7496ms, VVV12=5009ms, VVV10=3432ms (sum across 10 runs, bench 85.7s, 22/22 PASS) |
 | R132 | TET_TIMING3 | tet | OBS | n/a | post-perf-chain timing: top-3 = VVV13=7276ms, VVV12=4396ms, VVV3b=3152ms, total bench 82.0s |
+| R181 | BETA2246_VVV9B_OFFPLANE_STEINER | tet | PASS | =0.0 | Klingner coplanar Steiner skeleton: SVD off-plane helper (default OFF). zero behavior change, regression 35/35 PASS, bench 59.1s, commit 5c44137 |
+| R182 | BETA2247_VVV9C_OFFPLANE_DIAG | tet | PASS | =0.0 | diagnostic hook for off-plane sliver candidates (log-only, gate OFF). VVV12 try-block: call _count_offplane_sliver_candidates after _n_sliver_pre, append n_offplane_candidates + flatness_thresh to sliver_split log. zero behavior change, regression 35/35 PASS, bench 564.6s, worst_mq 0.2068, BL_OK 20/20, commit 4a83fc9 |
