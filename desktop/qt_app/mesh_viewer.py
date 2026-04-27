@@ -1526,35 +1526,36 @@ class MeshViewerWidget(QWidget):
                 poly_types = {42}         # VTK_POLYHEDRON
 
                 if n_cells > 0 and hasattr(mesh, "celltypes"):
-                    ct_arr = list(getattr(mesh, "celltypes", []))
+                    import numpy as _np_ct
+                    ct_arr = _np_ct.asarray(getattr(mesh, "celltypes", []), dtype=_np_ct.int32)
                     n_hex = n_tet = n_prism = n_poly = 0
 
-                    def _points_of_cell(idx: int) -> int:
-                        try:
-                            return int(mesh.get_cell(idx).n_points)  # type: ignore[attr-defined]
-                        except Exception:
-                            return 0
+                    # vectorized classification for non-polyhedron types
+                    mask_tet   = _np_ct.isin(ct_arr, list(tet_types))
+                    mask_hex   = _np_ct.isin(ct_arr, list(hex_types))
+                    mask_prism = _np_ct.isin(ct_arr, list(prism_types))
+                    mask_poly  = _np_ct.isin(ct_arr, list(poly_types))
+                    mask_other = ~(mask_tet | mask_hex | mask_prism | mask_poly)
 
-                    for idx, t in enumerate(ct_arr):
-                        if t in tet_types:
+                    n_tet   = int(mask_tet.sum())
+                    n_hex   = int(mask_hex.sum())
+                    n_prism = int(mask_prism.sum())
+                    n_poly  = int(mask_other.sum())  # unknown → polyhedral
+
+                    # VTK_POLYHEDRON — per-cell points 개수로 재분류 (loop 최소화)
+                    poly_indices = _np_ct.where(mask_poly)[0]
+                    for idx in poly_indices.tolist():
+                        try:
+                            npts = int(mesh.get_cell(idx).n_points)  # type: ignore[attr-defined]
+                        except Exception:
+                            npts = 0
+                        if npts == 4:
                             n_tet += 1
-                        elif t in hex_types:
+                        elif npts == 8:
                             n_hex += 1
-                        elif t in prism_types:
+                        elif npts == 6:
                             n_prism += 1
-                        elif t in poly_types:
-                            # VTK_POLYHEDRON — points 개수로 재분류
-                            npts = _points_of_cell(idx)
-                            if npts == 4:
-                                n_tet += 1
-                            elif npts == 8:
-                                n_hex += 1
-                            elif npts == 6:
-                                n_prism += 1
-                            else:
-                                n_poly += 1
                         else:
-                            # 미지의 cell 타입은 polyhedral로 분류
                             n_poly += 1
 
                     total = max(n_cells, 1)

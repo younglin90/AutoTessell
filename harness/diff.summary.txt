@@ -1,4 +1,4 @@
-file: core/generator/native_tet/bsp_insert.py
-functions: _tet_facet_keys, bsp_insert_triangles_batch
-lines_added: 28
-lines_removed: 22
+file: desktop/qt_app/mesh_viewer.py
+functions: _compute_and_emit_stats
+lines_added: 17
+lines_removed: 14

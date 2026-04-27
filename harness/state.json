@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2193,
+  "beta": 2194,
   "max_round": 1000,
-  "round": 142,
+  "round": 143,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -63,5 +63,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "BSP_VEC (R142) — vectorize _tet_facet_keys (numpy sort) + bsp_insert_triangles_batch 6-edge loop (np.ix_ batch) + dup check; 22/22 PASS 40.87s"
+  "plan_archive": "DESKTOP_HIST_VEC (R143) — vectorize Qt cell-type classification loop in _compute_and_emit_stats via np.isin; 22/22 PASS 39.49s"
 }
