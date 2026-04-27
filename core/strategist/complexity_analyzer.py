@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from core.utils.logging import get_logger
 
 if TYPE_CHECKING:
@@ -81,9 +83,9 @@ class ComplexityAnalyzer:
 
         # 3. 종횡비 극단성
         #    bbox의 종횡비가 높을수록 극단적
-        bbox_dims = [bbox.max[i] - bbox.min[i] for i in range(3)]
-        bbox_dims_sorted = sorted(bbox_dims)
-        aspect_min_max = bbox_dims_sorted[2] / max(bbox_dims_sorted[0], 1e-10)
+        bbox_dims_arr = np.subtract(bbox.max, bbox.min)
+        bbox_dims_sorted_arr = np.sort(bbox_dims_arr)
+        aspect_min_max = float(bbox_dims_sorted_arr[2]) / max(float(bbox_dims_sorted_arr[0]), 1e-10)
         if aspect_min_max > 100:
             aspect_ratio = 100.0
         elif aspect_min_max > 10:
@@ -93,8 +95,13 @@ class ComplexityAnalyzer:
 
         # 4. 표면 품질 점수 (낮을수록 나쁨, 결함이 많음)
         #    critical issues의 개수로 판단
-        critical_issues = sum(1 for issue in issues if issue.severity == "critical")
-        major_issues = sum(1 for issue in issues if issue.severity == "major")
+        if issues:
+            severities = np.array([issue.severity for issue in issues])
+            critical_issues = int(np.sum(severities == "critical"))
+            major_issues = int(np.sum(severities == "major"))
+        else:
+            critical_issues = 0
+            major_issues = 0
 
         # 문제가 많을수록 품질이 낮음
         if critical_issues >= 5:
@@ -315,6 +322,57 @@ class ComplexityAnalyzer:
             }
 
     @staticmethod
+    def get_wildmesh_tuning_params(score: ComplexityScore) -> dict[str, float]:
+        """WildMesh (fTetWild) 파라미터를 형상 복잡도에 따라 추천한다.
+
+        실측 기준 (2026-04-21, tests/stl/05_ultra_knot.stl):
+          - simple (overall < 4)  : 기본 draft 값이 충분
+          - moderate / complex    : TetWild 매칭 — 15s PASS (WildMesh default 는 FAIL)
+          - extreme               : 너무 tight 하면 timeout → moderate 보다 약간만 완화
+
+        Args:
+            score: ComplexityScore.
+
+        Returns:
+            wildmesh_epsilon / wildmesh_edge_length_r /
+            wildmesh_stop_quality / wildmesh_max_its 를 담은 dict.
+        """
+        classification = ComplexityAnalyzer.classify(score)
+
+        if classification == "simple":
+            # cube 류: 기본 draft 빠르게
+            return {
+                "wildmesh_epsilon": 2e-3,
+                "wildmesh_edge_length_r": 0.06,
+                "wildmesh_stop_quality": 20.0,
+                "wildmesh_max_its": 40,
+            }
+        if classification == "moderate":
+            # 일반적인 기계 부품: TetWild 매칭
+            return {
+                "wildmesh_epsilon": 1e-3,
+                "wildmesh_edge_length_r": 0.05,
+                "wildmesh_stop_quality": 10.0,
+                "wildmesh_max_its": 80,
+            }
+        if classification == "complex":
+            # knot / 기어 류: TetWild 매칭 + max_its 여유
+            return {
+                "wildmesh_epsilon": 1e-3,
+                "wildmesh_edge_length_r": 0.05,
+                "wildmesh_stop_quality": 10.0,
+                "wildmesh_max_its": 100,
+            }
+        # extreme: epsilon<1e-3 로 가면 fTetWild 수렴 실패 → moderate 값 유지하되
+        # stop_quality 를 약간 완화해 timeout 방지
+        return {
+            "wildmesh_epsilon": 1e-3,
+            "wildmesh_edge_length_r": 0.05,
+            "wildmesh_stop_quality": 12.0,
+            "wildmesh_max_its": 120,
+        }
+
+    @staticmethod
     def should_skip_layers(score: ComplexityScore) -> bool:
         """경계층을 스킵해야 하는지 판단한다.
 
@@ -360,13 +418,13 @@ class ComplexityAnalyzer:
         surface = report.geometry.surface
 
         # 1. Bounding box 종횡비 확인
-        bbox_dims = [bbox.max[i] - bbox.min[i] for i in range(3)]
-        bbox_dims_sorted = sorted(bbox_dims)
+        bbox_dims_arr2 = np.subtract(bbox.max, bbox.min)
+        bbox_dims_sorted2 = np.sort(bbox_dims_arr2)
 
         # 가장 작은 차원이 전체 크기의 10% 이하이면 2D (부동소수점 오차 고려 ≤ 0.105)
         # 정점 수 제한 없이 bbox ratio만으로 판단 (고해상도 에어포일도 정확히 감지)
-        if bbox_dims_sorted[2] > 1e-10:
-            aspect_2d = bbox_dims_sorted[0] / bbox_dims_sorted[2]
+        if float(bbox_dims_sorted2[2]) > 1e-10:
+            aspect_2d = float(bbox_dims_sorted2[0]) / float(bbox_dims_sorted2[2])
             if aspect_2d <= 0.105:  # 부동소수점 오차를 고려한 임계값
                 log.info(
                     "likely_2d_shape_detected",
