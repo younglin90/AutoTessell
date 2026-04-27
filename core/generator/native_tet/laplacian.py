@@ -101,19 +101,45 @@ def smooth_interior_laplacian(
     if n_tets == 0 or n_verts == 0:
         return pts, tets, 0
 
-    # ── 1. Build vert → incident-tet adjacency ────────────────────────────────
-    # List[List[int]]: vert_tets[v] = list of tet indices containing v.
+    # ── 1. Build vert → incident-tet adjacency (vectorised) ──────────────────
+    # vert_tets[v] = list of tet indices containing v.
     vert_tets: list[list[int]] = [[] for _ in range(n_verts)]
-    for ti, tet in enumerate(tets):
-        for v in tet:
+    # Vectorised: iterate over 4 columns of tets array.
+    for col in range(4):
+        for ti, v in enumerate(tets[:, col]):
             vert_tets[v].append(ti)
 
     # ── 2. Identify boundary faces (appear in exactly 1 tet) ─────────────────
     # TET_CACHE1: reuse cached result when tets topology hasn't changed.
     _fc, boundary_verts = _compute_boundary_faces_cached(tets)
 
-    # ── 3. 2-ring BFS from boundary to mark interior-safe verts ──────────────
-    # Build vert → neighbor verts adjacency (edges shared in tets).
+    # ── 3. 2-ring BFS from boundary — vectorised depth propagation ────────────
+    # Build edge list from tets: all (i,j) pairs with i<j per tet.
+    # Shape: (n_tets*6, 2) — 6 edges per tet.
+    _EDGE_PAIRS = ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3))
+    edges_list = [tets[:, [a, b]] for a, b in _EDGE_PAIRS]
+    edges = np.concatenate(edges_list, axis=0)  # (n_tets*6, 2)
+    # Symmetric: add reverse direction.
+    edges = np.concatenate([edges, edges[:, ::-1]], axis=0)  # (n_tets*12, 2)
+
+    # depth[v] = min BFS ring distance from any boundary vert.
+    depth = np.full(n_verts, n_verts, dtype=np.int64)
+    bv_arr = np.fromiter(boundary_verts, dtype=np.int64)
+    if bv_arr.size > 0:
+        depth[bv_arr] = 0
+
+    # Two BFS waves (we only need depth ≥ 2 check, so 2 rounds suffice).
+    for _wave in range(2):
+        # For each edge (u→v): if depth[u]+1 < depth[v], update depth[v].
+        src_depth = depth[edges[:, 0]]
+        candidate_depth = src_depth + 1
+        # Vectorised scatter-min via np.minimum.at.
+        np.minimum.at(depth, edges[:, 1], candidate_depth)
+
+    # interior_safe_mask[v] = True iff depth[v] >= 2.
+    interior_safe_mask = depth >= 2
+
+    # Build vert_neighbors (still needed per-vert in the apply loop).
     vert_neighbors: list[set[int]] = [set() for _ in range(n_verts)]
     for tet in tets:
         for i in range(4):
@@ -121,36 +147,20 @@ def smooth_interior_laplacian(
                 vert_neighbors[tet[i]].add(tet[j])
                 vert_neighbors[tet[j]].add(tet[i])
 
-    # BFS: depth[v] = min ring distance from any boundary vert.
-    depth = np.full(n_verts, n_verts, dtype=np.int64)
-    queue: list[int] = []
-    for v in boundary_verts:
-        depth[v] = 0
-        queue.append(v)
-    head = 0
-    while head < len(queue):
-        v = queue[head]; head += 1
-        d1 = depth[v] + 1
-        for nb in vert_neighbors[v]:
-            if d1 < depth[nb]:
-                depth[nb] = d1
-                queue.append(nb)
-
-    interior_safe = set(int(v) for v in range(n_verts) if depth[v] >= 2)
+    interior_safe = set(int(v) for v in np.where(interior_safe_mask)[0])
 
     if not interior_safe:
         return pts, tets, 0
 
-    # ── 4. Identify candidate verts from top-K worst tets ────────────────────
+    # ── 4. Identify candidate verts from top-K worst tets (vectorised) ────────
     q_all = _tet_shape_quality(pts, tets)
     k = min(top_k, n_tets)
     worst_ti = np.argpartition(q_all, k - 1)[:k] if k < n_tets else np.arange(n_tets)
 
-    candidate_verts: set[int] = set()
-    for ti in worst_ti:
-        for v in tets[ti]:
-            if int(v) in interior_safe:
-                candidate_verts.add(int(v))
+    # Gather all verts from worst tets, then filter by interior_safe_mask.
+    worst_verts = tets[worst_ti].ravel()  # (k*4,)
+    cand_mask = interior_safe_mask[worst_verts]
+    candidate_verts: set[int] = set(worst_verts[cand_mask].tolist())
 
     if not candidate_verts:
         return pts, tets, 0
@@ -415,10 +425,10 @@ def smooth_boundary_envelope(
     if n_tets == 0 or n_verts == 0 or surface_faces.shape[0] == 0:
         return pts, tets, 0
 
-    # ── 1. Build adjacency ────────────────────────────────────────────────────
+    # ── 1. Build adjacency (vectorised over 4 tet columns) ───────────────────
     vert_tets: list[list[int]] = [[] for _ in range(n_verts)]
-    for ti, tet in enumerate(tets):
-        for v in tet:
+    for col in range(4):
+        for ti, v in enumerate(tets[:, col]):
             vert_tets[v].append(ti)
 
     # TET_CACHE1: reuse cached boundary-face result when tets topology unchanged.
@@ -426,6 +436,11 @@ def smooth_boundary_envelope(
 
     if not boundary_verts:
         return pts, tets, 0
+
+    # boundary_verts_mask[v] = True iff v is on boundary — vectorised.
+    boundary_verts_arr = np.fromiter(boundary_verts, dtype=np.int64)
+    boundary_mask = np.zeros(n_verts, dtype=bool)
+    boundary_mask[boundary_verts_arr] = True
 
     # ── 2. Vert neighbors (edge-connected) ───────────────────────────────────
     vert_neighbors: list[set[int]] = [set() for _ in range(n_verts)]
@@ -435,16 +450,15 @@ def smooth_boundary_envelope(
                 vert_neighbors[tet[i]].add(tet[j])
                 vert_neighbors[tet[j]].add(tet[i])
 
-    # ── 3. Candidate verts: boundary + incident to top-K worst tets ──────────
+    # ── 3. Candidate verts: boundary + incident to top-K worst tets (vectorised)
     q_all = _tet_shape_quality(pts, tets)
     k = min(top_k, n_tets)
     worst_ti = np.argpartition(q_all, k - 1)[:k] if k < n_tets else np.arange(n_tets)
 
-    candidate_verts: set[int] = set()
-    for ti in worst_ti:
-        for v in tets[ti]:
-            if int(v) in boundary_verts:
-                candidate_verts.add(int(v))
+    # Gather all verts from worst tets, filter by boundary_mask — vectorised.
+    worst_verts = tets[worst_ti].ravel()  # (k*4,)
+    cand_mask = boundary_mask[worst_verts]
+    candidate_verts: set[int] = set(worst_verts[cand_mask].tolist())
 
     if not candidate_verts:
         return pts, tets, 0

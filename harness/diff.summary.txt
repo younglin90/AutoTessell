@@ -1,4 +1,4 @@
-file: core/generator/native_poly/voronoi.py
-functions: _lloyd_3d_iteration
-lines_added: 21
-lines_removed: 20
+file: core/generator/native_tet/laplacian.py
+functions: smooth_interior_laplacian, smooth_boundary_envelope
+lines_added: 28
+lines_removed: 18
