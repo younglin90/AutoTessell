@@ -1,4 +1,4 @@
-file: core/preprocessor/native_repair/hole_fill.py
-functions: _extract_boundary_loops, _ear_clip_2d, fill_small_holes
-lines_added: 32
-lines_removed: 23
+file: core/evaluator/native_checker.py
+functions: _compute_face_centres, _compute_face_normals_areas, _compute_max_aspect_ratio
+lines_added: 42
+lines_removed: 22

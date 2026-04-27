@@ -302,10 +302,11 @@ class NativeMeshChecker:
 
         for k, idxs in groups.items():
             idx_arr = np.asarray(idxs, dtype=np.int64)
-            # Build (G, k) vertex index array
-            vidx = np.empty((len(idxs), k), dtype=np.int64)
-            for j, i in enumerate(idxs):
-                vidx[j] = faces[i]
+            G = len(idxs)
+            # Build (G, k) vertex index array — vectorized via flat list + reshape
+            vidx = np.fromiter(
+                (v for i in idxs for v in faces[i]), dtype=np.int64, count=G * k
+            ).reshape(G, k)
             # points[vidx]: (G, k, 3) → mean over axis=1 → (G, 3)
             centres[idx_arr] = points[vidx].mean(axis=1)
 
@@ -334,9 +335,10 @@ class NativeMeshChecker:
         for k, idxs in groups.items():
             idx_arr = np.asarray(idxs, dtype=np.int64)
             G = len(idxs)
-            vidx = np.empty((G, k), dtype=np.int64)
-            for j, i in enumerate(idxs):
-                vidx[j] = faces[i]
+            # Build (G, k) vertex index array — vectorized via flat list + reshape
+            vidx = np.fromiter(
+                (v for i in idxs for v in faces[i]), dtype=np.int64, count=G * k
+            ).reshape(G, k)
             verts = points[vidx]  # (G, k, 3)
             v0 = verts[:, 0:1, :]  # (G, 1, 3)
             # Fan triangulation: edges from v0 to v1..v_{k-1} and v2..v_k
@@ -591,34 +593,61 @@ class NativeMeshChecker:
         if n_cells == 0:
             return 1.0
 
-        # Build cell → set of vertex indices
-        cell_verts: list[list[int]] = [[] for _ in range(n_cells)]
-        seen_per_cell: list[set[int]] = [set() for _ in range(n_cells)]
+        # ── Build cell → vertex list using CSR-style vectorized scatter ──
+        # Flatten all face vertex indices alongside their owner cell ids.
+        # For boundary faces the owner array covers all faces; internal faces
+        # also have a neighbour — but for vertex collection owner is enough
+        # (each vertex appears via at least one face per cell).
+        flat_verts: list[int] = []
+        flat_cells: list[int] = []
         for fi, face in enumerate(faces):
             cell_id = int(owner[fi])
             if cell_id >= n_cells:
                 continue
-            seen = seen_per_cell[cell_id]
-            lst = cell_verts[cell_id]
             for v in face:
-                if v not in seen:
-                    seen.add(v)
-                    lst.append(v)
+                flat_verts.append(v)
+                flat_cells.append(cell_id)
+
+        if not flat_verts:
+            return 1.0
+
+        flat_verts_arr = np.asarray(flat_verts, dtype=np.int64)
+        flat_cells_arr = np.asarray(flat_cells, dtype=np.int64)
+
+        # Sort by (cell, vertex) and deduplicate — vectorized
+        sort_key = flat_cells_arr * (flat_verts_arr.max() + 1) + flat_verts_arr
+        order = np.argsort(sort_key, kind="stable")
+        sc = flat_cells_arr[order]
+        sv = flat_verts_arr[order]
+        # Remove (cell, vertex) duplicates
+        uniq_mask = np.empty(len(sc), dtype=bool)
+        uniq_mask[0] = True
+        uniq_mask[1:] = (sc[1:] != sc[:-1]) | (sv[1:] != sv[:-1])
+        sc = sc[uniq_mask]
+        sv = sv[uniq_mask]
+
+        # Build CSR offsets: for each cell, the slice [csr_ptr[c]:csr_ptr[c+1]]
+        # gives its unique vertex indices.
+        cell_counts = np.bincount(sc, minlength=n_cells)  # (n_cells,)
+        csr_ptr = np.empty(n_cells + 1, dtype=np.int64)
+        csr_ptr[0] = 0
+        np.cumsum(cell_counts, out=csr_ptr[1:])
 
         # 대형 메쉬는 샘플링 (전체 대비 대표성 충분, 시간 급감).
         if n_cells > 100_000:
             step = max(1, n_cells // 50_000)
-            cell_indices = range(0, n_cells, step)
+            cell_indices_arr = np.arange(0, n_cells, step, dtype=np.int64)
         else:
-            cell_indices = range(n_cells)
+            cell_indices_arr = np.arange(n_cells, dtype=np.int64)
 
         max_ar = 1.0
-        for ci in cell_indices:
-            cv = cell_verts[ci]
-            if len(cv) < 2:
+        for ci in cell_indices_arr:
+            start, end = int(csr_ptr[ci]), int(csr_ptr[ci + 1])
+            if end - start < 2:
                 continue
+            cv = sv[start:end]
             verts = points[cv]                    # (n, 3)
-            # 벡터화된 pairwise distance — upper-triangular 만 추출
+            # Vectorized pairwise distance — upper-triangular only
             diff = verts[:, None, :] - verts[None, :, :]
             d2 = np.einsum("ijk,ijk->ij", diff, diff)
             iu = np.triu_indices_from(d2, k=1)

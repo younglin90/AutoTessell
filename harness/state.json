@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2205,
+  "beta": 2206,
   "max_round": 1000,
-  "round": 154,
+  "round": 155,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -26,13 +26,14 @@
   "last_mq": {
     "tet_worst": 0.127
   },
-  "last_bench_time": 39.52,
+  "last_bench_time": 40.80,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "CHECKER_REMAIN_VEC",
     "REMESH_VEC",
     "PREPROC_HOLE_VEC",
     "OFF_READER_VEC",
@@ -61,13 +62,12 @@
     "PERF4",
     "PERF5",
     "POLYMESHWRITER_VEC",
-    "STL_READER_VEC",
-    "OBJ_PLY_READER_VEC"
+    "STL_READER_VEC"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "REMESH_VEC (R154) — vectorized _split_edges_above edge-length batch, _tangential_relocate np.add.at scatter in isotropic.py; 22/22 PASS 39.52s"
+  "plan_archive": "CHECKER_REMAIN_VEC (R155) — vectorized vidx build in _compute_face_centres/_compute_face_normals_areas (np.fromiter+reshape), CSR-style dedup scatter in _compute_max_aspect_ratio; 22/22 PASS 40.80s"
 }
