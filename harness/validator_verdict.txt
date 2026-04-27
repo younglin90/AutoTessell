@@ -1,2 +1,3 @@
 PASS
-BETA2264_VVV9H8_REAL_APPLY_ENV_GATE (R199): Env-only gate (default OFF) for Klingner edge-contract real apply—regression 35/35, worst_mq 0.208 stable, mesh unchanged.
+
+R202 BETA2267_VVV9I3_DIAG_HOOK: regression 31/31 PASS (66s), worst_mq 0.208±0.005 stable, gate OFF → mesh ±0, commit 4a57688
