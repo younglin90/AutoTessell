@@ -1,2 +1,2 @@
 PASS
-Regression 35/35 PASS, gate flip True enabled, mesh state unchanged (discard helper), worst_mq 0.2069 stable, bench ~580s < 600s.
+R191 VVV9F #5 dryrun gate flip: regression 35/35, mesh bit-identical, code change verified (2 lines).

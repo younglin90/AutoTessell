@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2255,
+  "beta": 2256,
   "max_round": 1000,
-  "round": 190,
+  "round": 191,
   "last_grade": {
     "tet": {
       "A": 20,
@@ -12,7 +12,7 @@
       "OK": 20,
       "BL_OK": 20,
       "total": 20,
-      "source": "BETA2255_VVV9F5_DRYRUN_WIRE - Cheng-Dey dry-run wire (diagnostic log-only, gate OFF), regression 31/31 PASS, metric ±0",
+      "source": "BETA2256_VVV9F6_DRYRUN_ON - Cheng-Dey dryrun gate flip (sliver-gated evidence emit, mesh discard), regression 35/35 PASS, metric \u00b10",
       "bench_time_s": 580.0
     },
     "hex": {
@@ -50,5 +50,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2255_VVV9F5_DRYRUN_WIRE (R190) - mesher.py wire dry-run exudation (25 lines, gate OFF), regression 31/31 PASS, metric ±0, bench ~580s (unchanged)."
+  "plan_archive": "BETA2256_VVV9F6_DRYRUN_ON (R191) - mesher.py dryrun gate flip + sliver-gate (2 lines), regression 35/35 PASS, metric \u00b10."
 }

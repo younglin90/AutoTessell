@@ -2929,8 +2929,8 @@ def generate_native_tet(
                     except Exception as exc:  # noqa: BLE001
                         log.warning("native_tet_vvv9d_skipped", reason=str(exc)[:120])
                 # VVV9F (beta2255) — dry-run exudation wire (mesh unchanged, log only)
-                _VVV9F_EXUDATION_DRYRUN: bool = False  # R190/VVV9F #4 default OFF — gate ON in R191
-                if _VVV9F_EXUDATION_DRYRUN:
+                _VVV9F_EXUDATION_DRYRUN: bool = True  # R191/VVV9F #5 evidence emit (mesh discard, sliver-gated)
+                if _VVV9F_EXUDATION_DRYRUN and _n_sliver_pre >= 1:
                     try:
                         from core.generator.native_tet.stellar import (  # noqa: PLC0415
                             _perturb_weights_topK as _pwk_dr,
