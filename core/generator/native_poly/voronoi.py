@@ -1546,6 +1546,37 @@ def _generate_native_poly_voronoi_inner(
         )
         n_prism_added = len(final_cells) - _n_cells_pre
         log.info("ttt4_poly_bl_extruded", n_added=n_prism_added)
+
+        # POL_BL_UNIFORM (R124) — first-layer thickness uniformity validator.
+        # Mirrors HEX_BL_UNIFORM (R123) for the poly-specific voronoi extrude path.
+        # First layer uses uniform step; build per-prism thickness array for observability.
+        # Disable via env AUTO_TESSELL_POL_BL_UNIFORM_OFF=1. Default ON.
+        import os as _os_pbu  # noqa: PLC0415
+        if _os_pbu.environ.get("AUTO_TESSELL_POL_BL_UNIFORM_OFF", "0") != "1":
+            try:
+                from core.layers.native_bl import validate_bl_thickness_uniformity as _vbtu  # noqa: PLC0415
+                _first_step_pbu = bbox_diag * 0.005 * 0.95
+                _thick_arr_pbu = np.full(max(n_prism_added, 1), _first_step_pbu, dtype=np.float64)
+                _rv = _vbtu(_thick_arr_pbu)
+                log.info(
+                    "poly_bl_thickness_stats",
+                    component="native_poly",
+                    phase="POL_BL_UNIFORM",
+                    n_prisms=n_prism_added,
+                    first_step=round(_first_step_pbu, 8),
+                    rel_variation=round(_rv, 6),
+                )
+                if _rv > 0.05:
+                    log.warning(
+                        "poly_bl_thickness_warning",
+                        component="native_poly",
+                        phase="POL_BL_UNIFORM",
+                        rel_variation=round(_rv, 6),
+                        msg="poly first-layer thickness variation exceeds CFD y+ uniformity threshold",
+                    )
+            except Exception as _pbu_e:
+                log.info("pol_bl_uniform_skipped", reason=str(_pbu_e)[:80])
+
         _pol_val3_cur = _count_neg_vol_poly(final_cells, final_vertices)
         log.info(
             "native_poly_neg_vol_track",

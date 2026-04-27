@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2175,
+  "beta": 2176,
   "max_round": 1000,
-  "round": 123,
+  "round": 124,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -57,5 +57,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "HEX_BL_UNIFORM (R123) — validate_bl_thickness_uniformity helper; logs stats always, warns if std/mean >5%; called post BL1+BL3 combined_thick; 22/22 PASS; bench 42.05s"
+  "plan_archive": "POL_BL_UNIFORM (R124) — poly+BL thickness uniformity validator; reuses validate_bl_thickness_uniformity from native_bl.py; called post first-layer extrude in voronoi.py; 22/22 PASS; bench 41.06s"
 }
