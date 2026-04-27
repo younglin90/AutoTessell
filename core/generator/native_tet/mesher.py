@@ -2976,6 +2976,25 @@ def generate_native_tet(
                             wall_ms=_wall_ms,
                             mode="dry_run",
                         )
+                        # VVV9H5 (beta2261) — apply dryrun wire (gate OFF, mesh unchanged)
+                        _VVV9H_APPLY_DRYRUN: bool = False  # R196: default OFF, flip in R197
+                        if _VVV9H_APPLY_DRYRUN and _n_sliver_pre >= 1 and len(_cands) >= 1:
+                            try:
+                                from core.generator.native_tet.stellar import _apply_klingner_edge_contract_topK as _akec_dr  # noqa: PLC0415
+                                _t0 = time.perf_counter()
+                                _np, _nt, _st = _akec_dr(final_pts, final_tets, _cands, k=10)
+                                _wall_ms = int((time.perf_counter() - _t0) * 1000)
+                                log.info(
+                                    "native_tet_vvv9h4_dryrun",
+                                    n_apply_attempted=10,
+                                    n_apply_accepted=int(_st.get("n_applied", 0)),
+                                    n_reverted=int(_st.get("n_reverted", 0)),
+                                    n_conflict=int(_st.get("n_conflict", 0)),
+                                    wall_ms=_wall_ms,
+                                    mode="dry_run",
+                                )
+                            except Exception as exc:  # noqa: BLE001
+                                log.warning("native_tet_vvv9h4_skipped", reason=str(exc)[:120])
                     except Exception as exc:  # noqa: BLE001
                         log.warning("native_tet_vvv9h_skipped", reason=str(exc)[:120])
         except Exception as exc:

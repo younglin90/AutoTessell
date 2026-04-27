@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2260,
+  "beta": 2261,
   "max_round": 1000,
-  "round": 195,
+  "round": 196,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -12,7 +12,7 @@
       "OK": 5,
       "BL_OK": 5,
       "total": 5,
-      "source": "BETA2260_VVV9H4_EDGE_CONTRACT_APPLY_SKEL - Klingner apply helper skeleton (no caller, mesh \u00b10), regression 31/31 PASS, metric \u00b10",
+      "source": "BETA2261_VVV9H5_APPLY_DRYRUN_WIRE - Klingner apply helper dryrun wire (gate OFF, mesh \u00b10), regression 31/31 PASS, worst_mq 0.2069 \u00b10",
       "bench_time_s": 61.78
     },
     "hex": {
@@ -39,16 +39,16 @@
     "poly"
   ],
   "recent_cards": [
+    "BETA2261_VVV9H5_APPLY_DRYRUN_WIRE",
     "BETA2260_VVV9H4_EDGE_CONTRACT_APPLY_SKEL",
     "BETA2259_VVV9H3_DIAG_ON",
     "BETA2258_VVV9H2_HOOK_OFF",
-    "BETA2257_VVV9H1_KLINGNER_EDGE_CONTRACT_CANDIDATES",
-    "BETA2255_VVV9F5_DRYRUN_WIRE"
+    "BETA2257_VVV9H1_KLINGNER_EDGE_CONTRACT_CANDIDATES"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2260_VVV9H4_EDGE_CONTRACT_APPLY_SKEL (R195) - Klingner apply helper skeleton (no caller), regression 31/31 PASS, worst_mq 0.2069 \u00b10, bench 61.78s."
+  "plan_archive": "BETA2261_VVV9H5_APPLY_DRYRUN_WIRE (R196) - Klingner apply helper dryrun wire (gate OFF), regression 31/31 PASS, worst_mq 0.2069 \u00b10, bench 61.78s."
 }
