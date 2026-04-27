@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2250,
+  "beta": 2251,
   "max_round": 1000,
-  "round": 185,
+  "round": 186,
   "last_grade": {
     "tet": {
       "A": 20,
@@ -12,7 +12,7 @@
       "OK": 20,
       "BL_OK": 20,
       "total": 20,
-      "source": "VVV9E_DRYRUN_ON - off-plane dry-run evidence gate=True, mesh unchanged",
+      "source": "VVV9F_EXUDATION_SKELETON - Cheng-Dey helper×2 + gate OFF, caller 0, mesh unchanged",
       "bench_time_s": 580.0
     },
     "hex": {
@@ -52,5 +52,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2250_VVV9E_DRYRUN_ON (R185) - gate flip True for evidence collection, mesh unchanged, regression 35/35 PASS."
+  "plan_archive": "BETA2251_VVV9F_EXUDATION_SKELETON (R186) - stellar.py +helper×2 gate OFF, caller 0, regression 35/35 PASS."
 }

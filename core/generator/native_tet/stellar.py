@@ -1116,6 +1116,89 @@ def _apply_offplane_steiner_topK(
 
 
 # ---------------------------------------------------------------------------
+# VVV9F (beta2251) — Cheng-Dey-Edelsbrunner sliver exudation skeleton
+# Reference: Cheng, Dey, Edelsbrunner, Facello, Teng 1999 "Sliver Exudation"
+#            (FOCS '99 §3–§4); Cheng-Dey 2002 SIAM JC §2–§3.
+# Gate default OFF — no caller yet; activated in subsequent card.
+# ---------------------------------------------------------------------------
+
+_VVV9F_EXUDATION: bool = False  # skeleton gate — activated in next card
+
+
+def _compute_exudation_weight_candidates(
+    pts: "np.ndarray",
+    tets: "np.ndarray",
+    *,
+    n_candidates: int = 8,
+    alpha: float = 0.3,
+    seed: int = 0,
+) -> "np.ndarray":
+    """Compute per-vertex weight candidates for Cheng-Dey exudation (skeleton).
+
+    Each vertex v receives weight w(v) = (alpha * l_min(v))^2 where l_min(v)
+    is the shortest incident edge length.  Paper §4 perturbation model:
+    w(v) in [0, omega_0^2 * rho^2].  This card returns zeros (skeleton
+    placeholder); actual weight sampling added in the subsequent card.
+
+    Parameters
+    ----------
+    pts          : (N, 3) float array of vertex positions.
+    tets         : (M, 4) int array of tet vertex indices.
+    n_candidates : number of random weight vectors to sample (unused here).
+    alpha        : perturbation scale factor (unused here).
+    seed         : RNG seed (unused here).
+
+    Returns
+    -------
+    weights : (N,) float array — zeros (placeholder).
+    """
+    n_verts = pts.shape[0]
+    # Skeleton: compute l_min per vertex (incident edge shortest length).
+    # Build edge list from tets (6 edges per tet, 4-choose-2).
+    _PAIRS = ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3))
+    if tets.shape[0] > 0:
+        l_min = np.full(n_verts, np.inf, dtype=pts.dtype)
+        for a, b in _PAIRS:
+            va = tets[:, a]
+            vb = tets[:, b]
+            d = np.linalg.norm(pts[va] - pts[vb], axis=1)
+            np.minimum.at(l_min, va, d)
+            np.minimum.at(l_min, vb, d)
+        l_min[l_min == np.inf] = 0.0
+    # Return zeros — actual weight sampling deferred to subsequent card.
+    return np.zeros(n_verts, dtype=pts.dtype)
+
+
+def _evaluate_weighted_quality_proxy(
+    pts: "np.ndarray",
+    tets: "np.ndarray",
+    weights: "np.ndarray",
+) -> float:
+    """Evaluate worst-q proxy for a given per-vertex weight assignment.
+
+    This is a no-op proxy: weights are validated but ignored; actual
+    weighted-Delaunay quality evaluation is deferred to a subsequent card.
+
+    Parameters
+    ----------
+    pts     : (N, 3) float array of vertex positions.
+    tets    : (M, 4) int array of tet vertex indices.
+    weights : (N,) float array — per-vertex non-negative weights.
+
+    Returns
+    -------
+    float : worst aspect-ratio quality (via existing _tet_quality per tet).
+    """
+    assert weights.shape == (pts.shape[0],), (
+        f"weights shape {weights.shape} != (N,) = ({pts.shape[0]},)"
+    )
+    assert (weights >= 0).all(), "weights must be non-negative"
+    if tets.shape[0] == 0:
+        return 1.0
+    return float(min(_tet_quality(pts, t) for t in tets))
+
+
+# ---------------------------------------------------------------------------
 # VAL1 (beta2147) — global negative-volume tet detection + auto-flip
 # ---------------------------------------------------------------------------
 # VAL3 (beta2158) — per-pass negative-volume counter
