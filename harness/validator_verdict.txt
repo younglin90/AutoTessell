@@ -1,3 +1,2 @@
 PASS
-
-Regression: 35 passed (67.59s baseline). Bench: best-effort (thingi10k unavailable). Metrics: tet worst_mq ≈0.208 stable, BL_OK 5/5 maintained. Gate flip _VVV9K_DIAG=True activates priority-queue diag evidence collection while preserving mesh state (helper discard). beta 2282→2283, round 217→218.
+Regression 35 tests OK. VVV9P diagnostic hook (gate OFF) added—no mesh changes. Syntax valid.

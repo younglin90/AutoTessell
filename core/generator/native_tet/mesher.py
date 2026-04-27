@@ -3134,6 +3134,26 @@ def generate_native_tet(
                     log.warning("native_tet_vvv9n_skipped", reason=str(exc)[:120])
             else:
                 log.info("native_tet_vvv9n_skipped_guard", n_sliver_pre=int(_n_sliver_pre), worst_pre=float(_worst_pre))
+            # VVV9P #2 — multi-face removal diagnostic hook (gate OFF default, R226 ON flip)
+            _VVV9P_DIAG: bool = False  # R226 카드에서 ON
+            if _VVV9P_DIAG and _n_sliver_pre >= 1 and _worst_pre < 0.10:
+                try:
+                    from core.generator.native_tet.stellar import _multi_face_removal_candidates as _mfrc_9p  # noqa: PLC0415
+                    _t0_9p = time.perf_counter()
+                    _cands = _mfrc_9p(final_pts, final_tets, k_worst=64, q_thr=0.3)
+                    _wall_ms_9p = int((time.perf_counter() - _t0_9p) * 1000)
+                    _top_q = float(_cands[0]["min_q"]) if _cands else 1.0
+                    log.info(
+                        "native_tet_vvv9p_diag",
+                        n_candidates=int(len(_cands)),
+                        top_quality=_top_q,
+                        wall_ms=_wall_ms_9p,
+                        mode="dry_run",
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("native_tet_vvv9p_skipped", reason=str(exc)[:120])
+            else:
+                log.info("native_tet_vvv9p_skipped_guard", n_sliver_pre=int(_n_sliver_pre), worst_pre=float(_worst_pre))
         except Exception as exc:
             log.warning("native_tet_vvv12_skipped", reason=str(exc)[:120])
     log.info("native_tet_pass_timing", pass_name="VVV12", dt_ms=int((time.perf_counter() - _t_vvv12) * 1000))
