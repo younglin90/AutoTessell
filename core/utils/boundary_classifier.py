@@ -68,31 +68,47 @@ def classify_boundaries(
             results.append({"name": name, "type": "empty", "nFaces": 0})
             continue
 
-        # 패치 면들의 중심점과 법선 계산
-        patch_centers = []
-        patch_normals = []
-        for i in range(start_face, min(start_face + n_faces, len(faces))):
-            face = faces[i]
-            if len(face) < 3:
-                continue
-            verts = points[face]
-            center = verts.mean(axis=0)
-            # Face normal (cross product of first two edges)
-            e1 = verts[1] - verts[0]
-            e2 = verts[2] - verts[0]
-            normal = np.cross(e1, e2)
-            mag = np.linalg.norm(normal)
-            if mag > 0:
-                normal /= mag
-            patch_centers.append(center)
-            patch_normals.append(normal)
+        # 패치 면들의 중심점과 법선 계산 (vectorized by face-size group)
+        patch_faces = [
+            faces[i]
+            for i in range(start_face, min(start_face + n_faces, len(faces)))
+            if len(faces[i]) >= 3
+        ]
+        patch_centers_list: list[np.ndarray] = []
+        patch_normals_list: list[np.ndarray] = []
+        if patch_faces:
+            # group by face vertex count for vectorized numpy ops
+            from itertools import groupby as _groupby
+            for flen, grp in _groupby(
+                sorted(patch_faces, key=len), key=len
+            ):
+                grp_faces = list(grp)
+                arr = np.array(grp_faces, dtype=np.intp)  # (k, flen)
+                # centers: mean of all face vertices
+                verts_all = points[arr]                    # (k, flen, 3)
+                centers_g = verts_all.mean(axis=1)         # (k, 3)
+                # normals: cross of first two edges
+                e1 = verts_all[:, 1, :] - verts_all[:, 0, :]  # (k, 3)
+                e2 = verts_all[:, 2, :] - verts_all[:, 0, :]  # (k, 3)
+                nrm = np.cross(e1, e2)                     # (k, 3)
+                mags = np.linalg.norm(nrm, axis=1, keepdims=True)  # (k,1)
+                safe = (mags[:, 0] > 0)
+                nrm[safe] /= mags[safe]
+                patch_centers_list.append(centers_g)
+                patch_normals_list.append(nrm)
+        patch_centers = (
+            np.vstack(patch_centers_list) if patch_centers_list else []
+        )
+        patch_normals = (
+            np.vstack(patch_normals_list) if patch_normals_list else []
+        )
 
-        if not patch_centers:
+        if not patch_centers_list:
             results.append({"name": name, "type": "wall", "nFaces": n_faces})
             continue
 
-        centers = np.array(patch_centers)
-        normals = np.array(patch_normals)
+        centers = patch_centers   # already np.ndarray from vstack
+        normals = patch_normals   # already np.ndarray from vstack
 
         # 패치 중심의 평균 위치
         avg_center = centers.mean(axis=0)

@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2219,
+  "beta": 2220,
   "max_round": 1000,
-  "round": 168,
+  "round": 169,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -76,5 +76,5 @@
     "hex",
     "poly"
   ],
-  "plan_archive": "POLYHEDRAL_VEC (R168) — no-op: core/generator/polyhedral.py has no numeric loops (pure orchestration); 22/22 PASS 31.89s"
+  "plan_archive": "UTILS_REMAIN_VEC (R169) — boundary_classifier.py face-center/normal loop vectorized by face-size group; 22/22 PASS 33.69s"
 }

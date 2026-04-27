@@ -1,5 +1,4 @@
-file: core/generator/polyhedral.py
-functions: (none — no numeric loops found)
-lines_added: 0
-lines_removed: 0
-note: file is pure orchestration; no vectorization possible
+file: core/utils/boundary_classifier.py
+functions: classify_boundaries
+lines_added: 22
+lines_removed: 16
