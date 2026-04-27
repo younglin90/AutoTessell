@@ -1267,6 +1267,66 @@ def _perturb_weights_topK(
 
 
 # ---------------------------------------------------------------------------
+# VVV9F4 (beta2254) — Cheng-Dey 1999 §4 Algo 4.1 step 2: best-of-K selector
+# ---------------------------------------------------------------------------
+
+def _select_best_weight_assignment(
+    pts: "np.ndarray",
+    tets: "np.ndarray",
+    weight_matrix: "np.ndarray",
+    *,
+    alpha: float = 0.3,
+) -> "tuple[int, float]":
+    """Select the weight assignment (row) that maximises the worst-tet quality.
+
+    Implements Cheng-Dey-Edelsbrunner-Facello-Teng 1999 §4 Algo 4.1 step 2
+    (FOCS '99 pp.291) — max-min weight assignment selection:
+        k* = argmax_k  min_t Q(t; W[k, :])
+
+    Cheng-Dey 2002 SIAM JC §3.2 proves best-of-K raises ρ-quality guarantee.
+
+    SKELETON — no caller yet.  pts/tets are read-only; mesh state unchanged.
+    Gate: _VVV9F_EXUDATION controls the full sequence (set in a later card).
+
+    Parameters
+    ----------
+    pts : np.ndarray, shape (N, 3)
+    tets : np.ndarray, shape (M, 4)
+    weight_matrix : np.ndarray, shape (K, N)  — K candidate assignments
+    alpha : float > 0  — passed through for documentation; not used in argmax
+
+    Returns
+    -------
+    best_idx : int   — row index k* in [0, K)
+    best_min_q : float — min-quality of the best assignment
+    """
+    assert pts.ndim == 2 and pts.shape[1] == 3, "pts must be (N, 3)"
+    assert tets.ndim == 2 and tets.shape[1] == 4, "tets must be (M, 4)"
+    assert weight_matrix.ndim == 2, "weight_matrix must be 2-D (K, N)"
+    N = pts.shape[0]
+    K = weight_matrix.shape[0]
+    assert weight_matrix.shape[1] == N, "weight_matrix.shape[1] must equal N"
+    assert K >= 1, "K must be >= 1"
+    assert alpha > 0, "alpha must be positive"
+    assert (weight_matrix >= 0).all(), "all weights must be non-negative"
+
+    # Early exit when mesh is empty
+    if tets.shape[0] == 0:
+        return (0, 1.0)
+
+    best_idx: int = 0
+    best_min_q: float = -1.0
+
+    for k in range(K):
+        q_k = _evaluate_weighted_quality_proxy(pts, tets, weight_matrix[k])
+        if q_k > best_min_q:
+            best_min_q = q_k
+            best_idx = k
+
+    return (best_idx, best_min_q)
+
+
+# ---------------------------------------------------------------------------
 # VAL1 (beta2147) — global negative-volume tet detection + auto-flip
 # ---------------------------------------------------------------------------
 # VAL3 (beta2158) — per-pass negative-volume counter
