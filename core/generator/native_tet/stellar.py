@@ -999,6 +999,123 @@ def _count_offplane_sliver_candidates(
 
 
 # ---------------------------------------------------------------------------
+# VVV9D (beta2248) — off-plane top-K Steiner action helper (no caller)
+# ---------------------------------------------------------------------------
+
+def _apply_offplane_steiner_topK(
+    pts: "np.ndarray",
+    tets: "np.ndarray",
+    *,
+    top_k: int = 3,
+    eps_factor: float = 0.05,
+    flatness_thresh: float = 1e-2,
+) -> "tuple[np.ndarray, np.ndarray, int]":
+    """Apply off-plane Steiner insertions to the top-K flattest slivers.
+
+    Algorithm: 1-tet local 4-subdivision (no scipy Delaunay rebuild).
+    Quality bound: Klingner & Shewchuk 2008 Theorem 4.1.
+
+    **caller 없음** — R184/VVV9E 에서 wire 예정.
+    ``_VVV9B_OFFPLANE`` gate 는 False 유지 (이 카드는 정의만).
+
+    Parameters
+    ----------
+    pts : np.ndarray, shape (N, 3)
+    tets : np.ndarray, shape (M, 4)
+    top_k : int
+        Hard cap on number of Steiner insertions (wall-time bound).
+    eps_factor : float
+        Offset magnitude passed to ``compute_offplane_steiner_point``.
+    flatness_thresh : float
+        Candidate gate: only tets with flatness < this value are considered.
+
+    Returns
+    -------
+    pts_out, tets_out : np.ndarray
+        Modified copies (shallow-copy via list round-trip).
+    n_inserted : int
+        Number of Steiner points actually inserted (≤ top_k).
+    """
+    pts_list = pts.tolist()
+    tets_list = tets.tolist()
+    n_inserted = 0
+
+    # --- collect candidates ---
+    cands: "list[tuple[float, int]]" = []
+    for idx, tet in enumerate(tets_list):
+        _, flatness = compute_offplane_steiner_point(
+            np.array(pts_list, dtype=pts.dtype),
+            tet,
+            flatness_thresh=flatness_thresh,
+            eps_factor=eps_factor,
+        )
+        if flatness < flatness_thresh:
+            cands.append((flatness, idx))
+
+    # --- top-K flattest first ---
+    cands.sort(key=lambda p: p[0])
+    cands = cands[:top_k]
+
+    # --- 1-tet local 4-subdivision with sign guard ---
+    for _, ti in cands:
+        cur_pts = np.array(pts_list, dtype=pts.dtype)
+        v0, v1, v2, v3 = tets_list[ti]
+        m, _ = compute_offplane_steiner_point(
+            cur_pts,
+            [v0, v1, v2, v3],
+            flatness_thresh=flatness_thresh,
+            eps_factor=eps_factor,
+        )
+        if m is None:
+            continue
+
+        mi = len(pts_list)
+
+        def _svol(a: int, b: int, c: int, d: int) -> float:
+            p = cur_pts
+            e0 = p[b] - p[a]
+            e1 = p[c] - p[a]
+            e2 = p[d] - p[a]
+            return float(np.dot(np.cross(e0, e1), e2))
+
+        s0 = _svol(v0, v1, v2, v3)
+        if s0 == 0.0:
+            continue
+
+        # temporarily extend pts for sub-tet sign checks
+        extended = np.vstack([cur_pts, np.array(m, dtype=pts.dtype).reshape(1, 3)])
+
+        def _svol_ext(a: int, b: int, c: int, d: int) -> float:
+            e0 = extended[b] - extended[a]
+            e1 = extended[c] - extended[a]
+            e2 = extended[d] - extended[a]
+            return float(np.dot(np.cross(e0, e1), e2))
+
+        sub_tets = [
+            [v0, v1, v2, mi],
+            [v0, v1, mi, v3],
+            [v0, mi, v2, v3],
+            [mi, v1, v2, v3],
+        ]
+        signs_ok = all(_svol_ext(*st) * s0 > 0 for st in sub_tets)
+        if not signs_ok:
+            continue  # revert — skip insertion
+
+        pts_list.append(list(m))
+        tets_list[ti] = sub_tets[0]
+        tets_list.append(sub_tets[1])
+        tets_list.append(sub_tets[2])
+        tets_list.append(sub_tets[3])
+        n_inserted += 1
+
+    return (
+        np.array(pts_list, dtype=pts.dtype),
+        np.array(tets_list, dtype=tets.dtype),
+        n_inserted,
+    )
+
+
+# ---------------------------------------------------------------------------
 # VAL1 (beta2147) — global negative-volume tet detection + auto-flip
 # ---------------------------------------------------------------------------
 # VAL3 (beta2158) — per-pass negative-volume counter

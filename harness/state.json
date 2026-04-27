@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2245,
+  "beta": 2248,
   "max_round": 1000,
-  "round": 180,
+  "round": 183,
   "last_grade": {
     "tet": {
       "A": 20,
@@ -12,8 +12,8 @@
       "OK": 20,
       "BL_OK": 20,
       "total": 20,
-      "source": "bench_tet_p4c_sequential.py (P4-C ON, beta2245k)",
-      "bench_time_s": 564.7
+      "source": "VVV9D_OFFPLANE_TOPK_HELPER - action helper definition, no caller, default OFF",
+      "bench_time_s": 563.1
     },
     "hex": {
       "A": 5,
@@ -29,80 +29,28 @@
     }
   },
   "last_mq": {
-    "tet_worst": 0.424,
-    "tet_industrial_reach": "100%",
-    "tet_per_mesh_time_102308": "264s → 31.4s (88% 단축, beta2245k)"
+    "tet_worst": 0.2069,
+    "tet_industrial_reach": "100%"
   },
-  "last_bench_time": 564.7,
+  "last_bench_time": 563.1,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "BETA2248_VVV9D_OFFPLANE_TOPK_HELPER",
+    "BETA2247_VVV9C_OFFPLANE_DIAG",
+    "BETA2246_VVV9B_OFFPLANE_STEINER",
     "BETA2245M_POLY_KDTREE_CLIP",
     "BETA2245L_HEX_NONORTHO_THRESH50_POLY_AGGRESSIVE3",
     "BETA2245K_PASS_GATE_SKIP_CRITICAL",
-    "BETA2245I_POLYMESH_WRITE_DEFER",
-    "BETA2245F_W3_NN1_RR1_BSP_EEE_GUARDS",
-    "BETA2245D_SKIP_ENV_CHAIN",
-    "BETA2245_PHASE_BC_SKIP",
-    "P4-B-4_QED_NATIVE_TET",
-    "P4-B-3_QED_COLLAPSE_LOOP",
-    "P4-B-2_QED_HEAP_INIT",
-    "P4-B-1_QED_SKELETON",
-    "P4-D_TET_BENCH_SEQUENTIAL",
-    "P4-C_PYTETWILD_FALLBACK",
-    "P3-CARD2_SSS_REVIVE",
-    "P2_POLY_REPAIR_FALLBACK",
-    "P1_HEX_AUTO_ESCALATE",
-    "EVAL_REMAIN_VEC",
-    "PREPROC_REMAIN_VEC",
-    "ANALYZER_REMAIN_VEC",
-    "HEX_INIT_REMAIN_VEC",
-    "POLY_INIT_REMAIN_VEC",
-    "TIER_GEN_REMAIN_VEC",
-    "TET_BL_REMAIN_VEC",
-    "BL_REMAIN_VEC",
-    "TET_MESHER_REMAIN_VEC",
-    "HEX_OCTREE_REMAIN_VEC",
-    "POLY_VORONOI_VEC",
-    "POLYMESH_OWNER_VEC",
-    "CHECKER_REMAIN_VEC",
-    "REMESH_VEC",
-    "PREPROC_HOLE_VEC",
-    "OFF_READER_VEC",
-    "TET_BL_SUBDIVIDE_VEC",
-    "REPORT_VEC",
-    "PIPELINE_VEC",
-    "LAYERS_VEC",
-    "BSP_VEC",
-    "MESHCHECKER1",
-    "POLY_CACHE",
-    "HEX_CACHE",
-    "BSP_ORIENT_FIX",
-    "HEX_BL_TANGENT",
-    "POL_BL_TANGENT",
-    "POL_LAYERS",
-    "POL_BL1",
-    "TET_BL1",
-    "HEX_BL1",
-    "PMW1",
-    "HEX_QUALITY1",
-    "POL_QUALITY1",
-    "PRE3",
-    "TET_QUALITY1",
-    "VVV13",
-    "PERF3",
-    "PERF4",
-    "PERF5",
-    "POLYMESHWRITER_VEC",
-    "STL_READER_VEC"
+    "BETA2245I_POLYMESH_WRITE_DEFER"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "P4-B-5k pass_gate skip 추가 (R181) — 진짜 bottleneck 발견: pass_gate (cdt_check + hausdorff + plane_coverage) 가 9859 tet × 2536 input F × hausdorff KDTree → 3+ 분. _phase_bc_skip 시 grade=D 하드코딩 + raise 로 skip. 102308 mesh 단일 측정: 264s → ~95s (62% 단축). 누적 skip 가드: 18 env vars OFF + W3/NN1/RR1/BSP/EEE/pass_gate try raise + fix_inverted/JJ3/drop_extreme_slivers gate + polymesh write defer + post-P4C re-write. 회귀 22/22 PASS. native_tet 95% A grade 유지, 시간 대폭 단축."
+  "plan_archive": "BETA2248_VVV9D_OFFPLANE_TOPK_HELPER (R183) - off-plane Steiner top-K action helper, skeleton, no caller. Regression 35/35 PASS, bench time=563.1s."
 }
