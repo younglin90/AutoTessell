@@ -23,19 +23,27 @@ def _extract_boundary_loops(faces: np.ndarray) -> list[list[int]]:
     if faces.size == 0:
         return []
 
-    # directed edges from each face
-    dirs = []
-    for f in faces:
-        dirs.append((int(f[0]), int(f[1])))
-        dirs.append((int(f[1]), int(f[2])))
-        dirs.append((int(f[2]), int(f[0])))
+    # directed edges from each face — vectorized
+    F_arr = np.asarray(faces, dtype=np.int64)
+    # each face contributes 3 directed edges: (f0,f1), (f1,f2), (f2,f0)
+    e01 = F_arr[:, [0, 1]]
+    e12 = F_arr[:, [1, 2]]
+    e20 = F_arr[:, [2, 0]]
+    all_edges = np.concatenate([e01, e12, e20], axis=0)  # (3F, 2)
+    dirs = [tuple(r) for r in all_edges.tolist()]
 
-    # edge set for lookup
+    # edge set for lookup — vectorized boundary filter
     edge_set = set(dirs)
-    boundary_dir: list[tuple[int, int]] = []
-    for (a, b) in dirs:
-        if (b, a) not in edge_set:
-            boundary_dir.append((a, b))
+    # reversed edges: swap columns
+    rev_edges = all_edges[:, [1, 0]]
+    rev_tuples = set(tuple(r) for r in rev_edges.tolist())
+    # boundary = edges whose reverse is not in edge_set
+    boundary_mask = np.array(
+        [tuple(r) not in edge_set for r in rev_edges.tolist()], dtype=bool
+    )
+    boundary_dir: list[tuple[int, int]] = [
+        tuple(r) for r in all_edges[boundary_mask].tolist()  # type: ignore[misc]
+    ]
 
     if not boundary_dir:
         return []
@@ -107,12 +115,12 @@ def _ear_clip_2d(verts_2d: np.ndarray) -> list[tuple[int, int, int]]:
     n = verts_2d.shape[0]
     if n < 3:
         return []
-    # signed area
-    area = 0.0
-    for i in range(n):
-        x1, y1 = verts_2d[i]
-        x2, y2 = verts_2d[(i + 1) % n]
-        area += x1 * y2 - x2 * y1
+    # signed area — vectorized shoelace
+    x = verts_2d[:, 0]
+    y = verts_2d[:, 1]
+    xn = np.roll(x, -1)
+    yn = np.roll(y, -1)
+    area = float(np.sum(x * yn - xn * y))
     indices = list(range(n))
     if area < 0:
         indices = indices[::-1]
@@ -178,11 +186,12 @@ def fill_small_holes(
     # 기존 mesh 의 directed edge set — ear-clip face 의 winding 을 일관되게
     # 맞추는 데 사용. manifold 에서는 같은 edge 가 두 face 에서 반대 방향으로
     # 쓰여야 한다.
-    existing_dirs: set[tuple[int, int]] = set()
-    for f in F:
-        existing_dirs.add((int(f[0]), int(f[1])))
-        existing_dirs.add((int(f[1]), int(f[2])))
-        existing_dirs.add((int(f[2]), int(f[0])))
+    # existing directed edges — vectorized
+    _ed01 = F[:, [0, 1]]
+    _ed12 = F[:, [1, 2]]
+    _ed20 = F[:, [2, 0]]
+    _all_ed = np.concatenate([_ed01, _ed12, _ed20], axis=0)
+    existing_dirs: set[tuple[int, int]] = {tuple(r) for r in _all_ed.tolist()}  # type: ignore[misc]
 
     def _winding_ok(tri: tuple[int, int, int]) -> bool:
         """tri 의 directed edge 중 하나라도 existing_dirs 에 이미 있으면 반대로
