@@ -19,6 +19,7 @@ import sys
 import time
 import warnings
 import tempfile
+import multiprocessing as _mp
 from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError as FuturesTimeout
 from pathlib import Path
 
@@ -63,7 +64,10 @@ def _worker_run(payload: tuple) -> dict:
     _w.filterwarnings("ignore")
     # P4-C (beta2236): pytetwild 가 fork-spawned worker 에서 segfault.
     # worker 에서 P4-C fallback 끄기 — main process / 직접 호출에선 자동 활성.
-    os.environ["AUTO_TESSELL_P4C_PYTETWILD"] = "0"
+    # spawn context 면 P4-C 도 안전 — env 로 세팅. fork 면 forced OFF.
+    if _mp.get_start_method(allow_none=True) != "spawn":
+        os.environ["AUTO_TESSELL_P4C_PYTETWILD"] = "0"
+    # else: spawn worker 는 부모 env 상속 — main 의 설정 유지.
 
     V = np.frombuffer(V_bytes, dtype=np.float64).reshape(V_shape)
     F = np.frombuffer(F_bytes, dtype=np.int64).reshape(F_shape)
@@ -229,7 +233,11 @@ def main():
     rows: list[dict] = []
     t_start = time.perf_counter()
 
-    with ProcessPoolExecutor(max_workers=n_workers) as pool:
+    # spawn context — P4-C pytetwild fork-segfault 회피. AUTO_TESSELL_P4C=1 시 활성.
+    _ctx_name = "spawn" if os.environ.get("AUTO_TESSELL_P4C", "0") == "1" else "fork"
+    _mp_ctx = _mp.get_context(_ctx_name)
+    print(f"  mp_context={_ctx_name}", flush=True)
+    with ProcessPoolExecutor(max_workers=n_workers, mp_context=_mp_ctx) as pool:
         future_map = {}
         for (info, engine, bl, payload) in jobs:
             fut = pool.submit(_worker_run, payload)
@@ -272,8 +280,66 @@ def main():
                 print(f"  [{tier}] fid={info['file_id']:8} {tag:10}: FAIL {msg[:80]}",
                       flush=True)
 
+    elapsed_pool = round(time.perf_counter() - t_start, 1)
+    print(f"\nworker pool time: {elapsed_pool}s ({elapsed_pool/60:.1f}min)\n", flush=True)
+
+    # P4-D (beta2238) — main process 에서 tet grade<A row sequential pytetwild
+    # fallback. worker fork-segfault 회피 (P4-C 가 worker 에서 강제 OFF).
+    # native_bl 은 fallback polyMesh 위에도 자동 적용.
+    print("=== P4-D pytetwild fallback (sequential main process) ===\n", flush=True)
+    os.environ["AUTO_TESSELL_P4C_PYTETWILD"] = "1"  # main 에서 활성.
+    n_p4d_attempt = 0
+    n_p4d_success = 0
+    for ri, row in enumerate(rows):
+        if row.get("engine") != "tet":
+            continue
+        if row.get("grade") == "A":
+            continue
+        if not row.get("success"):
+            continue  # native_tet 자체 fail 은 skip.
+        fid = row["file_id"]
+        V_t, F_t = loaded.get(fid, (None, None))
+        if V_t is None:
+            continue
+        n_p4d_attempt += 1
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                case = Path(td) / "c"
+                t0_p4d = time.perf_counter()
+                from core.generator.native_tet.mesher import generate_native_tet
+                r_fb = generate_native_tet(
+                    V_t, F_t, case, seed_density=8,
+                    enable_phase_a=True, enable_phase_b=False,
+                    enable_phase_c=True, enable_amips_smooth=True,
+                )
+                el_p4d = round(time.perf_counter() - t0_p4d, 2)
+                if r_fb.success:
+                    new_grade = str(getattr(r_fb, "quality_grade", "?"))
+                    new_cells = int(getattr(r_fb, "n_cells", 0))
+                    q_obj = getattr(r_fb, "quality", None)
+                    new_mq = float(getattr(q_obj, "mean_q", -1.0)) if q_obj else -1.0
+                    bl_p4d = _try_bl(case, n_layers=3, engine_tag="tet")
+                    old_grade = row.get("grade", "?")
+                    if new_grade in ("A", "B") and new_grade != old_grade:
+                        n_p4d_success += 1
+                    row["p4d_grade_old"] = old_grade
+                    row["grade"] = new_grade
+                    row["n_cells"] = new_cells
+                    row["mq"] = new_mq
+                    row["elapsed"] = row.get("elapsed", 0) + el_p4d
+                    row.update({k: v for k, v in bl_p4d.items() if k.startswith("bl_")})
+                    print(f"  [{row['tier']}] fid={fid:8} tet+BL P4D : "
+                          f"grade={old_grade}→{new_grade} cells={new_cells} mq={new_mq:.3f} "
+                          f"t={el_p4d}s BL={'OK' if bl_p4d.get('bl_success') else 'FAIL'}",
+                          flush=True)
+        except Exception as exc:
+            print(f"  [{row['tier']}] fid={fid:8} tet+BL P4D : EXC {str(exc)[:80]}",
+                  flush=True)
+    elapsed_p4d = round(time.perf_counter() - t_start - elapsed_pool, 1)
+    print(f"\nP4-D pytetwild fallback: {n_p4d_success}/{n_p4d_attempt} grade upgrade, "
+          f"{elapsed_p4d}s", flush=True)
     elapsed = round(time.perf_counter() - t_start, 1)
-    print(f"\ntotal time: {elapsed}s ({elapsed/60:.1f}min)\n", flush=True)
+    print(f"total time: {elapsed}s ({elapsed/60:.1f}min)\n", flush=True)
 
     # tier × engine 표
     tiers_order = ["easy", "medium", "hard", "extreme"]
