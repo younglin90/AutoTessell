@@ -1173,10 +1173,13 @@ def generate_native_poly_voronoi(
             # extreme tier 의 4/5 fail 회복 목표.
             try:
                 from core.preprocessor.native_repair import run_native_repair  # noqa: PLC0415
+                # beta2245l: aggressive=3 — multi-pass dedup tol 점진 완화 +
+                # fill_hole 더 적극. extreme self-intersect mesh 의 회복 가능성 ↑.
                 _r = run_native_repair(
                     vertices, faces,
                     dedup_tol=1e-9, degenerate_area_tol=1e-18,
-                    fill_hole_max_boundary=128, fix_normals=True,
+                    fill_hole_max_boundary=256, fix_normals=True,
+                    aggressive=3,
                 )
                 if _r.vertices.shape[0] >= 4 and _r.faces.shape[0] >= 4:
                     log.info(

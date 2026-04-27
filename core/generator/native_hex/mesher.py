@@ -256,9 +256,9 @@ def _reduce_nonortho_post(
     hex_pts: np.ndarray,
     hex_cells: np.ndarray,
     *,
-    threshold_deg: float = 60.0,
-    top_k: int = 20,
-    min_improve_deg: float = 2.0,
+    threshold_deg: float = 48.0,
+    top_k: int = 40,
+    min_improve_deg: float = 1.0,
 ) -> np.ndarray:
     """HEX_QUALITY1: local vert re-snap to reduce non-orthogonality.
 
