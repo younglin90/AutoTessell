@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2251,
+  "beta": 2253,
   "max_round": 1000,
-  "round": 186,
+  "round": 188,
   "last_grade": {
     "tet": {
       "A": 20,
@@ -12,7 +12,7 @@
       "OK": 20,
       "BL_OK": 20,
       "total": 20,
-      "source": "VVV9F_EXUDATION_SKELETON - Cheng-Dey helper×2 + gate OFF, caller 0, mesh unchanged",
+      "source": "BETA2253_VVV9F3_PERTURB_TOPK_HELPER - Cheng-Dey helper #2 (weight sampling), caller 0, mesh unchanged",
       "bench_time_s": 580.0
     },
     "hex": {
@@ -39,18 +39,16 @@
     "poly"
   ],
   "recent_cards": [
+    "BETA2253_VVV9F3_PERTURB_TOPK_HELPER",
+    "BETA2252_VVV9F2_DRYRUN_REVERT",
     "BETA2250_VVV9E_DRYRUN_ON",
     "BETA2249_VVV9D_OFFPLANE_DRYRUN_WIRE",
-    "BETA2248_VVV9D_OFFPLANE_TOPK_HELPER",
-    "BETA2247_VVV9C_OFFPLANE_DIAG",
-    "BETA2246_VVV9B_OFFPLANE_STEINER",
-    "BETA2245M_POLY_KDTREE_CLIP",
-    "BETA2245L_HEX_NONORTHO_THRESH50_POLY_AGGRESSIVE3"
+    "BETA2248_VVV9D_OFFPLANE_TOPK_HELPER"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2251_VVV9F_EXUDATION_SKELETON (R186) - stellar.py +helper×2 gate OFF, caller 0, regression 35/35 PASS."
+  "plan_archive": "BETA2253_VVV9F3_PERTURB_TOPK_HELPER (R188) - stellar.py _perturb_weights_topK helper (45 lines), regression 35/35 PASS, metric ±0, bench time ~580s (unchanged)."
 }

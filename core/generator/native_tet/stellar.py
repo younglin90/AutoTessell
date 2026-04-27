@@ -1199,6 +1199,74 @@ def _evaluate_weighted_quality_proxy(
 
 
 # ---------------------------------------------------------------------------
+# VVV9F #2 (beta2253) — Cheng-Dey 1999 §4 Algo 4.1 step 1: weight-space sampling
+# Skeleton helper — no caller, no gate variable added (_VVV9F_EXUDATION gates seq).
+# ---------------------------------------------------------------------------
+
+def _perturb_weights_topK(
+    pts: "np.ndarray",
+    tets: "np.ndarray",
+    *,
+    n_samples: int = 8,
+    alpha: float = 0.3,
+    seed: int = 0,
+) -> "np.ndarray":
+    """Sample (n_samples, N) weight matrix for Cheng-Dey sliver exudation.
+
+    For each vertex v, computes ω₀(v) = α · l_min(v) where l_min(v) is the
+    minimum edge length incident to v across all tets.  Returns a matrix W of
+    shape (n_samples, N) where W[k, v] ~ Uniform(0, ω₀(v)²), matching
+    Cheng-Dey-Edelsbrunner-Facello-Teng 1999 §4 Algo 4.1 step 1.
+
+    Skeleton: selection / helper #2 call not performed here.
+    Pure function — mesh arrays unchanged.
+
+    Parameters
+    ----------
+    pts : ndarray, shape (N, 3)
+    tets : ndarray, shape (M, 4)
+    n_samples : int, >= 1
+    alpha : float, > 0   (ω₀ = alpha · l_min fraction)
+    seed : int            (numpy default_rng seed for reproducibility)
+
+    Returns
+    -------
+    W : ndarray, shape (n_samples, N)  — sampled squared weights
+    """
+    assert pts.ndim == 2 and pts.shape[1] == 3, (
+        f"pts must be (N,3), got {pts.shape}"
+    )
+    assert tets.ndim == 2 and tets.shape[1] == 4, (
+        f"tets must be (M,4), got {tets.shape}"
+    )
+    assert n_samples >= 1, f"n_samples must be >= 1, got {n_samples}"
+    assert alpha > 0, f"alpha must be > 0, got {alpha}"
+
+    N = pts.shape[0]
+    if tets.shape[0] == 0:
+        return np.zeros((n_samples, N))
+
+    # Compute l_min(v): minimum edge length over all 6 pairs per tet
+    _EDGE_PAIRS = ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3))
+    l_min = np.full(N, np.inf)
+    for t in tets:
+        for i, j in _EDGE_PAIRS:
+            d = float(np.linalg.norm(pts[t[i]] - pts[t[j]]))
+            if d < l_min[t[i]]:
+                l_min[t[i]] = d
+            if d < l_min[t[j]]:
+                l_min[t[j]] = d
+    # Isolated vertices (not in any tet): l_min stays inf → ω₀²=0 → weight=0
+    l_min = np.where(np.isinf(l_min), 0.0, l_min)
+
+    omega0_sq = (alpha * l_min) ** 2  # shape (N,)
+
+    rng = np.random.default_rng(seed)
+    W = rng.uniform(0.0, omega0_sq, size=(n_samples, N))  # shape (n_samples, N)
+    return W
+
+
+# ---------------------------------------------------------------------------
 # VAL1 (beta2147) — global negative-volume tet detection + auto-flip
 # ---------------------------------------------------------------------------
 # VAL3 (beta2158) — per-pass negative-volume counter
