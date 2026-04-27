@@ -45,21 +45,30 @@ def read_off(path: str | Path) -> CoreSurfaceMesh:
             raise ValueError(f"OFF counts 라인 오류: {counts}")
         V = int(counts[0]); Fn = int(counts[1])  # E 는 무시
 
-        vertices = np.zeros((V, 3), dtype=np.float64)
-        for i in range(V):
-            toks = _next_data_line().split()
-            vertices[i] = [float(toks[0]), float(toks[1]), float(toks[2])]
+        # --- vectorized vertex read ---
+        raw_lines = [_next_data_line() for _ in range(V)]
+        vertices = np.array(
+            [line.split()[:3] for line in raw_lines], dtype=np.float64
+        ) if V else np.zeros((0, 3), dtype=np.float64)
 
-        faces: list[list[int]] = []
-        for _ in range(Fn):
-            toks = _next_data_line().split()
-            n = int(toks[0])
-            idx = [int(toks[1 + k]) for k in range(n)]
-            for k in range(1, n - 1):
-                faces.append([idx[0], idx[k], idx[k + 1]])
+        # --- face read: fast-path for all-triangle meshes ---
+        face_lines = [_next_data_line() for _ in range(Fn)]
+        all_tri = all(line.split()[0] == "3" for line in face_lines) if face_lines else True
+        if all_tri and face_lines:
+            faces_out = np.array(
+                [line.split()[1:4] for line in face_lines], dtype=np.int64
+            )
+        else:
+            tris: list[list[int]] = []
+            for line in face_lines:
+                toks = line.split()
+                n = int(toks[0])
+                idx = np.array(toks[1 : 1 + n], dtype=np.int64)
+                for k in range(1, n - 1):
+                    tris.append([idx[0], idx[k], idx[k + 1]])
+            faces_out = np.array(tris, dtype=np.int64) if tris else np.zeros((0, 3), dtype=np.int64)
 
-    F = np.array(faces, dtype=np.int64) if faces else np.zeros((0, 3), dtype=np.int64)
     return CoreSurfaceMesh(
-        vertices=vertices, faces=F,
+        vertices=vertices, faces=faces_out,
         metadata={"format": "off", "path": str(p)},
     )
