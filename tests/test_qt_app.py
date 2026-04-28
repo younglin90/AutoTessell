@@ -3826,3 +3826,43 @@ def test_gui_export_pane_has_18_formats() -> None:
     panel = ExportPane()
     n_buttons = len(panel._fmt_group.buttons())
     assert n_buttons == 18, f"export pane should have 18 format buttons, got {n_buttons}"
+
+
+def test_gui_yplus_calculate_emits_thickness_for_water_preset() -> None:
+    """beta2286 — End-to-end: preset 선택 → 계산 → bl_thickness_computed 시그널 발행 검증.
+
+    GUI 전체 Y+ 파이프라인 smoke (지금까지 시그널 wiring 만 확인했으나, 계산 결과의
+    물리적 정확성과 시그널 emit 유무는 검증되지 않음).
+    """
+    import math
+    import os
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    from PySide6.QtWidgets import QApplication
+    import sys
+    app = QApplication.instance() or QApplication(sys.argv)
+    from desktop.qt_app.widgets.yplus_panel import YPlusPanel
+    panel = YPlusPanel()
+
+    # water_20C, U=1 m/s, L=1 m, y+=1.0 → Re ≈ 9.96e5 → Cf ≈ 0.0592·Re^-0.2
+    panel._fluid_combo.setCurrentText("water_20C")
+    panel._velocity_spin.setValue(1.0)
+    panel._length_spin.setValue(1.0)
+    panel._yplus_spin.setValue(1.0)
+
+    received: list[float] = []
+    panel.bl_thickness_computed.connect(lambda v: received.append(float(v)))
+
+    # 직접 호출 (UI 클릭 시뮬레이션과 동등 — _on_calculate 가 _calc_btn 핸들러).
+    panel._on_calculate()
+
+    assert len(received) == 1, f"signal must fire exactly once, got {len(received)}"
+    y_first = received[0]
+    # 물리 sanity: 물·U=1m/s·L=1m·y+=1 → y_first 는 약 30~80 µm 범위
+    assert 1e-5 < y_first < 5e-4, f"y_first 물리 범위 이탈: {y_first:.3e}"
+
+    # 결과 라벨에 에러 마커 없어야 함
+    assert "[error]" not in panel._result_label.text()
+    # get_last_result 도 동등한 값을 돌려줘야 함
+    last = panel.get_last_result()
+    assert last is not None
+    assert math.isclose(last, y_first, rel_tol=0.01)
