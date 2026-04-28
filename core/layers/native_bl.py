@@ -342,17 +342,76 @@ def compute_vertex_normals(
 ) -> dict[int, np.ndarray]:
     """Wall vertex 별 outward normal (area-weighted 평균 of incident wall face normals).
 
+    beta2266: triangle-only fast path 추가. 모든 wall face 가 triangle 이면
+    fully vectorized (np.cross + np.add.at) 로 처리. polygon 이 섞여 있으면
+    Python loop fallback.
+
     OpenFOAM polyMesh convention: boundary face normal 은 owner cell 에서 바깥 방향.
     cell_centres 가 주어지면 face centre → cell centre 반대 방향으로 sign 교정.
     """
-    vertex_accum: dict[int, np.ndarray] = {}
+    if not wall_face_indices:
+        return {}
 
+    # Fast path — 모든 wall face 가 triangle.
+    all_tri = all(len(faces[fi]) == 3 for fi in wall_face_indices)
+    if all_tri:
+        wf_idx = np.array(wall_face_indices, dtype=np.int64)
+        face_arr = np.array(
+            [faces[fi] for fi in wall_face_indices], dtype=np.int64,
+        )  # (F, 3)
+        v0 = points[face_arr[:, 0]]
+        v1 = points[face_arr[:, 1]]
+        v2 = points[face_arr[:, 2]]
+        cross = np.cross(v1 - v0, v2 - v0)  # (F, 3)
+        area_vec = 0.5 * np.linalg.norm(cross, axis=1)  # (F,)
+        safe_area = area_vec >= 1e-30
+        # Unit normals
+        n_arr = np.zeros_like(cross)
+        if safe_area.any():
+            n_arr[safe_area] = cross[safe_area] / (
+                2.0 * area_vec[safe_area, None]
+            )
+
+        # Sign fix vs cell centre.
+        if cell_centres is not None:
+            face_centroids = (v0 + v1 + v2) / 3.0  # (F, 3)
+            own_arr = owner[wf_idx]
+            valid_own = (own_arr >= 0) & (own_arr < len(cell_centres))
+            if valid_own.any():
+                to_face = np.zeros_like(face_centroids)
+                to_face[valid_own] = face_centroids[valid_own] - cell_centres[own_arr[valid_own]]
+                dot = np.einsum("ij,ij->i", to_face, n_arr)
+                flip = (dot < 0) & valid_own & safe_area
+                n_arr[flip] = -n_arr[flip]
+
+        # Accumulate per-vertex weighted normals: sum(n * area) for each vertex.
+        contrib = n_arr * area_vec[:, None]  # (F, 3)
+        n_pts = points.shape[0]
+        accum = np.zeros((n_pts, 3), dtype=np.float64)
+        # Add contribution to all 3 vertices of each face.
+        for col in range(3):
+            np.add.at(accum, face_arr[:, col], contrib)
+
+        # Normalize and convert to dict for API compat.
+        norms = np.linalg.norm(accum, axis=1)
+        result: dict[int, np.ndarray] = {}
+        unique_v = np.unique(face_arr.ravel())
+        for v in unique_v:
+            v_int = int(v)
+            m = float(norms[v_int])
+            if m > 1e-30:
+                result[v_int] = accum[v_int] / m
+            else:
+                result[v_int] = np.zeros(3, dtype=np.float64)
+        return result
+
+    # Fallback: original Python path for polygon faces.
+    vertex_accum: dict[int, np.ndarray] = {}
     for fi in wall_face_indices:
         face = faces[fi]
         n, area = _face_normal_area(points, face)
         if area < 1e-30:
             continue
-        # Sign fix: face centre 가 owner cell centre 의 바깥쪽이어야 함
         if cell_centres is not None:
             fc = _face_centroid(points, face)
             own = int(owner[fi])
@@ -364,15 +423,14 @@ def compute_vertex_normals(
             vertex_accum.setdefault(v, np.zeros(3, dtype=np.float64))
             vertex_accum[v] += n * area
 
-    # Normalize
-    result: dict[int, np.ndarray] = {}
+    result_fb: dict[int, np.ndarray] = {}
     for v, acc in vertex_accum.items():
         m = float(np.linalg.norm(acc))
         if m > 1e-30:
-            result[v] = acc / m
+            result_fb[v] = acc / m
         else:
-            result[v] = np.zeros(3)
-    return result
+            result_fb[v] = np.zeros(3, dtype=np.float64)
+    return result_fb
 
 
 # ---------------------------------------------------------------------------
