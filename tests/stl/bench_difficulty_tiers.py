@@ -244,7 +244,10 @@ def main():
 
     # 권장 보정: workers 4→8, per-cell timeout 180→90s.
     n_workers = min(8, max(1, (os.cpu_count() or 1)))
-    per_cell_timeout = 90.0
+    # beta2265: per-cell timeout 90 → 180s. extreme tier 의 self-impl + BL 가
+    # 90s 초과 (1017017 의 경우 1000s+ 로 timeout). 180s 면 commercial-grade
+    # mesh 도 처리 + bench 완주 가능 (전체 ~30 분).
+    per_cell_timeout = 180.0
     print(f"workers={n_workers} per_cell_timeout={per_cell_timeout}s "
           f"jobs={len(jobs)}\n", flush=True)
 
