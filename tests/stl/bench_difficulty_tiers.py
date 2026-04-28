@@ -36,13 +36,18 @@ if str(_REPO_ROOT) not in sys.path:
 # worker functions
 # ---------------------------------------------------------------------------
 
-def _try_bl(case_dir, n_layers: int = 3, engine_tag: str = "generic") -> dict:
+def _try_bl(case_dir, n_layers: int = 3, engine_tag: str = "generic",
+            bbox_diag: float = 0.0) -> dict:
     try:
         from core.layers.native_bl import generate_native_bl, BLConfig
+        # beta2250: first_thickness 절대값 0.001 → bbox-relative (1e-3 × bbox).
+        # Thingi10K mesh 의 bbox 는 보통 50-200 → 절대 0.001 은 collision 에서
+        # 거부. cfMesh `relativeSizes true` 동급.
+        ft = 0.001 * bbox_diag if bbox_diag > 0 else 0.001
         cfg = BLConfig(
             num_layers=int(n_layers),
             growth_ratio=1.2,
-            first_thickness=0.001,
+            first_thickness=ft,
             collision_safety=True,
             feature_lock=True,
         )
@@ -121,7 +126,10 @@ def _worker_run(payload: tuple) -> dict:
             out["elapsed"] = round(time.perf_counter() - t0, 2)
 
             if out.get("success") and with_bl:
-                bl = _try_bl(case, n_layers=3, engine_tag=engine)
+                # beta2250: pass bbox_diag for relative first_thickness.
+                _bbox_arr = V.max(axis=0) - V.min(axis=0)
+                _bbox_d = float(np.linalg.norm(_bbox_arr))
+                bl = _try_bl(case, n_layers=3, engine_tag=engine, bbox_diag=_bbox_d)
                 out.update(bl)
 
         except Exception as exc:
@@ -318,7 +326,9 @@ def main():
                     new_cells = int(getattr(r_fb, "n_cells", 0))
                     q_obj = getattr(r_fb, "quality", None)
                     new_mq = float(getattr(q_obj, "mean_q", -1.0)) if q_obj else -1.0
-                    bl_p4d = _try_bl(case, n_layers=3, engine_tag="tet")
+                    _bbox_p = V_t.max(axis=0) - V_t.min(axis=0)
+                    _bbox_dp = float(np.linalg.norm(_bbox_p))
+                    bl_p4d = _try_bl(case, n_layers=3, engine_tag="tet", bbox_diag=_bbox_dp)
                     old_grade = row.get("grade", "?")
                     if new_grade in ("A", "B") and new_grade != old_grade:
                         n_p4d_success += 1
