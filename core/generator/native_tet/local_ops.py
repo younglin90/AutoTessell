@@ -271,6 +271,7 @@ def _collapse_vectorized_single_pass(
     max_collapses: int,
     metric: np.ndarray | None = None,
     protected_edges: set[tuple[int, int]] | None = None,
+    allow_surface_keeper: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """단일 pass bulk collapse. 각 tet 의 "가장 짧은 edge" 만 후보.
 
@@ -323,7 +324,13 @@ def _collapse_vectorized_single_pass(
         # 이유: interior → surface merge 가 topology ripple 로 인접 surface
         # edge 를 간접 제거하는 케이스가 존재 (collapse 는 interior-interior
         # 에만 허용). 이로써 surface 전체 conformal 성 보장.
-        if u_locked or v_locked:
+        # P2.1 / beta2309: allow_surface_keeper=True 시 fTetWild §3.4 식
+        # surface→interior collapse 허용. surface vertex 가 keeper 로 위치
+        # 유지 (line 339-340 의 midpoint 갱신 가드 그대로 작동) — surface
+        # 위치 불변이므로 envelope check 없이도 안전.
+        if u_locked and v_locked:
+            continue
+        if (u_locked or v_locked) and not allow_surface_keeper:
             continue
         keeper, victim = (u, v) if v_locked or (not u_locked and u < v) else (v, u)
         used.add(keeper); used.add(victim)
@@ -384,10 +391,17 @@ def collapse_short_edges(
     max_collapses: int = 5000,
     metric: np.ndarray | None = None,
     protected_edges: set[tuple[int, int]] | None = None,
+    allow_surface_keeper: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """edge length < ratio × target_edge 인 edge 양 끝을 merge.
 
     Round 18 bulk vectorized + Round 42 metric-aware.
+
+    Args:
+        allow_surface_keeper: P2.1 / beta2309 — fTetWild §3.4 식 surface→
+            interior collapse 허용. surface vertex 는 항상 keeper 로 (위치
+            불변), interior vertex 가 victim. 기존 protected_edges +
+            locked_set (양쪽 surface) 보호는 그대로. False 가 backward 호환.
     """
     pts = np.asarray(pts, dtype=np.float64).copy()
     tets = np.asarray(tets, dtype=np.int64).copy()
@@ -407,6 +421,7 @@ def collapse_short_edges(
         max_collapses=int(max_collapses),
         metric=metric,
         protected_edges=protected_edges,
+        allow_surface_keeper=bool(allow_surface_keeper),
     )
     return new_pts, new_tets, n_c
 

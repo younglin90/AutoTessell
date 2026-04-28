@@ -230,3 +230,50 @@ def test_native_tet_phase_b_improves_or_preserves_cell_count(tmp_path) -> None:
     # Phase B 가 cell 수 반토막 이하로 깎거나 10 배로 부풀리지 않아야 한다.
     assert res_b.n_cells > res_a.n_cells * 0.3
     assert res_b.n_cells < res_a.n_cells * 10
+
+
+def test_collapse_short_edges_default_locks_surface_vertex() -> None:
+    """beta2309 — allow_surface_keeper=False (default) → surface vertex 포함
+    edge collapse 가 reject (Round 66 보존성 backward 호환).
+    """
+    from core.generator.native_tet.local_ops import collapse_short_edges
+    pts = np.array(
+        [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0.05, 0.05, 0.5]],
+        dtype=np.float64,
+    )
+    tets = np.array([[0, 1, 2, 3]], dtype=np.int64)
+    locked = np.array([0, 1, 2], dtype=np.int64)  # surface lock.
+
+    _, _, n_c = collapse_short_edges(
+        pts, tets, target_edge=2.0, ratio=1.0,
+        locked_vertices=locked,
+    )
+    assert n_c == 0, "default 에서 surface-involving collapse 가 일어남"
+
+
+def test_collapse_short_edges_allow_surface_keeper_unlocks_ftetwild_3_4() -> None:
+    """beta2309 — allow_surface_keeper=True 시 surface→interior collapse 활성.
+
+    fTetWild §3.4 동등: surface vertex 가 keeper (위치 불변), interior vertex
+    가 victim. envelope check 없이도 surface 위치 보존."""
+    from core.generator.native_tet.local_ops import collapse_short_edges
+    pts = np.array(
+        [[0, 0, 0], [1, 0, 0], [0, 1, 0],
+         [0.05, 0.05, 0.5],  # interior, near surface vertex 0.
+         [1, 1, 1]],
+        dtype=np.float64,
+    )
+    tets = np.array(
+        [[0, 1, 2, 3], [1, 2, 4, 3]],
+        dtype=np.int64,
+    )
+    locked = np.array([0, 1, 2, 4], dtype=np.int64)
+
+    new_pts, _, n_c = collapse_short_edges(
+        pts, tets, target_edge=2.0, ratio=1.0,
+        locked_vertices=locked,
+        allow_surface_keeper=True,
+    )
+    assert n_c >= 1, "surface→interior collapse 가 발생해야 함"
+    # surface vertex 0 의 위치는 변경되지 않음 (line 339-340 guard).
+    assert np.allclose(new_pts[0], pts[0]), "surface vertex 0 위치가 변경됨"
