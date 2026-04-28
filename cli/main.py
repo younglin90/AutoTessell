@@ -1079,32 +1079,44 @@ def export_vtk_cmd(case_dir: Path, output: Path | None, no_quality: bool) -> Non
 @click.argument("case_dir", type=click.Path(exists=True, path_type=Path))
 @click.option(
     "--format", "-f", "fmt",
-    type=click.Choice(["su2", "fluent", "cgns"], case_sensitive=False),
-    default="su2",
+    # beta2277: 17 formats 동기화 (mesh_exporter beta2262/2269).
+    type=click.Choice([
+        "su2", "fluent", "cgns",
+        "vtu", "vtk", "vtp", "xdmf",
+        "gmsh22", "gmsh40", "gmsh41",
+        "nastran", "abaqus", "tecplot", "medit",
+        "stl", "obj", "ply",
+    ], case_sensitive=False),
+    default=None,
     show_default=True,
-    help="출력 포맷 (su2 | fluent | cgns)",
+    help="출력 포맷. 미지정 시 --output 확장자로 자동 감지.",
 )
 @click.option("--output", "-o", type=click.Path(path_type=Path), default=None,
               help="출력 파일 경로 (기본: <case_dir>/mesh.<ext>)")
-def export_cmd(case_dir: Path, fmt: str, output: Path | None) -> None:
-    """생성된 메쉬를 CFD 솔버 포맷으로 내보낸다.
+def export_cmd(case_dir: Path, fmt: str | None, output: Path | None) -> None:
+    """생성된 메쉬를 CFD/FEA/시각화 포맷으로 내보낸다.
 
-    지원 포맷: SU2(.su2), ANSYS Fluent(.msh), CGNS(.cgns)
+    지원 포맷 (17 종, commercial-grade):
+      - CFD volume: SU2, Fluent (.msh), CGNS, VTU, VTK, VTP, XDMF
+      - Mesh: Gmsh 2.2/4.0/4.1, Medit, Tecplot
+      - FEA: Nastran (.bdf), Abaqus (.inp)
+      - Surface: STL, OBJ, PLY
 
     예시::
 
-        auto-tessell export ./case --format su2 --output mesh.su2
-        auto-tessell export ./case --format fluent
-        auto-tessell export ./case -f cgns -o mesh.cgns
+        auto-tessell export ./case -o mesh.vtu       # auto-detect VTU
+        auto-tessell export ./case -f stl -o s.stl   # explicit STL
+        auto-tessell export ./case -f abaqus         # default path
     """
     from core.utils.mesh_exporter import export_mesh
 
-    console.print(f"[bold cyan]Exporting mesh[/bold cyan] {case_dir} → [bold]{fmt.upper()}[/bold]")
+    fmt_label = (fmt or "auto-detect").upper()
+    console.print(f"[bold cyan]Exporting mesh[/bold cyan] {case_dir} → [bold]{fmt_label}[/bold]")
     result = export_mesh(case_dir, output, fmt=fmt)  # type: ignore[arg-type]
     if result:
-        console.print(f"[bold green]✓[/bold green] {fmt.upper()} 파일 → {result}")
+        console.print(f"[bold green]✓[/bold green] 파일 → {result}")
     else:
-        console.print(f"[bold red]✗ {fmt.upper()} 내보내기 실패[/bold red]")
+        console.print(f"[bold red]✗ 내보내기 실패[/bold red]")
         sys.exit(1)
 
 
