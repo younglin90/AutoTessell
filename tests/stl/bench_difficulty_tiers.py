@@ -105,8 +105,11 @@ def _worker_run(payload: tuple) -> dict:
                     out["message"] = str(getattr(r, "message", ""))[:120]
             elif engine == "hex":
                 from core.generator.native_hex.mesher import generate_native_hex
+                # beta2261: seed_density 10 → 20 (Thingi10K mesh 의 bbox/n_face
+                # 비율 기준으로 commercial-grade resolution. 이전 10 은 너무
+                # coarse 해서 small mesh 에서 cells=3-50 만 산출).
                 r = generate_native_hex(
-                    V, F, case, seed_density=10,
+                    V, F, case, seed_density=20,
                     snap_boundary=True, snap_iterations=2,
                 )
                 out["success"] = bool(r.success)
@@ -118,8 +121,9 @@ def _worker_run(payload: tuple) -> dict:
                     out["message"] = str(getattr(r, "message", ""))[:120]
             else:  # poly
                 from core.generator.native_poly.voronoi import generate_native_poly_voronoi
+                # beta2261: seed_density 10 → 20 (commercial-grade poly resolution).
                 r = generate_native_poly_voronoi(
-                    V, F, case, seed_density=10, n_lloyd=2, auto_escalate=True,
+                    V, F, case, seed_density=20, n_lloyd=2, auto_escalate=True,
                 )
                 out["success"] = bool(r.success)
                 out["n_cells"] = int(getattr(r, "n_cells", 0))
