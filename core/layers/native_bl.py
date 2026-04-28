@@ -1593,8 +1593,12 @@ def generate_native_bl(
             # new_positions: (num_layers, W, 3)
             # points[wall_idx_arr_p]: (W, 3); inward_normals: (W, 3)
             # offsets_mat: (num_layers, W) → offset per layer per vertex
+            # beta2246 — sign FIX: 이전은 `- inward * offset` 로 OUTWARD 방향 (cube
+            # bbox max=0.503 vs orig 0.5 검증) → BL 이 원본 volume 바깥으로 확장.
+            # `+ inward * offset` 로 수정 — wall (lp_ids[0]=base, offset=0) 에서
+            # 시작해 INWARD 로 깊어짐. T-Rex/cfMesh 정확.
             base_pts = points[wall_idx_arr_p]                            # (W, 3)
-            new_layer_pts = base_pts[None, :, :] - inward_normals[None, :, :] * offsets_mat[:, :, None]
+            new_layer_pts = base_pts[None, :, :] + inward_normals[None, :, :] * offsets_mat[:, :, None]
             # new_layer_pts shape: (num_layers, W, 3)
             extra_pts_arr = new_layer_pts.reshape(-1, 3)                 # (num_layers*W, 3)
             fp = np.vstack([new_pts, extra_pts_arr])
@@ -1995,6 +1999,40 @@ def generate_native_bl(
                 n_degenerate_prisms=n_degen, max_aspect_ratio=max_ar,
                 threshold=cfg.aspect_ratio_threshold,
             )
+
+    # beta2247 — cfMesh/T-Rex 동급 wall preservation 검증.
+    # lp_ids[0] (outer-most BL layer = boundary patch face) 가 원본 wall 좌표와
+    # ε 이내 일치하는지 검증. ε = bbox_diag * 1e-6 (수치 노이즈 허용).
+    wall_preserve_max_diff = 0.0
+    n_wall_drift = 0
+    try:
+        if final_points is not None and layer_point_ids:
+            # lp_ids[0] 의 vertex 가 wall_vert_indices 의 원본 좌표와 일치해야 함.
+            outer_lp = layer_point_ids[0] if layer_point_ids else {}
+            for v_orig in wall_vert_indices:
+                new_idx = outer_lp.get(v_orig)
+                if new_idx is None:
+                    continue
+                orig_pos = points[v_orig]
+                new_pos = final_points[new_idx]
+                diff = float(np.linalg.norm(new_pos - orig_pos))
+                if diff > wall_preserve_max_diff:
+                    wall_preserve_max_diff = diff
+                if diff > 1e-9:
+                    n_wall_drift += 1
+        bbox_diag_check = float(np.linalg.norm(points.max(axis=0) - points.min(axis=0)))
+        wall_preserve_rel = wall_preserve_max_diff / max(bbox_diag_check, 1e-30)
+        log.info(
+            "native_bl_wall_preserve_check", component="native_bl",
+            n_wall_verts=len(wall_vert_indices),
+            n_drift=n_wall_drift,
+            max_diff=round(wall_preserve_max_diff, 9),
+            max_diff_rel=round(wall_preserve_rel, 9),
+            envelope_eps_rel=1e-6,
+            within_envelope=bool(wall_preserve_rel <= 1e-6),
+        )
+    except Exception as exc:
+        log.debug("native_bl_wall_preserve_check_skipped", reason=str(exc)[:120])
 
     elapsed = time.perf_counter() - t_start
     return NativeBLResult(
