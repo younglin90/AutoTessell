@@ -20,18 +20,46 @@ from core.utils.polymesh_reader import (
 
 log = get_logger(__name__)
 
-SupportedFormat = Literal["su2", "fluent", "cgns"]
+SupportedFormat = Literal[
+    "su2", "fluent", "cgns",
+    # beta2262 — 추가 commercial CFD/FEA 포맷 (meshio 백엔드).
+    "vtu", "vtk", "vtp", "xdmf",
+    "gmsh22", "gmsh40", "gmsh41",
+    "nastran", "abaqus", "tecplot", "medit",
+]
 
 _FORMAT_EXTENSIONS: dict[str, str] = {
     "su2": ".su2",
     "fluent": ".msh",
     "cgns": ".cgns",
+    "vtu": ".vtu",
+    "vtk": ".vtk",
+    "vtp": ".vtp",
+    "xdmf": ".xdmf",
+    "gmsh22": ".msh",
+    "gmsh40": ".msh",
+    "gmsh41": ".msh",
+    "nastran": ".bdf",
+    "abaqus": ".inp",
+    "tecplot": ".dat",
+    "medit": ".mesh",
 }
 
 _MESHIO_FORMAT: dict[str, str] = {
     "su2": "su2",
     "fluent": "fluent",
     "cgns": "cgns",
+    "vtu": "vtu",
+    "vtk": "vtk",
+    "vtp": "vtp",
+    "xdmf": "xdmf",
+    "gmsh22": "gmsh22",
+    "gmsh40": "gmsh40",
+    "gmsh41": "gmsh41",
+    "nastran": "nastran",
+    "abaqus": "abaqus",
+    "tecplot": "tecplot",
+    "medit": "medit",
 }
 
 
