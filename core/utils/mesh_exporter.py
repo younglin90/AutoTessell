@@ -26,6 +26,8 @@ SupportedFormat = Literal[
     "vtu", "vtk", "vtp", "xdmf",
     "gmsh22", "gmsh40", "gmsh41",
     "nastran", "abaqus", "tecplot", "medit",
+    # beta2269 — surface-only 포맷 (visualization/handoff 용).
+    "stl", "obj", "ply",
 ]
 
 _FORMAT_EXTENSIONS: dict[str, str] = {
@@ -43,7 +45,13 @@ _FORMAT_EXTENSIONS: dict[str, str] = {
     "abaqus": ".inp",
     "tecplot": ".dat",
     "medit": ".mesh",
+    "stl": ".stl",
+    "obj": ".obj",
+    "ply": ".ply",
 }
+
+# beta2269: surface-only 포맷 — boundary face 만 export.
+_SURFACE_FORMATS: frozenset[str] = frozenset({"stl", "obj", "ply"})
 
 _MESHIO_FORMAT: dict[str, str] = {
     "su2": "su2",
@@ -60,6 +68,9 @@ _MESHIO_FORMAT: dict[str, str] = {
     "abaqus": "abaqus",
     "tecplot": "tecplot",
     "medit": "medit",
+    "stl": "stl",
+    "obj": "obj",
+    "ply": "ply",
 }
 
 
@@ -101,6 +112,45 @@ def export_mesh(
     points = np.array(points_raw, dtype=np.float64)
     owner_arr = np.array(owner, dtype=np.int64)
     neighbour_arr = np.array(neighbour, dtype=np.int64)
+
+    # beta2269 — surface-only 포맷 (STL/OBJ/PLY): boundary face 만 추출.
+    if fmt in _SURFACE_FORMATS:
+        n_internal = len(neighbour_arr)
+        # boundary face = owner 만 있는 face (neighbour 없음).
+        boundary_face_indices = list(range(n_internal, len(faces)))
+        # Triangulate (fan) any non-triangle boundary faces.
+        bnd_tris: list[list[int]] = []
+        for fi in boundary_face_indices:
+            f = faces[fi]
+            if len(f) == 3:
+                bnd_tris.append(list(f))
+            elif len(f) >= 3:
+                # Fan triangulation
+                for k in range(1, len(f) - 1):
+                    bnd_tris.append([int(f[0]), int(f[k]), int(f[k + 1])])
+        if not bnd_tris:
+            log.warning("mesh_exporter_surface_no_boundary", n_faces=len(faces))
+            return None
+        try:
+            import meshio
+            tri_arr = np.array(bnd_tris, dtype=np.int64)
+            mesh = meshio.Mesh(
+                points=points,
+                cells=[meshio.CellBlock("triangle", tri_arr)],
+            )
+            ext = _FORMAT_EXTENSIONS[fmt]
+            out = output_path or (case_dir / f"surface{ext}")
+            meshio.write(str(out), mesh, file_format=_MESHIO_FORMAT[fmt])
+            log.info(
+                "mesh_exported", fmt=fmt, path=str(out),
+                n_triangles=len(tri_arr), source="boundary_surface",
+            )
+            return out
+        except Exception as exc:
+            log.warning(
+                "mesh_export_write_failed", fmt=fmt, error=str(exc)[:120],
+            )
+            return None
 
     # 셀 → 면 매핑으로 셀 정점 집합 구성
     n_internal = len(neighbour_arr)
