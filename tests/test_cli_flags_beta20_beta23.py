@@ -191,3 +191,48 @@ def test_prefer_native_tier_keeps_legacy_fallback(runner: CliRunner) -> None:
     # Fallback: 목록 시작이 tier1_snappy (legacy fine primary)
     # 출력 포맷: "Fallback: ['tier1_snappy', ...]"
     assert "tier1_snappy" in r.output
+
+
+# ---------------------------------------------------------------------------
+# beta2292 — BL y+ in-engine tier-param chain (CLI → orchestrator → BLConfig)
+# ---------------------------------------------------------------------------
+
+
+def test_tier_param_bl_target_y_plus_reaches_orchestrator(
+    runner: CliRunner,
+) -> None:
+    """--tier-param bl_target_y_plus=1.0 → orchestrator log keys 에 노출.
+
+    beta2287 부터 _build_bl_config 가 이 키를 읽으므로 CLI → orchestrator
+    → strategy.tier_specific_params 까지 도달해야 한다."""
+    from cli.main import run
+    r = runner.invoke(run, [
+        STL_PATH, "--dry-run", "--mesh-type", "hex_dominant",
+        "--quality", "fine",
+        "--tier-param", "bl_target_y_plus=1.0",
+        "--tier-param", "bl_flow_velocity=2.5",
+        "--tier-param", "bl_flow_fluid_preset=water_20C",
+    ])
+    assert r.exit_code == 0, f"exit={r.exit_code}\n{r.output[-500:]}"
+    # tier_specific_params_override keys=[…] 로그에 3 키 모두 노출.
+    assert "bl_target_y_plus" in r.output
+    assert "bl_flow_velocity" in r.output
+    assert "bl_flow_fluid_preset" in r.output
+
+
+def test_tier_param_bl_phase2_keys_reach_orchestrator(
+    runner: CliRunner,
+) -> None:
+    """beta2289 Phase 2 7 키도 CLI → orchestrator 로 propagate."""
+    from cli.main import run
+    r = runner.invoke(run, [
+        STL_PATH, "--dry-run", "--mesh-type", "hex_dominant",
+        "--quality", "fine",
+        "--tier-param", "bl_collision_safety=false",
+        "--tier-param", "bl_feature_lock=true",
+        "--tier-param", "bl_aspect_ratio_threshold=200.0",
+    ])
+    assert r.exit_code == 0
+    assert "bl_collision_safety" in r.output
+    assert "bl_feature_lock" in r.output
+    assert "bl_aspect_ratio_threshold" in r.output
