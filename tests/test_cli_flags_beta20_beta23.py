@@ -236,3 +236,62 @@ def test_tier_param_bl_phase2_keys_reach_orchestrator(
     assert "bl_collision_safety" in r.output
     assert "bl_feature_lock" in r.output
     assert "bl_aspect_ratio_threshold" in r.output
+
+
+# ---------------------------------------------------------------------------
+# beta2295 — native_tet TetWild-lite knob end-to-end CLI chain
+# ---------------------------------------------------------------------------
+
+
+def test_tier_param_target_cells_reaches_orchestrator(
+    runner: CliRunner,
+) -> None:
+    """--tier-param target_cells=50000 → orchestrator log 노출.
+
+    fTetWild target_num_cells 동등 워크플로 — beta2295 wiring 검증."""
+    from cli.main import run
+    r = runner.invoke(run, [
+        STL_PATH, "--dry-run", "--mesh-type", "tet", "--quality", "fine",
+        "--tier-param", "target_cells=50000",
+        "--tier-param", "enable_amips_smooth=true",
+        "--tier-param", "enable_phase_b=true",
+    ])
+    assert r.exit_code == 0, f"exit={r.exit_code}\n{r.output[-400:]}"
+    assert "target_cells" in r.output
+    assert "enable_amips_smooth" in r.output
+    assert "enable_phase_b" in r.output
+
+
+def test_tier_param_native_poly_voronoi_knobs_reach_orchestrator(
+    runner: CliRunner,
+) -> None:
+    """beta2294 native_poly knobs CLI 도달."""
+    from cli.main import run
+    r = runner.invoke(run, [
+        STL_PATH, "--dry-run", "--mesh-type", "poly", "--quality", "fine",
+        "--tier-param", "n_lloyd=5",
+        "--tier-param", "auto_escalate=true",
+        "--tier-param", "auto_escalate_max=6",
+    ])
+    assert r.exit_code == 0, f"exit={r.exit_code}\n{r.output[-400:]}"
+    assert "n_lloyd" in r.output
+    assert "auto_escalate" in r.output
+    assert "auto_escalate_max" in r.output
+
+
+def test_tier_param_native_hex_post_smooth_keys_reach_orchestrator(
+    runner: CliRunner,
+) -> None:
+    """beta2293 native_hex post-smooth knobs CLI 도달."""
+    from cli.main import run
+    r = runner.invoke(run, [
+        STL_PATH, "--dry-run", "--mesh-type", "hex_dominant",
+        "--quality", "fine",
+        "--tier-param", "enable_post_smooth=true",
+        "--tier-param", "post_smooth_iterations=4",
+        "--tier-param", "post_smooth_relax=0.4",
+    ])
+    assert r.exit_code == 0, f"exit={r.exit_code}\n{r.output[-400:]}"
+    assert "enable_post_smooth" in r.output
+    assert "post_smooth_iterations" in r.output
+    assert "post_smooth_relax" in r.output
