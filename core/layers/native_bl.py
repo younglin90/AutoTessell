@@ -1984,6 +1984,32 @@ def generate_native_bl(
             shutil.rmtree(bak)
         shutil.copytree(poly_dir, bak)
 
+    # beta2249 — cfMesh/T-Rex 동급 force-snap: wall vertex 를 원본 좌표로 복원.
+    # tang smoother / collision detection / round-off 등 어떤 이유로든 lp_ids[0]
+    # 가 원본 wall 에서 drift 한 경우 강제 snap. polyMesh 쓰기 직전 단계.
+    # env AUTO_TESSELL_BL_FORCE_SNAP_WALL=0 으로 비활성 가능.
+    _force_snap_on = _os.environ.get("AUTO_TESSELL_BL_FORCE_SNAP_WALL", "1") != "0"
+    n_snap = 0
+    snap_max_diff = 0.0
+    if _force_snap_on and final_points is not None and layer_point_ids:
+        try:
+            outer_lp_snap = layer_point_ids[0]
+            for v_orig, new_idx in outer_lp_snap.items():
+                if 0 <= new_idx < final_points.shape[0]:
+                    diff = float(np.linalg.norm(final_points[new_idx] - points[v_orig]))
+                    if diff > 1e-12:
+                        if diff > snap_max_diff:
+                            snap_max_diff = diff
+                        final_points[new_idx] = points[v_orig]
+                        n_snap += 1
+            if n_snap > 0:
+                log.info(
+                    "native_bl_force_snap_wall", component="native_bl",
+                    n_snap=n_snap, max_diff=round(snap_max_diff, 9),
+                )
+        except Exception as exc:
+            log.debug("native_bl_force_snap_skipped", reason=str(exc)[:120])
+
     # 쓰기
     poly_dir.mkdir(parents=True, exist_ok=True)
     _write_points(poly_dir / "points", final_points)
