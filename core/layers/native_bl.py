@@ -258,7 +258,10 @@ class BLConfig:
     # beta65: degenerate prism quality check — 생성된 prism 의 aspect ratio
     # (max edge / min thickness) 를 계산해 threshold 초과 수를 보고. 기본 on.
     quality_check_enabled: bool = True
-    aspect_ratio_threshold: float = 50.0
+    # beta2259: aspect_ratio_threshold 50 → 1000.
+    # 50 은 일반 polyhedral cell 기준, BL prism 은 anisotropic 본질상 50 초과 정상.
+    # 1000 = cfMesh / Pointwise T-Rex 의 BL 전용 threshold (truly degenerate 만).
+    aspect_ratio_threshold: float = 1000.0
     # beta93: shrinkage iteration — 품질 불량 prism vertex 두께를 반복적으로 줄여 수렴.
     # beta2253: REVERT 2252 — shrink 가 thickness h 를 줄이는데 aspect = e_outer/h
     # 정의상 h 감소시 aspect 가 INCREASE 됨 → feedback loop 로 aspect 폭주.
