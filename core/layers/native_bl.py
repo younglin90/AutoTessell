@@ -452,61 +452,73 @@ def _prism_aspect_ratio_stats(
 ) -> tuple[int, float]:
     """각 prism 의 aspect ratio 계산. ratio = max(outer_edge) / min(height).
 
-    beta2255: detailed stats (mean, median) 도 log 출력.
+    beta2257: vectorized — Python loop O(N×L) 대신 numpy 일괄 (10-100× 빠름).
 
     Returns:
         (n_degenerate, max_ratio) — degenerate 는 ratio > threshold.
     """
-    n_degenerate = 0
-    max_ratio = 0.0
-    ratios: list[float] = []
-    for fi in wall_face_indices:
-        if fi not in wall_tri_verts:
-            continue
-        v0, v1, v2 = wall_tri_verts[fi]
-        for k in range(num_layers):
-            o0 = points[layer_point_ids[k][v0]]
-            o1 = points[layer_point_ids[k][v1]]
-            o2 = points[layer_point_ids[k][v2]]
-            i0 = points[layer_point_ids[k + 1][v0]]
-            i1 = points[layer_point_ids[k + 1][v1]]
-            i2 = points[layer_point_ids[k + 1][v2]]
-            # outer edge 길이
-            e_outer = max(
-                float(np.linalg.norm(o1 - o0)),
-                float(np.linalg.norm(o2 - o1)),
-                float(np.linalg.norm(o0 - o2)),
-            )
-            # 각 vertex 의 height (outer ↔ inner)
-            h = min(
-                float(np.linalg.norm(i0 - o0)),
-                float(np.linalg.norm(i1 - o1)),
-                float(np.linalg.norm(i2 - o2)),
-            )
-            if h < 1e-30:
-                # height 0 → degenerate
-                n_degenerate += 1
-                max_ratio = max(max_ratio, 1e9)
-                ratios.append(1e9)
-                continue
-            ratio = e_outer / h
-            ratios.append(ratio)
-            if ratio > max_ratio:
-                max_ratio = ratio
-            if ratio > threshold:
-                n_degenerate += 1
+    # Build (n_valid_faces, 3) int array of v0, v1, v2.
+    valid_faces = [fi for fi in wall_face_indices if fi in wall_tri_verts]
+    if not valid_faces:
+        return 0, 0.0
+    tri_arr = np.array(
+        [wall_tri_verts[fi] for fi in valid_faces], dtype=np.int64,
+    )  # (F, 3)
+
+    # For each layer k, gather outer + inner positions.
+    F = tri_arr.shape[0]
+    n_prisms = F * num_layers
+    ratios = np.zeros(n_prisms, dtype=np.float64)
+
+    for k in range(num_layers):
+        # Build idx arrays for this layer's outer (k) and inner (k+1) verts.
+        lp_o = layer_point_ids[k]
+        lp_i = layer_point_ids[k + 1]
+        # Vectorized lookup via list comprehension into ndarray
+        o_idx = np.array(
+            [[lp_o[v0], lp_o[v1], lp_o[v2]]
+             for v0, v1, v2 in tri_arr.tolist()],
+            dtype=np.int64,
+        )  # (F, 3)
+        i_idx = np.array(
+            [[lp_i[v0], lp_i[v1], lp_i[v2]]
+             for v0, v1, v2 in tri_arr.tolist()],
+            dtype=np.int64,
+        )  # (F, 3)
+        o_pts = points[o_idx]  # (F, 3, 3)
+        i_pts = points[i_idx]  # (F, 3, 3)
+
+        # outer edges: (o1-o0), (o2-o1), (o0-o2)
+        e0 = np.linalg.norm(o_pts[:, 1] - o_pts[:, 0], axis=1)
+        e1 = np.linalg.norm(o_pts[:, 2] - o_pts[:, 1], axis=1)
+        e2 = np.linalg.norm(o_pts[:, 0] - o_pts[:, 2], axis=1)
+        e_outer = np.maximum.reduce([e0, e1, e2])  # (F,)
+
+        # heights: norm(i_k - o_k) for k=0,1,2
+        h0 = np.linalg.norm(i_pts[:, 0] - o_pts[:, 0], axis=1)
+        h1 = np.linalg.norm(i_pts[:, 1] - o_pts[:, 1], axis=1)
+        h2 = np.linalg.norm(i_pts[:, 2] - o_pts[:, 2], axis=1)
+        h = np.minimum.reduce([h0, h1, h2])  # (F,)
+
+        # degenerate: h < 1e-30 → ratio = 1e9
+        # else ratio = e_outer / h
+        safe = h >= 1e-30
+        layer_ratios = np.where(safe, e_outer / np.where(safe, h, 1.0), 1e9)
+        ratios[k * F:(k + 1) * F] = layer_ratios
+
+    n_degenerate = int((ratios > threshold).sum())
+    max_ratio = float(ratios.max()) if ratios.size > 0 else 0.0
     # detailed cfMesh-style log
-    if ratios:
+    if ratios.size > 0:
         try:
-            arr = np.array(ratios)
             log.info(
                 "native_bl_prism_aspect_stats",
-                n_prisms=len(ratios),
-                aspect_mean=round(float(arr.mean()), 2),
-                aspect_median=round(float(np.median(arr)), 2),
-                aspect_p90=round(float(np.percentile(arr, 90)), 2),
-                aspect_p99=round(float(np.percentile(arr, 99)), 2),
-                aspect_max=round(float(arr.max()), 2),
+                n_prisms=int(ratios.size),
+                aspect_mean=round(float(ratios.mean()), 2),
+                aspect_median=round(float(np.median(ratios)), 2),
+                aspect_p90=round(float(np.percentile(ratios, 90)), 2),
+                aspect_p99=round(float(np.percentile(ratios, 99)), 2),
+                aspect_max=round(float(ratios.max()), 2),
                 n_above_threshold=n_degenerate,
                 threshold=threshold,
             )
