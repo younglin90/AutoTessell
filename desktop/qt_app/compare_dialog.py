@@ -29,6 +29,46 @@ from desktop.qt_app.widgets.dialog_mixin import EscDismissMixin
 from desktop.qt_app.widgets.right_column import _HistogramCanvas
 
 
+def _read_hausdorff_relative(path: Path) -> float | None:
+    """beta2304 — case_dir 의 quality JSON 에서 hausdorff_relative 를 읽어 반환.
+
+    탐색 순서:
+      1) {case_dir}/native_bl_quality.json   (beta2273 자동 저장)
+      2) {case_dir}/quality_report.json      (Evaluator 가 저장한 경우)
+      3) {case_dir}.parent/quality_report.json (mesh 파일 경로 입력 시)
+    """
+    import json
+    candidates: list[Path] = []
+    if path.is_dir():
+        candidates.append(path / "native_bl_quality.json")
+        candidates.append(path / "quality_report.json")
+    else:
+        candidates.append(path.parent / "quality_report.json")
+        candidates.append(path.parent / "native_bl_quality.json")
+    for p in candidates:
+        if not p.exists():
+            continue
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        # 다양한 schema 변형 지원.
+        for k in (
+            "hausdorff_relative",
+            "geometry_fidelity.hausdorff_relative",
+        ):
+            cur: object = data
+            for part in k.split("."):
+                if isinstance(cur, dict):
+                    cur = cur.get(part)
+                else:
+                    cur = None
+                    break
+            if isinstance(cur, (int, float)):
+                return float(cur)
+    return None
+
+
 class _SyncableMeshViewer(MeshViewerWidget):
     """CompareDialog용 viewer wrapper.
 
@@ -60,6 +100,9 @@ class CompareDialog(EscDismissMixin, QDialog):
         ("aspect", "Aspect Ratio"),
         ("skew", "Skewness"),
         ("non_ortho", "Non-ortho"),
+        # beta2304 — Pointwise/Star-CCM+ 동등 Surface Deviation 행.
+        # case_dir 의 quality_report.json / native_bl_quality.json 에서 자동 capture.
+        ("hausdorff_rel", "Hausdorff (rel %)"),
         ("cells", "Cells"),
     )
 
@@ -195,6 +238,11 @@ class CompareDialog(EscDismissMixin, QDialog):
             ok = bool(viewer.load_mesh(path))
 
         stats = self._make_placeholder_stats(path, ok)
+        # beta2304 — case_dir 옆의 quality JSON 파일에서 Hausdorff capture.
+        try:
+            stats["hausdorff_relative"] = _read_hausdorff_relative(path)
+        except Exception:
+            pass
         self._on_stats(side, stats)
         return ok
 
@@ -230,6 +278,15 @@ class CompareDialog(EscDismissMixin, QDialog):
         if key == "cells":
             value = stats.get("n_cells")
             return float(value) if value not in (None, "") else None
+        # beta2304 — case_dir 의 quality JSON 에서 capture 된 hausdorff_relative.
+        if key == "hausdorff_rel":
+            v = stats.get("hausdorff_relative")
+            if v is None:
+                return None
+            try:
+                return float(v) * 100.0  # 표시 단위: % (e.g. 0.0042 → 0.42)
+            except (TypeError, ValueError):
+                return None
         values = self._hist_data(stats).get(key) or []
         if not values:
             return None

@@ -3889,6 +3889,50 @@ def test_gui_engine_spec_native_hex_exposes_post_smooth() -> None:
     assert not missing, f"native_hex spec X3 post-smooth 누락: {missing}"
 
 
+def test_compare_dialog_includes_hausdorff_metric_row() -> None:
+    """beta2304 — CompareDialog._METRICS 에 hausdorff_rel 행 노출 + JSON loader."""
+    from desktop.qt_app.compare_dialog import CompareDialog, _read_hausdorff_relative
+    keys = [k for k, _ in CompareDialog._METRICS]
+    assert "hausdorff_rel" in keys, f"hausdorff_rel 행 누락: {keys}"
+
+    # _read_hausdorff_relative 가 case_dir/native_bl_quality.json 를 capture.
+    import json, tempfile
+    from pathlib import Path as _P
+    with tempfile.TemporaryDirectory() as tmp:
+        case_dir = _P(tmp)
+        (case_dir / "native_bl_quality.json").write_text(
+            json.dumps({"hausdorff_relative": 0.0042}),
+            encoding="utf-8",
+        )
+        result = _read_hausdorff_relative(case_dir)
+        assert result == 0.0042
+
+        # nested schema 도 지원.
+        case_dir2 = case_dir / "alt"
+        case_dir2.mkdir()
+        (case_dir2 / "quality_report.json").write_text(
+            json.dumps({"geometry_fidelity": {"hausdorff_relative": 0.001}}),
+            encoding="utf-8",
+        )
+        assert _read_hausdorff_relative(case_dir2) == 0.001
+
+
+def test_compare_dialog_metric_value_converts_hausdorff_to_percent() -> None:
+    """beta2304 — _metric_value 가 hausdorff_relative (0.0042) 를 % (0.42) 로 변환."""
+    from desktop.qt_app.compare_dialog import CompareDialog
+    import os
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    import sys
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication(sys.argv)
+
+    dlg = CompareDialog()
+    val = dlg._metric_value({"hausdorff_relative": 0.0042}, "hausdorff_rel")
+    assert val == 0.42  # % 표시
+    assert dlg._metric_value({}, "hausdorff_rel") is None
+    assert dlg._metric_value({"hausdorff_relative": None}, "hausdorff_rel") is None
+
+
 def test_history_dialog_table_has_hausdorff_column() -> None:
     """beta2303 — HistoryDialog 테이블에 'Hausdorff(rel)' 컬럼 노출.
 
