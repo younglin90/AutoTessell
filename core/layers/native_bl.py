@@ -485,6 +485,13 @@ def _prism_aspect_ratio_stats(
 # Default ON; disable via env AUTO_TESSELL_BL_TANG_OFF=1.
 import os as _os
 _BL_TANG_SMOOTH_ON: bool = _os.environ.get("AUTO_TESSELL_BL_TANG_OFF", "0") != "1"
+# beta2248 — cfMesh/T-Rex 동급 wall preservation 강화. tangent smoothing 이
+# lp_ids[0] (=wall) vertex 를 tangential 로 이동시켜 surface drift 유발 →
+# default OFF. fluid 시뮬에서 wall 위치는 정확해야 하므로 이 trade-off 가 옳음.
+# env AUTO_TESSELL_BL_TANG_PRESERVE_WALL=0 으로 이전 동작 (smoothing 활성) 가능.
+_BL_TANG_PRESERVE_WALL: bool = _os.environ.get(
+    "AUTO_TESSELL_BL_TANG_PRESERVE_WALL", "1"
+) != "0"
 
 
 def _smooth_top_layer_tangential(
@@ -1850,8 +1857,14 @@ def generate_native_bl(
 
     # BL_TANGENT_SMOOTH (beta2153) — tangential Laplacian of outer prism-layer verts.
     # Wired AFTER prism construction, BEFORE subdivision/finalization (cfMesh BLSmoothing).
+    # beta2248: wall preservation ON 시 skip (smoothing 이 wall vertex 를 tangentially
+    # 이동시켜 surface drift). T-Rex/cfMesh 동급 wall 보존 시에는 이 패스 비활성.
     _n_tang_moved = 0
-    if _BL_TANG_SMOOTH_ON and len(wall_vert_indices) >= 50 and layer_point_ids:
+    if (
+        _BL_TANG_SMOOTH_ON
+        and not _BL_TANG_PRESERVE_WALL
+        and len(wall_vert_indices) >= 50 and layer_point_ids
+    ):
         try:
             final_points, _n_tang_moved = _smooth_top_layer_tangential(
                 final_points,
