@@ -2384,6 +2384,48 @@ def generate_native_bl(
     except Exception as exc:
         log.debug("native_bl_wall_preserve_check_skipped", reason=str(exc)[:120])
 
+    # beta2273 — commercial-grade mesh quality summary JSON.
+    # cfMesh / Pointwise / Star-CCM+ 의 mesh quality report 동등.
+    # case_dir/native_bl_quality.json 에 모든 메트릭 저장.
+    try:
+        import json as _json
+        quality_summary = {
+            "n_wall_faces": int(n_wall_faces),
+            "n_wall_verts": int(len(wall_vert_indices)),
+            "n_prism_cells": int(n_prism_total),
+            "n_new_points": int(n_new_points),
+            "total_thickness": float(total),
+            "bbox_diag": float(bbox_diag),
+            "thickness_to_bbox_ratio": float(total / max(bbox_diag, 1e-30)),
+            "n_degenerate_prisms": int(n_degen),
+            "max_aspect_ratio": float(max_ar),
+            "wall_preserve": {
+                "max_diff": float(wall_preserve_max_diff),
+                "max_diff_rel": float(wall_preserve_rel),
+                "n_drift": int(n_wall_drift),
+                "within_envelope": bool(wall_within_env),
+                "envelope_eps_rel": 1e-6,
+            },
+            "force_snap": {
+                "n_applied": int(n_snap),
+                "max_diff": float(snap_max_diff),
+            },
+            "config": {
+                "num_layers": int(cfg.num_layers),
+                "growth_ratio": float(cfg.growth_ratio),
+                "first_thickness": float(cfg.first_thickness),
+                "target_y_plus": cfg.target_y_plus,
+                "flow_fluid_preset": cfg.flow_fluid_preset,
+            },
+        }
+        (case_dir / "native_bl_quality.json").write_text(
+            _json.dumps(quality_summary, indent=2),
+        )
+        log.info("native_bl_quality_json_written",
+                 path=str(case_dir / "native_bl_quality.json"))
+    except Exception as exc:
+        log.debug("native_bl_quality_json_skipped", reason=str(exc)[:120])
+
     elapsed = time.perf_counter() - t_start
     return NativeBLResult(
         success=True,
