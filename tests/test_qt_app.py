@@ -3828,6 +3828,74 @@ def test_gui_export_pane_has_18_formats() -> None:
     assert n_buttons == 18, f"export pane should have 18 format buttons, got {n_buttons}"
 
 
+def test_gui_engine_spec_layers_post_exposes_y_plus_flow_params() -> None:
+    """beta2288 — engine_params_spec layers_post 가 y+ in-engine 역산 5 필드 노출.
+
+    이전엔 BLConfig 필드 + _build_bl_config 만 wiring 되어 있고 GUI 엔진 패널
+    에선 이 키들을 설정할 수 없었다 (cfMesh/Pointwise 동등 워크플로 단절).
+    """
+    from desktop.qt_app.widgets.engine_params_spec import ENGINE_PARAM_REGISTRY
+    specs = ENGINE_PARAM_REGISTRY.get("layers_post", [])
+    keys = {s.key for s in specs}
+    expected = {
+        "bl_target_y_plus",
+        "bl_flow_velocity",
+        "bl_flow_kinematic_viscosity",
+        "bl_flow_characteristic_length",
+        "bl_flow_fluid_preset",
+    }
+    missing = expected - keys
+    assert not missing, f"layers_post spec 에 누락된 y+ 필드: {missing}"
+
+    # fluid_preset 은 choices 가 BLConfig 의 _FLUID_PRESETS + "" (none) 를 포함해야 함.
+    fp = next(s for s in specs if s.key == "bl_flow_fluid_preset")
+    fp_values = {v for v, _ in fp.choices}
+    fp_required = {
+        "", "air", "water", "oil",
+        "air_sea_level", "air_20C", "air_0C",
+        "water_20C", "water_4C",
+        "oil_SAE10W30", "glycol_50pct",
+    }
+    assert fp_required.issubset(fp_values), \
+        f"fluid_preset choices 누락: {fp_required - fp_values}"
+
+
+def test_gui_engine_spec_y_plus_keys_round_trip_to_bl_config() -> None:
+    """beta2288 — spec 키 → params dict → _build_bl_config → BLConfig 라운드 트립.
+
+    GUI 가 spec 의 default 값을 그대로 params 에 채워 넣었을 때
+    BLConfig 가 정확히 받아내는지 (key 명 mismatch 없는지) 회귀."""
+    from desktop.qt_app.widgets.engine_params_spec import ENGINE_PARAM_REGISTRY
+    from core.generator.tier_layers_post import _build_bl_config
+    from core.layers.native_bl import BLConfig
+
+    specs = ENGINE_PARAM_REGISTRY.get("layers_post", [])
+    y_plus_keys = {
+        "bl_target_y_plus", "bl_flow_velocity",
+        "bl_flow_kinematic_viscosity", "bl_flow_characteristic_length",
+        "bl_flow_fluid_preset",
+    }
+    # 사용자가 GUI 에서 typical y+ workflow 입력 — water 20°C, U=2 m/s, y+=1
+    user_params = {
+        "bl_target_y_plus": 1.0,
+        "bl_flow_velocity": 2.0,
+        "bl_flow_kinematic_viscosity": 1e-6,
+        "bl_flow_characteristic_length": 0.5,
+        "bl_flow_fluid_preset": "water_20C",
+    }
+    # spec 에 정의된 키만 사용했는지 확인 (오타 회귀).
+    spec_keys = {s.key for s in specs}
+    assert set(user_params.keys()).issubset(spec_keys), \
+        f"테스트가 사용한 키 중 spec 미정의: {set(user_params) - spec_keys}"
+
+    cfg = _build_bl_config(BLConfig, user_params, 3, 1.2, 0.001)
+    assert cfg.target_y_plus == 1.0
+    assert cfg.flow_velocity == 2.0
+    assert cfg.flow_kinematic_viscosity == 1e-6
+    assert cfg.flow_characteristic_length == 0.5
+    assert cfg.flow_fluid_preset == "water_20C"
+
+
 def test_gui_yplus_calculate_emits_thickness_for_water_preset() -> None:
     """beta2286 — End-to-end: preset 선택 → 계산 → bl_thickness_computed 시그널 발행 검증.
 

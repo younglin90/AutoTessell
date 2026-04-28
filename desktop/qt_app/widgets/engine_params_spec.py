@@ -575,6 +575,61 @@ ENGINE_PARAM_REGISTRY: dict[str, list[EngineParamSpec]] = {
                 "일반 3D mesh 에선 끔."
             ),
         ),
+        # ─── beta2288 — native_bl y+ 자동 first_thickness 역산 (cfMesh/Pointwise 동등) ─
+        EngineParamSpec(
+            "bl_target_y_plus",
+            "target y+ (auto first thk)", "float", 0.0,
+            min_val=0.0, max_val=1000.0,
+            doc=(
+                "0 = 비활성 (post_layers_first_thickness 사용).\n"
+                "0 보다 크면 Schlichting 평판 난류 식으로 자동 역산:\n"
+                "  Re=U·L/ν → Cf=0.0592·Re^(-0.2) → u_τ=U·√(Cf/2)\n"
+                "  → first_thickness = y+·ν/u_τ\n"
+                "권장: 1.0 (low-Re 모델), 30~300 (벽 함수)."
+            ),
+        ),
+        EngineParamSpec(
+            "bl_flow_velocity",
+            "flow velocity U∞ (m/s)", "float", 1.0,
+            min_val=0.001, max_val=1e6,
+            doc="유입 자유류 속도. target y+ 활성화 시에만 사용.",
+        ),
+        EngineParamSpec(
+            "bl_flow_kinematic_viscosity",
+            "ν (m²/s, custom)", "float", 1.5e-5,
+            min_val=1e-9, max_val=1e-2, log_scale=True,
+            doc=(
+                "동점성 계수. fluid_preset 지정 시 자동 override.\n"
+                "공기 20°C ≈ 1.5e-5, 물 20°C ≈ 1e-6, oil ≈ 1e-4."
+            ),
+        ),
+        EngineParamSpec(
+            "bl_flow_characteristic_length",
+            "L (m, 0=auto bbox)", "float", 0.0,
+            min_val=0.0, max_val=1e6,
+            doc="특성 길이. 0 이면 bbox 대각선 자동.",
+        ),
+        EngineParamSpec(
+            "bl_flow_fluid_preset",
+            "fluid preset", "choice", "",
+            choices=[
+                ("", "(none — use ν below)"),
+                ("air", "air"),
+                ("water", "water"),
+                ("oil", "oil"),
+                ("air_sea_level", "air sea-level (15°C)"),
+                ("air_20C", "air 20°C"),
+                ("air_0C", "air 0°C"),
+                ("water_20C", "water 20°C"),
+                ("water_4C", "water 4°C"),
+                ("oil_SAE10W30", "oil SAE10W30"),
+                ("glycol_50pct", "ethylene glycol 50%"),
+            ],
+            doc=(
+                "유체 preset. 지정 시 ν 가 자동 override.\n"
+                "(빈값 = preset 미사용 → bl_flow_kinematic_viscosity 사용)"
+            ),
+        ),
     ],
 
     # ------------------------------------------------------------------
