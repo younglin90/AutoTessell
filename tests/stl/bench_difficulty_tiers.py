@@ -169,13 +169,17 @@ def _select_meshes() -> dict[str, list[dict]]:
             "file_path": str(row["file_path"]),
         }
 
+    # beta2275 — env AUTO_TESSELL_BENCH_N_PER_TIER 로 mesh 개수 제어 (default 5).
+    # 더 빠른 smoke run 을 위해 1-2 로 설정 가능.
+    n_per_tier = int(os.environ.get("AUTO_TESSELL_BENCH_N_PER_TIER", "5"))
+
     out: dict[str, list[dict]] = {"easy": [], "medium": [], "hard": [], "extreme": []}
 
     # easy
     for row in thingi10k.dataset(
         closed=True, manifold=True, num_facets=(80, 400),
     ):
-        if len(out["easy"]) >= 5:
+        if len(out["easy"]) >= n_per_tier:
             break
         if int(row.get("num_components", 1)) == 1:
             out["easy"].append(_row_to_info(row, "easy"))
@@ -184,7 +188,7 @@ def _select_meshes() -> dict[str, list[dict]]:
     for row in thingi10k.dataset(
         closed=True, manifold=True, num_facets=(400, 1200),
     ):
-        if len(out["medium"]) >= 5:
+        if len(out["medium"]) >= n_per_tier:
             break
         out["medium"].append(_row_to_info(row, "medium"))
 
@@ -192,7 +196,7 @@ def _select_meshes() -> dict[str, list[dict]]:
     for row in thingi10k.dataset(
         manifold=False, num_facets=(400, 2000),
     ):
-        if len(out["hard"]) >= 5:
+        if len(out["hard"]) >= n_per_tier:
             break
         out["hard"].append(_row_to_info(row, "hard"))
 
@@ -200,7 +204,7 @@ def _select_meshes() -> dict[str, list[dict]]:
     for row in thingi10k.dataset(
         self_intersecting=True, manifold=False, num_facets=(2000, 5000),
     ):
-        if len(out["extreme"]) >= 5:
+        if len(out["extreme"]) >= n_per_tier:
             break
         out["extreme"].append(_row_to_info(row, "extreme"))
 
