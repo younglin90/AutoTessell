@@ -171,6 +171,29 @@ def test_native_bl_backup_creates_pre_bl_dir(sphere_baseline: Path) -> None:
     assert (bak / "faces").exists()
 
 
+def test_native_bl_target_y_plus_overrides_first_thickness(sphere_baseline: Path) -> None:
+    """beta2267 — target_y_plus 사용 시 first_thickness 자동 계산 (Schlichting).
+
+    cfMesh / Fluent / Pointwise 동급 CFD-engineer-friendly API.
+    """
+    cfg = BLConfig(
+        num_layers=3, growth_ratio=1.2,
+        first_thickness=1.0,  # large value — should be overridden by y+ targeting
+        target_y_plus=1.0,
+        flow_velocity=10.0,
+        flow_kinematic_viscosity=1.5e-5,  # air
+        flow_characteristic_length=1.0,  # 1m characteristic
+    )
+    res = generate_native_bl(sphere_baseline, cfg)
+    assert res.success
+    # y+ 1, U=10, L=1, nu=1.5e-5 → Re=666666 → Cf=0.00397 → u_tau=0.446 → y1≈3.4e-5
+    # total_thickness = y1 × (1 + 1.2 + 1.44) = ~1.24e-4
+    assert 1e-5 <= res.total_thickness <= 1e-3, (
+        f"y+ targeting 가 first_thickness 를 override 하지 못함: "
+        f"total={res.total_thickness}"
+    )
+
+
 def test_native_bl_wall_preserve_within_envelope(sphere_baseline: Path) -> None:
     """beta2256 — wall_preserve_within_envelope=True 가 commercial-grade
     contract. cfMesh / Pointwise T-Rex 동급 wall preservation 보장.
