@@ -289,6 +289,15 @@ class NativeBLResult:
     # beta65: quality metrics
     n_degenerate_prisms: int = 0
     max_aspect_ratio: float = 0.0
+    # beta2256 — wall preservation metrics (cfMesh/T-Rex 검증).
+    # max_diff: lp_ids[0] 의 vertex 가 원본 wall 좌표와 최대 거리 (절대).
+    # max_diff_rel: max_diff / bbox_diag (상대, ε=1e-6 권장).
+    # n_drift: drift > 1e-9 인 vertex 수.
+    # within_envelope: max_diff_rel <= 1e-6 (commercial-grade preservation).
+    wall_preserve_max_diff: float = 0.0
+    wall_preserve_max_diff_rel: float = 0.0
+    wall_preserve_n_drift: int = 0
+    wall_preserve_within_envelope: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -2188,6 +2197,8 @@ def generate_native_bl(
     # ε 이내 일치하는지 검증. ε = bbox_diag * 1e-6 (수치 노이즈 허용).
     wall_preserve_max_diff = 0.0
     n_wall_drift = 0
+    wall_preserve_rel = 0.0
+    wall_within_env = True
     try:
         if final_points is not None and layer_point_ids:
             # lp_ids[0] 의 vertex 가 wall_vert_indices 의 원본 좌표와 일치해야 함.
@@ -2205,6 +2216,7 @@ def generate_native_bl(
                     n_wall_drift += 1
         bbox_diag_check = float(np.linalg.norm(points.max(axis=0) - points.min(axis=0)))
         wall_preserve_rel = wall_preserve_max_diff / max(bbox_diag_check, 1e-30)
+        wall_within_env = bool(wall_preserve_rel <= 1e-6)
         log.info(
             "native_bl_wall_preserve_check", component="native_bl",
             n_wall_verts=len(wall_vert_indices),
@@ -2212,7 +2224,7 @@ def generate_native_bl(
             max_diff=round(wall_preserve_max_diff, 9),
             max_diff_rel=round(wall_preserve_rel, 9),
             envelope_eps_rel=1e-6,
-            within_envelope=bool(wall_preserve_rel <= 1e-6),
+            within_envelope=wall_within_env,
         )
     except Exception as exc:
         log.debug("native_bl_wall_preserve_check_skipped", reason=str(exc)[:120])
@@ -2228,6 +2240,10 @@ def generate_native_bl(
         total_thickness=total,
         n_degenerate_prisms=n_degen,
         max_aspect_ratio=max_ar,
+        wall_preserve_max_diff=float(wall_preserve_max_diff),
+        wall_preserve_max_diff_rel=float(wall_preserve_rel),
+        wall_preserve_n_drift=int(n_wall_drift),
+        wall_preserve_within_envelope=bool(wall_within_env),
         message=(
             f"native_bl Phase 2 OK — {n_prism_total} prism cells inserted "
             f"({cfg.num_layers} layers × {n_wall_faces} wall triangles). "
