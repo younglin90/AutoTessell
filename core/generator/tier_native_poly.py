@@ -20,10 +20,15 @@ TIER_NAME = "tier_native_poly"
 
 
 def _runner(vertices, faces, case_dir, *, target_edge_length=None,
-            seed_density=10, max_iter=3, **_unused):
+            seed_density=10, max_iter=3,
+            n_lloyd=2, auto_escalate=True, auto_escalate_max=4,
+            **_unused):
     """harness 우선, 실패 시 scipy Voronoi fallback.
 
     quality-specific 파라미터는 run_native_tier 가 HARNESS_PARAMS 에서 주입.
+
+    beta2294: voronoi fallback 의 n_lloyd / auto_escalate / auto_escalate_max
+    파라미터를 명시 forward (이전엔 **_unused 로 silently dropped).
     """
     hres = run_native_poly_harness(
         vertices, faces, case_dir,
@@ -40,6 +45,9 @@ def _runner(vertices, faces, case_dir, *, target_edge_length=None,
         vertices, faces, case_dir,
         target_edge_length=target_edge_length,
         seed_density=int(seed_density),
+        n_lloyd=int(n_lloyd),
+        auto_escalate=bool(auto_escalate),
+        auto_escalate_max=int(auto_escalate_max),
     )
 
 

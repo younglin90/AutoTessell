@@ -3889,6 +3889,40 @@ def test_gui_engine_spec_native_hex_exposes_post_smooth() -> None:
     assert not missing, f"native_hex spec X3 post-smooth 누락: {missing}"
 
 
+def test_gui_engine_spec_native_poly_exposes_voronoi_knobs() -> None:
+    """beta2294 — native_poly spec 가 voronoi fallback 의 3 핵심 knob 노출.
+
+    이전엔 _runner(**_unused) 가 흡수해서 silently dropped.
+    geogram / Fluent polyDual 동등 워크플로의 Lloyd CVT control 도달."""
+    from desktop.qt_app.widgets.engine_params_spec import ENGINE_PARAM_REGISTRY
+    specs = ENGINE_PARAM_REGISTRY.get("native_poly", [])
+    keys = {s.key for s in specs}
+    expected = {"n_lloyd", "auto_escalate", "auto_escalate_max"}
+    missing = expected - keys
+    assert not missing, f"native_poly spec voronoi knob 누락: {missing}"
+
+
+def test_native_poly_voronoi_keys_forwarded_to_fallback() -> None:
+    """beta2294 — _runner 가 n_lloyd / auto_escalate(_max) 를 fallback 에 forward.
+
+    회귀 보호: 이전엔 **_unused 로 흡수돼 GUI/CLI 입력 무력화."""
+    from core.generator import tier_native_poly as tnp
+    import inspect
+    src = inspect.getsource(tnp._runner)
+    assert "n_lloyd=int(n_lloyd)" in src
+    assert "auto_escalate=bool(auto_escalate)" in src
+    assert "auto_escalate_max=int(auto_escalate_max)" in src
+
+
+def test_native_poly_voronoi_keys_in_tier_param_allowlist() -> None:
+    """beta2294 — _TIER_PARAM_KEYS 에 3 키 통과."""
+    from core.generator._tier_native_common import run_native_tier
+    import inspect
+    src = inspect.getsource(run_native_tier)
+    for k in ("n_lloyd", "auto_escalate", "auto_escalate_max"):
+        assert f'"{k}"' in src, f"_TIER_PARAM_KEYS 에 누락: {k}"
+
+
 def test_native_hex_post_smooth_keys_in_tier_param_allowlist() -> None:
     """beta2293 — _TIER_PARAM_KEYS 가 X3 post-smooth 3 키를 통과.
 

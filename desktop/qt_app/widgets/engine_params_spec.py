@@ -827,6 +827,29 @@ ENGINE_PARAM_REGISTRY: dict[str, list[EngineParamSpec]] = {
             min_val=0.05, max_val=0.8, step=0.05,
             doc="smoothing 이동 강도 (0=움직임 없음, 1=완전 centroid 이동).",
         ),
+        # beta2294: voronoi fallback Lloyd CVT + DD2 auto-escalate.
+        # 이전엔 mesher 시그너쳐 + _runner kwargs 에 있어도 GUI/CLI 도달 불가.
+        EngineParamSpec(
+            "n_lloyd", "n_lloyd (CVT iters)", "int", 2,
+            min_val=0, max_val=20,
+            doc=(
+                "Lloyd Centroidal Voronoi Tessellation 반복 횟수.\n"
+                "값↑ → 더 isotropic, 시간↑. 0 = CVT off (raw Voronoi)."
+            ),
+        ),
+        EngineParamSpec(
+            "auto_escalate", "auto_escalate", "bool", True,
+            doc=(
+                "voronoi fallback DD2 자동 재시도. cells=0 또는 fail 시\n"
+                "seed_density 1.5× 씩 증가 max_iter 회 재시도.\n"
+                "복잡 형상 (bracket/gear) 에서 첫 시도가 region 0 일 때 회복."
+            ),
+        ),
+        EngineParamSpec(
+            "auto_escalate_max", "auto_escalate_max", "int", 4,
+            min_val=1, max_val=10,
+            doc="auto_escalate 재시도 최대 횟수.",
+        ),
     ],
 }
 

@@ -244,6 +244,11 @@ def run_native_tier(
         "enable_post_smooth",      # native_hex X3 (beta1840)
         "post_smooth_iterations",  # native_hex X3
         "post_smooth_relax",       # native_hex X3
+        # beta2294: native_poly voronoi fallback — 이전엔 _runner 의
+        # **_unused 가 흡수해 silently dropped.
+        "n_lloyd",                 # native_poly Lloyd CVT iterations
+        "auto_escalate",           # native_poly DD2 fallback retry
+        "auto_escalate_max",       # native_poly retry 최대 횟수
     }
     tsp = getattr(strategy, "tier_specific_params", None) or {}
     for k in _TIER_PARAM_KEYS:
