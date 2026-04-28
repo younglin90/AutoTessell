@@ -74,17 +74,31 @@ _MESHIO_FORMAT: dict[str, str] = {
 }
 
 
+_EXTENSION_TO_FORMAT: dict[str, str] = {
+    ".su2": "su2", ".cgns": "cgns",
+    ".vtu": "vtu", ".vtk": "vtk", ".vtp": "vtp", ".xdmf": "xdmf",
+    ".bdf": "nastran", ".nas": "nastran",
+    ".inp": "abaqus",
+    ".dat": "tecplot",
+    ".mesh": "medit",
+    ".stl": "stl", ".obj": "obj", ".ply": "ply",
+    # .msh: 기본 fluent (cfMesh/ANSYS Fluent .msh). gmsh 는 명시 fmt 필요.
+    ".msh": "fluent",
+}
+
+
 def export_mesh(
     case_dir: Path,
     output_path: Path | None = None,
-    fmt: SupportedFormat = "su2",
+    fmt: SupportedFormat | None = None,
 ) -> Path | None:
     """polyMesh를 지정된 CFD 솔버 포맷으로 내보낸다.
 
     Args:
         case_dir: OpenFOAM case 디렉터리. ``constant/polyMesh`` 하위 파일 사용.
         output_path: 출력 파일 경로 (None이면 case_dir/<mesh>.<ext>).
-        fmt: 출력 포맷 — 'su2' | 'fluent' | 'cgns'.
+        fmt: 출력 포맷. None 이면 output_path 의 확장자로 자동 감지
+             (commercial UX standard). 미감지 시 'su2' 로 fallback.
 
     Returns:
         생성된 파일 경로. 실패 시 None.
@@ -94,6 +108,18 @@ def export_mesh(
     except ImportError:
         log.error("mesh_exporter_meshio_missing", hint="pip install meshio")
         return None
+
+    # beta2271 — fmt None 이면 output_path 확장자로 자동 감지.
+    if fmt is None:
+        if output_path is not None:
+            ext = Path(output_path).suffix.lower()
+            fmt = _EXTENSION_TO_FORMAT.get(ext, "su2")
+            log.info(
+                "mesh_exporter_format_autodetect",
+                ext=ext, detected_fmt=fmt, output_path=str(output_path),
+            )
+        else:
+            fmt = "su2"
 
     poly_dir = case_dir / "constant" / "polyMesh"
     if not poly_dir.exists():
