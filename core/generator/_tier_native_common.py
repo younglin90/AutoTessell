@@ -249,6 +249,14 @@ def run_native_tier(
         "n_lloyd",                 # native_poly Lloyd CVT iterations
         "auto_escalate",           # native_poly DD2 fallback retry
         "auto_escalate_max",       # native_poly retry 최대 횟수
+        # beta2295: native_tet TetWild-lite knobs — _runner **kwargs forward
+        # 도 함께 추가했고 (tier_native_tet.py beta2295) 이젠 GUI/CLI 도달.
+        "target_cells",            # fTetWild target_num_cells 동등 (beta330)
+        "enable_amips_smooth",     # AMIPS analytic optimizer (beta1350)
+        "enable_chunked_delaunay", # 자동 perf 스케일링 (beta1360)
+        "enable_cdt_recovery",     # CDT envelope recovery (beta1370)
+        "enable_phase_b",          # local ops 통합 (split/collapse/flip, beta120)
+        "enable_phase_c",          # envelope+quality stop (beta125)
     }
     tsp = getattr(strategy, "tier_specific_params", None) or {}
     for k in _TIER_PARAM_KEYS:

@@ -719,6 +719,51 @@ ENGINE_PARAM_REGISTRY: dict[str, list[EngineParamSpec]] = {
                 "draft 0.02 / standard 0.05 / fine 0.10 기본."
             ),
         ),
+        # beta2295 — TetWild-lite Phase B/C/AMIPS/chunked/CDT/target_cells.
+        # 이전엔 mesher 시그너쳐엔 있어도 _runner **_unused 가 swallow.
+        EngineParamSpec(
+            "target_cells", "target_cells (fTetWild)", "int", 0,
+            min_val=0, max_val=10_000_000,
+            doc=(
+                "0 = 비활성. >0 이면 bbox heuristic 으로 seed_density 자동 조정.\n"
+                "fTetWild 의 'target_num_cells' 동등 — 사용자 친화적 cell 수 지정."
+            ),
+        ),
+        EngineParamSpec(
+            "enable_amips_smooth", "AMIPS smooth (P2)", "bool", False,
+            doc=(
+                "AMIPS analytic energy 기반 vertex relocation.\n"
+                "fTetWild §3.5 동등. Phase B 와 함께 standard/fine 추천."
+            ),
+        ),
+        EngineParamSpec(
+            "enable_chunked_delaunay", "chunked Delaunay (P5)", "bool", True,
+            doc=(
+                "큰 메쉬 (>30k 셀) 자동 chunked Delaunay 분할 — perf 스케일.\n"
+                "scipy QHull 메모리 폭주 방지."
+            ),
+        ),
+        EngineParamSpec(
+            "enable_cdt_recovery", "CDT recovery (P1)", "bool", False,
+            doc=(
+                "Constrained Delaunay envelope recovery — boundary point 보존.\n"
+                "fTetWild §3.3 동등. fine quality 권장."
+            ),
+        ),
+        EngineParamSpec(
+            "enable_phase_b", "Phase B (local ops)", "bool", False,
+            doc=(
+                "split / collapse / flip cycle 활성화 (TetWild-lite).\n"
+                "큰 메쉬에서 느림 (Python O(T^2)) — fine 권장."
+            ),
+        ),
+        EngineParamSpec(
+            "enable_phase_c", "Phase C (envelope stop)", "bool", False,
+            doc=(
+                "envelope + quality target 도달 시 조기 종료.\n"
+                "Phase B 와 함께 사용 — 불필요한 iteration 제거."
+            ),
+        ),
     ],
     "native_hex": [
         EngineParamSpec(

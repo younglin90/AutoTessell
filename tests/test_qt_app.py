@@ -3889,6 +3889,52 @@ def test_gui_engine_spec_native_hex_exposes_post_smooth() -> None:
     assert not missing, f"native_hex spec X3 post-smooth 누락: {missing}"
 
 
+def test_gui_engine_spec_native_tet_exposes_tetwild_lite_knobs() -> None:
+    """beta2295 — native_tet spec 가 TetWild-lite 6 knobs 노출.
+
+    이전엔 mesher 시그너쳐에 enable_amips/chunked/cdt/phase_b/c, target_cells
+    가 있어도 tier_native_tet._runner(**_unused) 가 swallow + spec 미정의 →
+    GUI/CLI 도달 불가. fTetWild §3.3-3.5 동등 control."""
+    from desktop.qt_app.widgets.engine_params_spec import ENGINE_PARAM_REGISTRY
+    specs = ENGINE_PARAM_REGISTRY.get("native_tet", [])
+    keys = {s.key for s in specs}
+    expected = {
+        "target_cells", "enable_amips_smooth", "enable_chunked_delaunay",
+        "enable_cdt_recovery", "enable_phase_b", "enable_phase_c",
+    }
+    missing = expected - keys
+    assert not missing, f"native_tet spec TetWild-lite knob 누락: {missing}"
+
+
+def test_native_tet_kwargs_forwarded_to_harness() -> None:
+    """beta2295 — _runner 가 **kwargs 를 harness/mesher 에 forward.
+
+    이전엔 **_unused 로 흡수돼 GUI/CLI 입력 무력화."""
+    from core.generator import tier_native_tet as tnt
+    import inspect
+    src = inspect.getsource(tnt._runner)
+    # 시그너쳐 라인에서 **_unused 가 사라졌어야 함 (docstring 언급은 허용).
+    sig_line = src.split("\n", 3)[1]  # def _runner(...) 줄
+    # 첫 def 라인이 여러 줄 wrap 됐을 수 있어 함수 정의 블록만 추출.
+    head = src.split('"""', 1)[0]
+    assert "**_unused" not in head, "_runner 시그너쳐 가 아직 **_unused 로 swallow"
+    assert "**kwargs" in head
+    # body 에서도 **kwargs 두 번 (harness call + fallback) 모두 forward.
+    body = src.split('"""', 2)[2]
+    assert body.count("**kwargs") >= 2, \
+        f"harness + fallback 두 곳 모두 **kwargs forward 필요 (현재 {body.count('**kwargs')})"
+
+
+def test_native_tet_tetwild_lite_keys_in_tier_param_allowlist() -> None:
+    """beta2295 — _TIER_PARAM_KEYS 에 6 knob 통과."""
+    from core.generator._tier_native_common import run_native_tier
+    import inspect
+    src = inspect.getsource(run_native_tier)
+    for k in ("target_cells", "enable_amips_smooth", "enable_chunked_delaunay",
+              "enable_cdt_recovery", "enable_phase_b", "enable_phase_c"):
+        assert f'"{k}"' in src, f"_TIER_PARAM_KEYS 에 누락: {k}"
+
+
 def test_gui_engine_spec_native_poly_exposes_voronoi_knobs() -> None:
     """beta2294 — native_poly spec 가 voronoi fallback 의 3 핵심 knob 노출.
 
