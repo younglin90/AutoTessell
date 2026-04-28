@@ -2247,16 +2247,26 @@ class AutoTessellWindow:  # type: ignore[misc]
             "엔진을 primary 로 선택. mesh_type 명시 필요.\n"
             "legacy tier (wildmesh/snappy/cfmesh 등) 는 fallback 으로 유지."
         )
+        # beta2299 — CLI --cross-engine-fallback 대응 GUI 체크박스.
+        self._cross_engine_fallback_check = QCheckBox(
+            "Cross-engine fallback (poly→hex 자동 재시도)"
+        )
+        self._cross_engine_fallback_check.setToolTip(
+            "체크 시 poly mesh_type 이 완전 실패하면 hex_dominant 로 1 회\n"
+            "자동 재시도 (beta68 도입, CLI --cross-engine-fallback 동등).\n"
+            "extreme tier 의 self-intersect 형상에서 회복률 향상."
+        )
         # 기본값: native L1 은 기본 On (beta26 철학), native tier 는 opt-in
         self._no_repair_check.setChecked(False)
         self._surface_remesh_check.setChecked(False)
         self._allow_ai_fallback_check.setChecked(False)
         self._prefer_native_check.setChecked(True)  # beta26 default
         self._prefer_native_tier_check.setChecked(False)
+        self._cross_engine_fallback_check.setChecked(False)
         for chk in (
             self._no_repair_check, self._surface_remesh_check,
             self._allow_ai_fallback_check, self._prefer_native_check,
-            self._prefer_native_tier_check,
+            self._prefer_native_tier_check, self._cross_engine_fallback_check,
         ):
             v.addWidget(chk)
             try:
@@ -2850,6 +2860,12 @@ class AutoTessellWindow:  # type: ignore[misc]
                     if self._surface_remesh_check else True,
                 allow_ai_fallback=bool(self._allow_ai_fallback_check.isChecked())
                     if self._allow_ai_fallback_check else False,
+                # beta2299 — GUI cross_engine_fallback 체크박스 propagate.
+                cross_engine_fallback=(
+                    bool(self._cross_engine_fallback_check.isChecked())
+                    if getattr(self, "_cross_engine_fallback_check", None)
+                    else False
+                ),
                 # "disabled" 는 orchestrator가 모르는 값 → "auto"로 정규화
                 # (단, surface_remesh=False 면 애초에 L2 실행 안 함)
                 remesh_engine=(

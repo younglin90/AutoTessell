@@ -3889,6 +3889,33 @@ def test_gui_engine_spec_native_hex_exposes_post_smooth() -> None:
     assert not missing, f"native_hex spec X3 post-smooth 누락: {missing}"
 
 
+def test_gui_cross_engine_fallback_checkbox_wired() -> None:
+    """beta2299 — GUI cross_engine_fallback 체크박스 → PipelineWorker 전달.
+
+    이전엔 CLI --cross-engine-fallback 만 있고 GUI 미노출. poly mesh_type
+    extreme tier 회복 (poly→hex 1회 자동 재시도) 워크플로 GUI 도달."""
+    import os
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    import sys
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication(sys.argv)
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    win._build()
+    assert getattr(win, "_cross_engine_fallback_check", None) is not None, \
+        "cross_engine_fallback 체크박스 미생성"
+
+    # PipelineWorker signature 에도 kwarg 가 노출되어야 함.
+    from desktop.qt_app.pipeline_worker import PipelineWorker
+    import inspect
+    # PipelineWorker 는 _make_worker 클로저 패턴이라 inspect 가 까다로움 — 모듈 src 검사.
+    src = inspect.getsource(inspect.getmodule(PipelineWorker))
+    assert "cross_engine_fallback: bool = False" in src
+    assert "self._cross_engine_fallback = bool(cross_engine_fallback)" in src
+    assert "cross_engine_fallback=self._cross_engine_fallback" in src
+
+
 def test_gui_tier4_combo_includes_poly_bl_transition() -> None:
     """beta2298 — poly_bl_transition 엔진이 Tier 4 GUI 콤보에 노출.
 

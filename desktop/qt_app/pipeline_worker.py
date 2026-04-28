@@ -131,6 +131,8 @@ class PipelineWorker:
                 allow_ai_fallback: bool = False,
                 validator_engine: str = "checkmesh",
                 strict_tier: bool = False,
+                # beta2299: GUI cross_engine_fallback 체크박스 → orchestrator.
+                cross_engine_fallback: bool = False,
             ) -> None:
                 super().__init__()
                 self._input_path = input_path
@@ -152,6 +154,7 @@ class PipelineWorker:
                 self._allow_ai_fallback = allow_ai_fallback
                 self._validator_engine = validator_engine
                 self._strict_tier = strict_tier
+                self._cross_engine_fallback = bool(cross_engine_fallback)
 
             def run(self) -> None:
                 """파이프라인을 실행하고 결과를 finished 시그널로 emit."""
@@ -213,6 +216,7 @@ class PipelineWorker:
                         allow_ai_fallback=self._allow_ai_fallback,
                         validator_engine=self._validator_engine,
                         strict_tier=self._strict_tier,
+                        cross_engine_fallback=self._cross_engine_fallback,
                         progress_callback=_on_progress,
                     )
                     self.progress.emit(
