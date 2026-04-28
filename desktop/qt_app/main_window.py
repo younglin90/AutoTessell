@@ -2488,10 +2488,12 @@ class AutoTessellWindow:  # type: ignore[misc]
             ("Tier 4 · Layers", "boundary layer"),
             ("Tier 5 · Validate", "checkMesh"),
         ])
-        self._tier_pipeline.run_requested.connect(self._on_run_clicked)
+        # beta2290: TierPipelineStrip 실 API 동기화. 이전 코드는
+        # run_requested / reset_requested 라는 미존재 시그널에 connect 시도하여
+        # 윈도우 생성 시 AttributeError 로 GUI 가 부분 깨졌다.
+        self._tier_pipeline.resume_requested.connect(self._on_run_clicked)
         self._tier_pipeline.rerun_requested.connect(self._on_run_clicked)
         self._tier_pipeline.stop_requested.connect(self._on_stop_clicked)
-        self._tier_pipeline.reset_requested.connect(self._on_reset_pipeline)
         self._tier_pipeline.tier_clicked.connect(self._on_tier_node_clicked)
         v.addWidget(self._tier_pipeline)
 
@@ -2660,14 +2662,14 @@ class AutoTessellWindow:  # type: ignore[misc]
             tier4_choice = self._tier4_engine_text()
             # 내부 BL — 주 엔진이 자체적으로 BL 생성 (snappy addLayers / cfMesh boundaryLayers)
             internal_bl = tier4_choice in ("snappy_layers", "cfmesh_layers")
-            post_engine = "disabled"
-            if tier4_choice == "disabled":
-                tier_params["boundary_layers_enabled"] = False
-                tier_params["skip_addLayers"] = True
-            elif internal_bl:
-                tier_params["boundary_layers_enabled"] = True
-                tier_params["skip_addLayers"] = False
-            elif tier4_choice in (
+            # beta2290 — native_bl/native_bl_tet/poly_bl 도 독립 post engine.
+            #            기존 코드는 native_bl 을 elif 에서 누락해 default
+            #            "disabled" 로 떨어졌고, "auto" 도 항상 "disabled" 로
+            #            덮어써서 strategist 결정 무력화. 둘 다 수정.
+            _native_post_engines = (
+                "native_bl", "native_bl_tet", "poly_bl_transition",
+            )
+            _foreign_post_engines = (
                 "generate_boundary_layers",
                 "refine_wall_layer",
                 "snappy_addlayers",
@@ -2678,13 +2680,23 @@ class AutoTessellWindow:  # type: ignore[misc]
                 "meshkit_bl",
                 "su2_hexpress",
                 "salome_bl",
-            ):
+            )
+            post_engine: str | None = None
+            if tier4_choice == "disabled":
+                tier_params["boundary_layers_enabled"] = False
+                tier_params["skip_addLayers"] = True
+                post_engine = "disabled"
+            elif internal_bl:
+                tier_params["boundary_layers_enabled"] = True
+                tier_params["skip_addLayers"] = False
+            elif tier4_choice in _native_post_engines + _foreign_post_engines:
                 # 독립 후처리 — 주 엔진 내부 BL 은 끔 (중복 방지)
                 tier_params["boundary_layers_enabled"] = False
                 tier_params["skip_addLayers"] = True
                 post_engine = tier4_choice
-            # else: auto — override 없음 (quality_level 이 결정)
-            tier_params["post_layers_engine"] = post_engine
+            # else: auto → strategist 가 결정하도록 override 안 함.
+            if post_engine is not None:
+                tier_params["post_layers_engine"] = post_engine
         except Exception:
             pass
 

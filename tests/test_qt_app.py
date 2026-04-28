@@ -2971,7 +2971,11 @@ def test_job_pane_log_filter_chips_exist_with_clicked_signal() -> None:
 
 
 def test_tier_pipeline_strip_resume_stop_rerun_signals() -> None:
-    """TierPipelineStrip 버튼 클릭 → resume/stop/rerun_requested Signal emit."""
+    """TierPipelineStrip 버튼 클릭 → resume/stop/rerun_requested Signal emit.
+
+    beta2290: run_btn / reset_btn 가 실제 API 에 없으므로 해당 검증 제거,
+    resume/stop/rerun 3 시그널만 검증 (실 widget 정의: tier_pipeline.py:183-185).
+    """
     from PySide6.QtCore import Qt
     from PySide6.QtTest import QSignalSpy, QTest
     from desktop.qt_app.widgets.tier_pipeline import TierPipelineStrip
@@ -2979,28 +2983,17 @@ def test_tier_pipeline_strip_resume_stop_rerun_signals() -> None:
     strip = TierPipelineStrip()
     strip.set_tiers([("A", "a"), ("B", "b")])
 
-    run_spy = QSignalSpy(strip.run_requested)
+    resume_spy = QSignalSpy(strip.resume_requested)
     stop_spy = QSignalSpy(strip.stop_requested)
     rerun_spy = QSignalSpy(strip.rerun_requested)
-    reset_spy = QSignalSpy(strip.reset_requested)
 
-    # idle 상태: run_btn만 visible
-    strip.set_state("idle")
-    QTest.mouseClick(strip.run_btn, Qt.MouseButton.LeftButton)
-
-    # running 상태: stop_btn만 visible
-    strip.set_state("running")
+    QTest.mouseClick(strip.resume_btn, Qt.MouseButton.LeftButton)
     QTest.mouseClick(strip.stop_btn, Qt.MouseButton.LeftButton)
-
-    # done 상태: rerun + reset visible
-    strip.set_state("done")
     QTest.mouseClick(strip.rerun_btn, Qt.MouseButton.LeftButton)
-    QTest.mouseClick(strip.reset_btn, Qt.MouseButton.LeftButton)
 
-    assert run_spy.count() == 1
+    assert resume_spy.count() == 1
     assert stop_spy.count() == 1
     assert rerun_spy.count() == 1
-    assert reset_spy.count() == 1
 
 
 def test_drop_zone_drag_and_drop_emits_file_dropped() -> None:
@@ -3178,10 +3171,10 @@ def test_signal_connections_completeness(monkeypatch) -> None:
         ("_drop_label", "clicked", 1),
         ("_drop_label", "file_dropped", 1),
         ("_tier_pipeline", "tier_clicked", 1),
-        ("_tier_pipeline", "run_requested", 1),
+        # beta2290: run_requested/reset_requested → 실제 API (resume/rerun) 동기화.
+        ("_tier_pipeline", "resume_requested", 1),
         ("_tier_pipeline", "stop_requested", 1),
         ("_tier_pipeline", "rerun_requested", 1),
-        ("_tier_pipeline", "reset_requested", 1),
         ("_wildmesh_param_panel", "params_changed", 1),
     ]
     for attr, sig_name, min_r in checks:
@@ -3880,6 +3873,25 @@ def test_gui_engine_spec_layers_post_exposes_phase2_keys() -> None:
     }
     missing = expected - keys
     assert not missing, f"layers_post spec 에 누락된 Phase 2 필드: {missing}"
+
+
+def test_gui_tier4_native_bl_selection_routes_to_post_engine() -> None:
+    """beta2290 — Tier 4 'Native BL' 선택이 post_layers_engine 를 native_bl 로 설정.
+
+    이전 버그: native_bl/native_bl_tet 가 elif 누락으로 post_engine 이
+    'disabled' 로 떨어져, GUI 에서 Native BL 명시해도 BL 미실행.
+    또한 'auto' 가 항상 'disabled' 로 강제 덮어써 strategist 결정 무력화.
+    """
+    import inspect
+    from desktop.qt_app.main_window import AutoTessellWindow
+    src = inspect.getsource(AutoTessellWindow._on_run_clicked)
+    # native_bl / native_bl_tet 가 _native_post_engines 튜플에 포함.
+    assert "native_bl" in src and "native_bl_tet" in src, \
+        "native_bl/native_bl_tet 가 Tier 4 elif 분기에 누락"
+    # 'auto' 분기에서 post_layers_engine 강제 'disabled' 가 사라졌는지.
+    # (기존: 항상 tier_params["post_layers_engine"] = post_engine)
+    assert "if post_engine is not None:" in src, \
+        "auto 분기 strategist 결정 보호 (post_engine None 가드) 누락"
 
 
 def test_gui_engine_spec_phase2_round_trip_to_bl_config() -> None:
