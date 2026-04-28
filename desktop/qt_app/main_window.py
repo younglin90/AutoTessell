@@ -1770,6 +1770,8 @@ class AutoTessellWindow:  # type: ignore[misc]
     _TIER4_ENGINES: tuple[tuple[str, str], ...] = (
         ("native_bl", "Native BL (Phase 2)"),
         ("native_bl_tet", "Native BL — tet 3 분할"),
+        # beta2298 — poly mesh_type 전용 BL → polyDual 전환 엔진.
+        ("poly_bl_transition", "Native BL — poly dual 전환"),
         ("auto", "Auto (품질 레벨 기반)"),
         ("disabled", "비활성화"),
         # 참고용 — 우리 BL 대비 비교 / 외부 의존 옵션.

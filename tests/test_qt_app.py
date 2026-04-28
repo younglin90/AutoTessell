@@ -3889,6 +3889,21 @@ def test_gui_engine_spec_native_hex_exposes_post_smooth() -> None:
     assert not missing, f"native_hex spec X3 post-smooth 누락: {missing}"
 
 
+def test_gui_tier4_combo_includes_poly_bl_transition() -> None:
+    """beta2298 — poly_bl_transition 엔진이 Tier 4 GUI 콤보에 노출.
+
+    beta2290 에서 elif 분기에 routing 추가했지만 _TIER4_ENGINES 콤보 자체에는
+    누락 — 사용자가 GUI 에서 poly mesh_type 의 polyDual BL 전환을 선택 못 함."""
+    from desktop.qt_app.main_window import AutoTessellWindow
+    keys = {k for k, _ in AutoTessellWindow._TIER4_ENGINES}
+    assert "poly_bl_transition" in keys, \
+        "poly_bl_transition 가 Tier 4 GUI 콤보에 누락"
+    # routing chain 도 함께 검증 (beta2290 wired).
+    import inspect
+    src = inspect.getsource(AutoTessellWindow._on_run_clicked)
+    assert "poly_bl_transition" in src
+
+
 def test_harness_params_fine_quality_auto_tunes_post_smooth() -> None:
     """beta2297 — native_hex fine quality 가 X3 post-smooth 자동 활성.
 
