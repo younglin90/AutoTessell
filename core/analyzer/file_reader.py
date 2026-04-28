@@ -325,7 +325,11 @@ def _load_via_trimesh(path: Path, fmt: str) -> trimesh.Trimesh:
 
 
 def _load_via_meshio(path: Path, fmt: str) -> trimesh.Trimesh:
-    """meshio.read() → 표면 삼각 메쉬 추출."""
+    """meshio.read() → 표면 삼각 메쉬 추출.
+
+    beta2260: Volume cells (tet/hex/wedge/pyramid) 만 있는 경우
+    boundary surface 자동 추출 (cfMesh / Fluent meshExporter 동급 동작).
+    """
     try:
         import meshio
     except ImportError as exc:
@@ -340,26 +344,86 @@ def _load_via_meshio(path: Path, fmt: str) -> trimesh.Trimesh:
             f"meshio 로딩 실패 [{fmt}]: {path}\n원인: {exc}"
         ) from exc
 
-    # 삼각형 셀 추출
-    tri_cells = [
-        cell for cell in mesh.cells if cell.type == "triangle"
-    ]
-    if not tri_cells:
+    import numpy as np
+
+    # Path 1 — triangle / quad surface cells 우선
+    tri_cells = [c for c in mesh.cells if c.type == "triangle"]
+    quad_cells = [c for c in mesh.cells if c.type == "quad"]
+    surface_faces: list[np.ndarray] = []
+    if tri_cells:
+        surface_faces.append(np.vstack([c.data for c in tri_cells]))
+    if quad_cells:
+        # quad → 2 triangles via fan.
+        for c in quad_cells:
+            q = c.data
+            t1 = q[:, [0, 1, 2]]
+            t2 = q[:, [0, 2, 3]]
+            surface_faces.append(np.vstack([t1, t2]))
+    if surface_faces:
+        faces = np.vstack(surface_faces)
+        result = trimesh.Trimesh(
+            vertices=mesh.points[:, :3], faces=faces, process=False,
+        )
+        log.info(
+            "mesh_loaded_via_meshio",
+            path=str(path), source="surface_cells",
+            num_vertices=len(result.vertices), num_faces=len(result.faces),
+        )
+        return result
+
+    # Path 2 — 3D volume cells 만 있는 경우 boundary 추출.
+    # tet (4 verts), hex (8), wedge (6), pyramid (5) 의 boundary face 산출.
+    vol_face_specs: dict[str, list[tuple[int, ...]]] = {
+        "tetra": [(0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3)],
+        "hexahedron": [],  # quads → tri 변환
+        "wedge": [],
+        "pyramid": [],
+    }
+    boundary_tris: list[np.ndarray] = []
+    for c in mesh.cells:
+        if c.type == "tetra":
+            n = c.data.shape[0]
+            tris = np.zeros((n * 4, 3), dtype=np.int64)
+            for i, (a, b, d) in enumerate(vol_face_specs["tetra"]):
+                tris[i * n:(i + 1) * n] = c.data[:, [a, b, d]]
+            boundary_tris.append(tris)
+        elif c.type == "hexahedron":
+            # 6 quad faces of hex; convert to 12 triangles via fan
+            n = c.data.shape[0]
+            quad_specs = [
+                (0, 1, 2, 3), (4, 5, 6, 7), (0, 1, 5, 4),
+                (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7),
+            ]
+            for q in quad_specs:
+                t1 = c.data[:, [q[0], q[1], q[2]]]
+                t2 = c.data[:, [q[0], q[2], q[3]]]
+                boundary_tris.append(np.vstack([t1, t2]))
+
+    if not boundary_tris:
         raise ValueError(
-            f"meshio 메쉬에서 삼각형 셀을 찾지 못했습니다: {path}\n"
+            f"meshio 메쉬에서 surface/volume 셀을 찾지 못했습니다: {path}\n"
             f"포함된 셀 타입: {[c.type for c in mesh.cells]}"
         )
 
-    import numpy as np
+    all_tri = np.vstack(boundary_tris)
+    # Boundary extraction: a face appears once = boundary, twice = internal.
+    # canonical sort + unique count.
+    sorted_tri = np.sort(all_tri, axis=1)
+    # Use np.unique with return_counts
+    uniq, idx_first, counts = np.unique(
+        sorted_tri, axis=0, return_index=True, return_counts=True,
+    )
+    boundary_mask = counts == 1
+    bnd_first_idx = idx_first[boundary_mask]
+    bnd_faces = all_tri[bnd_first_idx]  # original orientation preserved
 
-    faces = np.vstack([c.data for c in tri_cells])
-    result = trimesh.Trimesh(vertices=mesh.points[:, :3], faces=faces, process=False)
-
+    result = trimesh.Trimesh(
+        vertices=mesh.points[:, :3], faces=bnd_faces, process=False,
+    )
     log.info(
         "mesh_loaded_via_meshio",
-        path=str(path),
-        num_vertices=len(result.vertices),
-        num_faces=len(result.faces),
+        path=str(path), source="boundary_extracted",
+        num_vertices=len(result.vertices), num_faces=len(result.faces),
     )
     return result
 
