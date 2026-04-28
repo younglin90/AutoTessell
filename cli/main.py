@@ -1219,6 +1219,59 @@ def interactive(ctx: click.Context, input_file: Path, output: Path) -> None:
     console.print(f"\n[bold green]완료![/bold green] Case: {output}")
 
 
+@cli.command("convert")
+@click.argument("input_path", type=click.Path(exists=True, path_type=Path))
+@click.argument("output_path", type=click.Path(path_type=Path))
+def convert_cmd(input_path: Path, output_path: Path) -> None:
+    """beta2278 — Direct mesh format conversion (meshio-style).
+
+    OpenFOAM polyMesh 단계 없이 input mesh 를 다른 format 으로 직접 변환.
+    상용 도구의 "Save As" UX 동등.
+
+    예시::
+
+        auto-tessell convert mesh.stl mesh.obj
+        auto-tessell convert input.vtu output.bdf  # VTK → Nastran
+        auto-tessell convert geom.step out.stl     # STEP → STL
+    """
+    import meshio
+    from core.analyzer.file_reader import load_mesh
+    import numpy as np
+
+    console.print(f"[bold cyan]Convert[/bold cyan] {input_path} → {output_path}")
+    try:
+        tm = load_mesh(input_path)
+        V = np.asarray(tm.vertices)
+        F = np.asarray(tm.faces)
+        console.print(f"  loaded V={V.shape[0]} F={F.shape[0]}")
+
+        # Determine output format from extension.
+        ext = output_path.suffix.lower()
+        meshio_ext_map = {
+            ".stl": "stl", ".obj": "obj", ".ply": "ply",
+            ".vtu": "vtu", ".vtk": "vtk", ".vtp": "vtp",
+            ".msh": "gmsh22",  # default Gmsh
+            ".bdf": "nastran", ".nas": "nastran",
+            ".inp": "abaqus", ".dat": "tecplot",
+            ".mesh": "medit", ".xdmf": "xdmf",
+        }
+        fmt = meshio_ext_map.get(ext)
+        if fmt is None:
+            console.print(f"[bold red]✗ 지원하지 않는 출력 포맷: {ext}[/bold red]")
+            sys.exit(1)
+
+        mesh = meshio.Mesh(
+            points=V.astype(np.float64),
+            cells=[meshio.CellBlock("triangle", F.astype(np.int64))],
+        )
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        meshio.write(str(output_path), mesh, file_format=fmt)
+        console.print(f"[bold green]✓[/bold green] {output_path} ({output_path.stat().st_size}b)")
+    except Exception as exc:
+        console.print(f"[bold red]✗ 변환 실패: {exc}[/bold red]")
+        sys.exit(1)
+
+
 @cli.command("smoketest")
 @click.option(
     "--engine",
