@@ -169,3 +169,29 @@ def test_native_bl_backup_creates_pre_bl_dir(sphere_baseline: Path) -> None:
     assert bak.exists() and bak.is_dir()
     assert (bak / "points").exists()
     assert (bak / "faces").exists()
+
+
+def test_native_bl_wall_preserve_within_envelope(sphere_baseline: Path) -> None:
+    """beta2256 — wall_preserve_within_envelope=True 가 commercial-grade
+    contract. cfMesh / Pointwise T-Rex 동급 wall preservation 보장.
+
+    BL pass 후 lp_ids[0] (boundary face vertex) 가 원본 polyMesh wall 좌표와
+    ε=1e-6×bbox_diag 이내 일치해야 함.
+    """
+    cfg = BLConfig(num_layers=3, growth_ratio=1.2, first_thickness=0.02)
+    res = generate_native_bl(sphere_baseline, cfg)
+    assert res.success
+    # New beta2256 fields must be present.
+    assert hasattr(res, "wall_preserve_max_diff")
+    assert hasattr(res, "wall_preserve_max_diff_rel")
+    assert hasattr(res, "wall_preserve_n_drift")
+    assert hasattr(res, "wall_preserve_within_envelope")
+    # Commercial-grade contract: wall must be exactly preserved.
+    assert res.wall_preserve_within_envelope is True, (
+        f"wall preservation envelope violated: max_diff={res.wall_preserve_max_diff}, "
+        f"rel={res.wall_preserve_max_diff_rel}, n_drift={res.wall_preserve_n_drift}"
+    )
+    assert res.wall_preserve_max_diff_rel <= 1e-6
+    assert res.wall_preserve_n_drift == 0
+    # Wall preservation must hold on a real BL run with prisms.
+    assert res.n_prism_cells > 0
