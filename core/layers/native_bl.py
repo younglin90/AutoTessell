@@ -274,6 +274,10 @@ class BLConfig:
     flow_velocity: float = 1.0  # m/s, target_y_plus 사용 시 필수.
     flow_kinematic_viscosity: float = 1.5e-5  # m^2/s, 공기 표준.
     flow_characteristic_length: float | None = None  # None 이면 bbox_diag 사용.
+    # beta2272 — 유체 preset (cfMesh/Fluent fluid library 동급).
+    # 설정 시 flow_kinematic_viscosity 자동 override.
+    # 지원: air_sea_level, air_20C, water_20C, oil_SAE10W30, glycol_50pct.
+    flow_fluid_preset: str | None = None
     # beta93: shrinkage iteration — 품질 불량 prism vertex 두께를 반복적으로 줄여 수렴.
     # beta2253: REVERT 2252 — shrink 가 thickness h 를 줄이는데 aspect = e_outer/h
     # 정의상 h 감소시 aspect 가 INCREASE 됨 → feedback loop 로 aspect 폭주.
@@ -1468,6 +1472,32 @@ def generate_native_bl(
     # 4) Thickness 배열 + bbox safety
     bbox_diag = float(np.linalg.norm(points.max(0) - points.min(0)))
 
+    # beta2272 — fluid preset → kinematic viscosity 자동 override.
+    _FLUID_PRESETS = {
+        "air_sea_level": 1.5e-5,    # air at 15°C, 1 atm (standard)
+        "air_20C": 1.516e-5,        # air at 20°C
+        "air_0C": 1.336e-5,         # air at 0°C
+        "water_20C": 1.004e-6,      # liquid water at 20°C
+        "water_4C": 1.567e-6,       # liquid water at 4°C (max density)
+        "oil_SAE10W30": 1.0e-4,     # engine oil SAE 10W-30 at 100°C
+        "glycol_50pct": 5.0e-6,     # 50% ethylene glycol-water at 20°C
+    }
+    effective_nu = float(cfg.flow_kinematic_viscosity)
+    if cfg.flow_fluid_preset is not None:
+        preset_nu = _FLUID_PRESETS.get(cfg.flow_fluid_preset)
+        if preset_nu is not None:
+            effective_nu = preset_nu
+            log.info(
+                "native_bl_fluid_preset", component="native_bl",
+                preset=cfg.flow_fluid_preset, nu=effective_nu,
+            )
+        else:
+            log.warning(
+                "native_bl_fluid_preset_unknown",
+                preset=cfg.flow_fluid_preset,
+                available=list(_FLUID_PRESETS.keys()),
+            )
+
     # beta2267 — y+ targeting (CFD engineer mode).
     # target_y_plus 가 설정되면 cfg.first_thickness 를 무시하고 Schlichting
     # flat plate 공식으로 자동 계산.
@@ -1475,7 +1505,7 @@ def generate_native_bl(
     if cfg.target_y_plus is not None and cfg.target_y_plus > 0:
         try:
             U = float(cfg.flow_velocity)
-            nu = float(cfg.flow_kinematic_viscosity)
+            nu = effective_nu
             L = float(cfg.flow_characteristic_length) if cfg.flow_characteristic_length else bbox_diag
             Re = max(1.0, U * L / nu)
             Cf = 0.058 / (Re ** 0.2)  # Schlichting flat plate
