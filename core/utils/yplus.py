@@ -42,6 +42,35 @@ FLUID_PROPERTIES: dict[str, dict[str, float]] = {
         "kinematic_viscosity": 1e-4,
         "density": 870.0,
     },
+    # beta2284 — BLConfig.flow_fluid_preset 동기화 (cfMesh/Fluent 동등).
+    "air_sea_level": {
+        "kinematic_viscosity": 1.5e-5,    # 15°C, 1 atm 표준
+        "density": 1.225,
+    },
+    "air_20C": {
+        "kinematic_viscosity": 1.516e-5,
+        "density": 1.204,
+    },
+    "air_0C": {
+        "kinematic_viscosity": 1.336e-5,
+        "density": 1.293,
+    },
+    "water_20C": {
+        "kinematic_viscosity": 1.004e-6,
+        "density": 998.2,
+    },
+    "water_4C": {
+        "kinematic_viscosity": 1.567e-6,  # max density 점
+        "density": 999.97,
+    },
+    "oil_SAE10W30": {
+        "kinematic_viscosity": 1.0e-4,    # 100°C 기준
+        "density": 870.0,
+    },
+    "glycol_50pct": {
+        "kinematic_viscosity": 5.0e-6,
+        "density": 1078.0,                 # 20°C, 50% ethylene glycol-water
+    },
 }
 
 
@@ -91,7 +120,15 @@ def estimate_first_layer_thickness(
     if kinematic_viscosity is not None:
         nu = float(kinematic_viscosity)
     else:
-        props = FLUID_PROPERTIES.get(fluid.lower())
+        # beta2284: case-insensitive lookup. air_20C 등 mixed-case 키 지원.
+        _key = fluid.strip()
+        props = FLUID_PROPERTIES.get(_key)
+        if props is None:
+            # case-insensitive fallback
+            for k, v in FLUID_PROPERTIES.items():
+                if k.lower() == _key.lower():
+                    props = v
+                    break
         if props is None:
             raise ValueError(
                 f"알 수 없는 fluid: {fluid}. 지원: {list(FLUID_PROPERTIES)}. "
