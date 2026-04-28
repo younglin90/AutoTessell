@@ -825,9 +825,24 @@ class TestAnalyzeCommand:
 class TestSubcommandsExist:
     @pytest.mark.parametrize(
         "cmd",
-        ["run", "analyze", "preprocess", "strategize", "generate", "evaluate", "export-vtk", "interactive"],
+        [
+            "run", "analyze", "preprocess", "strategize", "generate",
+            "evaluate", "export-vtk", "interactive",
+            # beta2276/2278/2279: 신규 CLI commands
+            "smoketest", "convert", "stats", "export",
+        ],
     )
     def test_subcommand_exists(self, runner: CliRunner, cmd: str):
         result = runner.invoke(cli, [cmd, "--help"])
         # '--help'는 항상 exit_code 0 이어야 함
         assert result.exit_code == 0, f"Subcommand '{cmd}' --help failed: {result.output}"
+
+
+class TestSmoketestCommand:
+    """beta2285 — smoketest CLI 회귀 contract."""
+
+    def test_smoketest_help_lists_engine_choices(self, runner: CliRunner):
+        result = runner.invoke(cli, ["smoketest", "--help"])
+        assert result.exit_code == 0
+        for choice in ["tet", "hex", "poly", "all"]:
+            assert choice in result.output, f"missing choice {choice}"
