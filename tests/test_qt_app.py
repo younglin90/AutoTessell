@@ -3797,3 +3797,32 @@ def test_on_run_clicked_sets_pipeline_running(monkeypatch) -> None:
     src = inspect.getsource(AutoTessellWindow._on_run_clicked)
     assert "_set_pipeline_running(True)" in src, \
         "_on_run_clicked에 _set_pipeline_running(True) 없음"
+
+
+def test_gui_yplus_fluid_combo_has_11_options() -> None:
+    """beta2280 — GUI yplus_panel fluid combo 11 options (BLConfig 동등)."""
+    import os
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    from PySide6.QtWidgets import QApplication
+    import sys
+    app = QApplication.instance() or QApplication(sys.argv)
+    from desktop.qt_app.widgets.yplus_panel import YPlusPanel
+    panel = YPlusPanel()
+    items = [panel._fluid_combo.itemText(i) for i in range(panel._fluid_combo.count())]
+    assert len(items) == 11, f"fluid combo should have 11 items, got {len(items)}: {items}"
+    expected = {"air", "water", "oil", "air_sea_level", "air_20C", "air_0C",
+                "water_20C", "water_4C", "oil_SAE10W30", "glycol_50pct", "custom"}
+    assert set(items) == expected, f"missing fluids: {expected - set(items)}"
+
+
+def test_gui_export_pane_has_18_formats() -> None:
+    """beta2281 — GUI ExportPane 18 format options (mesh_exporter 동등)."""
+    import os
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    from PySide6.QtWidgets import QApplication
+    import sys
+    app = QApplication.instance() or QApplication(sys.argv)
+    from desktop.qt_app.widgets.right_column import ExportPane
+    panel = ExportPane()
+    n_buttons = len(panel._fmt_group.buttons())
+    assert n_buttons == 18, f"export pane should have 18 format buttons, got {n_buttons}"
