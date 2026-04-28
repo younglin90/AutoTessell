@@ -234,7 +234,10 @@ def _hex_bl1_prism_guard(
 @dataclass
 class BLConfig:
     """Native BL 생성 설정."""
-    num_layers: int = 3
+    # beta2268: num_layers default 3 → 5. cfMesh default `nLayers` 와 일치.
+    # CFD wall-bounded flow 는 일반적으로 5 layer 가 minimum (turbulent BL 해상도).
+    # 기존 호출 (bench, 테스트) 는 explicit num_layers=3 명시.
+    num_layers: int = 5
     growth_ratio: float = 1.2
     first_thickness: float = 0.001
     # wall patch 식별: 이름/타입에 "wall" 포함 또는 명시 목록
