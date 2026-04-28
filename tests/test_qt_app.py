@@ -3875,6 +3875,68 @@ def test_gui_engine_spec_layers_post_exposes_phase2_keys() -> None:
     assert not missing, f"layers_post spec 에 누락된 Phase 2 필드: {missing}"
 
 
+def test_gui_full_build_no_attribute_errors() -> None:
+    """beta2291 — AutoTessellWindow._build() 가 AttributeError 없이 완료.
+
+    beta2290 에서 발견한 production 버그 (run_requested / reset_requested
+    미존재 시그널 connect 시도 → GUI 부분 깨짐) 같은 회귀를 영구 방지.
+    이 smoke 가 PASS 면 widget API rename 시 즉시 fail 됨."""
+    import os
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    import sys
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication(sys.argv)
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    # 핵심 build 단계 — 모든 signal connect / widget 조립 실행.
+    win._build()
+
+    # 핵심 위젯 attribute 존재 확인 (AttributeError 폭탄 회귀 보호).
+    assert win._tier_pipeline is not None
+    assert win._right_column is not None
+    assert win._wildmesh_param_panel is not None
+    # 누락 시그널 회귀 보호 — 실 widget API.
+    pipe = win._tier_pipeline
+    for sig in ("resume_requested", "stop_requested", "rerun_requested",
+                "tier_clicked"):
+        assert hasattr(pipe, sig), f"_tier_pipeline 시그널 누락: {sig}"
+
+
+def test_gui_layers_post_panel_renders_all_bl_keys() -> None:
+    """beta2291 — engine_params_spec layers_post 의 모든 BL 키가
+    GenericEngineParamPanel 에서 렌더링.
+
+    이전엔 spec 만 있고 widget rendering 검증이 없어 spec 종류 misalign
+    (e.g. fluid_preset choices 형식 mismatch) 시 감지 불가."""
+    import os
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    import sys
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication(sys.argv)
+    from desktop.qt_app.widgets.generic_engine_param_panel import (
+        GenericEngineParamPanel,
+    )
+    panel = GenericEngineParamPanel("layers_post")
+    keys = set(panel._controls.keys())
+
+    required = {
+        # beta2287 y+ 5
+        "bl_target_y_plus", "bl_flow_velocity",
+        "bl_flow_kinematic_viscosity", "bl_flow_characteristic_length",
+        "bl_flow_fluid_preset",
+        # beta2289 Phase 2 7
+        "bl_collision_safety", "bl_collision_safety_factor",
+        "bl_feature_lock", "bl_feature_angle_deg",
+        "bl_feature_reduction_ratio",
+        "bl_quality_check_enabled", "bl_aspect_ratio_threshold",
+    }
+    missing = required - keys
+    assert not missing, f"layers_post panel 미렌더 키: {missing}"
+    # 12 신규 + 12 기존 cfMesh post = 24 컨트롤 (참고용).
+    assert len(keys) >= 24, f"layers_post panel 컨트롤 수 부족: {len(keys)}"
+
+
 def test_gui_tier4_native_bl_selection_routes_to_post_engine() -> None:
     """beta2290 — Tier 4 'Native BL' 선택이 post_layers_engine 를 native_bl 로 설정.
 
