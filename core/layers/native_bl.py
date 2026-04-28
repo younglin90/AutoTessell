@@ -301,6 +301,12 @@ class NativeBLResult:
     wall_preserve_max_diff_rel: float = 0.0
     wall_preserve_n_drift: int = 0
     wall_preserve_within_envelope: bool = True
+    # beta2264 — force-snap diagnostic (T-Rex 동급).
+    # n_snap_applied: 강제 snap 으로 원본 좌표 복원된 vertex 수 (0 = 자연 보존,
+    # > 0 = drift 이 발생했으나 force-snap 이 복원).
+    # snap_max_diff: snap 적용 전 최대 drift (snap 효력의 강도 지표).
+    n_snap_applied: int = 0
+    snap_max_diff: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -2264,6 +2270,8 @@ def generate_native_bl(
         wall_preserve_max_diff_rel=float(wall_preserve_rel),
         wall_preserve_n_drift=int(n_wall_drift),
         wall_preserve_within_envelope=bool(wall_within_env),
+        n_snap_applied=int(n_snap),
+        snap_max_diff=float(snap_max_diff),
         message=(
             f"native_bl Phase 2 OK — {n_prism_total} prism cells inserted "
             f"({cfg.num_layers} layers × {n_wall_faces} wall triangles). "
