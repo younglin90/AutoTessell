@@ -2295,6 +2295,29 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._remesh_engine_combo = cb
         rl.addWidget(cb, stretch=1)
         v.addWidget(rem_row)
+
+        # beta2301 — CLI --auto-retry 대응 GUI 콤보 (off / once / continue).
+        ar_row = QWidget()
+        ar_row.setStyleSheet("background: transparent;")
+        ar_l = QHBoxLayout(ar_row)
+        ar_l.setContentsMargins(0, 6, 0, 0); ar_l.setSpacing(8)
+        ar_l.addWidget(QLabel("Auto-retry:"))
+        ar_cb = QComboBox()
+        ar_cb.setStyleSheet(self._dark_combo_qss())
+        ar_cb.addItems(["off", "once", "continue"])
+        ar_cb.setCurrentIndex(0)  # off — v0.4 기본값.
+        ar_cb.setToolTip(
+            "Generator ↔ Evaluator 자동 재시도 모드.\n"
+            "  off       : FAIL 시 사용자 확인 (기본).\n"
+            "  once      : Evaluator 결과 기반 1 회 자동 재시도.\n"
+            "  continue  : 성공 시까지 반복 (max_iterations 까지)."
+        )
+        ar_cb.currentIndexChanged.connect(
+            lambda _idx, c=ar_cb: setattr(self, "_auto_retry", c.currentText())
+        )
+        self._auto_retry_combo = ar_cb
+        ar_l.addWidget(ar_cb, stretch=1)
+        v.addWidget(ar_row)
         return f
 
     def _build_section_output_path(self) -> object:  # pragma: no cover

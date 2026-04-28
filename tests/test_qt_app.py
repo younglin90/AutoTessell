@@ -3889,6 +3889,35 @@ def test_gui_engine_spec_native_hex_exposes_post_smooth() -> None:
     assert not missing, f"native_hex spec X3 post-smooth 누락: {missing}"
 
 
+def test_gui_auto_retry_combo_wired() -> None:
+    """beta2301 — Auto-retry GUI 콤보 → self._auto_retry → PipelineWorker.
+
+    이전엔 _auto_retry attribute 만 'off' 로 고정되어 있고 사용자가 GUI 에서
+    once / continue 모드 선택 불가. CLI --auto-retry 동등 도달."""
+    import os
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    import sys
+    from PySide6.QtWidgets import QApplication, QComboBox
+    app = QApplication.instance() or QApplication(sys.argv)
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    win._build()
+    cb = getattr(win, "_auto_retry_combo", None)
+    assert cb is not None, "_auto_retry_combo 미생성"
+    assert isinstance(cb, QComboBox)
+    items = [cb.itemText(i) for i in range(cb.count())]
+    assert items == ["off", "once", "continue"], f"잘못된 옵션: {items}"
+
+    # 사용자가 'once' 로 변경 → self._auto_retry 도 동기화
+    cb.setCurrentIndex(1)
+    assert win._auto_retry == "once"
+    cb.setCurrentIndex(2)
+    assert win._auto_retry == "continue"
+    cb.setCurrentIndex(0)
+    assert win._auto_retry == "off"
+
+
 def test_gui_max_cells_widget_wired() -> None:
     """beta2300 — Max Cells GUI 입력 필드 → max_cells 인자 전달.
 
