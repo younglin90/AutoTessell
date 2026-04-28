@@ -260,7 +260,8 @@ class BLConfig:
     quality_check_enabled: bool = True
     aspect_ratio_threshold: float = 50.0
     # beta93: shrinkage iteration — 품질 불량 prism vertex 두께를 반복적으로 줄여 수렴.
-    shrink_iterations: int = 1      # 반복 최대 횟수 (1=기존 단일 pass)
+    # beta2252: default 1 → 3 (cfMesh 5-10 수준에 근접). 시간 ~3× 증가 trade-off.
+    shrink_iterations: int = 3      # 반복 최대 횟수 (1=기존 단일 pass)
     shrink_factor: float = 0.7      # 각 iteration 에서 불량 vertex scale 감소율
     shrink_aspect_threshold: float = 30.0  # 이 값 초과 prism → 해당 vertex 두께 감소
     # beta95: 완전 비균일 prism BL — per-vertex first layer 두께 개별 설정.
