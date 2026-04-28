@@ -239,6 +239,11 @@ def run_native_tier(
         "snap_iterations",     # beta94: iterative snap step (snappyHexMesh snap 근사)
         "smooth_iters",        # beta97: native_poly Laplacian smoothing
         "smooth_relax",        # beta97
+        # beta2293: native_hex X3 boundary Laplacian post-smooth — 이전엔
+        # mesher 시그너쳐에 있어도 allowlist 누락으로 silently dropped.
+        "enable_post_smooth",      # native_hex X3 (beta1840)
+        "post_smooth_iterations",  # native_hex X3
+        "post_smooth_relax",       # native_hex X3
     }
     tsp = getattr(strategy, "tier_specific_params", None) or {}
     for k in _TIER_PARAM_KEYS:

@@ -3875,6 +3875,32 @@ def test_gui_engine_spec_layers_post_exposes_phase2_keys() -> None:
     assert not missing, f"layers_post spec 에 누락된 Phase 2 필드: {missing}"
 
 
+def test_gui_engine_spec_native_hex_exposes_post_smooth() -> None:
+    """beta2293 — native_hex spec 가 X3 boundary Laplacian post-smooth 3 필드 노출.
+
+    이전엔 mesher 시그너쳐에 enable_post_smooth/post_smooth_iterations/
+    post_smooth_relax 가 있어도 _TIER_PARAM_KEYS allowlist + GUI spec 에 누락
+    되어 silently dropped. snappyHexMesh '--smooth-after-snap' 동등."""
+    from desktop.qt_app.widgets.engine_params_spec import ENGINE_PARAM_REGISTRY
+    specs = ENGINE_PARAM_REGISTRY.get("native_hex", [])
+    keys = {s.key for s in specs}
+    expected = {"enable_post_smooth", "post_smooth_iterations", "post_smooth_relax"}
+    missing = expected - keys
+    assert not missing, f"native_hex spec X3 post-smooth 누락: {missing}"
+
+
+def test_native_hex_post_smooth_keys_in_tier_param_allowlist() -> None:
+    """beta2293 — _TIER_PARAM_KEYS 가 X3 post-smooth 3 키를 통과.
+
+    spec 에만 있고 allowlist 에 없으면 tier_specific_params 로 전달해도
+    중간에서 dropped. 3-단 chain (spec → allowlist → mesher) 검증."""
+    from core.generator._tier_native_common import run_native_tier
+    import inspect
+    src = inspect.getsource(run_native_tier)
+    for k in ("enable_post_smooth", "post_smooth_iterations", "post_smooth_relax"):
+        assert f'"{k}"' in src, f"_TIER_PARAM_KEYS 에 누락: {k}"
+
+
 def test_gui_full_build_no_attribute_errors() -> None:
     """beta2291 — AutoTessellWindow._build() 가 AttributeError 없이 완료.
 

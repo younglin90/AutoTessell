@@ -777,6 +777,25 @@ ENGINE_PARAM_REGISTRY: dict[str, list[EngineParamSpec]] = {
                 "0=비활성, fine quality 기본 3."
             ),
         ),
+        # beta2293: X3 (beta1840) boundary Laplacian post-smooth — snap 후
+        # vertex 부드럽게. 이전엔 mesher 시그너쳐에 있어도 GUI/CLI 에서 도달 불가.
+        EngineParamSpec(
+            "enable_post_smooth", "post_smooth (X3)", "bool", False,
+            doc=(
+                "snap 직후 boundary vertex Laplacian smoothing 활성화.\n"
+                "skewness 개선, snap_boundary 와 함께 사용 권장."
+            ),
+        ),
+        EngineParamSpec(
+            "post_smooth_iterations", "post_smooth_iters", "int", 2,
+            min_val=0, max_val=20,
+            doc="boundary Laplacian smoothing 반복 횟수.",
+        ),
+        EngineParamSpec(
+            "post_smooth_relax", "post_smooth_relax", "float", 0.3,
+            min_val=0.0, max_val=1.0, step=0.05,
+            doc="Laplacian relaxation factor (0.3 = 30% blend).",
+        ),
     ],
     "native_poly": [
         EngineParamSpec(
