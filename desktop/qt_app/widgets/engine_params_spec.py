@@ -575,6 +575,70 @@ ENGINE_PARAM_REGISTRY: dict[str, list[EngineParamSpec]] = {
                 "일반 3D mesh 에선 끔."
             ),
         ),
+        # ─── beta2289 — native_bl Phase 2 collision/feature/quality (cfMesh/T-Rex 동등) ─
+        EngineParamSpec(
+            "bl_collision_safety",
+            "collision safety", "bool", True,
+            doc=(
+                "벽 → 벽 충돌 검출 + thickness 자동 축소.\n"
+                "✔ (기본) collision_safety_factor 만큼 축소.\n"
+                "✘ thickness 강제 유지 (얇은 gap 에서 self-intersect 위험)."
+            ),
+        ),
+        EngineParamSpec(
+            "bl_collision_safety_factor",
+            "collision safety factor", "float", 0.5,
+            min_val=0.05, max_val=0.95, step=0.05,
+            doc=(
+                "충돌 시 잔여 gap 의 몇 % 까지만 layer 채울지.\n"
+                "0.5 = gap 의 50%, 작을수록 더 안전 (cfMesh 0.5 표준)."
+            ),
+        ),
+        EngineParamSpec(
+            "bl_feature_lock",
+            "feature lock", "bool", True,
+            doc=(
+                "feature_angle_deg 초과 sharp edge 의 layer thickness 를\n"
+                "feature_reduction_ratio 만큼 축소 → corner self-intersect 방지.\n"
+                "Pointwise T-Rex 의 'feature aware' 동등."
+            ),
+        ),
+        EngineParamSpec(
+            "bl_feature_angle_deg",
+            "feature angle (°)", "float", 45.0,
+            min_val=10.0, max_val=180.0, step=5.0,
+            doc=(
+                "feature edge 판정 dihedral 임계각.\n"
+                "낮을수록 (20~30°) 더 많은 edge 가 feature 로 판정 — 보수적.\n"
+                "높을수록 (60~90°) 날카로운 corner 만 — 더 두꺼운 layer."
+            ),
+        ),
+        EngineParamSpec(
+            "bl_feature_reduction_ratio",
+            "feature reduction ratio", "float", 0.5,
+            min_val=0.1, max_val=1.0, step=0.05,
+            doc=(
+                "feature vertex 의 layer thickness scale (0.5 = 50%).\n"
+                "1.0 = 축소 안 함, 0.3 = 30% 만 — sharp 영역 더 얇게."
+            ),
+        ),
+        EngineParamSpec(
+            "bl_quality_check_enabled",
+            "quality check (post)", "bool", True,
+            doc=(
+                "BL 생성 후 prism aspect ratio 자동 검사 + warning.\n"
+                "aspect_ratio_threshold 초과 cell 수가 NativeBLResult 에 보고."
+            ),
+        ),
+        EngineParamSpec(
+            "bl_aspect_ratio_threshold",
+            "aspect ratio threshold", "float", 1000.0,
+            min_val=10.0, max_val=10000.0, step=10.0, log_scale=True,
+            doc=(
+                "prism cell aspect ratio (e_outer/h) 경고 임계값.\n"
+                "1000 = beta2253 default (관대). 100 = 엄격."
+            ),
+        ),
         # ─── beta2288 — native_bl y+ 자동 first_thickness 역산 (cfMesh/Pointwise 동등) ─
         EngineParamSpec(
             "bl_target_y_plus",

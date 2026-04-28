@@ -3860,6 +3860,61 @@ def test_gui_engine_spec_layers_post_exposes_y_plus_flow_params() -> None:
         f"fluid_preset choices 누락: {fp_required - fp_values}"
 
 
+def test_gui_engine_spec_layers_post_exposes_phase2_keys() -> None:
+    """beta2289 — engine_params_spec layers_post 가 Phase 2 7 필드 노출.
+
+    이전엔 _build_bl_config 가 collision_safety / feature_lock / quality_check
+    7 키를 읽었지만 GUI spec 에 정의가 없어 사용자가 GUI 에서 toggle 불가.
+    cfMesh / Pointwise T-Rex feature-aware 워크플로의 마지막 GUI 갭."""
+    from desktop.qt_app.widgets.engine_params_spec import ENGINE_PARAM_REGISTRY
+    specs = ENGINE_PARAM_REGISTRY.get("layers_post", [])
+    keys = {s.key for s in specs}
+    expected = {
+        "bl_collision_safety",
+        "bl_collision_safety_factor",
+        "bl_feature_lock",
+        "bl_feature_angle_deg",
+        "bl_feature_reduction_ratio",
+        "bl_quality_check_enabled",
+        "bl_aspect_ratio_threshold",
+    }
+    missing = expected - keys
+    assert not missing, f"layers_post spec 에 누락된 Phase 2 필드: {missing}"
+
+
+def test_gui_engine_spec_phase2_round_trip_to_bl_config() -> None:
+    """beta2289 — Phase 2 7 키 라운드 트립 (GUI default → params → BLConfig).
+
+    spec 의 default 값과 BLConfig 의 default 가 일치하는지 + 사용자 override
+    가 BLConfig 까지 도달하는지 회귀 (key 명 mismatch 회귀 보호)."""
+    from desktop.qt_app.widgets.engine_params_spec import ENGINE_PARAM_REGISTRY
+    from core.generator.tier_layers_post import _build_bl_config
+    from core.layers.native_bl import BLConfig
+
+    # User toggles all Phase 2 settings (cfMesh-style strict).
+    user_params = {
+        "bl_collision_safety": False,
+        "bl_collision_safety_factor": 0.3,
+        "bl_feature_lock": False,
+        "bl_feature_angle_deg": 30.0,
+        "bl_feature_reduction_ratio": 0.7,
+        "bl_quality_check_enabled": False,
+        "bl_aspect_ratio_threshold": 200.0,
+    }
+    spec_keys = {s.key for s in ENGINE_PARAM_REGISTRY.get("layers_post", [])}
+    assert set(user_params.keys()).issubset(spec_keys), \
+        f"테스트가 사용한 키 중 spec 미정의: {set(user_params) - spec_keys}"
+
+    cfg = _build_bl_config(BLConfig, user_params, 3, 1.2, 0.001)
+    assert cfg.collision_safety is False
+    assert cfg.collision_safety_factor == 0.3
+    assert cfg.feature_lock is False
+    assert cfg.feature_angle_deg == 30.0
+    assert cfg.feature_reduction_ratio == 0.7
+    assert cfg.quality_check_enabled is False
+    assert cfg.aspect_ratio_threshold == 200.0
+
+
 def test_gui_engine_spec_y_plus_keys_round_trip_to_bl_config() -> None:
     """beta2288 — spec 키 → params dict → _build_bl_config → BLConfig 라운드 트립.
 
