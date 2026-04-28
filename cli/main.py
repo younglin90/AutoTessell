@@ -1219,6 +1219,84 @@ def interactive(ctx: click.Context, input_file: Path, output: Path) -> None:
     console.print(f"\n[bold green]완료![/bold green] Case: {output}")
 
 
+@cli.command("stats")
+@click.argument("case_dir", type=click.Path(exists=True, path_type=Path))
+def stats_cmd(case_dir: Path) -> None:
+    """beta2279 — Mesh quality stats report (commercial-grade table).
+
+    case_dir/native_bl_quality.json 의 메트릭을 사람-친화적 표로 출력.
+    cfMesh checkMesh / Pointwise mesh metrics 동등.
+
+    예시::
+
+        auto-tessell stats ./case
+    """
+    import json
+    qjson = case_dir / "native_bl_quality.json"
+    if not qjson.exists():
+        console.print(f"[bold red]✗ quality JSON 없음: {qjson}[/bold red]")
+        console.print("  BL 가 적용된 case 가 아니거나 BL 실패.")
+        sys.exit(1)
+
+    try:
+        data = json.loads(qjson.read_text())
+    except Exception as exc:
+        console.print(f"[bold red]✗ JSON 파싱 실패: {exc}[/bold red]")
+        sys.exit(1)
+
+    console.print(f"\n[bold cyan]Mesh Quality Report[/bold cyan] — {case_dir}\n")
+
+    # Topology section
+    console.print("[bold]Topology[/bold]")
+    console.print(f"  Wall faces       : {data.get('n_wall_faces', 0):>10,}")
+    console.print(f"  Wall vertices    : {data.get('n_wall_verts', 0):>10,}")
+    console.print(f"  BL prism cells   : {data.get('n_prism_cells', 0):>10,}")
+    console.print(f"  New points       : {data.get('n_new_points', 0):>10,}")
+
+    # Geometry section
+    console.print("\n[bold]Geometry[/bold]")
+    console.print(f"  Total thickness  : {data.get('total_thickness', 0):>10.6e} m")
+    console.print(f"  Bbox diagonal    : {data.get('bbox_diag', 0):>10.4f} m")
+    console.print(f"  Thickness/bbox   : {data.get('thickness_to_bbox_ratio', 0):>10.4%}")
+
+    # Quality section
+    console.print("\n[bold]Quality[/bold]")
+    n_deg = data.get("n_degenerate_prisms", 0)
+    max_ar = data.get("max_aspect_ratio", 0)
+    n_p = max(1, data.get("n_prism_cells", 1))
+    color = "red" if n_deg > 0.5 * n_p else "yellow" if n_deg > 0 else "green"
+    console.print(f"  Max aspect ratio : {max_ar:>10.1f}")
+    console.print(f"  Degenerate prisms: [{color}]{n_deg:>10,} ({100*n_deg/n_p:.1f}%)[/{color}]")
+
+    # Wall preserve section
+    wp = data.get("wall_preserve", {})
+    within = wp.get("within_envelope", False)
+    color = "green" if within else "red"
+    console.print("\n[bold]Wall Preservation[/bold] (cfMesh/T-Rex equivalent)")
+    console.print(f"  Max diff (abs)   : {wp.get('max_diff', 0):>10.6e}")
+    console.print(f"  Max diff (rel)   : {wp.get('max_diff_rel', 0):>10.2e}")
+    console.print(f"  Drift count      : {wp.get('n_drift', 0):>10}")
+    console.print(f"  Within envelope  : [{color}]{within!s:>10}[/{color}] (eps={wp.get('envelope_eps_rel', 1e-6):.0e})")
+
+    # Force-snap section
+    fs = data.get("force_snap", {})
+    console.print("\n[bold]Force-snap[/bold]")
+    console.print(f"  Snaps applied    : {fs.get('n_applied', 0):>10}")
+    console.print(f"  Pre-snap max diff: {fs.get('max_diff', 0):>10.6e}")
+
+    # Config section
+    cfg = data.get("config", {})
+    console.print("\n[bold]Config[/bold]")
+    console.print(f"  num_layers       : {cfg.get('num_layers', '-')}")
+    console.print(f"  growth_ratio     : {cfg.get('growth_ratio', '-')}")
+    console.print(f"  first_thickness  : {cfg.get('first_thickness', 0):.6e}")
+    if cfg.get("target_y_plus"):
+        console.print(f"  target_y_plus    : {cfg['target_y_plus']}")
+    if cfg.get("flow_fluid_preset"):
+        console.print(f"  flow_fluid_preset: {cfg['flow_fluid_preset']}")
+    console.print()
+
+
 @cli.command("convert")
 @click.argument("input_path", type=click.Path(exists=True, path_type=Path))
 @click.argument("output_path", type=click.Path(path_type=Path))
