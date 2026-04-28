@@ -52,8 +52,19 @@ def _build_bl_config(
 ):
     """beta75: Phase 1 필드 + Phase 2 (beta63-65) 필드를 params 에서 읽어 BLConfig
     조립. GUI `bl_collision_safety=false` 등이 여기서 전파된다.
+
+    beta2287: target_y_plus / flow_* 필드 propagation 추가. 이전엔
+    BLConfig 에 필드가 있어도 params 에서 안 읽혀 in-engine y+ 경로
+    (CLI --target-y-plus / 향후 GUI auto-y+) 가 silently 무시됐다.
     """
     defaults = bl_config_cls()
+
+    # beta2287: in-engine y+ flow params (CLI / 미래 GUI auto-y+).
+    _typ = params.get("bl_target_y_plus")
+    target_y_plus = float(_typ) if _typ is not None else None
+    _fcl = params.get("bl_flow_characteristic_length")
+    flow_char_len = float(_fcl) if _fcl is not None else None
+
     return bl_config_cls(
         num_layers=int(num_layers),
         growth_ratio=float(growth_ratio),
@@ -86,6 +97,18 @@ def _build_bl_config(
         ),
         aspect_ratio_threshold=float(
             params.get("bl_aspect_ratio_threshold", defaults.aspect_ratio_threshold),
+        ),
+        # beta2287: y+ 자동 first_thickness 역산 경로.
+        target_y_plus=target_y_plus,
+        flow_velocity=float(
+            params.get("bl_flow_velocity", defaults.flow_velocity),
+        ),
+        flow_kinematic_viscosity=float(
+            params.get("bl_flow_kinematic_viscosity", defaults.flow_kinematic_viscosity),
+        ),
+        flow_characteristic_length=flow_char_len,
+        flow_fluid_preset=params.get(
+            "bl_flow_fluid_preset", defaults.flow_fluid_preset,
         ),
     )
 

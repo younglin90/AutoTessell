@@ -84,7 +84,8 @@ def test_build_bl_config_phase2_defaults_preserved() -> None:
     assert cfg.feature_angle_deg == pytest.approx(45.0)
     assert cfg.feature_reduction_ratio == pytest.approx(0.5)
     assert cfg.quality_check_enabled is True
-    assert cfg.aspect_ratio_threshold == pytest.approx(50.0)
+    # beta2253 에서 1000.0 으로 raise (shrink_iter=1 + 큰 임계값으로 e_outer/h ↓).
+    assert cfg.aspect_ratio_threshold == pytest.approx(1000.0)
 
 
 # ---------------------------------------------------------------------------
@@ -139,3 +140,67 @@ def test_build_bl_config_phase2_all_override_together() -> None:
     assert cfg.feature_reduction_ratio == pytest.approx(0.3)
     assert cfg.quality_check_enabled is False
     assert cfg.aspect_ratio_threshold == pytest.approx(80.0)
+
+
+# ---------------------------------------------------------------------------
+# beta2287 — y+ in-engine flow params propagation
+# ---------------------------------------------------------------------------
+
+
+def test_build_bl_config_target_y_plus_propagated() -> None:
+    """beta2287 회귀: bl_target_y_plus 가 BLConfig.target_y_plus 로 전달되어
+    in-engine 자동 first_thickness 역산 경로가 작동해야 함."""
+    cfg = _build_bl_config(
+        BLConfig, {"bl_target_y_plus": 1.0}, 3, 1.2, 0.001,
+    )
+    assert cfg.target_y_plus == pytest.approx(1.0)
+
+
+def test_build_bl_config_target_y_plus_default_none() -> None:
+    cfg = _build_bl_config(BLConfig, {}, 3, 1.2, 0.001)
+    assert cfg.target_y_plus is None
+
+
+def test_build_bl_config_flow_velocity_propagated() -> None:
+    cfg = _build_bl_config(
+        BLConfig, {"bl_flow_velocity": 25.0}, 3, 1.2, 0.001,
+    )
+    assert cfg.flow_velocity == pytest.approx(25.0)
+
+
+def test_build_bl_config_flow_kinematic_viscosity_propagated() -> None:
+    cfg = _build_bl_config(
+        BLConfig, {"bl_flow_kinematic_viscosity": 1.0e-6}, 3, 1.2, 0.001,
+    )
+    assert cfg.flow_kinematic_viscosity == pytest.approx(1.0e-6)
+
+
+def test_build_bl_config_flow_characteristic_length_propagated() -> None:
+    cfg = _build_bl_config(
+        BLConfig, {"bl_flow_characteristic_length": 0.5}, 3, 1.2, 0.001,
+    )
+    assert cfg.flow_characteristic_length == pytest.approx(0.5)
+
+
+def test_build_bl_config_flow_fluid_preset_propagated() -> None:
+    cfg = _build_bl_config(
+        BLConfig, {"bl_flow_fluid_preset": "water_20C"}, 3, 1.2, 0.001,
+    )
+    assert cfg.flow_fluid_preset == "water_20C"
+
+
+def test_build_bl_config_y_plus_full_chain() -> None:
+    """y+ + 모든 flow_* 필드 동시 propagation."""
+    params = {
+        "bl_target_y_plus": 30.0,
+        "bl_flow_velocity": 5.0,
+        "bl_flow_kinematic_viscosity": 1.5e-5,
+        "bl_flow_characteristic_length": 1.0,
+        "bl_flow_fluid_preset": "air_20C",
+    }
+    cfg = _build_bl_config(BLConfig, params, 5, 1.3, 0.001)
+    assert cfg.target_y_plus == pytest.approx(30.0)
+    assert cfg.flow_velocity == pytest.approx(5.0)
+    assert cfg.flow_kinematic_viscosity == pytest.approx(1.5e-5)
+    assert cfg.flow_characteristic_length == pytest.approx(1.0)
+    assert cfg.flow_fluid_preset == "air_20C"
