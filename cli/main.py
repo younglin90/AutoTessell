@@ -559,7 +559,13 @@ def evaluate(
 @click.option("--bl-first-height", type=float, default=None, help="첫 번째 BL 높이 [m]. --target-yplus 와 함께 쓰면 자동 계산값 override.")
 @click.option(
     "--fluid",
-    type=click.Choice(["air", "water", "oil", "custom"]),
+    type=click.Choice([
+        "air", "water", "oil", "custom",
+        # beta2274: 추가 fluid presets (BLConfig.flow_fluid_preset 동등).
+        "air_sea_level", "air_20C", "air_0C",
+        "water_20C", "water_4C",
+        "oil_SAE10W30", "glycol_50pct",
+    ]),
     default="air", show_default=True,
     help="유체 종류 — y⁺ 자동 계산 시 동점성 계수 조회 기준.",
 )
