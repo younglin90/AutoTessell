@@ -67,8 +67,15 @@ class YPlusPanel(QFrame):
         row1.addWidget(fluid_lbl)
 
         self._fluid_combo = QComboBox()
-        self._fluid_combo.addItems(["air", "water", "oil"])
-        self._fluid_combo.setFixedWidth(72)
+        # beta2280: GUI fluid 11 options (BLConfig.flow_fluid_preset 동등).
+        self._fluid_combo.addItems([
+            "air", "water", "oil",
+            "air_sea_level", "air_20C", "air_0C",
+            "water_20C", "water_4C",
+            "oil_SAE10W30", "glycol_50pct",
+            "custom",
+        ])
+        self._fluid_combo.setFixedWidth(120)
         self._fluid_combo.setStyleSheet(
             "QComboBox { background: #1c2129; color: #e8ecf2; "
             "border: 1px solid #323a46; border-radius: 3px; "
