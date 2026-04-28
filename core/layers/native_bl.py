@@ -261,11 +261,13 @@ class BLConfig:
     aspect_ratio_threshold: float = 50.0
     # beta93: shrinkage iteration — 품질 불량 prism vertex 두께를 반복적으로 줄여 수렴.
     # beta2253: REVERT 2252 — shrink 가 thickness h 를 줄이는데 aspect = e_outer/h
-    # 정의상 h 감소시 aspect 가 INCREASE 됨 → feedback loop 로 aspect 폭주 (5000+).
-    # 1 iteration 으로 복귀.
+    # 정의상 h 감소시 aspect 가 INCREASE 됨 → feedback loop 로 aspect 폭주.
+    # beta2254: shrink_aspect_threshold 30 → 1000. 정상 high-aspect (e.g. 100-200)
+    # 은 normal CFD BL 형상이며 shrink 트리거 시 더 악화. 1000 = 진짜 degenerate
+    # (zero-thickness 직전) 만 트리거.
     shrink_iterations: int = 1      # 반복 최대 횟수 (1=기존 단일 pass)
     shrink_factor: float = 0.7      # 각 iteration 에서 불량 vertex scale 감소율
-    shrink_aspect_threshold: float = 30.0  # 이 값 초과 prism → 해당 vertex 두께 감소
+    shrink_aspect_threshold: float = 1000.0  # 이 값 초과 prism → 해당 vertex 두께 감소
     # beta95: 완전 비균일 prism BL — per-vertex first layer 두께 개별 설정.
     # None → 모든 vertex 에 cfg.first_thickness 사용 (기존 동작).
     # dict → {vertex_id: float} → 해당 vertex 의 first layer 두께 개별 설정.
@@ -441,11 +443,14 @@ def _prism_aspect_ratio_stats(
 ) -> tuple[int, float]:
     """각 prism 의 aspect ratio 계산. ratio = max(outer_edge) / min(height).
 
+    beta2255: detailed stats (mean, median) 도 log 출력.
+
     Returns:
         (n_degenerate, max_ratio) — degenerate 는 ratio > threshold.
     """
     n_degenerate = 0
     max_ratio = 0.0
+    ratios: list[float] = []
     for fi in wall_face_indices:
         if fi not in wall_tri_verts:
             continue
@@ -473,12 +478,31 @@ def _prism_aspect_ratio_stats(
                 # height 0 → degenerate
                 n_degenerate += 1
                 max_ratio = max(max_ratio, 1e9)
+                ratios.append(1e9)
                 continue
             ratio = e_outer / h
+            ratios.append(ratio)
             if ratio > max_ratio:
                 max_ratio = ratio
             if ratio > threshold:
                 n_degenerate += 1
+    # detailed cfMesh-style log
+    if ratios:
+        try:
+            arr = np.array(ratios)
+            log.info(
+                "native_bl_prism_aspect_stats",
+                n_prisms=len(ratios),
+                aspect_mean=round(float(arr.mean()), 2),
+                aspect_median=round(float(np.median(arr)), 2),
+                aspect_p90=round(float(np.percentile(arr, 90)), 2),
+                aspect_p99=round(float(np.percentile(arr, 99)), 2),
+                aspect_max=round(float(arr.max()), 2),
+                n_above_threshold=n_degenerate,
+                threshold=threshold,
+            )
+        except Exception:
+            pass
     return n_degenerate, float(max_ratio)
 
 
