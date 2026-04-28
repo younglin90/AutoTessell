@@ -54,7 +54,6 @@ def test_native_hex_perfect_aspect_ratio(tmp_case_dir: Path) -> None:
     assert chk.max_aspect_ratio < 2.0
     assert chk.max_skewness < 0.1
     # 모든 cell 이 정확히 hexahedra 이어야 함 (topology)
-    from core.analyzer.readers import read_stl as _r  # noqa: PLC0415 — avoid shadow
     # NativeMeshChecker 는 cell type 을 집계하지 않으므로 대신 faces_per_cell 이
     # 6 인지 간접 확인: faces - internal_faces = boundary faces 수가 합리적
     assert chk.cells > 0
@@ -127,3 +126,59 @@ def test_native_hex_larger_cap_allows_more_cells(tmp_case_dir: Path) -> None:
     )
     assert r_small.success and r_large.success
     assert r_large.n_cells > r_small.n_cells
+
+
+def test_native_hex_small_bbox_auto_escalate(tmp_case_dir: Path) -> None:
+    """P1.1 — target_edge_length 미지정 + 매우 조악한 seed_density 가면
+    small bbox auto-escalate가 동작해야 한다."""
+    V = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [10.0, 0.0, 0.0],
+            [0.0, 10.0, 0.0],
+            [0.0, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+    F = np.array([[0, 1, 2], [0, 1, 3], [1, 2, 3], [0, 2, 3]], dtype=np.int64)
+
+    # 사용자 target_edge_length 미지정 경로는 auto-escalate 로 1개 cell 성능 복구 가능.
+    res_auto = generate_native_hex(V, F, tmp_case_dir / "auto", seed_density=1)
+    assert res_auto.success
+    assert res_auto.n_cells > 0
+    assert res_auto.fill_ratio > 0
+
+    # 사용자 지정 target_edge_length 는 auto-escalate가 금지돼 동일 실험에서 실패해야 함.
+    diag = float(np.linalg.norm(V.max(axis=0) - V.min(axis=0)))
+    res_manual = generate_native_hex(
+        V, F, tmp_case_dir / "manual", seed_density=1, target_edge_length=diag,
+    )
+    assert not res_manual.success
+    assert "inside hex 0" in res_manual.message
+
+
+def test_native_hex_escalate_recovers_when_cap_binding(tmp_case_dir: Path) -> None:
+    """beta2305 — small bbox + cap binding 케이스에서 auto-escalate 가
+    cap raise 까지 포함해 recovery.
+
+    이전 (beta2232) 에선 seed_density × 1.5^3 ≤ 3.4× 만 escalate 하고
+    max_cells_per_axis 가 binding 되면 nxyz 가 cap 에서 멈춰 효과 없었음.
+    beta2305 는 cap 도 retry 마다 ×1.5 raise → small bbox 회복률 ↑.
+    """
+    # 매우 작은 bbox + 작은 max_cells_per_axis (cap binding 강제 유발).
+    V = np.array(
+        [
+            [0.0, 0.0, 0.0],
+            [0.05, 0.0, 0.0],
+            [0.0, 0.05, 0.0],
+            [0.0, 0.0, 0.05],
+        ],
+        dtype=np.float64,
+    )
+    F = np.array([[0, 1, 2], [0, 1, 3], [1, 2, 3], [0, 2, 3]], dtype=np.int64)
+    res = generate_native_hex(
+        V, F, tmp_case_dir, seed_density=2, max_cells_per_axis=4,
+    )
+    # 회복 — auto-escalate 가 cap 도 raise 해서 적어도 1 cell 도달.
+    assert res.success, res.message
+    assert res.n_cells >= 1
