@@ -2357,6 +2357,14 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._surface_min_size_edit = QLineEdit()
         self._surface_min_size_edit.setPlaceholderText("auto")
         self._surface_feature_angle_edit = QLineEdit("150.0")
+        # beta2300 — CLI --max-cells 대응 GUI 입력 필드 (이전엔 attribute 만
+        # 선언되어 있고 widget 미생성 → 사용자가 cell 수 cap 설정 불가).
+        self._max_cells_edit = QLineEdit()
+        self._max_cells_edit.setPlaceholderText("(no cap)")
+        self._max_cells_edit.setToolTip(
+            "최대 셀 수 cap. 초과 시 셀 크기 자동 확대 후 재생성.\n"
+            "비워두면 무제한. CLI --max-cells 동등."
+        )
 
         # Element Size / Min Size 행 — WildMesh 선택 시 WildMesh Tuning 패널의
         # edge_length_r 슬라이더와 중복이므로 숨김. _refresh_wildmesh_panel_visibility에서 제어.
@@ -2371,6 +2379,8 @@ class AutoTessellWindow:  # type: ignore[misc]
         g.addWidget(self._surface_min_size_edit, 1, 1)
         g.addWidget(_lbl("Feature Angle (BL)"), 2, 0)
         g.addWidget(self._surface_feature_angle_edit, 2, 1)
+        g.addWidget(_lbl("Max Cells"), 3, 0)
+        g.addWidget(self._max_cells_edit, 3, 1)
         v.addWidget(grid_w)
 
         # 중복 방지 힌트 라벨 — WildMesh 선택 시에만 표시
@@ -2657,6 +2667,21 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._surface_feature_angle_edit.text()
             if self._surface_feature_angle_edit else ""
         )
+        # beta2300 — Max Cells cap (CLI --max-cells 동등). 빈 값/0 = 무제한.
+        _max_cells_text = (
+            self._max_cells_edit.text().strip()
+            if getattr(self, "_max_cells_edit", None) else ""
+        )
+        max_cells: int | None = None
+        if _max_cells_text:
+            try:
+                _v = int(_max_cells_text)
+                if _v > 0:
+                    max_cells = _v
+            except (ValueError, TypeError):
+                self._log(
+                    f"[WARN] Max Cells 입력 무시 (정수 아님): {_max_cells_text!r}"
+                )
         # tier_hint: engine_combo 의 itemData value
         tier_hint = self._tier_combo_text()
 
@@ -2853,6 +2878,7 @@ class AutoTessellWindow:  # type: ignore[misc]
                 prefer_native=_prefer_native_flag,
                 prefer_native_tier=_prefer_native_tier_flag,
                 element_size=element_size,
+                max_cells=max_cells,  # beta2300 GUI cap.
                 tier_specific_params=tier_params or None,
                 no_repair=bool(self._no_repair_check.isChecked())
                     if self._no_repair_check else False,

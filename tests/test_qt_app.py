@@ -3889,6 +3889,32 @@ def test_gui_engine_spec_native_hex_exposes_post_smooth() -> None:
     assert not missing, f"native_hex spec X3 post-smooth 누락: {missing}"
 
 
+def test_gui_max_cells_widget_wired() -> None:
+    """beta2300 — Max Cells GUI 입력 필드 → max_cells 인자 전달.
+
+    이전엔 _max_cells_edit attribute 만 선언되어 있고 widget 미생성 →
+    CLI --max-cells 와 GUI 격차. cell-count cap 워크플로 GUI 도달."""
+    import os
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    import sys
+    from PySide6.QtWidgets import QApplication, QLineEdit
+    app = QApplication.instance() or QApplication(sys.argv)
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    win._build()
+    edit = getattr(win, "_max_cells_edit", None)
+    assert edit is not None, "_max_cells_edit widget 미생성"
+    assert isinstance(edit, QLineEdit)
+    # placeholder 가 사용자에게 cap 비활성 의미를 전달.
+    assert "cap" in edit.placeholderText().lower() or edit.placeholderText() != ""
+    # _on_run_clicked source 에 max_cells 파싱 로직 존재.
+    import inspect
+    src = inspect.getsource(AutoTessellWindow._on_run_clicked)
+    assert "_max_cells_edit" in src
+    assert "max_cells=max_cells" in src or "max_cells = " in src
+
+
 def test_gui_cross_engine_fallback_checkbox_wired() -> None:
     """beta2299 — GUI cross_engine_fallback 체크박스 → PipelineWorker 전달.
 
