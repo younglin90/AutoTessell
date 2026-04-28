@@ -1207,5 +1207,89 @@ def interactive(ctx: click.Context, input_file: Path, output: Path) -> None:
     console.print(f"\n[bold green]완료![/bold green] Case: {output}")
 
 
+@cli.command("smoketest")
+@click.option(
+    "--engine",
+    type=click.Choice(["tet", "hex", "poly", "all"]),
+    default="tet", show_default=True,
+)
+@click.pass_context
+def smoketest(ctx: click.Context, engine: str) -> None:
+    """beta2276 — Installation smoke test. 단순 cube → 메쉬 + BL → 검증.
+
+    상용 도구의 "Verify Installation" 동등. 모든 의존성 + native engine + BL +
+    quality JSON 동작 확인.
+    """
+    import tempfile
+    import time
+    import numpy as np
+    import trimesh
+
+    console.print("[bold]Auto-Tessell smoketest[/bold] — verifying installation...")
+    overall_t0 = time.perf_counter()
+    failures: list[str] = []
+
+    m = trimesh.creation.box(extents=[1, 1, 1])
+    V = np.asarray(m.vertices, dtype=np.float64)
+    F = np.asarray(m.faces, dtype=np.int64)
+    console.print(f"  cube V={V.shape[0]} F={F.shape[0]}")
+
+    engines = ["tet", "hex", "poly"] if engine == "all" else [engine]
+    with tempfile.TemporaryDirectory() as td:
+        from pathlib import Path as _P
+        for eng in engines:
+            case = _P(td) / f"c_{eng}"
+            t0 = time.perf_counter()
+            try:
+                if eng == "tet":
+                    from core.generator.native_tet.mesher import generate_native_tet
+                    r = generate_native_tet(
+                        V, F, case, seed_density=4,
+                        enable_phase_a=True, enable_phase_b=False,
+                        enable_phase_c=False,
+                    )
+                elif eng == "hex":
+                    from core.generator.native_hex.mesher import generate_native_hex
+                    r = generate_native_hex(V, F, case, seed_density=8)
+                else:
+                    from core.generator.native_poly.voronoi import (
+                        generate_native_poly_voronoi,
+                    )
+                    r = generate_native_poly_voronoi(V, F, case, seed_density=8)
+
+                gen_t = time.perf_counter() - t0
+                if not r.success:
+                    failures.append(f"{eng}: gen FAIL")
+                    console.print(f"  [red]✗[/red] {eng:5}: gen FAIL")
+                    continue
+                from core.layers.native_bl import generate_native_bl, BLConfig
+                bl = generate_native_bl(
+                    case, BLConfig(num_layers=3, first_thickness=0.02),
+                    engine_tag=eng,
+                )
+                bl_t = time.perf_counter() - t0 - gen_t
+                wp = bl.wall_preserve_within_envelope
+                console.print(
+                    f"  [{'green' if wp else 'red'}]"
+                    f"{'✓' if wp else '✗'}[/]"
+                    f" {eng:5}: cells={r.n_cells} prisms={bl.n_prism_cells} "
+                    f"wall_preserve={wp} ({gen_t + bl_t:.1f}s)"
+                )
+                if not wp:
+                    failures.append(f"{eng}: wall_preserve violated")
+            except Exception as exc:
+                failures.append(f"{eng}: EXC {str(exc)[:80]}")
+                console.print(f"  [red]✗[/red] {eng:5}: EXC {str(exc)[:60]}")
+
+    elapsed = time.perf_counter() - overall_t0
+    console.print(f"\nElapsed: {elapsed:.1f}s")
+    if failures:
+        console.print(f"[bold red]FAIL: {len(failures)} error(s)[/bold red]")
+        for f in failures:
+            console.print(f"  • {f}")
+        ctx.exit(1)
+    console.print("[bold green]✓ All checks passed[/bold green]")
+
+
 if __name__ == "__main__":
     cli()
