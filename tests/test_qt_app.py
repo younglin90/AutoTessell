@@ -3889,6 +3889,37 @@ def test_gui_engine_spec_native_hex_exposes_post_smooth() -> None:
     assert not missing, f"native_hex spec X3 post-smooth 누락: {missing}"
 
 
+def test_history_dialog_table_has_hausdorff_column() -> None:
+    """beta2303 — HistoryDialog 테이블에 'Hausdorff(rel)' 컬럼 노출.
+
+    이전엔 max_non_orthogonality 까지만 컬럼 — 사용자가 history 에서
+    표면 충실도 (Surface Deviation) 비교 불가."""
+    import os
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    import sys
+    from PySide6.QtWidgets import QApplication
+    app = QApplication.instance() or QApplication(sys.argv)
+    from desktop.qt_app.history_dialog import HistoryDialog
+
+    dlg = HistoryDialog()
+    headers = [
+        dlg.table.horizontalHeaderItem(c).text()
+        for c in range(dlg.table.columnCount())
+    ]
+    assert "Hausdorff(rel)" in headers, f"Hausdorff(rel) 컬럼 누락: {headers}"
+    assert dlg.table.columnCount() == 9, \
+        f"컬럼 수 mismatch (8 → 9 expected): {dlg.table.columnCount()}"
+
+
+def test_history_csv_export_includes_hausdorff_columns() -> None:
+    """beta2303 — CSV export 헤더 + 데이터 라인에 hausdorff 컬럼 포함."""
+    from desktop.qt_app import history_dialog
+    import inspect
+    src = inspect.getsource(history_dialog.HistoryDialog._on_export_csv)
+    assert "hausdorff_distance" in src
+    assert "hausdorff_relative" in src
+
+
 def test_history_entry_captures_hausdorff_fidelity() -> None:
     """beta2302 — HistoryEntry / make_entry_from_result 가 Hausdorff 거리 기록.
 

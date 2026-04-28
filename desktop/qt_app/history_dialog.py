@@ -66,10 +66,11 @@ class HistoryDialog(EscDismissMixin, QDialog):
         layout.addLayout(flt_row)
 
         # ── 테이블 ─────────────────────────────────────────────
-        self.table = QTableWidget(0, 8)
+        # beta2303 — Hausdorff (rel) 컬럼 추가 (상용 툴 'Surface Deviation' 동등).
+        self.table = QTableWidget(0, 9)
         self.table.setHorizontalHeaderLabels([
             "시각", "입력", "Tier", "품질", "결과",
-            "시간(s)", "셀수", "Non-ortho",
+            "시간(s)", "셀수", "Non-ortho", "Hausdorff(rel)",
         ])
         self.table.setStyleSheet(get_table_qss())
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -126,6 +127,14 @@ class HistoryDialog(EscDismissMixin, QDialog):
         filtered = self._filter()
         self.table.setRowCount(len(filtered))
         for row, e in enumerate(filtered):
+            # beta2303 — Hausdorff(rel) 표시. 상용 툴 임계 0.01 (1%) 초과면 빨강.
+            _hr = getattr(e, "hausdorff_relative", None)
+            _hr_text = f"{_hr*100:.2f}%" if _hr is not None else ""
+            _hr_item = QTableWidgetItem(_hr_text)
+            if _hr is not None and _hr > 0.01:
+                _hr_item.setForeground(QColor("#ef4444"))
+            elif _hr is not None and _hr > 0.0:
+                _hr_item.setForeground(QColor("#22c55e"))
             items = [
                 QTableWidgetItem(e.timestamp.replace("T", " ")),
                 QTableWidgetItem(Path(e.input_file).name),
@@ -137,6 +146,7 @@ class HistoryDialog(EscDismissMixin, QDialog):
                 QTableWidgetItem(
                     f"{e.max_non_orthogonality:.1f}" if e.max_non_orthogonality else ""
                 ),
+                _hr_item,
             ]
             # 결과 컬러
             if e.success:
@@ -184,17 +194,24 @@ class HistoryDialog(EscDismissMixin, QDialog):
             return
         filtered = self._filter()
         try:
+            # beta2303 — CSV 에 Hausdorff (distance + relative) 컬럼 포함.
             lines = [
                 "timestamp,input_file,tier,quality,success,"
                 "elapsed_seconds,n_cells,max_aspect_ratio,"
-                "max_skewness,max_non_orthogonality,error"
+                "max_skewness,max_non_orthogonality,"
+                "hausdorff_distance,hausdorff_relative,error"
             ]
             for e in filtered:
+                _hd = getattr(e, "hausdorff_distance", None)
+                _hr = getattr(e, "hausdorff_relative", None)
                 lines.append(
                     f'{e.timestamp},"{e.input_file}",{e.tier_used},{e.quality_level},'
                     f"{int(e.success)},{e.elapsed_seconds:.2f},{e.n_cells},"
                     f"{e.max_aspect_ratio or ''},{e.max_skewness or ''},"
-                    f'{e.max_non_orthogonality or ""},"{(e.error or "").replace(chr(34), chr(39))}"'
+                    f'{e.max_non_orthogonality or ""},'
+                    f'{_hd if _hd is not None else ""},'
+                    f'{_hr if _hr is not None else ""},'
+                    f'"{(e.error or "").replace(chr(34), chr(39))}"'
                 )
             Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
             QMessageBox.information(self, "저장 완료", f"CSV 저장: {path}")
