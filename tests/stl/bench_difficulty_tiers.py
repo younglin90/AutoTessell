@@ -57,6 +57,12 @@ def _try_bl(case_dir, n_layers: int = 3, engine_tag: str = "generic",
             "bl_n_prism_cells": int(r.n_prism_cells),
             "bl_elapsed": float(r.elapsed),
             "bl_message": str(r.message)[:120],
+            # beta2256 — wall preservation 검증 (cfMesh/T-Rex 동급).
+            "bl_wall_preserve_max_diff": float(getattr(r, "wall_preserve_max_diff", 0.0)),
+            "bl_wall_preserve_max_diff_rel": float(getattr(r, "wall_preserve_max_diff_rel", 0.0)),
+            "bl_wall_preserve_n_drift": int(getattr(r, "wall_preserve_n_drift", 0)),
+            "bl_wall_preserve_within_envelope": bool(getattr(r, "wall_preserve_within_envelope", True)),
+            "bl_max_aspect_ratio": float(getattr(r, "max_aspect_ratio", 0.0)),
         }
     except Exception as exc:
         return {"bl_success": False, "bl_exc": str(exc)[:120]}
