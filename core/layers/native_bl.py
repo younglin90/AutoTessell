@@ -262,6 +262,15 @@ class BLConfig:
     # 50 은 일반 polyhedral cell 기준, BL prism 은 anisotropic 본질상 50 초과 정상.
     # 1000 = cfMesh / Pointwise T-Rex 의 BL 전용 threshold (truly degenerate 만).
     aspect_ratio_threshold: float = 1000.0
+    # beta2267 — CFD engineer-friendly y+ targeting (cfMesh/Fluent/Pointwise 동급).
+    # 사용자가 절대 first_thickness 대신 target_y_plus + flow_velocity 지정 가능.
+    # 공식 (Schlichting flat plate): u_tau = U * sqrt(Cf/2), Cf = 0.058/Re^0.2
+    # first_thickness = target_y_plus * nu / u_tau
+    # None 이면 first_thickness 직접 사용 (이전 동작).
+    target_y_plus: float | None = None
+    flow_velocity: float = 1.0  # m/s, target_y_plus 사용 시 필수.
+    flow_kinematic_viscosity: float = 1.5e-5  # m^2/s, 공기 표준.
+    flow_characteristic_length: float | None = None  # None 이면 bbox_diag 사용.
     # beta93: shrinkage iteration — 품질 불량 prism vertex 두께를 반복적으로 줄여 수렴.
     # beta2253: REVERT 2252 — shrink 가 thickness h 를 줄이는데 aspect = e_outer/h
     # 정의상 h 감소시 aspect 가 INCREASE 됨 → feedback loop 로 aspect 폭주.
@@ -1455,9 +1464,38 @@ def generate_native_bl(
 
     # 4) Thickness 배열 + bbox safety
     bbox_diag = float(np.linalg.norm(points.max(0) - points.min(0)))
+
+    # beta2267 — y+ targeting (CFD engineer mode).
+    # target_y_plus 가 설정되면 cfg.first_thickness 를 무시하고 Schlichting
+    # flat plate 공식으로 자동 계산.
+    effective_first_thickness = float(cfg.first_thickness)
+    if cfg.target_y_plus is not None and cfg.target_y_plus > 0:
+        try:
+            U = float(cfg.flow_velocity)
+            nu = float(cfg.flow_kinematic_viscosity)
+            L = float(cfg.flow_characteristic_length) if cfg.flow_characteristic_length else bbox_diag
+            Re = max(1.0, U * L / nu)
+            Cf = 0.058 / (Re ** 0.2)  # Schlichting flat plate
+            u_tau = U * (Cf / 2.0) ** 0.5
+            y1 = float(cfg.target_y_plus) * nu / u_tau
+            effective_first_thickness = y1
+            log.info(
+                "native_bl_y_plus_targeting", component="native_bl", phase="BL2",
+                target_y_plus=cfg.target_y_plus,
+                flow_U=U, flow_nu=nu, flow_L=L,
+                Re=round(Re, 1), Cf=round(Cf, 6), u_tau=round(u_tau, 6),
+                first_thickness_computed=round(y1, 9),
+                first_thickness_user=cfg.first_thickness,
+            )
+        except Exception as exc:
+            log.warning(
+                "native_bl_y_plus_skipped", reason=str(exc)[:120],
+                fallback_first_thickness=cfg.first_thickness,
+            )
+
     # BL2: geometric growth via _geometric_layer_thickness (cfMesh default 1.2×/layer)
     thicknesses = _geometric_layer_thickness(
-        cfg.first_thickness, cfg.num_layers, growth_ratio=cfg.growth_ratio,
+        effective_first_thickness, cfg.num_layers, growth_ratio=cfg.growth_ratio,
     )
     total = float(thicknesses.sum())
     log.info(
