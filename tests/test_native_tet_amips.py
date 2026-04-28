@@ -58,6 +58,28 @@ def test_amips_relocation_decreases_energy_on_sliver() -> None:
     assert r.energy_after <= r.energy_before + 1e-6
 
 
+def test_qed_decimate_auto_triggers_on_large_input() -> None:
+    """beta2308 — quadric_decimate 가 50k+ face 입력에 자동 활성화.
+
+    이전 (beta2243) 엔 AUTO_TESSELL_QED=1 명시 opt-in 만 → 대형 입력
+    sliver 격감 효과가 사용자 환경에 도달 안함.
+    beta2308 은 default "auto" → F.shape[0] > 50000 시 자동 ON.
+    AUTO_TESSELL_QED=0 으로 강제 OFF / =1 로 강제 ON 옵트도 유지.
+    """
+    import inspect
+    from core.generator.native_tet import mesher
+    src = inspect.getsource(mesher)
+    # 새 default 모드.
+    assert 'AUTO_TESSELL_QED", "auto"' in src, \
+        "AUTO_TESSELL_QED default 'auto' 누락"
+    # 50000 임계.
+    assert '"AUTO_TESSELL_QED_MIN_F", "50000"' in src, \
+        "QED_MIN_F default 50000 누락"
+    # auto 분기 자동 활성 로직.
+    assert "_qed_on = (F.shape[0] > _qed_min)" in src, \
+        "auto 분기 자동 활성 로직 누락"
+
+
 def test_rrr2_monotone_guard_relaxed_to_worst_drop_0p015() -> None:
     """beta2307 — RRR2 의 monotone guard 가 worst -0.015 + mean improve 로 완화.
 

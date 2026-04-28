@@ -279,12 +279,23 @@ def generate_native_tet(
             except Exception as exc:
                 log.debug("native_tet_auto_fix_skipped", reason=str(exc))
 
-            # P4-B-4 (beta2243) — quadric error decimation pre-pass.
-            # 입력 face > AUTO_TESSELL_QED_MIN_F (default 2000) + env QED=1 시
-            # face 수 절반으로 감소 (G&H 1997). MM1 직전 sliver 격감.
+            # P4-B-4 (beta2243) + P1.4 (beta2308) — quadric error decimation
+            # pre-pass. 입력 face > AUTO_TESSELL_QED_MIN_F 시 face 수 절반으로
+            # 감소 (G&H 1997). MM1 직전 sliver 격감.
+            #
+            # beta2308 (P1.4 from sharded-weaving-raccoon plan):
+            #   default OFF → "auto" — 50k face 초과 입력에 대해 자동 활성화.
+            #   AUTO_TESSELL_QED=0 으로 강제 OFF, =1 로 강제 ON 여전히 가능.
+            #   default min_F 2000 → 50000 으로 raise (small mesh 영향 0).
             try:
-                _qed_on = os.environ.get("AUTO_TESSELL_QED", "0") == "1"
-                _qed_min = int(os.environ.get("AUTO_TESSELL_QED_MIN_F", "2000"))
+                _qed_env = os.environ.get("AUTO_TESSELL_QED", "auto")
+                _qed_min = int(os.environ.get("AUTO_TESSELL_QED_MIN_F", "50000"))
+                if _qed_env == "0":
+                    _qed_on = False
+                elif _qed_env == "1":
+                    _qed_on = True
+                else:  # "auto" 또는 미설정 — large input 자동 활성.
+                    _qed_on = (F.shape[0] > _qed_min)
                 if _qed_on and F.shape[0] > _qed_min:
                     from core.preprocessor.native_remesh.quadric_decimate import (
                         quadric_decimate,
@@ -305,6 +316,7 @@ def generate_native_tet(
                             v_before=_v_before, v_after=int(V_qed.shape[0]),
                             f_before=_f_before, f_after=int(F_qed.shape[0]),
                             target=_target,
+                            mode=_qed_env,
                         )
                         V = V_qed.astype(np.float64)
                         F = F_qed.astype(np.int64)
