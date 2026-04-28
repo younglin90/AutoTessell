@@ -1167,43 +1167,54 @@ def generate_native_poly_voronoi(
                 pass
 
         if not candidates:
-            # P2 (beta2233) — extreme tier self-intersect 입력의 voronoi 모든
-            # 후보 실패 시: run_native_repair (dedup + degenerate + non-manifold +
-            # hole fill + winding) 로 입력 cleanup 후 voronoi 재시도.
-            # extreme tier 의 4/5 fail 회복 목표.
+            # P2 (beta2233 + beta2306) — extreme tier self-intersect 입력의 voronoi
+            # 모든 후보 실패 시: run_native_repair → voronoi 재시도.
+            # beta2306: 단일 lp_p=2.0 → (p=2, p=4) 양쪽 시도 + 2 회 repair param
+            # variant (aggressive=3 → aggressive=2 + 더 큰 hole fill cap).
+            # extreme tier 4/5 fail 회복률 ↑.
             try:
                 from core.preprocessor.native_repair import run_native_repair  # noqa: PLC0415
-                # beta2245l: aggressive=3 — multi-pass dedup tol 점진 완화 +
-                # fill_hole 더 적극. extreme self-intersect mesh 의 회복 가능성 ↑.
-                _r = run_native_repair(
-                    vertices, faces,
-                    dedup_tol=1e-9, degenerate_area_tol=1e-18,
-                    fill_hole_max_boundary=256, fix_normals=True,
-                    aggressive=3,
-                )
-                if _r.vertices.shape[0] >= 4 and _r.faces.shape[0] >= 4:
+                _repair_variants = [
+                    # (aggressive, dedup_tol, fill_max_boundary)
+                    (3, 1e-9, 256),
+                    (2, 1e-7, 512),  # beta2306 — 더 관대한 dedup + 더 큰 hole.
+                ]
+                for _v_idx, (_aggr, _dtol, _fcap) in enumerate(_repair_variants):
+                    _r = run_native_repair(
+                        vertices, faces,
+                        dedup_tol=_dtol, degenerate_area_tol=1e-18,
+                        fill_hole_max_boundary=_fcap, fix_normals=True,
+                        aggressive=_aggr,
+                    )
+                    if _r.vertices.shape[0] < 4 or _r.faces.shape[0] < 4:
+                        continue
                     log.info(
                         "native_poly_p2_repair_retry",
+                        variant=_v_idx, aggressive=_aggr,
                         v_before=int(vertices.shape[0]),
                         v_after=int(_r.vertices.shape[0]),
                         f_before=int(faces.shape[0]),
                         f_after=int(_r.faces.shape[0]),
                     )
-                    _retry_r = _generate_native_poly_voronoi_inner(
-                        _r.vertices.astype(np.float64),
-                        _r.faces.astype(np.int64),
-                        case_dir,
-                        target_edge_length=target_edge_length,
-                        seed_density=int(seed_density),
-                        n_lloyd=int(n_lloyd),
-                        lp_p=2.0,
-                    )
-                    if _retry_r.success and _retry_r.n_cells > 2:
-                        log.info(
-                            "native_poly_p2_repair_voronoi_OK",
-                            cells=_retry_r.n_cells, grade=_retry_r.quality_grade,
+                    # beta2306: p=2 와 p=4 모두 시도.
+                    for _lp_p in (2.0, 4.0):
+                        _retry_r = _generate_native_poly_voronoi_inner(
+                            _r.vertices.astype(np.float64),
+                            _r.faces.astype(np.int64),
+                            case_dir,
+                            target_edge_length=target_edge_length,
+                            seed_density=int(seed_density),
+                            n_lloyd=int(n_lloyd),
+                            lp_p=_lp_p,
                         )
-                        return _retry_r
+                        if _retry_r.success and _retry_r.n_cells > 2:
+                            log.info(
+                                "native_poly_p2_repair_voronoi_OK",
+                                variant=_v_idx, lp_p=_lp_p,
+                                cells=_retry_r.n_cells,
+                                grade=_retry_r.quality_grade,
+                            )
+                            return _retry_r
             except Exception as exc:
                 log.warning("native_poly_p2_repair_skipped", reason=str(exc)[:120])
             # KK4 (beta1870) — last-resort: 직접 native_hex (poly 변환).
