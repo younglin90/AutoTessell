@@ -92,24 +92,32 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
         # beta22: fine quality 는 기본적으로 surface snap 활성화.
         # beta66: fine quality 는 preserve_features=True 로 sharp corner snap 개선.
         # beta860: fine 에 N-level octree n_levels=4 + snap_iterations=5 더 강화.
+        # beta2297: fine 에 X3 boundary Laplacian post-smooth 자동 활성 — snap 후
+        #          skewness 개선 (snappyHexMesh 'smooth-after-snap' 동등 default).
         "draft":    {"seed_density": 12, "snap_boundary": False},
         "standard": {"seed_density": 16, "snap_boundary": True,
                      "adaptive": True, "n_levels": 2, "snap_iterations": 2},
         "fine":     {"seed_density": 24, "snap_boundary": True, "preserve_features": True,
                      "adaptive": True, "n_levels": 4, "snap_iterations": 5,
                      "refinement_distance_factor": 2.5,
-                     "feature_angle_deg": 40.0},
+                     "feature_angle_deg": 40.0,
+                     "enable_post_smooth": True,
+                     "post_smooth_iterations": 3,
+                     "post_smooth_relax": 0.3},
     },
     "tier_native_poly": {
         # beta97: smooth_iters — dual 이후 Laplacian smoothing 횟수.
         # draft: 0 (빠름), standard: 3 (균형), fine: 5 (품질 우선).
         # beta850: fine 은 tet base 에 더 큰 seed_density → dual 셀 품질 개선.
+        # beta2297: voronoi fallback 의 Lloyd CVT iteration 도 quality 별 차등.
+        #          draft=2 (default), standard=3, fine=5 — geogram polyDual fine 동등.
         "draft":    {"seed_density": 8,  "max_iter": 2, "smooth_iters": 0,
-                     "smooth_relax": 0.25},
+                     "smooth_relax": 0.25, "n_lloyd": 2},
         "standard": {"seed_density": 10, "max_iter": 3, "smooth_iters": 3,
-                     "smooth_relax": 0.3},
+                     "smooth_relax": 0.3, "n_lloyd": 3},
         "fine":     {"seed_density": 16, "max_iter": 5, "smooth_iters": 7,
-                     "smooth_relax": 0.35, "max_tet_cells": 60000},
+                     "smooth_relax": 0.35, "max_tet_cells": 60000,
+                     "n_lloyd": 5},
     },
 }
 

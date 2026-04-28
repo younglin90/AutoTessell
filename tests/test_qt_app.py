@@ -3889,6 +3889,37 @@ def test_gui_engine_spec_native_hex_exposes_post_smooth() -> None:
     assert not missing, f"native_hex spec X3 post-smooth 누락: {missing}"
 
 
+def test_harness_params_fine_quality_auto_tunes_post_smooth() -> None:
+    """beta2297 — native_hex fine quality 가 X3 post-smooth 자동 활성.
+
+    snappyHexMesh fine-grade default 에선 항상 smooth-after-snap 이
+    켜져 있는데, 우리 native_hex 도 fine 에선 자동 활성화 되어야 한다."""
+    from core.generator._tier_native_common import HARNESS_PARAMS
+    fine_hex = HARNESS_PARAMS["tier_native_hex"]["fine"]
+    assert fine_hex.get("enable_post_smooth") is True, \
+        "native_hex fine 에서 enable_post_smooth 자동 활성 필요"
+    assert fine_hex.get("post_smooth_iterations", 0) >= 1
+    assert 0.0 < fine_hex.get("post_smooth_relax", 0.0) <= 1.0
+
+
+def test_harness_params_native_poly_quality_aware_n_lloyd() -> None:
+    """beta2297 — native_poly Lloyd CVT iteration 이 quality 별 차등.
+
+    geogram polyDual fine quality default 는 5+ Lloyd iterations.
+    draft=2 (빠름), standard=3 (균형), fine=5 (품질) 로 차등 필요."""
+    from core.generator._tier_native_common import HARNESS_PARAMS
+    poly = HARNESS_PARAMS["tier_native_poly"]
+    draft_n = poly["draft"].get("n_lloyd")
+    std_n = poly["standard"].get("n_lloyd")
+    fine_n = poly["fine"].get("n_lloyd")
+    assert draft_n is not None and std_n is not None and fine_n is not None, \
+        f"n_lloyd quality 별 미정의: draft={draft_n} std={std_n} fine={fine_n}"
+    # 단조 증가 (품질↑ → CVT iterations↑).
+    assert draft_n <= std_n <= fine_n, \
+        f"n_lloyd 단조 증가 위반: {draft_n} ≤ {std_n} ≤ {fine_n}"
+    assert fine_n >= 5, f"fine n_lloyd ≥5 권장 (현재 {fine_n})"
+
+
 def test_gui_engine_spec_native_tet_exposes_tetwild_lite_knobs() -> None:
     """beta2295 — native_tet spec 가 TetWild-lite 6 knobs 노출.
 
