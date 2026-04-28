@@ -710,61 +710,56 @@ def _smooth_inner_layers_along_normal(
     base_lp = layer_point_ids[0]
     deepest_lp = layer_point_ids[num_layers]
 
-    # Pre-compute per-vertex base + axis (skip if missing)
+    # beta2258 — vectorized inner-layer Laplacian smoothing.
+    # Filter: only include verts present in ALL layers (base, deepest, every inner).
     valid_v: list[int] = []
-    base_arr_dict: dict[int, np.ndarray] = {}
-    axis_dict: dict[int, np.ndarray] = {}
     for v in wall_vert_indices:
         if v not in base_lp or v not in deepest_lp:
             continue
-        bp = fp[base_lp[v]]
-        dp = fp[deepest_lp[v]]
-        axis = dp - bp
-        L = float(np.linalg.norm(axis))
-        if L < 1e-12:
+        if not all(v in layer_point_ids[k] for k in range(num_layers + 1)):
             continue
-        base_arr_dict[v] = bp.copy()
-        axis_dict[v] = axis / L
         valid_v.append(v)
-
     if not valid_v:
         return fp, 0
 
-    # For each iteration, smooth inner layer offsets along normal axis.
+    n_v = len(valid_v)
+    # (n_v,) vertex idx in each layer
+    base_idx = np.array([base_lp[v] for v in valid_v], dtype=np.int64)
+    deepest_idx = np.array([deepest_lp[v] for v in valid_v], dtype=np.int64)
+    # (n_v, 3) base position + axis (kept fixed throughout iteration)
+    base_pos = fp[base_idx].copy()  # (n_v, 3)
+    deepest_pos = fp[deepest_idx]
+    axis_vec = deepest_pos - base_pos  # (n_v, 3)
+    axis_len = np.linalg.norm(axis_vec, axis=1)  # (n_v,)
+    axis_safe = axis_len >= 1e-12
+    axis_unit = np.zeros_like(axis_vec)
+    axis_unit[axis_safe] = axis_vec[axis_safe] / axis_len[axis_safe, None]
+
+    # (num_layers+1, n_v) idx of each vertex in each layer
+    all_layer_idx = np.array(
+        [[layer_point_ids[k][v] for v in valid_v] for k in range(num_layers + 1)],
+        dtype=np.int64,
+    )  # (L+1, n_v)
+
     for _it in range(int(n_iter)):
         for layer_i in range(1, num_layers):
-            cur_lp = layer_point_ids[layer_i]
-            new_positions: dict[int, np.ndarray] = {}
-            for v in valid_v:
-                if v not in cur_lp:
-                    continue
-                # Current axial offset (project onto n_axis)
-                cur_pos = fp[cur_lp[v]]
-                bp = base_arr_dict[v]
-                axis_unit = axis_dict[v]
-                cur_off = float(np.dot(cur_pos - bp, axis_unit))
-
-                # No edge adjacency easily available — use simple Laplacian on
-                # offset using same-layer neighbors via wall_tri_verts? Skip for
-                # speed: simply average current_off with previous and next layer
-                # (along the prism column).
-                prev_lp = layer_point_ids[layer_i - 1]
-                next_lp = layer_point_ids[layer_i + 1]
-                if v not in prev_lp or v not in next_lp:
-                    continue
-                prev_off = float(np.dot(fp[prev_lp[v]] - bp, axis_unit))
-                next_off = float(np.dot(fp[next_lp[v]] - bp, axis_unit))
-                # Laplacian smooth: new = avg(prev, next), clamped to [prev, next]
-                new_off = 0.5 * (prev_off + next_off)
-                if new_off <= prev_off + 1e-12 or new_off >= next_off - 1e-12:
-                    continue  # would invert layer order; skip
-                new_pos = bp + axis_unit * new_off
-                new_positions[v] = new_pos
-
-            # Apply all updates after computing (Jacobi-style)
-            for v, p in new_positions.items():
-                fp[cur_lp[v]] = p
-                n_moved += 1
+            # current axial offsets along axis_unit
+            prev_pos = fp[all_layer_idx[layer_i - 1]]  # (n_v, 3)
+            next_pos = fp[all_layer_idx[layer_i + 1]]
+            prev_off = np.einsum("ij,ij->i", prev_pos - base_pos, axis_unit)
+            next_off = np.einsum("ij,ij->i", next_pos - base_pos, axis_unit)
+            # Laplacian smooth: new_off = avg(prev, next)
+            new_off = 0.5 * (prev_off + next_off)
+            # Guard: new_off must be strictly between prev_off and next_off
+            ordered = (new_off > prev_off + 1e-12) & (new_off < next_off - 1e-12)
+            apply_mask = ordered & axis_safe
+            if not apply_mask.any():
+                continue
+            new_pos = base_pos + axis_unit * new_off[:, None]
+            cur_lp_idx = all_layer_idx[layer_i]
+            apply_idx = cur_lp_idx[apply_mask]
+            fp[apply_idx] = new_pos[apply_mask]
+            n_moved += int(apply_mask.sum())
 
     return fp, n_moved
 
