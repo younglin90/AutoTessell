@@ -2123,15 +2123,25 @@ def generate_native_bl(
                     _n_acc_h += 1
                 _hex_layers_per_face[_fi_h] = _n_acc_h
 
-            _avg_hl = (
-                float(np.mean(list(_hex_layers_per_face.values())))
-                if _hex_layers_per_face else 0.0
-            )
+            # beta2263 — Pointwise T-Rex 동급 LCR 통계 (per-face).
+            _hl_vals = list(_hex_layers_per_face.values())
+            _avg_hl = float(np.mean(_hl_vals)) if _hl_vals else 0.0
+            _min_hl = int(min(_hl_vals)) if _hl_vals else 0
+            _max_hl = int(max(_hl_vals)) if _hl_vals else 0
+            _full_count = sum(1 for v in _hl_vals if v == _HEX_LAYERS_N)
+            _reduced_count = sum(1 for v in _hl_vals if 0 < v < _HEX_LAYERS_N)
+            _zero_count = sum(1 for v in _hl_vals if v == 0)
             log.info(
                 "hex_layers_summary",
                 n_wall_faces=len(wall_face_indices),
                 n_layers_target=_HEX_LAYERS_N,
                 avg_n_layers=round(_avg_hl, 2),
+                min_n_layers=_min_hl,
+                max_n_layers=_max_hl,
+                # LCR: per-face 분포 (Pointwise T-Rex equivalent stats)
+                pct_full_layers=round(100.0 * _full_count / max(1, len(_hl_vals)), 1),
+                pct_reduced_layers=round(100.0 * _reduced_count / max(1, len(_hl_vals)), 1),
+                pct_zero_layers=round(100.0 * _zero_count / max(1, len(_hl_vals)), 1),
                 n_rejected_aspect=_hex_layers_n_rej_asp,
                 n_rejected_collision=_hex_layers_n_rej_col,
                 growth_ratio=cfg.growth_ratio,
