@@ -83,6 +83,10 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
                      "enable_amips_smooth": True,
                      "amips_iterations": 2,
                      "amips_alpha": 1.0,
+                     # P2.2 / beta2310: fine 에서 torch (CUDA 가용 시 GPU)
+                     # AMIPS 라우팅. amips_torch.is_available() 가 False 면
+                     # mesher 가 자동 numpy fallback.
+                     "use_torch_amips": True,
                      # beta810: fine 에서는 더 엄격한 sliver drop.
                      "sliver_drop_min_dihedral_deg": 1.0,
                      "sliver_drop_max_aspect": 5e4},
@@ -265,6 +269,8 @@ def run_native_tier(
         "enable_cdt_recovery",     # CDT envelope recovery (beta1370)
         "enable_phase_b",          # local ops 통합 (split/collapse/flip, beta120)
         "enable_phase_c",          # envelope+quality stop (beta125)
+        # P2.2 / beta2310: AMIPS torch 라우팅 (fine + CUDA 자동).
+        "use_torch_amips",
     }
     tsp = getattr(strategy, "tier_specific_params", None) or {}
     for k in _TIER_PARAM_KEYS:

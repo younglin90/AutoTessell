@@ -58,6 +58,30 @@ def test_amips_relocation_decreases_energy_on_sliver() -> None:
     assert r.energy_after <= r.energy_before + 1e-6
 
 
+def test_use_torch_amips_in_harness_params_fine() -> None:
+    """beta2310 — HARNESS_PARAMS["tier_native_tet"]["fine"] 가 use_torch_amips=True.
+
+    P2.2: fine quality 에서 amips_torch (CUDA 가용 시 GPU) 자동 라우팅.
+    CUDA 미가용 환경에선 mesher 가 자동 numpy fallback (not is_available)."""
+    import inspect
+    from core.generator._tier_native_common import HARNESS_PARAMS, run_native_tier
+    fine = HARNESS_PARAMS["tier_native_tet"]["fine"]
+    assert fine.get("use_torch_amips") is True, \
+        "fine quality 에 use_torch_amips=True 누락"
+    # allowlist 통과 (CLI/GUI tier_specific_params 도 도달).
+    src = inspect.getsource(run_native_tier)
+    assert '"use_torch_amips"' in src, "_TIER_PARAM_KEYS allowlist 누락"
+
+
+def test_mesher_signature_accepts_use_torch_amips() -> None:
+    """beta2310 — generate_native_tet 시그너쳐에 use_torch_amips kwarg 노출."""
+    import inspect
+    from core.generator.native_tet.mesher import generate_native_tet
+    sig = inspect.signature(generate_native_tet)
+    assert "use_torch_amips" in sig.parameters
+    assert sig.parameters["use_torch_amips"].default is False
+
+
 def test_qed_decimate_auto_triggers_on_large_input() -> None:
     """beta2308 — quadric_decimate 가 50k+ face 입력에 자동 활성화.
 

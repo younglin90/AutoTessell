@@ -172,6 +172,10 @@ def generate_native_tet(
     score_weight_cdt: float = 0.25,
     score_weight_mq: float = 0.35,
     prefer_base_threshold: float = 0.02,
+    # P2.2 / beta2310 — AMIPS smoothing 의 torch (CUDA 가용 시 GPU) 라우팅.
+    # HARNESS_PARAMS["tier_native_tet"]["fine"] 에서 자동 활성. CPU 환경
+    # 에서는 torch CPU 텐서 batch (numpy 대비 약간 느릴 수 있어 fine only).
+    use_torch_amips: bool = False,
 ) -> NativeTetResult:
     """입력 표면 메쉬 → tet polyMesh (MVP).
 
@@ -2432,12 +2436,41 @@ def generate_native_tet(
                             pre_min = float(q_per_tet.min())
                             pre_mean = float(q_per_tet.mean())
 
-                            _res, sm_pts = smooth_amips_analytic(
-                                final_pts, final_tets,
-                                locked_vertex_ids=lock_ids,
-                                n_iter=2,
-                                alpha=1.0,
-                            )
+                            # P2.2 / beta2310: torch (CUDA) 라우팅 — fine
+                            # quality 에서 use_torch_amips=True 면 batch
+                            # tensor 경로. CUDA 미가용 시 torch CPU. torch
+                            # 미설치 환경 fallback → numpy.
+                            sm_pts = None
+                            if use_torch_amips:
+                                try:
+                                    from core.generator.native_tet.amips_torch import (
+                                        smooth_amips_torch, is_available as _torch_avail,
+                                    )
+                                    if _torch_avail():
+                                        _tres, sm_pts = smooth_amips_torch(
+                                            final_pts, final_tets,
+                                            locked_vertex_ids=lock_ids,
+                                            n_iter=2, alpha=1.0,
+                                        )
+                                        log.info(
+                                            "native_tet_rrr2_amips_torch",
+                                            device=_tres.device,
+                                            energy_before=round(_tres.energy_before, 4),
+                                            energy_after=round(_tres.energy_after, 4),
+                                        )
+                                except Exception as _exc_t:
+                                    log.warning(
+                                        "native_tet_rrr2_torch_fallback",
+                                        reason=str(_exc_t)[:120],
+                                    )
+                                    sm_pts = None
+                            if sm_pts is None:
+                                _res, sm_pts = smooth_amips_analytic(
+                                    final_pts, final_tets,
+                                    locked_vertex_ids=lock_ids,
+                                    n_iter=2,
+                                    alpha=1.0,
+                                )
 
                             post_q = tet_shape_quality(sm_pts, final_tets)
                             # beta2307 — RRR2 monotone guard 완화.
