@@ -3889,6 +3889,57 @@ def test_gui_engine_spec_native_hex_exposes_post_smooth() -> None:
     assert not missing, f"native_hex spec X3 post-smooth 누락: {missing}"
 
 
+def test_history_entry_captures_hausdorff_fidelity() -> None:
+    """beta2302 — HistoryEntry / make_entry_from_result 가 Hausdorff 거리 기록.
+
+    이전엔 max_aspect/skew/non_ortho 만 기록 → Pointwise/Star-CCM+ 동등
+    'Surface Deviation' 지표가 history.jsonl 과 PDF 리포트에서 누락."""
+    from desktop.qt_app.history import HistoryEntry, make_entry_from_result
+
+    # HistoryEntry 가 두 필드 모두 받는다.
+    e = HistoryEntry(
+        timestamp="2026-04-28T12:00:00",
+        input_file="x.stl", output_dir="case",
+        quality_level="fine", tier_used="native_tet",
+        success=True, elapsed_seconds=1.0,
+        hausdorff_distance=0.001, hausdorff_relative=0.0001,
+    )
+    assert e.hausdorff_distance == 0.001
+    assert e.hausdorff_relative == 0.0001
+
+    # make_entry_from_result 가 quality_report.geometry_fidelity 에서 가져옴.
+    class _Fid:
+        hausdorff_distance = 0.0023
+        hausdorff_relative = 0.00045
+    class _QR:
+        check_mesh = None
+        geometry_fidelity = _Fid()
+    class _Result:
+        quality_report = _QR()
+        success = True
+        total_time_seconds = 5.0
+        generator_log = None
+        error = None
+
+    e2 = make_entry_from_result("x.stl", "out", "fine", _Result())
+    assert e2.hausdorff_distance == 0.0023
+    assert e2.hausdorff_relative == 0.00045
+
+
+def test_pdf_report_includes_hausdorff_criterion() -> None:
+    """beta2302 — ReportData 가 Hausdorff 필드 보유 + PDF 합격 기준 행 노출."""
+    from desktop.qt_app.report_pdf import ReportData
+    import inspect
+    rd = ReportData(hausdorff_distance=0.001, hausdorff_relative=0.0001)
+    assert rd.hausdorff_distance == 0.001
+    assert rd.hausdorff_relative == 0.0001
+
+    # _write_page src 에 Hausdorff 합격 기준 라인 존재.
+    from desktop.qt_app import report_pdf
+    src = inspect.getsource(report_pdf._write_page)
+    assert "Hausdorff" in src, "PDF 리포트 _write_page 에 Hausdorff 기준 누락"
+
+
 def test_gui_auto_retry_combo_wired() -> None:
     """beta2301 — Auto-retry GUI 콤보 → self._auto_retry → PipelineWorker.
 

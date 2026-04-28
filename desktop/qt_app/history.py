@@ -28,6 +28,10 @@ class HistoryEntry:
     max_aspect_ratio: float | None = None
     max_skewness: float | None = None
     max_non_orthogonality: float | None = None
+    # beta2302: GeometryFidelity Hausdorff 거리 — 상용 툴 (Pointwise / Star-CCM+)
+    # 의 "Surface Deviation" 동등 지표. 이전엔 평가는 했지만 history/PDF 미기록.
+    hausdorff_distance: float | None = None
+    hausdorff_relative: float | None = None
     error: str | None = None
 
 
@@ -95,6 +99,7 @@ def make_entry_from_result(
     """PipelineResult 객체에서 HistoryEntry 생성."""
     quality_report = getattr(result, "quality_report", None)
     check_mesh = getattr(quality_report, "check_mesh", None) if quality_report else None
+    fidelity = getattr(quality_report, "geometry_fidelity", None) if quality_report else None
     generator_log = getattr(result, "generator_log", None)
     summary = getattr(generator_log, "execution_summary", None) if generator_log else None
 
@@ -110,5 +115,8 @@ def make_entry_from_result(
         max_aspect_ratio=getattr(check_mesh, "max_aspect_ratio", None),
         max_skewness=getattr(check_mesh, "max_skewness", None),
         max_non_orthogonality=getattr(check_mesh, "max_non_orthogonality", None),
+        # beta2302 — Hausdorff geometry fidelity 기록 (Pointwise/Star-CCM+ 동등).
+        hausdorff_distance=getattr(fidelity, "hausdorff_distance", None),
+        hausdorff_relative=getattr(fidelity, "hausdorff_relative", None),
         error=getattr(result, "error", None),
     )

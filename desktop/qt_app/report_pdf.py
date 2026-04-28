@@ -43,6 +43,9 @@ class ReportData:
     max_non_orthogonality: float | None = None
     negative_volumes: int | None = None
     min_cell_volume: float | None = None
+    # beta2302 — Hausdorff geometry fidelity (Pointwise/Star-CCM+ "Surface Deviation").
+    hausdorff_distance: float | None = None
+    hausdorff_relative: float | None = None
     # 히스토그램 배열
     hist_aspect: list[float] = field(default_factory=list)
     hist_skew: list[float] = field(default_factory=list)
@@ -154,6 +157,8 @@ def _write_page(pdf, data: ReportData) -> None:
         ("Skewness < 4.0", data.max_skewness, 4.0),
         ("Non-ortho < 65°", data.max_non_orthogonality, 65.0),
         ("Negative volumes = 0", data.negative_volumes, 0),
+        # beta2302 — Hausdorff relative < 1% (상용 툴 표준 임계).
+        ("Hausdorff (rel) < 0.01", data.hausdorff_relative, 0.01),
     ]
     for i, (label, val, thr) in enumerate(criteria):
         y = 0.7 - i * 0.17
