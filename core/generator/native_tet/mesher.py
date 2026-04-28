@@ -2428,7 +2428,18 @@ def generate_native_tet(
                             )
 
                             post_q = tet_shape_quality(sm_pts, final_tets)
-                            accepted = bool(post_q.min() >= pre_min - 1e-12 and post_q.mean() >= pre_mean - 1e-12)
+                            # beta2307 — RRR2 monotone guard 완화.
+                            # 이전: worst -1e-12 (사실상 no-drop) + mean -1e-12 → 거의 모든 시도 reject
+                            #       → 60+ round 카드 누적에도 grade A=0/20.
+                            # 신규: worst 하락 ≤ 0.015 허용 + mean 향상 (≥ pre - 1e-12).
+                            #       → fTetWild §3.5 envelope-bounded relocation 의 활용 가능.
+                            #       SSS_REVIVAL (line 2508) 와 동일 임계.
+                            _worst_drop = pre_min - float(post_q.min())
+                            _mean_gain = float(post_q.mean()) - pre_mean
+                            accepted = bool(
+                                _worst_drop <= 0.015
+                                and _mean_gain >= -1e-12
+                            )
                             if accepted:
                                 final_pts = sm_pts
 

@@ -56,3 +56,25 @@ def test_amips_relocation_decreases_energy_on_sliver() -> None:
         n_iter=5, alpha=1.0,
     )
     assert r.energy_after <= r.energy_before + 1e-6
+
+
+def test_rrr2_monotone_guard_relaxed_to_worst_drop_0p015() -> None:
+    """beta2307 — RRR2 의 monotone guard 가 worst -0.015 + mean improve 로 완화.
+
+    이전 (pre-beta2307) 엔 strict guard `post.min() >= pre.min() - 1e-12`
+    → 거의 모든 AMIPS 시도가 reject 되어 60+ round 카드 누적에도 grade A=0/20.
+
+    beta2307 은 fTetWild §3.5 envelope-bounded relocation 의 활용을 위해
+    worst 하락 ≤ 0.015 (절대 임계) + mean 향상 (≥ pre - 1e-12) 로 완화.
+    SSS_REVIVAL block (line 2508) 의 동일 임계와 일관성.
+    """
+    import inspect
+    from core.generator.native_tet import mesher
+    src = inspect.getsource(mesher)
+    # 새 임계 존재.
+    assert "_worst_drop <= 0.015" in src, \
+        "RRR2 worst_drop ≤ 0.015 임계 누락"
+    # 옛 strict guard 잔존 금지.
+    rrr2_strict = "post_q.min() >= pre_min - 1e-12 and post_q.mean() >= pre_mean - 1e-12"
+    assert rrr2_strict not in src, \
+        "RRR2 strict guard 잔존 — 완화되어야 함 (beta2307)"
