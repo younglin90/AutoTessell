@@ -167,13 +167,25 @@ def merge_sliver_triangles(
         return pts, faces, 0
 
     # Apply remap to surviving faces.
+    # C-PERF-84 / beta2535 — path-doubling UF + sorted-row 3-uniq mask
+    # 로 [_find], [len(set)] 두 Python loop 모두 제거.
     alive_faces_idx = np.where(alive)[0]
     new_faces_raw = faces[alive_faces_idx].copy()
-    # Remap via union-find.
-    flat = new_faces_raw.ravel()
-    remapped = np.array([_find(int(x)) for x in flat], dtype=np.int64).reshape(new_faces_raw.shape)
-    # Drop degenerate triangles (shouldn't remain, but guard).
-    not_degen = np.array([len(set(remapped[i])) == 3 for i in range(len(remapped))], dtype=bool)
+    # Path-doubling: parent[parent[...]] until stable.
+    parent_arr = parent.copy()
+    for _ in range(int(np.log2(max(parent_arr.size, 2))) + 2):
+        new_p = parent_arr[parent_arr]
+        if np.array_equal(new_p, parent_arr):
+            break
+        parent_arr = new_p
+    remapped = parent_arr[new_faces_raw]
+    # Degenerate iff sorted row has any duplicate adjacent entry.
+    if remapped.size > 0:
+        rs = np.sort(remapped, axis=1)
+        dup = (rs[:, 0] == rs[:, 1]) | (rs[:, 1] == rs[:, 2])
+        not_degen = ~dup
+    else:
+        not_degen = np.zeros((0,), dtype=bool)
     remapped = remapped[not_degen]
 
     # Compact vertices.
