@@ -227,18 +227,24 @@ class HistoryDialog(EscDismissMixin, QDialog):
             # beta2303 — CSV 에 Hausdorff (distance + relative) 컬럼 포함.
             # beta2353 — pre_bl_self_intersect 도 CSV 에 포함 (P2.6 chain).
             # C-GUI-1 / beta2411 — mesh_integrity_suspect 도 CSV 에 포함.
+            # C-GUI-7 / beta2417 — BL prism / LCR / aniso_split 도 CSV 에 포함.
             lines = [
                 "timestamp,input_file,tier,quality,success,"
                 "elapsed_seconds,n_cells,max_aspect_ratio,"
                 "max_skewness,max_non_orthogonality,"
                 "hausdorff_distance,hausdorff_relative,"
-                "pre_bl_self_intersect,mesh_integrity_suspect,error"
+                "pre_bl_self_intersect,mesh_integrity_suspect,"
+                "bl_n_prism_cells,bl_lcr_n_reduced_verts,"
+                "bl_aniso_split_n_would_split,error"
             ]
             for e in filtered:
                 _hd = getattr(e, "hausdorff_distance", None)
                 _hr = getattr(e, "hausdorff_relative", None)
                 _si = getattr(e, "n_self_intersect_pre", None)
                 _int = bool(getattr(e, "mesh_integrity_suspect", False))
+                _bl = int(getattr(e, "bl_n_prism_cells", 0) or 0)
+                _lcr = int(getattr(e, "bl_lcr_n_reduced_verts", 0) or 0)
+                _asp = int(getattr(e, "bl_aniso_split_n_would_split", 0) or 0)
                 lines.append(
                     f'{e.timestamp},"{e.input_file}",{e.tier_used},{e.quality_level},'
                     f"{int(e.success)},{e.elapsed_seconds:.2f},{e.n_cells},"
@@ -248,6 +254,7 @@ class HistoryDialog(EscDismissMixin, QDialog):
                     f'{_hr if _hr is not None else ""},'
                     f'{_si if _si is not None else ""},'
                     f'{int(_int)},'
+                    f'{_bl},{_lcr},{_asp},'
                     f'"{(e.error or "").replace(chr(34), chr(39))}"'
                 )
             Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
