@@ -298,6 +298,10 @@ def main():
                     parts.append(f"sk={round(r['max_skew'], 2)}")
                 if "mq" in r and r["mq"] >= 0:
                     parts.append(f"mq={round(r['mq'], 3)}")
+                # beta2357 — pre-mesh SI count (P2.6 chain). 0 이면 생략.
+                _si_v = r.get("n_si_pre")
+                if isinstance(_si_v, int) and _si_v > 0:
+                    parts.append(f"si={_si_v}")
                 if r.get("bl_success"):
                     parts.append(f"BL=OK p={r.get('bl_n_prism_cells', '?')}")
                 elif "bl_success" in r:
