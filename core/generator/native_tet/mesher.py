@@ -36,6 +36,9 @@ class NativeTetResult:
     plane_coverage: float = -1.0       # V1 — fTetWild-style plane conformity.
     plane_area_coverage: float = -1.0
     hausdorff_relative: float = -1.0   # h_symmetric / bbox_diag.
+    # beta2336 — pre-mesh self-intersect (P2.6 chain). None = 측정 안 됨
+    # (>5000 face), 0 = clean, >0 = 입력 SI 존재.
+    n_self_intersect_pre: int | None = None
 
     @property
     def ok(self) -> bool:
@@ -224,9 +227,13 @@ def generate_native_tet(
         _UUU3_REPAIR_CANDIDATES, _si_repair_candidates,
         _UUU5_FACE_SPLIT, _apply_face_split,
     )
+    # beta2336 — UUU2 si_pairs count 를 mesher local 에 capture (NativeTetResult
+    # 의 n_self_intersect_pre 에 후속 채우기 위함).
+    _pre_mesh_si_count: int | None = None
     try:
         if _UUU1_SI_DETECT:
             si_pairs = _detect_self_intersections(V, F)
+            _pre_mesh_si_count = int(len(si_pairs))
             log.info("native_tet_uuu2_si_detect", n_si=int(len(si_pairs)))
             if _UUU3_REPAIR_CANDIDATES and len(si_pairs) > 0:
                 cands = _si_repair_candidates(V, F, si_pairs)
@@ -3728,4 +3735,6 @@ def generate_native_tet(
         plane_coverage=float(plane_cov_val),
         plane_area_coverage=float(plane_area_cov_val),
         hausdorff_relative=float(haus_rel),
+        # beta2336 — pre-mesh SI count (UUU2 에서 capture).
+        n_self_intersect_pre=_pre_mesh_si_count,
     )

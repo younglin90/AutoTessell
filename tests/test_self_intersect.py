@@ -100,6 +100,25 @@ def test_empty_input_returns_zero_report() -> None:
     assert r.n_intersections == 0
 
 
+def test_native_tet_result_exposes_n_self_intersect_pre() -> None:
+    """beta2336 — NativeTetResult 에 n_self_intersect_pre 필드 추가.
+
+    UUU2 에서 capture 한 si_pairs 개수가 final result 에 도달 → harness /
+    bench / GUI history 에서 입력 SI 신호 활용 가능."""
+    import inspect
+    from core.generator.native_tet.mesher import NativeTetResult, generate_native_tet
+    from dataclasses import fields
+    fnames = {f.name for f in fields(NativeTetResult)}
+    assert "n_self_intersect_pre" in fnames, \
+        f"NativeTetResult.n_self_intersect_pre 필드 누락: {fnames}"
+
+    # mesher src 에 _pre_mesh_si_count capture + return wiring.
+    src = inspect.getsource(generate_native_tet)
+    assert "_pre_mesh_si_count" in src, "_pre_mesh_si_count capture 누락"
+    assert "n_self_intersect_pre=_pre_mesh_si_count" in src, \
+        "NativeTetResult 에 n_self_intersect_pre 채움 누락"
+
+
 def test_evaluator_fidelity_populates_n_self_intersect_pre() -> None:
     """beta2334 — GeometryFidelityChecker 가 schemas.GeometryFidelity 의
     n_self_intersect_pre 필드를 채움.
