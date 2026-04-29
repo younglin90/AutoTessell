@@ -252,20 +252,21 @@ def check_input(
             )
 
     # 3) edge topology.
+    # C-PERF-47 / beta2498 — vectorize edge owners + boundary/nm count.
     n_boundary = 0; n_nonmanifold = 0
     min_dih = 180.0
     if F.shape[0] > 0:
-        edge_owners: dict[tuple[int, int], list[int]] = {}
-        for ti in range(F.shape[0]):
-            a, b, c = int(F[ti, 0]), int(F[ti, 1]), int(F[ti, 2])
-            for u, v in ((a, b), (b, c), (c, a)):
-                key = (u, v) if u < v else (v, u)
-                edge_owners.setdefault(key, []).append(ti)
-        for key, lst in edge_owners.items():
-            if len(lst) == 1:
-                n_boundary += 1
-            elif len(lst) >= 3:
-                n_nonmanifold += 1
+        src_eo = F[:, [0, 1, 2]].reshape(-1).astype(np.int64)
+        dst_eo = F[:, [1, 2, 0]].reshape(-1).astype(np.int64)
+        u_eo = np.minimum(src_eo, dst_eo)
+        v_eo = np.maximum(src_eo, dst_eo)
+        order_eo = np.lexsort((v_eo, u_eo))
+        u_s = u_eo[order_eo]; v_s = v_eo[order_eo]
+        diff_eo = np.r_[True, (u_s[1:] != u_s[:-1]) | (v_s[1:] != v_s[:-1])]
+        starts_eo = np.where(diff_eo)[0]
+        sizes_eo = np.diff(np.r_[starts_eo, len(u_s)])
+        n_boundary = int((sizes_eo == 1).sum())
+        n_nonmanifold = int((sizes_eo >= 3).sum())
         if n_boundary > 0:
             warnings.append(f"non-watertight: {n_boundary} boundary edges")
         if n_nonmanifold > 0:
