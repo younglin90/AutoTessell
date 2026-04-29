@@ -2327,6 +2327,10 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._enable_vvv9j_apply_check.setChecked(False)
         self._enable_vvv9k_apply_check.setChecked(False)
         self._enable_vvv9p_apply_check.setChecked(False)
+        # C-GUI-8 / beta2420 — 신규 env 체크박스 default OFF + layout 추가.
+        self._seed_gwn_check.setChecked(False)
+        self._stellar_split_check.setChecked(False)
+        self._parallel_delaunay_check.setChecked(False)
         for chk in (
             self._no_repair_check, self._surface_remesh_check,
             self._allow_ai_fallback_check, self._prefer_native_check,
@@ -2334,6 +2338,8 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._enable_vvv9h_apply_check, self._enable_offplane_steiner_check,
             self._enable_vvv9j_apply_check, self._enable_vvv9k_apply_check,
             self._enable_vvv9p_apply_check,
+            self._seed_gwn_check, self._stellar_split_check,
+            self._parallel_delaunay_check,
         ):
             v.addWidget(chk)
             try:
