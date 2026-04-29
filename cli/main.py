@@ -630,6 +630,16 @@ def evaluate(
          "자동 재시도. 실패 시 결과 error 필드에 [cross_engine_fallback poly→hex] 프리픽스.",
 )
 @click.option(
+    "--enable-vvv9h-apply", is_flag=True,
+    help="beta2319 fix + beta2344 — Klingner 2008 §3.5 edge-contract real apply 활성. "
+         "환경변수 AUTO_TESSELL_VVV9H_APPLY=1 동등. sliver 격감용 (실험적).",
+)
+@click.option(
+    "--enable-offplane-steiner", is_flag=True,
+    help="beta2318 + beta2344 — Klingner-Shewchuk 2008 §4.1 off-plane Steiner "
+         "exudation real apply 활성. 환경변수 AUTO_TESSELL_OFFPLANE_STEINER=1 동등.",
+)
+@click.option(
     "--flow-velocity", type=float, default=1.0, show_default=True,
     help="v0.4.0-beta78+ 유입 속도 [m/s]. 0/U 자동 생성 기준값. "
          "turbulence 필드 (k, epsilon/omega) 에 반영.",
@@ -703,6 +713,8 @@ def run(
     prefer_native: bool,
     prefer_native_tier: bool,
     cross_engine_fallback: bool,
+    enable_vvv9h_apply: bool,
+    enable_offplane_steiner: bool,
     flow_velocity: float,
     turbulence_model: str,
     auto_retry: str,
@@ -726,6 +738,14 @@ def run(
     # repair_engine=none이면 no_repair 강제
     if repair_engine == "none":
         no_repair = True
+
+    # beta2344 — 실험적 V-series real-apply 플래그를 환경변수로 변환.
+    # 사용자가 GUI/CLI 에서 toggle 한 결과를 mesher 가 inspect 할 수 있게.
+    import os as _os_v9
+    if enable_vvv9h_apply:
+        _os_v9.environ["AUTO_TESSELL_VVV9H_APPLY"] = "1"
+    if enable_offplane_steiner:
+        _os_v9.environ["AUTO_TESSELL_OFFPLANE_STEINER"] = "1"
 
     console.print(f"[bold magenta]Auto-Tessell[/bold magenta] {input_file} → {output}")
     console.print(

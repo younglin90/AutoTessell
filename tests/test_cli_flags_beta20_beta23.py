@@ -279,6 +279,36 @@ def test_tier_param_native_poly_voronoi_knobs_reach_orchestrator(
     assert "auto_escalate_max" in r.output
 
 
+def test_cli_enable_vvv9h_apply_flag_sets_env_var(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """beta2344 — --enable-vvv9h-apply 플래그가 AUTO_TESSELL_VVV9H_APPLY 환경변수 설정."""
+    from cli.main import run
+    monkeypatch.delenv("AUTO_TESSELL_VVV9H_APPLY", raising=False)
+    r = runner.invoke(run, [
+        STL_PATH, "--dry-run", "--mesh-type", "tet", "--quality", "fine",
+        "--enable-vvv9h-apply",
+    ])
+    assert r.exit_code == 0
+    import os
+    assert os.environ.get("AUTO_TESSELL_VVV9H_APPLY") == "1"
+
+
+def test_cli_enable_offplane_steiner_flag_sets_env_var(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """beta2344 — --enable-offplane-steiner 플래그도 동등."""
+    from cli.main import run
+    monkeypatch.delenv("AUTO_TESSELL_OFFPLANE_STEINER", raising=False)
+    r = runner.invoke(run, [
+        STL_PATH, "--dry-run", "--mesh-type", "tet", "--quality", "fine",
+        "--enable-offplane-steiner",
+    ])
+    assert r.exit_code == 0
+    import os
+    assert os.environ.get("AUTO_TESSELL_OFFPLANE_STEINER") == "1"
+
+
 def test_tier_param_native_hex_post_smooth_keys_reach_orchestrator(
     runner: CliRunner,
 ) -> None:
