@@ -52,16 +52,29 @@ def _vertex_quadrics(
     """vertex 별 quadric Q_v 누적. (N, 4, 4).
 
     Q_v = sum over incident face f of (p_f) (p_f)^T where p_f is plane eqn.
+
+    C-PERF-20 / beta2470 — 벡터화: face plane 일괄 계산 + np.add.at scatter.
     """
     N = V.shape[0]
     Q = np.zeros((N, 4, 4), dtype=np.float64)
-    for fi in range(F.shape[0]):
-        p = _face_plane(V, F[fi])
-        if np.allclose(p, 0):
-            continue
-        Kp = np.outer(p, p)
-        for v in F[fi]:
-            Q[int(v)] += Kp
+    if F.shape[0] == 0:
+        return Q
+    # Vectorized face planes (4-vec per face).
+    v0 = V[F[:, 0]]; v1 = V[F[:, 1]]; v2 = V[F[:, 2]]
+    nrm = np.cross(v1 - v0, v2 - v0)             # (F, 3)
+    nlen = np.linalg.norm(nrm, axis=1)           # (F,)
+    valid = nlen > 1e-30
+    nrm_unit = np.zeros_like(nrm)
+    nrm_unit[valid] = nrm[valid] / nlen[valid, None]
+    d = -np.einsum("ij,ij->i", nrm_unit, v0)     # (F,)
+    p = np.zeros((F.shape[0], 4), dtype=np.float64)
+    p[:, :3] = nrm_unit
+    p[:, 3] = d
+    p[~valid] = 0.0
+    Kp = np.einsum("fi,fj->fij", p, p)            # (F, 4, 4)
+    # Scatter-add Kp into Q at each face's 3 vertex slots.
+    for k in range(3):
+        np.add.at(Q, F[:, k], Kp)
     return Q
 
 
