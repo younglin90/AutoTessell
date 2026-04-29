@@ -77,14 +77,27 @@ def _build_hex_adjacency(hex_cells: np.ndarray) -> _HexAdjCache:
             boundary_verts.update(np.unique(f_s[bnd_starts].ravel()).tolist())
 
     # edge neighbour map for Laplacian smooth
+    # C-PERF-52 / beta2503 — vectorize via flat src/dst (24 directed edges
+    # per hex = 12 pairs × 2 dirs) + sort + bincount-offset + np.unique.
     _EDGE_PAIRS = [(0,1),(1,2),(2,3),(3,0),(4,5),(5,6),(6,7),(7,4),
                    (0,4),(1,5),(2,6),(3,7)]
     n_pts = int(hex_cells.max()) + 1 if n_cells > 0 else 0
-    edge_nbrs: list[set[int]] = [set() for _ in range(n_pts)]
-    for ci in range(n_cells):
-        for a, b in _EDGE_PAIRS:
-            va = int(hex_cells[ci, a]); vb = int(hex_cells[ci, b])
-            edge_nbrs[va].add(vb); edge_nbrs[vb].add(va)
+    if n_cells == 0:
+        edge_nbrs: list[set[int]] = [set() for _ in range(n_pts)]
+    else:
+        ep_arr = np.array(_EDGE_PAIRS, dtype=np.int64)         # (12, 2)
+        # both directions: (24, 2) per hex
+        ep_dir = np.concatenate([ep_arr, ep_arr[:, [1, 0]]])   # (24, 2)
+        src_en = hex_cells[:, ep_dir[:, 0]].reshape(-1).astype(np.int64)
+        dst_en = hex_cells[:, ep_dir[:, 1]].reshape(-1).astype(np.int64)
+        order_en = np.argsort(src_en, kind="stable")
+        src_s = src_en[order_en]; dst_s = dst_en[order_en]
+        counts_en = np.bincount(src_s, minlength=n_pts)
+        offs_en = np.concatenate(([0], np.cumsum(counts_en).astype(np.int64)))
+        edge_nbrs = [
+            set(np.unique(dst_s[offs_en[i]:offs_en[i + 1]]).tolist())
+            for i in range(n_pts)
+        ]
 
     result = _HexAdjCache(face_map=face_map, edge_nbrs=edge_nbrs,
                           boundary_verts=boundary_verts)
