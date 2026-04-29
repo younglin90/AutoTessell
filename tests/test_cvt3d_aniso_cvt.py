@@ -93,6 +93,28 @@ def test_mesher_cvt3d_wired() -> None:
     assert "native_tet_cvt3d_lloyd" in src, "log 키 누락"
 
 
+def test_parallel_chunked_delaunay_runs_with_workers() -> None:
+    """C5 / beta2365 — parallel_chunked_delaunay 가 ProcessPool 로 chunk 병렬화."""
+    from core.generator.native_tet.parallel import parallel_chunked_delaunay
+    rng = np.random.RandomState(0)
+    V = (rng.rand(500, 3) * 10.0).astype(np.float64)
+    pts, tets, r = parallel_chunked_delaunay(V, n_div=2, n_workers=2)
+    assert tets.shape[0] > 0
+    assert r.n_chunks >= 1
+    assert r.n_workers <= 2
+
+
+def test_parallel_chunked_delaunay_falls_back_for_small_input() -> None:
+    """C5 / beta2365 — 200 미만 → 단일 process fallback."""
+    from core.generator.native_tet.parallel import parallel_chunked_delaunay
+    rng = np.random.RandomState(0)
+    V = (rng.rand(50, 3) * 10.0).astype(np.float64)
+    _, tets, r = parallel_chunked_delaunay(V, n_div=2, n_workers=4)
+    # 단일 process fallback 시 n_chunks=1.
+    assert r.n_chunks == 1
+    assert r.n_workers == 1
+
+
 def test_voronoi_aniso_cvt_diag_wired() -> None:
     """C4 / beta2363 — voronoi.py 가 aniso_cvt_seeds 호출 (diagnostic)."""
     import inspect
