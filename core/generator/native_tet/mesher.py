@@ -2700,25 +2700,24 @@ def generate_native_tet(
                         fn = np.cross(e1_in, e2_in)
                         fn_len = np.linalg.norm(fn, axis=1, keepdims=True)
                         fn = fn / np.maximum(fn_len, 1e-30)
+                        # C-PERF-62 / beta2513 — vertex normal + Laplacian
+                        # 1-ring scatter 모두 벡터화.
                         vn = np.zeros((n_surface, 3), dtype=np.float64)
-                        for fi in range(F.shape[0]):
-                            for vk in F[fi]:
-                                if int(vk) < n_surface:
-                                    vn[int(vk)] += fn[fi]
+                        for k in range(3):
+                            vk_col = F[:, k].astype(np.int64)
+                            mask_k = vk_col < n_surface
+                            np.add.at(vn, vk_col[mask_k], fn[mask_k])
                         vn_len = np.linalg.norm(vn, axis=1, keepdims=True)
                         vn = vn / np.maximum(vn_len, 1e-30)
                         env = _Env.build_auto_eps(V, F, base_ratio=0.001)
+                        # 6 (vk, wk) 페어 per face: (0,1),(0,2),(1,0),(1,2),(2,0),(2,1)
+                        vk_flat = F[:, [0, 0, 1, 1, 2, 2]].reshape(-1).astype(np.int64)
+                        wk_flat = F[:, [1, 2, 0, 2, 0, 1]].reshape(-1).astype(np.int64)
+                        mask_lap = vk_flat < n_surface
                         nbr_sum = np.zeros((n_surface, 3), dtype=np.float64)
                         nbr_cnt = np.zeros(n_surface, dtype=np.int64)
-                        for fi in range(F.shape[0]):
-                            f = F[fi]
-                            for vk in f:
-                                if int(vk) >= n_surface:
-                                    continue
-                                for wk in f:
-                                    if wk != vk:
-                                        nbr_sum[int(vk)] += V[int(wk)]
-                                        nbr_cnt[int(vk)] += 1
+                        np.add.at(nbr_sum, vk_flat[mask_lap], V[wk_flat[mask_lap]])
+                        np.add.at(nbr_cnt, vk_flat[mask_lap], 1)
                         target_pts = nbr_sum / np.maximum(nbr_cnt[:, None], 1)
                     new_pts = _envelope_bounded_relocate(
                         final_pts, surface_idx, target_pts, vn, env,
