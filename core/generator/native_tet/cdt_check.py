@@ -28,7 +28,10 @@ class CDTCheckResult:
 
 
 def _tet_triangles(tets: np.ndarray) -> set[tuple[int, int, int]]:
-    """tet 배열의 모든 face (canonical sorted)."""
+    """tet 배열의 모든 face (canonical sorted).
+
+    C-PERF-34 / beta2485 — vectorized via np.unique on packed key.
+    """
     tets = np.asarray(tets, dtype=np.int64)
     if tets.size == 0:
         return set()
@@ -38,10 +41,17 @@ def _tet_triangles(tets: np.ndarray) -> set[tuple[int, int, int]]:
         axis=1,
     ).reshape(-1, 3)
     faces = np.sort(faces, axis=1)
-    s: set[tuple[int, int, int]] = set()
-    for i in range(faces.shape[0]):
-        s.add((int(faces[i, 0]), int(faces[i, 1]), int(faces[i, 2])))
-    return s
+    n_max = int(tets.max()) + 1 if tets.size > 0 else 1
+    pack = (
+        faces[:, 0].astype(np.int64) * (n_max * n_max)
+        + faces[:, 1].astype(np.int64) * n_max
+        + faces[:, 2].astype(np.int64)
+    )
+    uniq = np.unique(pack)
+    a = (uniq // (n_max * n_max)).tolist()
+    b = ((uniq // n_max) % n_max).tolist()
+    c = (uniq % n_max).tolist()
+    return set(zip(a, b, c))
 
 
 def _tet_edges(tets: np.ndarray) -> set[tuple[int, int]]:
