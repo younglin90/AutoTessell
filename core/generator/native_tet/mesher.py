@@ -3908,11 +3908,16 @@ def generate_native_tet(
     log.info("native_tet_pass_timing", pass_name="VAL1", dt_ms=int((time.perf_counter() - _t_val1) * 1000))
 
     # RUN_SUMMARY (beta2157) — aggregate post-pass counts (observability only).
+    # C-VAL-5 / beta2402 — final mean_q 노출 (cycle 별 quality progression 추적).
+    _final_mq = float(getattr(final_quality, "mean_q", 0.0)) if final_quality else 0.0
+    _final_min_q = float(getattr(final_quality, "min_q", 0.0)) if final_quality else 0.0
     log.info(
         "native_tet_run_summary",
         n_cells=n_cells,
         n_points=n_points,
         grade=grade,
+        mean_q=round(_final_mq, 4),
+        min_q=round(_final_min_q, 4),
         n_sliver_detected=int(locals().get("_n_sliver_pre", 0) or 0),
         n_aniso_detected=int(locals().get("_n_aniso_pre", 0) or 0),
         n_chains=int(locals().get("_n711", 0) or 0),
