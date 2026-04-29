@@ -189,6 +189,18 @@ def _write_page(pdf, data: ReportData) -> None:
             ax_pass.text(0.7, y, f"실측: {val}", fontsize=9, color="#5a6270",
                          family="monospace")
 
+    # C-GUI-11 / beta2428 — BL stats info row (if BL ran).
+    if data.bl_n_prism_cells > 0:
+        bl_info = (
+            f"BL: prism={data.bl_n_prism_cells:,}, "
+            f"LCR_reduced={data.bl_lcr_n_reduced_verts}, "
+            f"aniso_split_would={data.bl_aniso_split_n_would_split}"
+        )
+        ax_pass.text(
+            0.0, -0.25, bl_info,
+            fontsize=8, color="#5a6270", family="monospace",
+        )
+
     # ── 푸터 ────────────────────────────────────────────────────────
     ax_footer = fig.add_axes([0.05, 0.01, 0.90, 0.03])
     ax_footer.axis("off")
