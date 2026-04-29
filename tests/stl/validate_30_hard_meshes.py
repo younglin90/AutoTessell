@@ -51,14 +51,13 @@ def _pick_hard_meshes(n: int = 10, seed: int = 42) -> list[dict]:
 
 
 def _gen_tet(V, F, td: Path) -> dict:
+    """Tet via fine-quality HARNESS_PARAMS (실 fine path 검증)."""
     from core.generator.native_tet.mesher import generate_native_tet
+    from core.generator._tier_native_common import HARNESS_PARAMS
+    fine_p = dict(HARNESS_PARAMS["tier_native_tet"]["fine"])
     t0 = time.perf_counter()
     try:
-        r = generate_native_tet(
-            V, F, td / "c", seed_density=10, enable_phase_a=True,
-            enable_phase_b=True, enable_cdt_recovery=True,
-            max_input_vertices=200000,
-        )
+        r = generate_native_tet(V, F, td / "c", **fine_p)
     except Exception as exc:
         return {"success": False, "elapsed": time.perf_counter() - t0,
                 "exc": str(exc)[:160]}
@@ -72,10 +71,13 @@ def _gen_tet(V, F, td: Path) -> dict:
 
 
 def _gen_hex(V, F, td: Path) -> dict:
+    """Hex via fine-quality HARNESS_PARAMS."""
     from core.generator.native_hex.mesher import generate_native_hex
+    from core.generator._tier_native_common import HARNESS_PARAMS
+    fine_p = dict(HARNESS_PARAMS["tier_native_hex"]["fine"])
     t0 = time.perf_counter()
     try:
-        r = generate_native_hex(V, F, td / "c", seed_density=14)
+        r = generate_native_hex(V, F, td / "c", **fine_p)
     except Exception as exc:
         return {"success": False, "elapsed": time.perf_counter() - t0,
                 "exc": str(exc)[:160]}
@@ -87,10 +89,13 @@ def _gen_hex(V, F, td: Path) -> dict:
 
 
 def _gen_poly(V, F, td: Path) -> dict:
+    """Poly via fine-quality HARNESS_PARAMS."""
     from core.generator.native_poly.voronoi import generate_native_poly_voronoi
+    from core.generator._tier_native_common import HARNESS_PARAMS
+    fine_p = dict(HARNESS_PARAMS["tier_native_poly"]["fine"])
     t0 = time.perf_counter()
     try:
-        r = generate_native_poly_voronoi(V, F, td / "c", seed_density=10)
+        r = generate_native_poly_voronoi(V, F, td / "c", **fine_p)
     except Exception as exc:
         return {"success": False, "elapsed": time.perf_counter() - t0,
                 "exc": str(exc)[:160]}
