@@ -1022,9 +1022,9 @@ def _curvature_adaptive_thickness(
     # validator 발견: hard mesh 의 small edge 가 thickness 를 1e-7 까지 떨어뜨려
     # prism aspect 580k+ 발생. median 사용 시 small outlier edge 영향 약화.
     # cfMesh maxFirstLayerThickness 도 median-of-incident-edges 사용.
-    # C-BL-9 / beta2440 — 절대 floor 추가: thickness 가 base_thickness 의
-    # 10% 미만 떨어지지 않도록 — 전체 BL 의 quality 안정성 보장.
-    _absolute_floor = float(base_thickness) * 0.1
+    # C-BL-9 / beta2440 (revised beta2441) — 절대 floor: base_thickness 의
+    # 30% (이전 10%). 더 보수적 floor 로 추가 aspect 안정화.
+    _absolute_floor = float(base_thickness) * 0.3
     for vi, v in enumerate(wall_vert_indices):
         nbrs = neighbours[v]
         if not nbrs:
