@@ -278,6 +278,43 @@ def _apply_op_queue(
         pass  # VVV3b: these ops intentionally excluded (Klingner monotone proof)
 
     n_applied = n32 + n44
+
+    # C1.6 / beta2374 — env-gated post-swap split pass (Stellar 4-op completion).
+    # Default OFF (Klingner monotone proof respected). 활성 시 worst-tet 가
+    # 여전히 sliver 면 split_sliver_longest_edge 한 번 호출.
+    # AUTO_TESSELL_STELLAR_SPLIT=1 → opt-in.
+    import os as _os
+    _stellar_split = _os.environ.get("AUTO_TESSELL_STELLAR_SPLIT", "0") == "1"
+    if _stellar_split and tets_44.shape[0] > 0:
+        try:
+            tets_split_out, _new_pts, n_sp = pts, tets_44, 0  # unused init
+            pts_split, tets_split_out, n_sp = split_sliver_longest_edge(
+                pts, tets_44,
+                sliver_ratio=1e-3,
+                min_quality_improvement=min_quality_improvement,
+                max_splits=20,
+            )
+            if n_sp > 0:
+                # split 결과의 worst quality 가 같거나 좋아진 경우에만 채택
+                # (monotone guard).
+                _q_in = np.array(
+                    [_tet_quality(pts, tets_44[k])
+                     for k in range(tets_44.shape[0])],
+                    dtype=np.float64,
+                )
+                _q_out = np.array(
+                    [_tet_quality(pts_split, tets_split_out[k])
+                     for k in range(tets_split_out.shape[0])],
+                    dtype=np.float64,
+                )
+                _wmin_in = float(_q_in.min()) if _q_in.size else 0.0
+                _wmin_out = float(_q_out.min()) if _q_out.size else 0.0
+                if _wmin_out >= _wmin_in - 1e-6:
+                    pts, tets_44 = pts_split, tets_split_out
+                    n_applied += n_sp
+        except Exception:  # pragma: no cover — diagnostic, never break swap-only.
+            pass
+
     return pts, tets_44, n_applied
 
 

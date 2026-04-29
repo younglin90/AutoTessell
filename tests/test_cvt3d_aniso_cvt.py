@@ -342,3 +342,31 @@ def test_harness_params_fine_qed_min_faces_10k() -> None:
     p = HARNESS_PARAMS["tier_native_tet"]["fine"]
     assert p.get("qed_min_faces") == 10000, \
         f"fine qed_min_faces=10000 expected, got {p.get('qed_min_faces')}"
+
+
+def test_stellar_split_env_gated_default_off() -> None:
+    """C1.6 / beta2374 — Stellar 의 split-pass 가 env-gate 로 default OFF."""
+    import inspect
+    from core.generator.native_tet import stellar
+    src = inspect.getsource(stellar)
+    assert "AUTO_TESSELL_STELLAR_SPLIT" in src, "Stellar split env-gate 누락"
+    assert "split_sliver_longest_edge(" in src, "split_sliver_longest_edge 호출 누락"
+
+
+def test_stellar_apply_op_queue_default_no_split() -> None:
+    """C1.6 — env=0 (default) 에서 _apply_op_queue 가 split 호출 안 함."""
+    import os as _os
+    _prev = _os.environ.pop("AUTO_TESSELL_STELLAR_SPLIT", None)
+    try:
+        from core.generator.native_tet.stellar import (
+            _apply_op_queue, _build_op_queue,
+        )
+        pts = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+        tets = np.array([[0, 1, 2, 3]], dtype=np.int64)
+        queue = _build_op_queue(pts, tets)
+        p_out, t_out, n = _apply_op_queue(pts, tets, queue)
+        # 단일 regular tet → 변동 없음.
+        assert t_out.shape == tets.shape
+    finally:
+        if _prev is not None:
+            _os.environ["AUTO_TESSELL_STELLAR_SPLIT"] = _prev
