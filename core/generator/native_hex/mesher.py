@@ -416,6 +416,26 @@ def generate_native_hex(
     if V.size == 0 or F.size == 0:
         return NativeHexResult(False, 0.0, message="빈 입력 mesh")
 
+    # beta2338 — pre-mesh self-intersect capture (P2.6 chain).
+    # ≤5000 face 만 측정 (KDTree 비용 회피). result.n_self_intersect_pre 에
+    # 저장되어 harness / bench / GUI 에서 활용 가능.
+    _pre_mesh_si_count: int | None = None
+    try:
+        if int(F.shape[0]) <= 5000:
+            from core.preprocessor.native_repair.self_intersect import (
+                detect_self_intersections as _det_si_hex,
+            )
+            _r_si = _det_si_hex(V, F)
+            _pre_mesh_si_count = int(_r_si.n_intersections)
+            if _r_si.has_self_intersection:
+                log.warning(
+                    "native_hex_pre_mesh_self_intersect",
+                    n_intersections=_pre_mesh_si_count,
+                    n_faces=int(F.shape[0]),
+                )
+    except Exception as _exc_si:
+        log.debug("native_hex_si_diag_skipped", reason=str(_exc_si)[:120])
+
     # PRE3 (beta2149) — input CVT isotropic remesh on high edge-length-ratio.
     # Botsch & Kobbelt 2004 isotropic remesh — gated by edge_length_ratio > 100
     # or n_faces > 200 000. Default ON; set AUTO_TESSELL_PRE3_HEX_OFF=1 to disable.
@@ -936,4 +956,6 @@ def generate_native_hex(
         max_aspect=float(max_asp),
         plane_coverage=float(plane_cov),
         plane_area_coverage=float(plane_area),
+        # beta2338 — pre-mesh SI count.
+        n_self_intersect_pre=_pre_mesh_si_count,
     )

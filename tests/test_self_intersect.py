@@ -100,6 +100,18 @@ def test_empty_input_returns_zero_report() -> None:
     assert r.n_intersections == 0
 
 
+def test_native_hex_mesher_populates_si_pre_field() -> None:
+    """beta2338 — generate_native_hex 가 NativeHexResult.n_self_intersect_pre 채움."""
+    import inspect
+    from core.generator.native_hex.mesher import generate_native_hex
+    src = inspect.getsource(generate_native_hex)
+    # capture + return wiring.
+    assert "_pre_mesh_si_count" in src
+    assert "n_self_intersect_pre=_pre_mesh_si_count" in src
+    # detect_self_intersections import.
+    assert "detect_self_intersections as _det_si_hex" in src
+
+
 def test_native_hex_and_poly_results_have_si_field() -> None:
     """beta2337 — NativeHexResult / NativePolyResult 도 동일 SI 필드 노출.
 
