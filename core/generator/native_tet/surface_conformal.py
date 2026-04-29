@@ -32,12 +32,23 @@ class SurfaceConformalResult:
 
 
 def _input_faces_present_set(F_surf: np.ndarray) -> set[tuple[int, int, int]]:
-    out: set[tuple[int, int, int]] = set()
-    for ti in range(F_surf.shape[0]):
-        a, b, c = (int(x) for x in F_surf[ti])
-        s = tuple(sorted((a, b, c)))
-        out.add(s)
-    return out
+    """C-PERF-55 / beta2506 — vectorize via packed-key np.unique."""
+    F_surf = np.asarray(F_surf, dtype=np.int64)
+    if F_surf.size == 0:
+        return set()
+    sf = np.sort(F_surf, axis=1)
+    n_max = int(F_surf.max()) + 1
+    pack = (
+        sf[:, 0] * (n_max * n_max)
+        + sf[:, 1] * n_max
+        + sf[:, 2]
+    )
+    uniq = np.unique(pack)
+    return set(zip(
+        (uniq // (n_max * n_max)).tolist(),
+        ((uniq // n_max) % n_max).tolist(),
+        (uniq % n_max).tolist(),
+    ))
 
 
 def _tet_faces_set(tets: np.ndarray) -> set[tuple[int, int, int]]:
