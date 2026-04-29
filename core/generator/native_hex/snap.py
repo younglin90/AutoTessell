@@ -291,14 +291,23 @@ def _build_vertex_neighbors_from_triangles(
     n_vertices: int,
     surface_F: np.ndarray,
 ) -> list[list[int]]:
-    """각 vertex 의 이웃 vertex 목록 (triangle adjacency). Laplacian smoothing 용."""
-    nbrs: list[set[int]] = [set() for _ in range(n_vertices)]
-    for tri in surface_F:
-        a, b, c = int(tri[0]), int(tri[1]), int(tri[2])
-        nbrs[a].add(b); nbrs[a].add(c)
-        nbrs[b].add(a); nbrs[b].add(c)
-        nbrs[c].add(a); nbrs[c].add(b)
-    return [list(s) for s in nbrs]
+    """각 vertex 의 이웃 vertex 목록 (triangle adjacency). Laplacian smoothing 용.
+
+    C-PERF-26 / beta2477 — vectorized via flat directed-edge arrays + sort-offset
+    grouping + per-vertex unique slice.
+    """
+    if surface_F.size == 0:
+        return [[] for _ in range(n_vertices)]
+    src = surface_F[:, [0, 0, 1, 1, 2, 2]].reshape(-1).astype(np.int64)
+    dst = surface_F[:, [1, 2, 0, 2, 0, 1]].reshape(-1).astype(np.int64)
+    order = np.argsort(src, kind="stable")
+    src_s = src[order]; dst_s = dst[order]
+    counts = np.bincount(src_s, minlength=n_vertices)
+    offsets = np.concatenate(([0], np.cumsum(counts).astype(np.int64)))
+    return [
+        np.unique(dst_s[offsets[i]:offsets[i + 1]]).tolist()
+        for i in range(n_vertices)
+    ]
 
 
 def snap_to_surface_iterative(
