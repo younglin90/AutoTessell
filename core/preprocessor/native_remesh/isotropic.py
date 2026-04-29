@@ -35,10 +35,22 @@ def _edge_key(a: int, b: int) -> tuple[int, int]:
 
 
 def _build_edge_map(faces: np.ndarray) -> dict[tuple[int, int], list[int]]:
+    """C-PERF-50 / beta2501 — vectorize via lexsort + group-boundary."""
+    F = np.asarray(faces, dtype=np.int64)
+    if F.size == 0:
+        return defaultdict(list)
+    src = F[:, [0, 1, 2]].reshape(-1)
+    dst = F[:, [1, 2, 0]].reshape(-1)
+    fi_arr = np.repeat(np.arange(F.shape[0], dtype=np.int64), 3)
+    u = np.minimum(src, dst); v = np.maximum(src, dst)
+    order = np.lexsort((v, u))
+    u_s = u[order]; v_s = v[order]; fi_s = fi_arr[order]
+    diff = np.r_[True, (u_s[1:] != u_s[:-1]) | (v_s[1:] != v_s[:-1])]
+    starts = np.where(diff)[0]
+    ends = np.r_[starts[1:], len(u_s)]
     m: dict[tuple[int, int], list[int]] = defaultdict(list)
-    for fi, f in enumerate(faces):
-        for a, b in ((f[0], f[1]), (f[1], f[2]), (f[2], f[0])):
-            m[_edge_key(int(a), int(b))].append(int(fi))
+    for s, e in zip(starts.tolist(), ends.tolist()):
+        m[(int(u_s[s]), int(v_s[s]))] = fi_s[s:e].tolist()
     return m
 
 
