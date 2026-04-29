@@ -249,3 +249,58 @@ def test_split_thick_prisms_empty() -> None:
     assert r.n_input_prisms == 0
     assert new_p.shape == (0, 3)
     assert new_pr.shape == (0, 6)
+
+
+def test_extrude_hex_bl_single_quad_3_layers() -> None:
+    """C6.1 / beta2371 — 단일 wall quad, 3-layer extrude → 3 hex cell."""
+    from core.layers.native_hex_bl import extrude_hex_bl
+    pts = np.array(
+        [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]],
+        dtype=np.float64,
+    )
+    quads = np.array([[0, 1, 2, 3]], dtype=np.int64)
+    vnorm = np.tile([0.0, 0.0, 1.0], (4, 1))
+    new_p, hexes, r = extrude_hex_bl(
+        pts, quads, vnorm,
+        num_layers=3, first_thickness=0.1, growth_ratio=1.2,
+    )
+    assert r.n_hex_cells == 3
+    assert r.n_wall_verts == 4
+    assert r.n_new_points == 12
+    assert hexes.shape == (3, 8)
+    assert new_p.shape == (16, 3)
+    # bottom of first hex = original vertices.
+    assert hexes[0, 0:4].tolist() == [0, 1, 2, 3]
+    # top of last hex = farthest layer vertices.
+    assert hexes[2, 4:8].tolist() == [12, 13, 14, 15]
+
+
+def test_extrude_hex_bl_thickness_geometric() -> None:
+    """C6.1 — thickness 합이 geometric series total 와 일치."""
+    from core.layers.native_hex_bl import extrude_hex_bl
+    pts = np.array(
+        [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]],
+        dtype=np.float64,
+    )
+    quads = np.array([[0, 1, 2, 3]], dtype=np.int64)
+    vnorm = np.tile([0.0, 0.0, 1.0], (4, 1))
+    _, _, r = extrude_hex_bl(
+        pts, quads, vnorm,
+        num_layers=4, first_thickness=0.1, growth_ratio=1.5,
+    )
+    expected = 0.1 * (1.0 + 1.5 + 1.5**2 + 1.5**3)
+    assert abs(r.total_thickness - expected) < 1e-12
+
+
+def test_extrude_hex_bl_empty() -> None:
+    """C6.1 — 빈 입력 정상 처리."""
+    from core.layers.native_hex_bl import extrude_hex_bl
+    pts = np.zeros((0, 3), dtype=np.float64)
+    quads = np.zeros((0, 4), dtype=np.int64)
+    vnorm = np.zeros((0, 3), dtype=np.float64)
+    new_p, hexes, r = extrude_hex_bl(
+        pts, quads, vnorm, num_layers=3, first_thickness=0.1,
+    )
+    assert r.n_wall_quads == 0
+    assert r.n_hex_cells == 0
+    assert hexes.shape == (0, 8)
