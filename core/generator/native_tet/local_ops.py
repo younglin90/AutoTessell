@@ -454,10 +454,23 @@ def _collapse_short_edges_legacy(
     alive = np.ones(tets.shape[0], dtype=bool)
 
     # vertex → tet id set. 매번 재계산 대신 증분 갱신.
+    # C-PERF-59 / beta2510 — vectorize via flat sort + bincount-offset.
     v2t: dict[int, set[int]] = {}
-    for ti in range(tets.shape[0]):
-        for vi in tets[ti]:
-            v2t.setdefault(int(vi), set()).add(ti)
+    if tets.shape[0] > 0:
+        flat_v_v2t = tets.reshape(-1).astype(np.int64)
+        flat_t_v2t = np.repeat(
+            np.arange(tets.shape[0], dtype=np.int64), 4,
+        )
+        order_v2t = np.argsort(flat_v_v2t, kind="stable")
+        sorted_v_v2t = flat_v_v2t[order_v2t]
+        sorted_t_v2t = flat_t_v2t[order_v2t]
+        n_v_v2t = int(flat_v_v2t.max()) + 1 if flat_v_v2t.size > 0 else 0
+        counts_v2t = np.bincount(sorted_v_v2t, minlength=n_v_v2t)
+        offs_v2t = np.concatenate(([0], np.cumsum(counts_v2t).astype(np.int64)))
+        for v_int in range(n_v_v2t):
+            sl = sorted_t_v2t[offs_v2t[v_int]:offs_v2t[v_int + 1]]
+            if sl.size > 0:
+                v2t[v_int] = set(sl.tolist())
 
     for _ in range(max_collapses):
         current = tets[alive]
