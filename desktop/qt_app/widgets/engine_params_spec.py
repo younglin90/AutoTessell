@@ -505,6 +505,18 @@ ENGINE_PARAM_REGISTRY: dict[str, list[EngineParamSpec]] = {
                 "y+ 목표에 따라 결정 (예: y+~1 → 1e-5, y+~30 → 1e-3)."
             ),
         ),
+        # beta2316 — BL 전체 두께 cap (bbox 대비 비율). 이전엔 wired 됐지만
+        # GUI spec 미정의 (post_layers_max_total_ratio).
+        EngineParamSpec(
+            "post_layers_max_total_ratio",
+            "max_total_ratio (BL cap)", "float", 0.3,
+            min_val=0.01, max_val=0.95, step=0.05,
+            doc=(
+                "BL 전체 두께가 bbox_diag × max_total_ratio 를 넘으면 자동 축소.\n"
+                "0.3 = bbox 의 30% (default). 작을수록 보수적 (좁은 channel),\n"
+                "클수록 두꺼운 BL 허용 (외부 유동)."
+            ),
+        ),
         EngineParamSpec(
             "post_layers_refine_wall_fraction",
             "refine_wall_fraction", "float", 0.3,

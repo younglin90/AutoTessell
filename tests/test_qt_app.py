@@ -3875,6 +3875,18 @@ def test_gui_engine_spec_layers_post_exposes_phase2_keys() -> None:
     assert not missing, f"layers_post spec 에 누락된 Phase 2 필드: {missing}"
 
 
+def test_gui_engine_spec_layers_post_exposes_max_total_ratio() -> None:
+    """beta2316 — layers_post spec 에 post_layers_max_total_ratio 노출.
+
+    이전엔 tier_layers_post.py:76 + line 1378 에서 wired 됐지만 GUI spec
+    미정의. 사용자가 BL 전체 두께 cap 을 GUI 에서 조정할 방법 없었다."""
+    from desktop.qt_app.widgets.engine_params_spec import ENGINE_PARAM_REGISTRY
+    specs = ENGINE_PARAM_REGISTRY.get("layers_post", [])
+    keys = {s.key for s in specs}
+    assert "post_layers_max_total_ratio" in keys, \
+        f"post_layers_max_total_ratio 누락: {keys}"
+
+
 def test_gui_engine_spec_native_tet_exposes_use_torch_amips() -> None:
     """beta2315 — native_tet spec 에 use_torch_amips knob 노출.
 
