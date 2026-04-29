@@ -107,7 +107,9 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
                      "feature_angle_deg": 40.0,
                      "enable_post_smooth": True,
                      "post_smooth_iterations": 3,
-                     "post_smooth_relax": 0.3},
+                     "post_smooth_relax": 0.3,
+                     # P2.4 / beta2313 — fine 에 buffer 1 cell (snappy default).
+                     "hex_buffer_cells": 1},
     },
     "tier_native_poly": {
         # beta97: smooth_iters — dual 이후 Laplacian smoothing 횟수.
@@ -271,6 +273,8 @@ def run_native_tier(
         "enable_phase_c",          # envelope+quality stop (beta125)
         # P2.2 / beta2310: AMIPS torch 라우팅 (fine + CUDA 자동).
         "use_torch_amips",
+        # P2.4 / beta2313: hex buffer cells (snappy nBufferCellsNoExtrude 동등).
+        "hex_buffer_cells",
     }
     tsp = getattr(strategy, "tier_specific_params", None) or {}
     for k in _TIER_PARAM_KEYS:

@@ -381,6 +381,13 @@ def generate_native_hex(
     enable_post_smooth: bool = False,
     post_smooth_iterations: int = 2,
     post_smooth_relax: float = 0.3,
+    # P2.4 / beta2313 — snappy nBufferCellsNoExtrude 동등 buffer layer.
+    # 0=비활성, 1=1-cell 두께 buffer (default), 2+=더 두꺼운 buffer.
+    # _add_buffer_layer_between_levels (octree.py) 가 직접 사용.
+    # 이 인자는 HARNESS_PARAMS / GUI spec / CLI 도달용 — 실제 octree
+    # 호출은 환경변수 AUTO_TESSELL_HEX_BUFFER_LAYER 를 검사하므로 여기서
+    # 환경변수 임시 설정하는 단발 wiring.
+    hex_buffer_cells: int = 1,
 ) -> NativeHexResult:
     """uniform hex grid 생성 + inside filter.
 
@@ -456,12 +463,23 @@ def generate_native_hex(
     if adaptive:
         try:
             from core.generator.native_hex.octree import build_octree_hex_cells  # noqa: PLC0415
-            oct_pts, oct_cells, oct_stats = build_octree_hex_cells(
-                V, F, bmin_pre, bmax_pre, h_pre,
-                max_cells_per_axis=max_cells_per_axis,
-                n_levels=n_levels,
-                refinement_distance_factor=refinement_distance_factor,
-            )
+            # P2.4 / beta2313 — hex_buffer_cells kwarg → env var 로 octree 에 전달.
+            import os as _os_hbc
+            _prev_buf = _os_hbc.environ.get("AUTO_TESSELL_HEX_BUFFER_LAYER")
+            _os_hbc.environ["AUTO_TESSELL_HEX_BUFFER_LAYER"] = str(int(hex_buffer_cells))
+            try:
+                oct_pts, oct_cells, oct_stats = build_octree_hex_cells(
+                    V, F, bmin_pre, bmax_pre, h_pre,
+                    max_cells_per_axis=max_cells_per_axis,
+                    n_levels=n_levels,
+                    refinement_distance_factor=refinement_distance_factor,
+                )
+            finally:
+                # 환경변수 복원 — 외부 caller 영향 0.
+                if _prev_buf is None:
+                    _os_hbc.environ.pop("AUTO_TESSELL_HEX_BUFFER_LAYER", None)
+                else:
+                    _os_hbc.environ["AUTO_TESSELL_HEX_BUFFER_LAYER"] = _prev_buf
             if oct_cells:
                 # beta94: iterative snap step (adaptive 경로)
                 if snap_iterations > 0:

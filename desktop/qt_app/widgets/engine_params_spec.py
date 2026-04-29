@@ -841,6 +841,16 @@ ENGINE_PARAM_REGISTRY: dict[str, list[EngineParamSpec]] = {
             min_val=0.0, max_val=1.0, step=0.05,
             doc="Laplacian relaxation factor (0.3 = 30% blend).",
         ),
+        # beta2313 — snappy nBufferCellsNoExtrude 동등 buffer layer.
+        EngineParamSpec(
+            "hex_buffer_cells", "buffer cells (snappy)", "int", 1,
+            min_val=0, max_val=10,
+            doc=(
+                "refinement level 경계에 추가할 buffer cell 두께.\n"
+                "0 = 비활성, 1 = 1-cell 두께 (snappy default), 2+ = 더 부드러움.\n"
+                "level transition jagged 셀의 hex skewness 개선."
+            ),
+        ),
     ],
     "native_poly": [
         EngineParamSpec(

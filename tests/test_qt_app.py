@@ -3875,6 +3875,24 @@ def test_gui_engine_spec_layers_post_exposes_phase2_keys() -> None:
     assert not missing, f"layers_post spec 에 누락된 Phase 2 필드: {missing}"
 
 
+def test_gui_engine_spec_native_hex_exposes_buffer_cells() -> None:
+    """beta2313 — native_hex spec 에 hex_buffer_cells 노출 + HARNESS fine 활성."""
+    from desktop.qt_app.widgets.engine_params_spec import ENGINE_PARAM_REGISTRY
+    from core.generator._tier_native_common import HARNESS_PARAMS, run_native_tier
+
+    specs = ENGINE_PARAM_REGISTRY.get("native_hex", [])
+    keys = {s.key for s in specs}
+    assert "hex_buffer_cells" in keys, f"native_hex spec hex_buffer_cells 누락: {keys}"
+
+    fine = HARNESS_PARAMS["tier_native_hex"]["fine"]
+    assert fine.get("hex_buffer_cells") == 1, \
+        "fine 에 hex_buffer_cells=1 자동 활성 누락"
+
+    import inspect
+    src = inspect.getsource(run_native_tier)
+    assert '"hex_buffer_cells"' in src, "_TIER_PARAM_KEYS allowlist 누락"
+
+
 def test_gui_engine_spec_native_hex_exposes_post_smooth() -> None:
     """beta2293 — native_hex spec 가 X3 boundary Laplacian post-smooth 3 필드 노출.
 
