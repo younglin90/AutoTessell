@@ -3192,15 +3192,39 @@ def generate_native_tet(
                         mode="dry_run",
                     )
                     # results discard — final_pts/final_tets unchanged unless AUTO_TESSELL_VVV9K_APPLY=1
+                    # beta2320 — monotone guard 추가 (이전엔 _delta >= 0 + n_imp ≥ 1
+                    #            만 — min_q drop 검사 없어 worst quality 악화 가능).
+                    #            RRR2 와 동일 임계 (worst ≤ 0.015 drop + mean 향상)
+                    #            로 안전성 ↑.
                     if _VVV9K_APPLY_REAL and _delta >= 0.0 and int(_n_imp) >= 1:
-                        final_pts, final_tets = _pts2, _tets2
-                        log.info(
-                            "native_tet_vvv9k7_real_apply",
-                            n_improved=int(_n_imp),
-                            total_delta=float(_delta),
-                            wall_ms=_wall_ms_9k,
-                            mode="apply",
-                        )
+                        _wd_9k = 0.0
+                        _mg_9k = 0.0
+                        _ok_9k = False
+                        try:
+                            _pre_9k = _qsnap_9k(final_pts, final_tets)
+                            _post_9k = _qsnap_9k(_pts2, _tets2)
+                            _wd_9k = float(_pre_9k.min_q) - float(_post_9k.min_q)
+                            _mg_9k = float(_post_9k.mean_q) - float(_pre_9k.mean_q)
+                            _ok_9k = _wd_9k <= 0.015 and _mg_9k >= -1e-12
+                        except Exception:
+                            _ok_9k = False
+                        if _ok_9k:
+                            final_pts, final_tets = _pts2, _tets2
+                            log.info(
+                                "native_tet_vvv9k7_real_apply",
+                                n_improved=int(_n_imp),
+                                total_delta=float(_delta),
+                                worst_drop=round(_wd_9k, 4),
+                                mean_gain=round(_mg_9k, 4),
+                                wall_ms=_wall_ms_9k,
+                                mode="apply",
+                            )
+                        else:
+                            log.info(
+                                "native_tet_vvv9k7_rejected",
+                                worst_drop=round(_wd_9k, 4),
+                                mean_gain=round(_mg_9k, 4),
+                            )
                 except Exception as exc:  # noqa: BLE001
                     log.warning("native_tet_vvv9k_skipped", reason=str(exc)[:120])
             # VVV9N #2 — line-comparison helper diagnostic hook (gate OFF default)

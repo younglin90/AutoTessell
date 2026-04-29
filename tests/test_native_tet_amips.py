@@ -58,6 +58,22 @@ def test_amips_relocation_decreases_energy_on_sliver() -> None:
     assert r.energy_after <= r.energy_before + 1e-6
 
 
+def test_vvv9k_real_apply_has_monotone_guard() -> None:
+    """beta2320 — VVV9K real apply 가 RRR2 와 동일 monotone guard 사용.
+
+    이전엔 _delta >= 0 + n_imp ≥ 1 만 — min_q drop 검사 없어 priority-queue
+    main-loop 가 worst quality 악화시킬 위험. RRR2 와 동일 (worst -0.015
+    + mean improve) 가드 추가."""
+    import inspect
+    from core.generator.native_tet import mesher
+    src = inspect.getsource(mesher)
+    # 새 가드 패턴.
+    assert "_wd_9k <= 0.015" in src, "VVV9K worst-drop ≤ 0.015 guard 누락"
+    assert "_mg_9k >= -1e-12" in src, "VVV9K mean-gain guard 누락"
+    # rejected 로그도 추가됐어야 visibility ↑.
+    assert "native_tet_vvv9k7_rejected" in src, "VVV9K rejected 로그 누락"
+
+
 def test_vvv9h_real_apply_uses_n_applied_key() -> None:
     """beta2319 — VVV9H real apply 가 stats["n_applied"] 로 검사
     (이전 버그: 'accepted' 라는 미존재 key 검사 → env 켜도 dead).
