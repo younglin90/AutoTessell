@@ -102,17 +102,24 @@ def _face_map_vectorized(tets: np.ndarray) -> dict[tuple[int, int, int], list[in
             return m
 
     # --- Python 경로 (fallback) ---
+    # C-PERF-64 / beta2515 — vectorize via lexsort + group-boundary.
     face_arr = np.stack(
         [tets[:, [1, 2, 3]], tets[:, [0, 2, 3]],
          tets[:, [0, 1, 3]], tets[:, [0, 1, 2]]],
         axis=1,
     ).reshape(-1, 3)
     face_arr.sort(axis=1)
+    ti_arr = np.repeat(np.arange(tets.shape[0], dtype=np.int64), 4)
+    order = np.lexsort((face_arr[:, 2], face_arr[:, 1], face_arr[:, 0]))
+    f_s = face_arr[order]
+    ti_s = ti_arr[order]
+    diff = np.r_[True, np.any(f_s[1:] != f_s[:-1], axis=1)]
+    starts = np.where(diff)[0]
+    ends = np.r_[starts[1:], len(f_s)]
     m2: dict[tuple[int, int, int], list[int]] = {}
-    for idx in range(face_arr.shape[0]):
-        ti = idx // 4
-        k = (int(face_arr[idx, 0]), int(face_arr[idx, 1]), int(face_arr[idx, 2]))
-        m2.setdefault(k, []).append(ti)
+    for s, e in zip(starts.tolist(), ends.tolist()):
+        k = (int(f_s[s, 0]), int(f_s[s, 1]), int(f_s[s, 2]))
+        m2[k] = ti_s[s:e].tolist()
     return m2
 
 
