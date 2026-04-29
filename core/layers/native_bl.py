@@ -1018,6 +1018,10 @@ def _curvature_adaptive_thickness(
     curvatures = np.zeros(n_verts, dtype=np.float64)
 
     # BL_REMAIN_VEC: vectorize per-vertex curvature+edge-min loop
+    # C-BL-8 / beta2438 — local_edge_min → local_edge_median 으로 변경.
+    # validator 발견: hard mesh 의 small edge 가 thickness 를 1e-7 까지 떨어뜨려
+    # prism aspect 580k+ 발생. median 사용 시 small outlier edge 영향 약화.
+    # cfMesh maxFirstLayerThickness 도 median-of-incident-edges 사용.
     for vi, v in enumerate(wall_vert_indices):
         nbrs = neighbours[v]
         if not nbrs:
@@ -1027,8 +1031,12 @@ def _curvature_adaptive_thickness(
         diffs = nb_pts - pv                              # (K, 3)
         edge_lens_arr = np.linalg.norm(diffs, axis=1)   # (K,)
         curvatures[vi] = float(np.linalg.norm(diffs.sum(axis=0))) / len(nbrs)
-        local_edge_min = float(edge_lens_arr.min())
-        max_safe = local_edge_min / max_aspect
+        # 양 쪽 절충: 25th percentile (robust against tiny outlier edges).
+        if edge_lens_arr.size >= 2:
+            local_edge_repr = float(np.quantile(edge_lens_arr, 0.25))
+        else:
+            local_edge_repr = float(edge_lens_arr.min())
+        max_safe = local_edge_repr / max_aspect
         thickness[vi] = min(base_thickness, max_safe)
 
     # sharp region: curv > 2 × median → halve thickness (cfMesh rule)
