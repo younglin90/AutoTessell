@@ -703,6 +703,21 @@ def evaluate(
          "환경변수 AUTO_TESSELL_PATCH_CAP 동등.",
 )
 @click.option(
+    "--no-cvt3d", "no_cvt3d", is_flag=True,
+    help="beta2464 — tet 3D Lloyd CVT 비활성 (디버깅/측정용). "
+         "환경변수 AUTO_TESSELL_CVT3D_OFF=1 동등.",
+)
+@click.option(
+    "--no-aniso-cvt", "no_aniso_cvt", is_flag=True,
+    help="beta2464 — poly anisotropic CVT seeds 비활성 (디버깅/측정용). "
+         "환경변수 AUTO_TESSELL_ANISO_CVT_OFF=1 동등.",
+)
+@click.option(
+    "--no-lcr", "no_lcr", is_flag=True,
+    help="beta2464 — BL per-vertex LCR (Pointwise T-Rex) 비활성 (디버깅/측정용). "
+         "환경변수 AUTO_TESSELL_LCR_OFF=1 동등.",
+)
+@click.option(
     "--flow-velocity", type=float, default=1.0, show_default=True,
     help="v0.4.0-beta78+ 유입 속도 [m/s]. 0/U 자동 생성 기준값. "
          "turbulence 필드 (k, epsilon/omega) 에 반영.",
@@ -789,6 +804,9 @@ def run(
     hex_snap_budget_s: float | None,
     lloyd_plateau_thresh: float | None,
     patch_cap: int | None,
+    no_cvt3d: bool,
+    no_aniso_cvt: bool,
+    no_lcr: bool,
     flow_velocity: float,
     turbulence_model: str,
     auto_retry: str,
@@ -863,6 +881,13 @@ def run(
     # C-CLI-5 / beta2459 — polyMesh patch count cap CLI exposure.
     if patch_cap is not None:
         _os_v9.environ["AUTO_TESSELL_PATCH_CAP"] = str(int(patch_cap))
+    # C-CLI-6 / beta2464 — algorithm off-toggle CLI exposure.
+    if no_cvt3d:
+        _os_v9.environ["AUTO_TESSELL_CVT3D_OFF"] = "1"
+    if no_aniso_cvt:
+        _os_v9.environ["AUTO_TESSELL_ANISO_CVT_OFF"] = "1"
+    if no_lcr:
+        _os_v9.environ["AUTO_TESSELL_LCR_OFF"] = "1"
 
     console.print(f"[bold magenta]Auto-Tessell[/bold magenta] {input_file} → {output}")
     console.print(

@@ -770,6 +770,20 @@ def test_stellar_split_sliver_ratio_env_tunable() -> None:
         "max_splits auto-scale 로직 누락"
 
 
+def test_cli_off_toggle_flags_wired() -> None:
+    """C-CLI-6 / beta2464 — --no-cvt3d/--no-aniso-cvt/--no-lcr CLI flag wiring."""
+    import inspect
+    from cli import main as cli_main
+    src = inspect.getsource(cli_main)
+    for flag, env in (
+        ("--no-cvt3d", "AUTO_TESSELL_CVT3D_OFF"),
+        ("--no-aniso-cvt", "AUTO_TESSELL_ANISO_CVT_OFF"),
+        ("--no-lcr", "AUTO_TESSELL_LCR_OFF"),
+    ):
+        assert flag in src, f"{flag} flag 누락"
+        assert env in src, f"{env} env wiring 누락"
+
+
 def test_validator_filter_to_sig_drops_invalid_kwargs() -> None:
     """C-VAL-9 / beta2453 — _filter_to_sig 가 invalid kwargs drop."""
     from tests.stl.validate_30_hard_meshes import _filter_to_sig
