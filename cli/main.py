@@ -655,6 +655,11 @@ def evaluate(
          "환경변수 AUTO_TESSELL_VVV9P_APPLY=1 동등 (monotone guard, beta2321).",
 )
 @click.option(
+    "--parallel-delaunay", is_flag=True,
+    help="beta2365-2366 — V > 30000 시 ProcessPoolExecutor 기반 chunked "
+         "Delaunay 병렬화. 환경변수 AUTO_TESSELL_PARALLEL_DELAUNAY=1 동등.",
+)
+@click.option(
     "--flow-velocity", type=float, default=1.0, show_default=True,
     help="v0.4.0-beta78+ 유입 속도 [m/s]. 0/U 자동 생성 기준값. "
          "turbulence 필드 (k, epsilon/omega) 에 반영.",
@@ -733,6 +738,7 @@ def run(
     enable_vvv9j_apply: bool,
     enable_vvv9k_apply: bool,
     enable_vvv9p_apply: bool,
+    parallel_delaunay: bool,
     flow_velocity: float,
     turbulence_model: str,
     auto_retry: str,
@@ -786,6 +792,8 @@ def run(
         _os_v9.environ["AUTO_TESSELL_VVV9K_APPLY"] = "1"
     if enable_vvv9p_apply:
         _os_v9.environ["AUTO_TESSELL_VVV9P_APPLY"] = "1"
+    if parallel_delaunay:
+        _os_v9.environ["AUTO_TESSELL_PARALLEL_DELAUNAY"] = "1"
 
     console.print(f"[bold magenta]Auto-Tessell[/bold magenta] {input_file} → {output}")
     console.print(

@@ -586,10 +586,35 @@ def generate_native_tet(
 
     def _run_delaunay(seed_pts: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
         # beta1360 (P5) — 임계 초과 시 chunked Delaunay 자동 사용.
+        # C5 / beta2366 — AUTO_TESSELL_PARALLEL_DELAUNAY=1 + V > 30000 →
+        # ProcessPoolExecutor 기반 multithreaded chunked.
         if (
             enable_chunked_delaunay
             and seed_pts.shape[0] > int(chunked_delaunay_threshold)
         ):
+            _use_parallel = (
+                os.environ.get("AUTO_TESSELL_PARALLEL_DELAUNAY", "0") == "1"
+            )
+            if _use_parallel:
+                try:
+                    from core.generator.native_tet.parallel import (
+                        parallel_chunked_delaunay,
+                    )
+                    _, _tets, _pinfo = parallel_chunked_delaunay(
+                        seed_pts, n_div=int(chunked_n_div), overlap_ratio=0.15,
+                    )
+                    log.info(
+                        "native_tet_parallel_delaunay",
+                        n_points=int(seed_pts.shape[0]),
+                        n_chunks=int(_pinfo.n_chunks),
+                        n_workers=int(_pinfo.n_workers),
+                        n_tets=int(_tets.shape[0]),
+                        elapsed=round(_pinfo.elapsed_s, 3),
+                    )
+                    if _tets.shape[0] > 0:
+                        return seed_pts, _tets
+                except Exception as _exc:
+                    log.warning("native_tet_parallel_failed", error=str(_exc))
             try:
                 from core.generator.native_tet.chunked import chunked_delaunay
                 _, _tets, _info = chunked_delaunay(

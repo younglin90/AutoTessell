@@ -309,6 +309,21 @@ def test_cli_enable_offplane_steiner_flag_sets_env_var(
     assert os.environ.get("AUTO_TESSELL_OFFPLANE_STEINER") == "1"
 
 
+def test_cli_parallel_delaunay_flag_sets_env_var(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """beta2366 — --parallel-delaunay 플래그가 AUTO_TESSELL_PARALLEL_DELAUNAY 설정."""
+    from cli.main import run
+    monkeypatch.delenv("AUTO_TESSELL_PARALLEL_DELAUNAY", raising=False)
+    r = runner.invoke(run, [
+        STL_PATH, "--dry-run", "--mesh-type", "tet", "--quality", "fine",
+        "--parallel-delaunay",
+    ])
+    assert r.exit_code == 0
+    import os
+    assert os.environ.get("AUTO_TESSELL_PARALLEL_DELAUNAY") == "1"
+
+
 def test_cli_volume_engine_native_routes_to_correct_tier(
     runner: CliRunner,
 ) -> None:
