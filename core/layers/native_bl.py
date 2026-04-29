@@ -325,6 +325,15 @@ class NativeBLResult:
     # snap_max_diff: snap 적용 전 최대 drift (snap 효력의 강도 지표).
     n_snap_applied: int = 0
     snap_max_diff: float = 0.0
+    # C2.3 / beta2369 — per-vertex Layer Count Reduction (Pointwise T-Rex 동등) 통계.
+    # lcr_n_reduced_verts: 좁은 gap 으로 layer 수 감소된 wall vertex 수.
+    # lcr_max_reduction: 가장 많이 줄어든 vertex 의 (num_layers - max_safe_layers).
+    # lcr_min_layers_used: 가장 적은 layer 수 (1 = 거의 wall surface).
+    # lcr_n_safe_full_layers: full num_layers 유지된 vertex 수 (collision 없음).
+    lcr_n_reduced_verts: int = 0
+    lcr_max_reduction: int = 0
+    lcr_min_layers_used: int = 0
+    lcr_n_safe_full_layers: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -2501,6 +2510,13 @@ def generate_native_bl(
                 "n_applied": int(n_snap),
                 "max_diff": float(snap_max_diff),
             },
+            # C2.3 / beta2369 — per-vertex Layer Count Reduction (Pointwise T-Rex 동등).
+            "lcr": {
+                "n_reduced_verts": int(lcr_n_reduced),
+                "max_reduction": int(lcr_max_reduction),
+                "min_layers_used": int(lcr_min_layers_used),
+                "n_safe_full_layers": int(lcr_n_safe_full),
+            },
             # beta2328 — pre-BL wall surface SI count (P2.6 series).
             # None = 측정 안 됨 (>5000 face), 0 = clean, >0 = 입력에 SI 존재.
             "pre_bl_self_intersect": _pre_bl_si_count,
@@ -2537,6 +2553,10 @@ def generate_native_bl(
         wall_preserve_within_envelope=bool(wall_within_env),
         n_snap_applied=int(n_snap),
         snap_max_diff=float(snap_max_diff),
+        lcr_n_reduced_verts=int(lcr_n_reduced),
+        lcr_max_reduction=int(lcr_max_reduction),
+        lcr_min_layers_used=int(lcr_min_layers_used),
+        lcr_n_safe_full_layers=int(lcr_n_safe_full),
         message=(
             f"native_bl Phase 2 OK — {n_prism_total} prism cells inserted "
             f"({cfg.num_layers} layers × {n_wall_faces} wall triangles). "

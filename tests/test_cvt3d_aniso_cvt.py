@@ -187,3 +187,24 @@ def test_native_bl_lcr_wired() -> None:
         "per_vertex_lcr import 누락"
     assert "AUTO_TESSELL_LCR_OFF" in src, "env-gate 누락"
     assert "native_bl_lcr_per_vertex" in src, "log 키 누락"
+
+
+def test_native_bl_result_lcr_schema() -> None:
+    """C2.3 / beta2369 — NativeBLResult 가 LCR 필드를 가진다."""
+    from core.layers.native_bl import NativeBLResult
+    r = NativeBLResult(success=True, elapsed=0.0)
+    assert hasattr(r, "lcr_n_reduced_verts")
+    assert hasattr(r, "lcr_max_reduction")
+    assert hasattr(r, "lcr_min_layers_used")
+    assert hasattr(r, "lcr_n_safe_full_layers")
+    assert r.lcr_n_reduced_verts == 0
+    assert r.lcr_max_reduction == 0
+
+
+def test_native_bl_quality_json_lcr_block_wired() -> None:
+    """C2.3 / beta2369 — native_bl_quality.json 에 lcr 블록 포함."""
+    import inspect
+    from core.layers import native_bl
+    src = inspect.getsource(native_bl)
+    assert '"lcr":' in src or "'lcr':" in src, "quality_summary 의 lcr 블록 누락"
+    assert "n_reduced_verts" in src, "lcr.n_reduced_verts 키 누락"
