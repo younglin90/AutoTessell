@@ -505,13 +505,32 @@ def _extract_feature_edge_segments(
     nlen = np.linalg.norm(nrm, axis=1, keepdims=True)
     nrm = np.where(nlen > 1e-30, nrm / np.where(nlen > 1e-30, nlen, 1.0), 0.0)
 
-    # build edge → face(s) map
+    # C-PERF-14 / beta2450 — vectorized edge_map build (이전 Python loop).
+    # 60k face × 3 edge = 180k entries, Python dict.setdefault 의 overhead 큼.
+    # 이제 numpy lexsort 로 sorted-by-edge 배열 생성 → 그룹 boundary 만 탐색.
+    n_faces = sF.shape[0]
+    edges_per_face = np.stack(
+        [sF[:, [0, 1]], sF[:, [1, 2]], sF[:, [2, 0]]],
+        axis=1,
+    ).reshape(-1, 2)  # (3*n_faces, 2)
+    edges_canon = np.sort(edges_per_face, axis=1)  # canonical (min, max).
+    face_ids = np.arange(n_faces, dtype=np.int64).repeat(3)  # (3*n_faces,)
+    # Sort by edge for grouping.
+    ord_idx = np.lexsort((edges_canon[:, 1], edges_canon[:, 0]))
+    sorted_edges = edges_canon[ord_idx]
+    sorted_faces = face_ids[ord_idx]
+    # Find run boundaries (where edge changes).
+    eq_prev = (
+        np.diff(sorted_edges[:, 0]) != 0
+    ) | (
+        np.diff(sorted_edges[:, 1]) != 0
+    )
+    run_starts = np.concatenate(([0], np.where(eq_prev)[0] + 1))
+    run_ends = np.concatenate((run_starts[1:], [len(sorted_edges)]))
     edge_map: dict[tuple[int, int], list[int]] = {}
-    for fi in range(sF.shape[0]):
-        a, b, c = int(sF[fi, 0]), int(sF[fi, 1]), int(sF[fi, 2])
-        for x, y in ((a, b), (b, c), (c, a)):
-            key = (x, y) if x < y else (y, x)
-            edge_map.setdefault(key, []).append(fi)
+    for s, e in zip(run_starts.tolist(), run_ends.tolist()):
+        key = (int(sorted_edges[s, 0]), int(sorted_edges[s, 1]))
+        edge_map[key] = sorted_faces[s:e].tolist()
 
     cos_thresh = float(np.cos(np.deg2rad(feature_angle_deg)))
     segs: list[tuple[np.ndarray, np.ndarray]] = []
