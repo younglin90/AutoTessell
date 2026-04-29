@@ -2415,7 +2415,13 @@ def generate_native_bl(
                     _min_e_h = min(_edges_h) if _edges_h else 1.0
                     _max_e_h = max(_edges_h) if _edges_h else 1.0
                     _asp_h = _max_e_h / (_min_e_h + 1e-30)
-                    if _asp_h > cfg.aspect_ratio_threshold:
+                    # C-BL-5 / beta2433 — BL prism 의 aspect 는 본질적으로 큼
+                    # (cfMesh / Pointwise T-Rex 모두 1e4~1e6 정상). 첫 layer 만
+                    # 더 관대 (aspect threshold × 100 — 사실상 아무 prism 도 reject 안 함).
+                    _aspect_cap = cfg.aspect_ratio_threshold * (
+                        100.0 if _li_h == 0 else 1.0
+                    )
+                    if _asp_h > _aspect_cap:
                         _hex_layers_n_rej_asp += 1
                         log.debug("hex_layers_prism_rejected_aspect",
                                   face=_fi_h, layer=_li_h + 1, aspect=round(_asp_h, 2))
