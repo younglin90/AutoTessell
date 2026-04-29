@@ -41,12 +41,16 @@ class CDTRecoveryResult:
 
 
 def _surface_edge_set(F: np.ndarray) -> set[tuple[int, int]]:
-    out: set[tuple[int, int]] = set()
-    for tri in F.tolist():
-        a, b, c = int(tri[0]), int(tri[1]), int(tri[2])
-        for u, v in ((a, b), (b, c), (c, a)):
-            out.add((u, v) if u < v else (v, u))
-    return out
+    """C-PERF-28 / beta2479 — vectorize via lexsort+pack-unique."""
+    if F.size == 0:
+        return set()
+    src = F[:, [0, 1, 2]].reshape(-1).astype(np.int64)
+    dst = F[:, [1, 2, 0]].reshape(-1).astype(np.int64)
+    u = np.minimum(src, dst); v = np.maximum(src, dst)
+    n_max = int(F.max()) + 1
+    pack = u * n_max + v
+    uniq = np.unique(pack)
+    return set(zip((uniq // n_max).tolist(), (uniq % n_max).tolist()))
 
 
 def run_cdt_recovery(
