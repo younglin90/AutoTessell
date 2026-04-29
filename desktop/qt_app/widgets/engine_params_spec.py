@@ -764,6 +764,16 @@ ENGINE_PARAM_REGISTRY: dict[str, list[EngineParamSpec]] = {
                 "Phase B 와 함께 사용 — 불필요한 iteration 제거."
             ),
         ),
+        # beta2315 — AMIPS torch (CUDA 가용 시 GPU) 라우팅.
+        EngineParamSpec(
+            "use_torch_amips", "AMIPS torch (CUDA)", "bool", False,
+            doc=(
+                "RRR2 worst-percentile AMIPS 를 amips_torch 로 라우팅.\n"
+                "CUDA 가용 시 GPU 5-20× 가속, 미가용 시 torch CPU.\n"
+                "torch 미설치 환경에서는 자동 numpy fallback (안전).\n"
+                "fine quality default ON (HARNESS_PARAMS), CPU 환경 영향 0."
+            ),
+        ),
     ],
     "native_hex": [
         EngineParamSpec(

@@ -3875,6 +3875,19 @@ def test_gui_engine_spec_layers_post_exposes_phase2_keys() -> None:
     assert not missing, f"layers_post spec 에 누락된 Phase 2 필드: {missing}"
 
 
+def test_gui_engine_spec_native_tet_exposes_use_torch_amips() -> None:
+    """beta2315 — native_tet spec 에 use_torch_amips knob 노출.
+
+    이전 (beta2310) 엔 HARNESS_PARAMS fine + allowlist 만 wired → GUI spec
+    누락으로 사용자가 GUI 에서 toggle 불가. CUDA 환경 자동 활성은 그대로
+    작동하지만, draft/standard 에서 명시 ON 또는 fine 에서 명시 OFF 시도
+    GUI 도달 가능."""
+    from desktop.qt_app.widgets.engine_params_spec import ENGINE_PARAM_REGISTRY
+    specs = ENGINE_PARAM_REGISTRY.get("native_tet", [])
+    keys = {s.key for s in specs}
+    assert "use_torch_amips" in keys, f"native_tet spec use_torch_amips 누락: {keys}"
+
+
 def test_gui_engine_spec_native_hex_exposes_buffer_cells() -> None:
     """beta2313 — native_hex spec 에 hex_buffer_cells 노출 + HARNESS fine 활성."""
     from desktop.qt_app.widgets.engine_params_spec import ENGINE_PARAM_REGISTRY
