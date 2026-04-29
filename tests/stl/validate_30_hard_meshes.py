@@ -166,7 +166,12 @@ def main(argv: list[str]) -> int:
             grade = r.get("grade", "")
             integrity = "[INTEGRITY?]" if r.get("integrity_suspect") else ""
             extra = f" grade={grade}" if grade else ""
-            print(f"  {engine_name}: {ok} cells={n_cells} t={elapsed}s{extra} {integrity}".rstrip())
+            err = r.get("exc") or r.get("load_error") or r.get("message")
+            err_s = f" err={str(err)[:80]}" if err and not r.get("success") else ""
+            print(
+                f"  {engine_name}: {ok} cells={n_cells} t={elapsed}s{extra} {integrity}{err_s}"
+                .rstrip(),
+            )
 
     n_pass = sum(1 for r in out_rows if r.get("success"))
     n_integrity_suspect = sum(1 for r in out_rows if r.get("integrity_suspect"))
