@@ -100,6 +100,15 @@ def test_empty_input_returns_zero_report() -> None:
     assert r.n_intersections == 0
 
 
+def test_native_bl_quality_json_includes_pre_bl_si() -> None:
+    """beta2328 — native_bl_quality.json 에 pre_bl_self_intersect 필드 포함."""
+    import inspect
+    from core.layers import native_bl
+    src = inspect.getsource(native_bl.generate_native_bl)
+    assert '"pre_bl_self_intersect": _pre_bl_si_count' in src or \
+        "pre_bl_self_intersect" in src, "pre_bl_self_intersect JSON 필드 누락"
+
+
 def test_native_bl_pre_extrude_si_check_wired() -> None:
     """beta2327 — native_bl 진입에 pre-extrude SI 진단 추가.
 

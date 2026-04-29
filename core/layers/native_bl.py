@@ -1672,6 +1672,8 @@ def generate_native_bl(
     # SI 가 있는 wall surface 는 prism extrusion 단계에서 collision_safety
     # 로 잡히지만, 사전에 알면 사용자가 입력 전처리를 강화하거나 num_layers
     # 줄이는 의사결정 가능. ≤ 5000 face 만 측정 (KDTree 비용 회피).
+    # beta2328 — JSON quality 보고서에도 노출 (사용자 visibility ↑).
+    _pre_bl_si_count: int | None = None
     if 0 < n_wall_faces <= 5000:
         try:
             from core.preprocessor.native_repair.self_intersect import (
@@ -1681,6 +1683,7 @@ def generate_native_bl(
                 [list(faces[fi]) for fi in wall_face_indices], dtype=np.int64,
             )
             _si_bl = _det_si_bl(points, _wall_F)
+            _pre_bl_si_count = int(_si_bl.n_intersections)
             if _si_bl.has_self_intersection:
                 log.warning(
                     "native_bl_pre_extrude_self_intersect",
@@ -2442,6 +2445,9 @@ def generate_native_bl(
                 "n_applied": int(n_snap),
                 "max_diff": float(snap_max_diff),
             },
+            # beta2328 — pre-BL wall surface SI count (P2.6 series).
+            # None = 측정 안 됨 (>5000 face), 0 = clean, >0 = 입력에 SI 존재.
+            "pre_bl_self_intersect": _pre_bl_si_count,
             "config": {
                 "num_layers": int(cfg.num_layers),
                 "growth_ratio": float(cfg.growth_ratio),
