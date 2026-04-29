@@ -604,6 +604,7 @@ def generate_native_hex(
         return NativeHexResult(
             False, time.perf_counter() - t0,
             message="grid 가 비어있음 (target_edge_length 가 bbox 보다 큼)",
+            n_self_intersect_pre=_pre_mesh_si_count,
         )
 
     hexes = hexes_all
@@ -671,6 +672,7 @@ def generate_native_hex(
             return NativeHexResult(
                 False, time.perf_counter() - t0,
                 message="inside hex 0 — target_edge_length 조정 필요",
+                n_self_intersect_pre=_pre_mesh_si_count,
             )
 
     # 사용된 vertex 만 압축
@@ -831,6 +833,7 @@ def generate_native_hex(
         return NativeHexResult(
             False, time.perf_counter() - t0,
             message=f"polyMesh 쓰기 실패: {exc}",
+            n_self_intersect_pre=_pre_mesh_si_count,
         )
 
     _n_kept = int(stats["num_cells"])

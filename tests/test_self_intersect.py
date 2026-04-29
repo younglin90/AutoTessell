@@ -100,17 +100,17 @@ def test_empty_input_returns_zero_report() -> None:
     assert r.n_intersections == 0
 
 
-def test_native_hex_octree_path_populates_si() -> None:
-    """beta2341 — octree adaptive path 도 NativeHexResult.n_self_intersect_pre 채움.
+def test_native_hex_all_paths_populate_si() -> None:
+    """beta2341 + beta2342 — 모든 return path (uniform 성공 / octree 성공 /
+    3 fail) 가 SI populate.
 
-    beta2338 에서 uniform path (line 937) 만 populate. octree path
-    (line 537) 가 누락이라 adaptive=True 시 SI 정보 None 반환."""
+    beta2338 = uniform 성공만, beta2341 = + octree 성공, beta2342 = 3 fail
+    까지 → 총 5 분기."""
     import inspect
     from core.generator.native_hex.mesher import generate_native_hex
     src = inspect.getsource(generate_native_hex)
-    # 두 번 이상 등장 — uniform + octree 두 path 모두 wired.
-    assert src.count("n_self_intersect_pre=_pre_mesh_si_count") >= 2, \
-        f"populate 분기 < 2 (현재 {src.count('n_self_intersect_pre=_pre_mesh_si_count')})"
+    n = src.count("n_self_intersect_pre=_pre_mesh_si_count")
+    assert n >= 5, f"populate 분기 < 5 (현재 {n})"
 
 
 def test_native_poly_mesher_populates_si_pre_field() -> None:
