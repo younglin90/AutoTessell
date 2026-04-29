@@ -183,6 +183,10 @@ def generate_native_tet(
     # None 이면 env / default (20000). HARNESS_PARAMS 에서 fine 은 10000 로
     # 더 적극적으로 simplification.
     qed_min_faces: int | None = None,
+    # C1.7 / beta2378 — Stellar split-pass tier-gated activation. fine 에서
+    # 자동 ON (HARNESS_PARAMS), 다른 tier 는 OFF. AUTO_TESSELL_STELLAR_SPLIT
+    # env 가 우선 (사용자 explicit override).
+    enable_stellar_split: bool = False,
 ) -> NativeTetResult:
     """입력 표면 메쉬 → tet polyMesh (MVP).
 
@@ -2747,12 +2751,22 @@ def generate_native_tet(
                 # VVV3b: apply swap ops with triple monotone guard.
                 pre = _qsnap(final_pts, final_tets)
                 pre_n = final_tets.shape[0]
-                pts2, tets2, n_app = _apply_op_queue(
-                    final_pts,
-                    final_tets,
-                    _q,
-                    protected_edges=None,
-                )
+                # C1.7 / beta2378 — fine 의 enable_stellar_split=True 면
+                # AUTO_TESSELL_STELLAR_SPLIT 자동 활성 (env override 우선).
+                _stellar_env_prev: "str | None" = None
+                if enable_stellar_split and "AUTO_TESSELL_STELLAR_SPLIT" not in os.environ:
+                    os.environ["AUTO_TESSELL_STELLAR_SPLIT"] = "1"
+                    _stellar_env_prev = "__set_by_mesher__"
+                try:
+                    pts2, tets2, n_app = _apply_op_queue(
+                        final_pts,
+                        final_tets,
+                        _q,
+                        protected_edges=None,
+                    )
+                finally:
+                    if _stellar_env_prev == "__set_by_mesher__":
+                        os.environ.pop("AUTO_TESSELL_STELLAR_SPLIT", None)
                 post = _qsnap(pts2, tets2)
                 accepted = (
                     post.min_q >= pre.min_q - 1e-6

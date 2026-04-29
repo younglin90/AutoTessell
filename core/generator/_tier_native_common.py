@@ -90,6 +90,10 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
                      # C1.5 / beta2373: fine 에서 QED 더 적극 (10k face 부터).
                      # Hu 2018 §3.4 simplification — sliver 격감 효과.
                      "qed_min_faces": 10000,
+                     # C1.7 / beta2378: fine 에서 Stellar split-pass 자동 ON.
+                     # _apply_op_queue 후반의 split_sliver_longest_edge 활성 →
+                     # 추가 sliver 제거. monotone guard 통과 시만 채택.
+                     "enable_stellar_split": True,
                      # beta810: fine 에서는 더 엄격한 sliver drop.
                      "sliver_drop_min_dihedral_deg": 1.0,
                      "sliver_drop_max_aspect": 5e4,

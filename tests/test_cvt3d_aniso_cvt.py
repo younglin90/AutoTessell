@@ -412,3 +412,14 @@ def test_native_bl_quality_json_aniso_split_block() -> None:
     src = inspect.getsource(native_bl)
     assert '"aniso_split":' in src or "'aniso_split':" in src, "aniso_split 블록 누락"
     assert "n_would_split" in src, "n_would_split 키 누락"
+
+
+def test_native_tet_enable_stellar_split_kwarg_and_fine_param() -> None:
+    """C1.7 / beta2378 — enable_stellar_split kwarg + fine quality 자동 ON."""
+    import inspect
+    from core.generator.native_tet.mesher import generate_native_tet
+    from core.generator._tier_native_common import HARNESS_PARAMS
+    sig = inspect.signature(generate_native_tet)
+    assert "enable_stellar_split" in sig.parameters, "kwarg 누락"
+    p = HARNESS_PARAMS["tier_native_tet"]["fine"]
+    assert p.get("enable_stellar_split") is True, "fine quality 자동 ON 누락"
