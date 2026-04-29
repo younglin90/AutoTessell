@@ -660,6 +660,24 @@ def evaluate(
          "Delaunay 병렬화. 환경변수 AUTO_TESSELL_PARALLEL_DELAUNAY=1 동등.",
 )
 @click.option(
+    "--seed-gwn", is_flag=True,
+    help="beta2392 — 시드 inside test 에 Jacobson 2013 generalized "
+         "winding number 사용 (SI/non-manifold 입력 robust). beta2394 의 "
+         "auto-fallback (SI 검출 시 자동 ON) 보다 강제. "
+         "환경변수 AUTO_TESSELL_SEED_GWN=1 동등.",
+)
+@click.option(
+    "--stellar-split", is_flag=True,
+    help="beta2374-2378 — Stellar 4-op queue 의 split-pass 활성. "
+         "fine quality 는 자동 ON; 명시 force-on. "
+         "환경변수 AUTO_TESSELL_STELLAR_SPLIT=1 동등.",
+)
+@click.option(
+    "--poly-budget-s", type=float, default=None,
+    help="beta2381 — poly Voronoi escalate 의 wall-clock budget (초). "
+         "기본 90s. 환경변수 AUTO_TESSELL_POLY_BUDGET_S 동등.",
+)
+@click.option(
     "--flow-velocity", type=float, default=1.0, show_default=True,
     help="v0.4.0-beta78+ 유입 속도 [m/s]. 0/U 자동 생성 기준값. "
          "turbulence 필드 (k, epsilon/omega) 에 반영.",
@@ -739,6 +757,9 @@ def run(
     enable_vvv9k_apply: bool,
     enable_vvv9p_apply: bool,
     parallel_delaunay: bool,
+    seed_gwn: bool,
+    stellar_split: bool,
+    poly_budget_s: float | None,
     flow_velocity: float,
     turbulence_model: str,
     auto_retry: str,
@@ -794,6 +815,13 @@ def run(
         _os_v9.environ["AUTO_TESSELL_VVV9P_APPLY"] = "1"
     if parallel_delaunay:
         _os_v9.environ["AUTO_TESSELL_PARALLEL_DELAUNAY"] = "1"
+    # C-CLI-1 / beta2418 — 추가 env wiring (GUI/CLI parity).
+    if seed_gwn:
+        _os_v9.environ["AUTO_TESSELL_SEED_GWN"] = "1"
+    if stellar_split:
+        _os_v9.environ["AUTO_TESSELL_STELLAR_SPLIT"] = "1"
+    if poly_budget_s is not None:
+        _os_v9.environ["AUTO_TESSELL_POLY_BUDGET_S"] = str(float(poly_budget_s))
 
     console.print(f"[bold magenta]Auto-Tessell[/bold magenta] {input_file} → {output}")
     console.print(
