@@ -342,22 +342,42 @@ def _detect_feature_verts(
     norms = np.linalg.norm(n, axis=1, keepdims=True)
     n = np.where(norms > 1e-30, n / np.where(norms > 1e-30, norms, 1.0), 0.0)
 
-    edge_map: dict[tuple[int, int], list[int]] = {}
-    for fi in range(F.shape[0]):
-        a, b, c = int(F[fi, 0]), int(F[fi, 1]), int(F[fi, 2])
-        for x, y in ((a, b), (b, c), (c, a)):
-            key = (x, y) if x < y else (y, x)
-            edge_map.setdefault(key, []).append(fi)
+    # C-PERF-49 / beta2500 — vectorize via lexsort + group classify (beta2476 패턴).
+    if F.size == 0:
+        return frozenset()
+    src_fe = F[:, [0, 1, 2]].reshape(-1).astype(np.int64)
+    dst_fe = F[:, [1, 2, 0]].reshape(-1).astype(np.int64)
+    fi_fe = np.repeat(np.arange(F.shape[0], dtype=np.int64), 3)
+    u_fe = np.minimum(src_fe, dst_fe)
+    v_fe = np.maximum(src_fe, dst_fe)
+    order_fe = np.lexsort((v_fe, u_fe))
+    u_s = u_fe[order_fe]; v_s = v_fe[order_fe]; f_s = fi_fe[order_fe]
+    diff_fe = np.r_[True, (u_s[1:] != u_s[:-1]) | (v_s[1:] != v_s[:-1])]
+    starts_fe = np.where(diff_fe)[0]
+    sizes_fe = np.diff(np.r_[starts_fe, len(u_s)])
 
     cos_thresh = float(np.cos(np.deg2rad(angle_thresh_deg)))
     feature: set[int] = set()
-    for (a, b), fl in edge_map.items():
-        if len(fl) != 2:
-            feature.add(a); feature.add(b)
-            continue
-        cos_a = float(np.clip(np.dot(n[fl[0]], n[fl[1]]), -1.0, 1.0))
-        if cos_a < cos_thresh:
-            feature.add(a); feature.add(b)
+
+    # boundary or non-manifold (size != 2): 양 vertex feature.
+    nm_mask = sizes_fe != 2
+    if nm_mask.any():
+        nm_starts = starts_fe[nm_mask]
+        feature.update(u_s[nm_starts].tolist())
+        feature.update(v_s[nm_starts].tolist())
+
+    # dihedral (size == 2): face-pair angle 검사.
+    dih_mask = sizes_fe == 2
+    if dih_mask.any():
+        dih_starts = starts_fe[dih_mask]
+        f1 = f_s[dih_starts]
+        f2 = f_s[dih_starts + 1]
+        cos_a = np.clip((n[f1] * n[f2]).sum(axis=1), -1.0, 1.0)
+        sharp = cos_a < cos_thresh
+        if sharp.any():
+            sharp_starts = dih_starts[sharp]
+            feature.update(u_s[sharp_starts].tolist())
+            feature.update(v_s[sharp_starts].tolist())
     return frozenset(feature)
 
 
