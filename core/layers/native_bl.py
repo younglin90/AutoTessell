@@ -28,6 +28,8 @@ Phase 3 (beta93 완성): shrinkage iteration + per-vertex scale (beta95). 반복
 """
 from __future__ import annotations
 
+import os
+
 import shutil
 import struct
 import time
@@ -1648,6 +1650,52 @@ def generate_native_bl(
             n_limited_verts=n_limited,
             min_scale=float(min(vertex_scale.values())),
         )
+
+    # C2 / beta2368 — per-vertex Layer Count Reduction (Pointwise T-Rex 동등) diagnostic.
+    # collision_dist 가 이미 계산되어 있을 때만 실행. env-gate
+    # AUTO_TESSELL_LCR_OFF=1 로 비활성. C2.3 에서 NativeBLResult 로 노출.
+    lcr_n_reduced = 0
+    lcr_max_reduction = 0
+    lcr_min_layers_used = int(cfg.num_layers)
+    lcr_n_safe_full = 0
+    if (
+        os.environ.get("AUTO_TESSELL_LCR_OFF", "0") != "1"
+        and collision_dist
+        and len(wall_vert_indices) > 0
+        and cfg.num_layers > 1
+    ):
+        try:
+            from core.layers.native_bl_lcr import per_vertex_lcr
+            wv_arr = np.asarray(list(wall_vert_indices), dtype=np.int64)
+            cd_arr = np.asarray(
+                [collision_dist.get(int(v), -1.0) for v in wv_arr],
+                dtype=np.float64,
+            )
+            _per_v_layers, _lcr_r = per_vertex_lcr(
+                wv_arr, cd_arr,
+                num_layers=int(cfg.num_layers),
+                first_thickness=float(cfg.first_thickness),
+                growth_ratio=float(cfg.growth_ratio),
+                safety=float(cfg.collision_safety_factor),
+                min_layers=1,
+            )
+            lcr_n_reduced = int(_lcr_r.n_reduced_verts)
+            lcr_max_reduction = int(_lcr_r.max_reduction)
+            lcr_min_layers_used = int(_lcr_r.min_layers_used)
+            lcr_n_safe_full = int(_lcr_r.n_safe_full_layers)
+            if lcr_n_reduced > 0:
+                log.info(
+                    "native_bl_lcr_per_vertex",
+                    component="native_bl", phase="beta2368",
+                    n_wall=int(_lcr_r.n_wall_verts),
+                    n_reduced=lcr_n_reduced,
+                    max_reduction=lcr_max_reduction,
+                    min_layers=lcr_min_layers_used,
+                    n_safe_full=lcr_n_safe_full,
+                    elapsed_ms=float(_lcr_r.elapsed_s) * 1e3,
+                )
+        except Exception as _lcr_exc:
+            log.debug("native_bl_lcr_skipped", reason=str(_lcr_exc)[:120])
 
     # HEX_BL1 — pre-filter wall_face_indices via aspect+collision guard (Garimella 2003 §3).
     # Mirrors POL_BL1 (voronoi.py) and TET_BL1 (tet_bl_subdivide.py) pattern.

@@ -176,3 +176,14 @@ def test_per_vertex_lcr_min_layers_floor() -> None:
     )
     assert lyr[0] == 2  # floor.
     assert r.min_layers_used == 2
+
+
+def test_native_bl_lcr_wired() -> None:
+    """C2 / beta2368 — native_bl 가 per_vertex_lcr 호출 (diagnostic)."""
+    import inspect
+    from core.layers import native_bl
+    src = inspect.getsource(native_bl)
+    assert "from core.layers.native_bl_lcr import per_vertex_lcr" in src, \
+        "per_vertex_lcr import 누락"
+    assert "AUTO_TESSELL_LCR_OFF" in src, "env-gate 누락"
+    assert "native_bl_lcr_per_vertex" in src, "log 키 누락"
