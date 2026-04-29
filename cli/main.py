@@ -678,6 +678,13 @@ def evaluate(
          "기본 90s. 환경변수 AUTO_TESSELL_POLY_BUDGET_S 동등.",
 )
 @click.option(
+    "--bl-floor-ratio", type=float, default=None,
+    help="beta2447 — BL curvature_adaptive_thickness floor ratio "
+         "(base_thickness 의 fraction, 0.0-1.0). 1.0=uniform, 0.5=cfMesh, "
+         "0.3=aggressive adaptive. 기본 1.0. "
+         "환경변수 AUTO_TESSELL_BL_FLOOR_RATIO 동등.",
+)
+@click.option(
     "--flow-velocity", type=float, default=1.0, show_default=True,
     help="v0.4.0-beta78+ 유입 속도 [m/s]. 0/U 자동 생성 기준값. "
          "turbulence 필드 (k, epsilon/omega) 에 반영.",
@@ -760,6 +767,7 @@ def run(
     seed_gwn: bool,
     stellar_split: bool,
     poly_budget_s: float | None,
+    bl_floor_ratio: float | None,
     flow_velocity: float,
     turbulence_model: str,
     auto_retry: str,
@@ -822,6 +830,9 @@ def run(
         _os_v9.environ["AUTO_TESSELL_STELLAR_SPLIT"] = "1"
     if poly_budget_s is not None:
         _os_v9.environ["AUTO_TESSELL_POLY_BUDGET_S"] = str(float(poly_budget_s))
+    # C-CLI-2 / beta2448 — BL floor ratio CLI exposure.
+    if bl_floor_ratio is not None:
+        _os_v9.environ["AUTO_TESSELL_BL_FLOOR_RATIO"] = str(float(bl_floor_ratio))
 
     console.print(f"[bold magenta]Auto-Tessell[/bold magenta] {input_file} → {output}")
     console.print(
