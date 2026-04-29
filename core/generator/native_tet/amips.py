@@ -374,24 +374,29 @@ def smooth_amips(
         offsets = np.concatenate([[0], np.cumsum(counts)])
 
     # T3 — per-vertex 1-ring 평균 edge length 캐시 (step_init scaling).
+    # C-PERF-91 / beta2543 — 완전 벡터화: 모든 tet 의 6 edge 합 → np.add.at scatter.
     bbox = pts.max(axis=0) - pts.min(axis=0)
     bbox_diag = float(np.linalg.norm(bbox)) + 1e-30
     avg_edge_per_v = np.full(n, bbox_diag * 0.05, dtype=np.float64)
-    for vi in range(n):
-        inc = flat[offsets[vi]:offsets[vi + 1]]
-        if inc.size == 0:
-            continue
-        v = pts[tets[inc]]
-        elens = np.concatenate([
-            np.linalg.norm(v[:, 1] - v[:, 0], axis=1),
-            np.linalg.norm(v[:, 2] - v[:, 0], axis=1),
-            np.linalg.norm(v[:, 3] - v[:, 0], axis=1),
-            np.linalg.norm(v[:, 2] - v[:, 1], axis=1),
-            np.linalg.norm(v[:, 3] - v[:, 1], axis=1),
-            np.linalg.norm(v[:, 3] - v[:, 2], axis=1),
-        ])
-        if elens.size:
-            avg_edge_per_v[vi] = float(elens.mean())
+    if tets.shape[0] > 0:
+        v_t = pts[tets]  # (T, 4, 3)
+        # 6 edges per tet
+        e01 = np.linalg.norm(v_t[:, 1] - v_t[:, 0], axis=1)
+        e02 = np.linalg.norm(v_t[:, 2] - v_t[:, 0], axis=1)
+        e03 = np.linalg.norm(v_t[:, 3] - v_t[:, 0], axis=1)
+        e12 = np.linalg.norm(v_t[:, 2] - v_t[:, 1], axis=1)
+        e13 = np.linalg.norm(v_t[:, 3] - v_t[:, 1], axis=1)
+        e23 = np.linalg.norm(v_t[:, 3] - v_t[:, 2], axis=1)
+        tet_total_e = e01 + e02 + e03 + e12 + e13 + e23  # (T,)
+        # Each vertex of each tet receives the tet's total 6 edge length.
+        flat_v = tets.ravel().astype(np.int64)
+        flat_e = np.repeat(tet_total_e, 4)
+        sums_e = np.zeros(n, dtype=np.float64)
+        cnts_e = np.zeros(n, dtype=np.int64)
+        np.add.at(sums_e, flat_v, flat_e)
+        np.add.at(cnts_e, flat_v, 6)
+        mask_e = cnts_e > 0
+        avg_edge_per_v[mask_e] = sums_e[mask_e] / cnts_e[mask_e]
 
     def _incident_tets(vi: int) -> np.ndarray:
         return flat[offsets[vi]:offsets[vi + 1]]
