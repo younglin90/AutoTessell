@@ -2991,7 +2991,8 @@ def _env_aware_run_all_gates(
             n_app_j += 1
             pts_j[vi] = res_j["new_pos"]
     if n_app_j > 0:
-        post_quals_j = np.array([float(_tet_quality(pts_j, t)) for t in tets_j])
+        # C-PERF-93 / beta2545 — batched.
+        post_quals_j = _tet_quality_batch(pts_j, tets_j).astype(np.float64)
         min_q_j = float(post_quals_j.min()) if len(post_quals_j) > 0 else pre_min_q
         min_q_j = max(min_q_j, pre_min_q - 1e-9)  # monotone guard
     wall_j = (time.perf_counter() - t0) * 1e3
@@ -3006,12 +3007,12 @@ def _env_aware_run_all_gates(
     t0 = time.perf_counter()
     pts_k = pts.copy()
     tets_k = tets.copy()
-    quals_k = np.array([float(_tet_quality(pts_k, t)) for t in tets_k], dtype=np.float64)
+    quals_k = _tet_quality_batch(pts_k, tets_k).astype(np.float64)
     pq_out = _priority_queue_main_loop(pts_k, tets_k, quals_k, max_iters=20, time_budget_ms=100.0)
     n_app_k = int(pq_out[2])
     post_pts_k, post_tets_k = pq_out[0], pq_out[1]
     if n_app_k > 0 and len(post_tets_k) > 0:
-        post_quals_k = np.array([float(_tet_quality(post_pts_k, t)) for t in post_tets_k])
+        post_quals_k = _tet_quality_batch(post_pts_k, post_tets_k).astype(np.float64)
         min_q_k = float(post_quals_k.min())
         min_q_k = max(min_q_k, pre_min_q - 1e-9)  # monotone guard
     else:
