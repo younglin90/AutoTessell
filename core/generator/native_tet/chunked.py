@@ -32,17 +32,17 @@ class ChunkedResult:
 def _chunk_bounds(
     V: np.ndarray, n_div: int,
 ) -> list[tuple[np.ndarray, np.ndarray]]:
+    """C-PERF-32 / beta2483 — vectorize via np.indices."""
     mn = V.min(axis=0)
     mx = V.max(axis=0)
     step = (mx - mn) / float(n_div)
-    bounds = []
-    for i in range(n_div):
-        for j in range(n_div):
-            for k in range(n_div):
-                cmin = mn + step * np.array([i, j, k])
-                cmax = mn + step * np.array([i + 1, j + 1, k + 1])
-                bounds.append((cmin, cmax))
-    return bounds
+    ii, jj, kk = np.indices((n_div, n_div, n_div))
+    ijk = np.stack(
+        [ii.ravel(), jj.ravel(), kk.ravel()], axis=1,
+    ).astype(np.float64)
+    cmins = mn[None, :] + step[None, :] * ijk
+    cmaxs = mn[None, :] + step[None, :] * (ijk + 1.0)
+    return [(cmins[i], cmaxs[i]) for i in range(cmins.shape[0])]
 
 
 def chunked_delaunay(
