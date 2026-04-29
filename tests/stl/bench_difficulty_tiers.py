@@ -101,6 +101,8 @@ def _worker_run(payload: tuple) -> dict:
                 # NativeTetResult 의 mean_q 는 r.quality.mean_q 에 있음.
                 _q = getattr(r, "quality", None)
                 out["mq"] = float(getattr(_q, "mean_q", -1.0)) if _q is not None else -1.0
+                # beta2356 — pre-mesh SI count (P2.6 chain). bench 에 노출.
+                out["n_si_pre"] = getattr(r, "n_self_intersect_pre", None)
                 if not r.success:
                     out["message"] = str(getattr(r, "message", ""))[:120]
             elif engine == "hex":
@@ -117,6 +119,8 @@ def _worker_run(payload: tuple) -> dict:
                 out["grade"] = str(getattr(r, "quality_grade", "?"))
                 out["max_no_deg"] = float(getattr(r, "max_non_orthogonality_deg", -1.0))
                 out["max_skew"] = float(getattr(r, "max_skewness", -1.0))
+                # beta2356 — hex 도 SI count 노출.
+                out["n_si_pre"] = getattr(r, "n_self_intersect_pre", None)
                 if not r.success:
                     out["message"] = str(getattr(r, "message", ""))[:120]
             else:  # poly
@@ -130,6 +134,8 @@ def _worker_run(payload: tuple) -> dict:
                 out["grade"] = str(getattr(r, "quality_grade", "?"))
                 out["max_no_deg"] = float(getattr(r, "max_non_orthogonality_deg", -1.0))
                 out["max_skew"] = float(getattr(r, "max_skewness", -1.0))
+                # beta2356 — poly 도 SI count 노출.
+                out["n_si_pre"] = getattr(r, "n_self_intersect_pre", None)
                 if not r.success:
                     out["message"] = str(getattr(r, "message", ""))[:120]
 
