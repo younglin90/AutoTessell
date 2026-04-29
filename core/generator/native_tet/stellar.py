@@ -124,6 +124,32 @@ def _orient_tet(pts_list: list, tet: list[int]) -> list[int]:
     return tet
 
 
+def _tet_quality_batch(pts: np.ndarray, tets: np.ndarray) -> np.ndarray:
+    """C-PERF-17 / beta2467 — Mean-ratio quality for all tets (vectorized).
+
+    Same formula as _tet_quality but operates on (T,4) tets array → (T,) qualities.
+    Used by Stellar split-pass monotone guard for ~T× speedup over Python loop.
+    """
+    tets = np.asarray(tets, dtype=np.int64)
+    if tets.size == 0:
+        return np.zeros(0, dtype=np.float64)
+    v = pts[tets]
+    a = v[:, 0]; b = v[:, 1]; c = v[:, 2]; d = v[:, 3]
+    e0 = b - a; e1 = c - a; e2 = d - a
+    vol6 = (np.cross(e1, e2) * e0).sum(axis=1)
+    l_sq = (
+        (e0 ** 2).sum(axis=1) + (e1 ** 2).sum(axis=1) + (e2 ** 2).sum(axis=1)
+        + ((b - c) ** 2).sum(axis=1) + ((b - d) ** 2).sum(axis=1)
+        + ((c - d) ** 2).sum(axis=1)
+    )
+    q = np.where(
+        l_sq > 1e-30,
+        np.clip(12.0 * (3.0 * np.abs(vol6) / 6.0) ** (2.0 / 3.0) / l_sq, 0.0, 1.0),
+        0.0,
+    )
+    return q
+
+
 def _tet_quality(pts: np.ndarray, tet: np.ndarray) -> float:
     """Mean-ratio quality for a single tet (0..1, higher is better)."""
     a, b, c, d = pts[tet[0]], pts[tet[1]], pts[tet[2]], pts[tet[3]]
@@ -306,17 +332,9 @@ def _apply_op_queue(
             )
             if n_sp > 0:
                 # split 결과의 worst quality 가 같거나 좋아진 경우에만 채택
-                # (monotone guard).
-                _q_in = np.array(
-                    [_tet_quality(pts, tets_44[k])
-                     for k in range(tets_44.shape[0])],
-                    dtype=np.float64,
-                )
-                _q_out = np.array(
-                    [_tet_quality(pts_split, tets_split_out[k])
-                     for k in range(tets_split_out.shape[0])],
-                    dtype=np.float64,
-                )
+                # (monotone guard). C-PERF-17 / beta2467: vectorized batch.
+                _q_in = _tet_quality_batch(pts, tets_44)
+                _q_out = _tet_quality_batch(pts_split, tets_split_out)
                 _wmin_in = float(_q_in.min()) if _q_in.size else 0.0
                 _wmin_out = float(_q_out.min()) if _q_out.size else 0.0
                 if _wmin_out >= _wmin_in - 1e-6:
