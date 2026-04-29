@@ -47,6 +47,9 @@ class NativeRepairResult:
     steps: list[dict[str, Any]] = field(default_factory=list)
     watertight: bool | None = None
     manifold: bool | None = None
+    # beta2325 — Möller 1997 self-intersect detect 결과 (옵트 캡처).
+    n_self_intersect_before: int | None = None
+    n_self_intersect_after: int | None = None
 
 
 def run_native_repair(
@@ -117,8 +120,27 @@ def run_native_repair(
             except Exception:
                 pass
 
+    # beta2325 — Möller 1997 self-intersect 진단 (before / after).
+    # 작은 mesh 만 (≤5000 face) — 큰 mesh 는 KDTree 추가 import 비용 회피.
+    n_si_before: int | None = None
+    n_si_after: int | None = None
+    try:
+        if F.shape[0] <= 5000:
+            from core.preprocessor.native_repair.self_intersect import (
+                detect_self_intersections as _det_si,
+            )
+            _b = _det_si(V, F, max_pairs_for_o_n_squared=5000)
+            _a = _det_si(V_cur, F_cur, max_pairs_for_o_n_squared=5000)
+            n_si_before = int(_b.n_intersections)
+            n_si_after = int(_a.n_intersections)
+    except Exception:
+        n_si_before = None
+        n_si_after = None
+
     return NativeRepairResult(
         vertices=V_cur, faces=F_cur, steps=steps,
         watertight=bool(is_watertight(F_cur)),
         manifold=bool(is_manifold(F_cur)),
+        n_self_intersect_before=n_si_before,
+        n_self_intersect_after=n_si_after,
     )

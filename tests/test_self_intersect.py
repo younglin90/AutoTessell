@@ -98,3 +98,20 @@ def test_empty_input_returns_zero_report() -> None:
     r = detect_self_intersections(V, F)
     assert r.n_faces == 0
     assert r.n_intersections == 0
+
+
+def test_run_native_repair_captures_self_intersect_count() -> None:
+    """beta2325 — run_native_repair 결과에 n_self_intersect_before/after 포함."""
+    from core.preprocessor.native_repair import run_native_repair
+
+    # Tetrahedral surface (no SI).
+    V = np.array(
+        [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64,
+    )
+    F = np.array([[0, 1, 2], [0, 1, 3], [1, 2, 3], [0, 2, 3]], dtype=np.int64)
+    r = run_native_repair(V, F, aggressive=1)
+    # ≤5000 face 입력 → 진단 실행됨.
+    assert r.n_self_intersect_before is not None
+    assert r.n_self_intersect_after is not None
+    assert r.n_self_intersect_before == 0
+    assert r.n_self_intersect_after == 0
