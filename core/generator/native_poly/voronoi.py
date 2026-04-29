@@ -1064,7 +1064,8 @@ def generate_native_poly_voronoi(
     # voronoi seed/CVT 시간 ↓ + boundary snap 안정도 ↑.
     # AUTO_TESSELL_QED (default "auto") — 0=OFF, 1=ON, auto=large only.
     _qed_env = _os_poly.environ.get("AUTO_TESSELL_QED", "auto")
-    _qed_min = int(_os_poly.environ.get("AUTO_TESSELL_QED_MIN_F", "50000"))
+    # C1.5 / beta2364 — threshold 50k → 20k (Hu 2018 §3.4 simplification 적극).
+    _qed_min = int(_os_poly.environ.get("AUTO_TESSELL_QED_MIN_F", "20000"))
     if _qed_env == "1" or (_qed_env == "auto" and _F.shape[0] > _qed_min):
         try:
             from core.preprocessor.native_remesh.quadric_decimate import (

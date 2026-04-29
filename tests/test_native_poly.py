@@ -263,5 +263,5 @@ def test_native_poly_qed_decimate_wired_for_large_input() -> None:
     assert "quadric_decimate" in src, "quadric_decimate import/call 누락"
     assert 'AUTO_TESSELL_QED", "auto"' in src or "_qed_env" in src, \
         "QED env-gate 누락"
-    assert '"AUTO_TESSELL_QED_MIN_F", "50000"' in src, \
+    assert '"AUTO_TESSELL_QED_MIN_F", "20000"' in src, \
         "50000 default threshold 누락"

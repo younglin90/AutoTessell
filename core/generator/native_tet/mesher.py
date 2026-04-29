@@ -319,9 +319,12 @@ def generate_native_tet(
             #   default OFF → "auto" — 50k face 초과 입력에 대해 자동 활성화.
             #   AUTO_TESSELL_QED=0 으로 강제 OFF, =1 로 강제 ON 여전히 가능.
             #   default min_F 2000 → 50000 으로 raise (small mesh 영향 0).
+            # C1.5 / beta2364: threshold 50k → 20k 로 lower — Hu 2018 §3.4
+            #   simplification 더 적극. medium tier (5k-50k face) 의 sliver
+            #   격감 효과. small mesh (<20k) 영향 여전히 0.
             try:
                 _qed_env = os.environ.get("AUTO_TESSELL_QED", "auto")
-                _qed_min = int(os.environ.get("AUTO_TESSELL_QED_MIN_F", "50000"))
+                _qed_min = int(os.environ.get("AUTO_TESSELL_QED_MIN_F", "20000"))
                 if _qed_env == "0":
                     _qed_on = False
                 elif _qed_env == "1":
