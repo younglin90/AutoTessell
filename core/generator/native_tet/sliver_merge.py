@@ -68,13 +68,23 @@ def merge_sliver_triangles(
         return pts, faces, 0
 
     # Build edge → face index map for manifold checks.
+    # C-PERF-71 / beta2522 — vectorize via lexsort + group-boundary.
     def _build_edge_map(f: np.ndarray) -> dict[tuple[int, int], list[int]]:
+        if f.size == 0:
+            return {}
+        f64 = np.asarray(f, dtype=np.int64)
+        src = f64[:, [0, 1, 2]].reshape(-1)
+        dst = f64[:, [1, 2, 0]].reshape(-1)
+        fi_arr = np.repeat(np.arange(f64.shape[0], dtype=np.int64), 3)
+        u = np.minimum(src, dst); v = np.maximum(src, dst)
+        order = np.lexsort((v, u))
+        u_s = u[order]; v_s = v[order]; fi_s = fi_arr[order]
+        diff = np.r_[True, (u_s[1:] != u_s[:-1]) | (v_s[1:] != v_s[:-1])]
+        starts = np.where(diff)[0]
+        ends = np.r_[starts[1:], len(u_s)]
         emap: dict[tuple[int, int], list[int]] = {}
-        for fi, tri in enumerate(f):
-            for i in range(3):
-                a, b = int(tri[i]), int(tri[(i + 1) % 3])
-                key = (min(a, b), max(a, b))
-                emap.setdefault(key, []).append(fi)
+        for s, e in zip(starts.tolist(), ends.tolist()):
+            emap[(int(u_s[s]), int(v_s[s]))] = fi_s[s:e].tolist()
         return emap
 
     # Union-find for vertex remapping.
