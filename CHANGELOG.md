@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.4.0-beta2340] - 2026-04-29 — "P1+P2 quick wins / V-series guard 표준화 / P2.6 SI chain"
+
+### Added — P2.6 SI 진단 chain (15 카드, beta2322-2339)
+
+- `core/preprocessor/native_repair/self_intersect.py` (신규):
+  - `detect_self_intersections(V, F, *, max_pairs_for_o_n_squared, kdtree_k)` — Möller 1997 separating-axis test.
+  - O(M^2) brute force (≤5000 face) + O(M log M) KDTree path (대형 mesh).
+  - `export_intersecting_faces_stl(V, F, pairs, output_path)` — binary STL dump (시각화용).
+- `core/schemas.py::GeometryFidelity` + `core/generator/native_*/mesher.py::Native*Result` 모두 `n_self_intersect_pre: int | None` 필드.
+- `core/preprocessor/native_repair/__init__.py::NativeRepairResult` — `n_self_intersect_before/after` 필드.
+- `core/evaluator/fidelity.py::GeometryFidelityChecker` — fidelity 계산 시 SI 측정 + 채움.
+- `core/layers/native_bl.py` — pre-extrude wall surface SI 진단 + `native_bl_quality.json` 에 `pre_bl_self_intersect` 필드.
+- `core/generator/native_poly/voronoi.py` — best-of-N fail 시 SI 진단 + repair-retry 의 si_before/after/delta 로그.
+- `desktop/qt_app/compare_dialog.py` — `_METRICS` 에 "pre-BL Self-Int" 행 + JSON loader.
+- 3 engine result populate (native_tet/hex/poly) 모두 일관 — `_inject_si` helper (poly multi-return).
+
+### Added — V-series real-apply guard 표준화 (beta2318-2321)
+
+- VVV9D off-plane Steiner: dry-run → env-gated real apply (`AUTO_TESSELL_OFFPLANE_STEINER=1`).
+- VVV9H Klingner edge-contract: bug fix — `_st.get("accepted")` (미존재 key) → `_st.get("n_applied", 0) > 0`.
+- VVV9K priority-queue main-loop: monotone guard 추가 (worst -0.015 + mean improve).
+- VVV9P multi-face removal: 동일 monotone guard 표준화.
+- 7 V-series real-apply (RRR2 / SSS_REVIVAL / VVV9D / VVV9H / VVV9J / VVV9K / VVV9P) 동일 임계 통일.
+
+### Added — P1 quick wins (beta2305-2308)
+
+- **P1.1 hex small-bbox auto-escalate** — `seed_density` 만이 아닌 `cap` 도 ×1.5 raise (cap-binding 버그 수정).
+- **P1.2 poly best-of-N repair-retry** — 단일 (aggressive=3, lp_p=2) → 2 variants × 2 lp_p (4 추가 시도).
+- **P1.3 RRR2 monotone guard 완화** — `>= pre - 1e-12` (사실상 no-drop) → `worst -0.015 + mean improve` (fTetWild §3.5 envelope relocation 효과 활성화).
+- **P1.4 quadric_decimate auto-trigger** — `AUTO_TESSELL_QED` default `"0"` → `"auto"` (50k+ face 자동 ON).
+
+### Added — P2 medium impact (beta2309-2313)
+
+- **P2.1 collapse_short_edges allow_surface_keeper** — fTetWild §3.4 식 surface→interior collapse opt-in API + fine quality 자동 활성.
+- **P2.2 use_torch_amips** — RRR2 의 amips_torch (CUDA 가용 시 GPU) 라우팅 + fine HARNESS auto-on + GUI spec.
+- **P2.4 hex_buffer_cells** — snappy `nBufferCellsNoExtrude` 동등. octree level 경계에 1-cell 두께 buffer 추가 → skewness ↓.
+
+### Added — GUI/CLI parity (beta2315-2317)
+
+- `engine_params_spec.py` 추가 entry: `use_torch_amips`, `post_layers_max_total_ratio`, `post_layers_backup_original`, `post_layers_wall_patch`.
+
+### Fixed
+
+- BLConfig `_FLUID_PRESETS` 가 yplus.py FLUID_PROPERTIES 와 동기화 — simple aliases (`air`, `water`, `oil`) 추가 (beta2331).
+- fine quality `max_collapses_per_iter` 200 → 1000 (Phase B 5× 적극, cell_drop_rollback_ratio safety, beta2332).
+- CompareDialog brittle row index 테스트 _METRICS 확장 회귀 보호 (beta2335).
+- VVV9H Klingner edge-contract real apply dead code: env=1 켜도 동작 안 했음 (beta2319).
+
+### Performance
+
+- 30+ 카드 누적 변경, 회귀: **344 passed, 8 skipped, 0 failed** (10 모듈 broad sweep, 85.73s).
+
 ## [0.4.0-beta99] - 2026-04-24 — "항목 2,3,4,5,8 구현"
 
 ### Added
