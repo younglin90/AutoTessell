@@ -787,6 +787,8 @@ def generate_native_hex(
     log.info("native_hex_neg_vol_track", pass_name="post_filter", n_neg=_val3_prev, delta=0)
 
     # WWW7 (beta2130) — feature edge snap (default ON, env AUTO_TESSELL_WWW7_OFF disables).
+    # C-PERF-10 / beta2429 — pass timing log (perf attribution).
+    _t_www7 = __import__("time").perf_counter()
     if final_hexes.shape[0] > 0 and final_pts.shape[0] >= 100:
         try:
             from core.generator.native_hex.snap import snap_to_feature_edges  # noqa: PLC0415
@@ -805,6 +807,10 @@ def generate_native_hex(
     _val3_n = _count_neg_vol_hex(final_pts, final_hexes)
     log.info("native_hex_neg_vol_track", pass_name="WWW7", n_neg=_val3_n, delta=_val3_n - _val3_prev)
     _val3_prev = _val3_n
+    log.info(
+        "native_hex_pass_timing",
+        pass_name="WWW7", dt_ms=int((__import__("time").perf_counter() - _t_www7) * 1000),
+    )
 
     # HEX_QUALITY1 (beta2137) — non-ortho local post-pass (snappyHexMesh postSnap analog).
     # env AUTO_TESSELL_HEX_QUALITY1_OFF disables. Default ON.
