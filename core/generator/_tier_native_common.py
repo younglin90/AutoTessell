@@ -94,6 +94,10 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
                      # _apply_op_queue 후반의 split_sliver_longest_edge 활성 →
                      # 추가 sliver 제거. monotone guard 통과 시만 채택.
                      "enable_stellar_split": True,
+                     # C-QUAL-2 / beta2385: fine 에서 Phase A recovery 더 적극.
+                     # default 2 → 3 회. self-intersecting / non-manifold 입력의
+                     # missing triangle 회복률 ↑ (Hu 2018 §3.4 envelope expansion).
+                     "recovery_iterations": 3,
                      # beta810: fine 에서는 더 엄격한 sliver drop.
                      "sliver_drop_min_dihedral_deg": 1.0,
                      "sliver_drop_max_aspect": 5e4,
@@ -292,6 +296,8 @@ def run_native_tier(
         "qed_min_faces",
         # C1.7 / beta2378: Stellar split-pass auto-enable for fine.
         "enable_stellar_split",
+        # C-QUAL-2 / beta2385: tier-aware Phase A recovery iterations.
+        "recovery_iterations",
     }
     tsp = getattr(strategy, "tier_specific_params", None) or {}
     for k in _TIER_PARAM_KEYS:

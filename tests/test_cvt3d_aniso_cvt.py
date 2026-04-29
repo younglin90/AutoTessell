@@ -464,3 +464,16 @@ def test_native_tet_mesh_integrity_log_wired() -> None:
     src = inspect.getsource(mesher)
     assert "native_tet_mesh_integrity_suspect" in src, "log 키 누락"
     assert "V.shape[0] // 32" in src, "ratio threshold 누락 (V/32)"
+
+
+def test_harness_params_fine_recovery_iterations_3() -> None:
+    """C-QUAL-2 / beta2385 — fine 에서 Phase A recovery iterations=3."""
+    from core.generator._tier_native_common import HARNESS_PARAMS
+    p = HARNESS_PARAMS["tier_native_tet"]["fine"]
+    assert p.get("recovery_iterations") == 3, \
+        f"fine recovery_iterations=3 expected, got {p.get('recovery_iterations')}"
+    # whitelist 에도 포함됐는지.
+    import inspect
+    from core.generator import _tier_native_common
+    src = inspect.getsource(_tier_native_common)
+    assert '"recovery_iterations"' in src, "_TIER_PARAM_KEYS whitelist 추가 누락"
