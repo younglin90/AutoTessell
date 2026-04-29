@@ -571,3 +571,11 @@ def test_native_tet_seed_gwn_auto_si_fallback() -> None:
         "auto-fallback 조건 누락"
     assert "_use_gwn = _has_si" in src, "auto 분기 누락"
     assert "si_detected=_has_si" in src, "log si_detected 키 누락"
+
+
+def test_harness_params_fine_poly_auto_escalate_2() -> None:
+    """C-PERF-6 / beta2395 — fine poly auto_escalate_max 4→2."""
+    from core.generator._tier_native_common import HARNESS_PARAMS
+    p = HARNESS_PARAMS["tier_native_poly"]["fine"]
+    assert p.get("auto_escalate_max") == 2, \
+        f"auto_escalate_max=2 expected, got {p.get('auto_escalate_max')}"

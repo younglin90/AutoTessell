@@ -143,7 +143,12 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
                      "smooth_relax": 0.3, "n_lloyd": 3},
         "fine":     {"seed_density": 16, "max_iter": 5, "smooth_iters": 7,
                      "smooth_relax": 0.35, "max_tet_cells": 60000,
-                     "n_lloyd": 5},
+                     "n_lloyd": 5,
+                     # C-PERF-6 / beta2395: fine poly 의 escalate retry 4→2.
+                     # validator: hard mesh (V=12k) 의 poly 가 4 retry × 100-150s
+                     # = 500s+. 2 retry 로 가능한 성공 그대로 + 실패 시 wall_clock
+                     # budget (90s) 으로 빠르게 fallback.
+                     "auto_escalate_max": 2},
     },
 }
 
