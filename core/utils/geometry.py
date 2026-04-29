@@ -116,29 +116,28 @@ def inside_generalized_winding_number(
     v2 = V[F[:, 2]]
 
     inside = np.zeros(N, dtype=bool)
-    # Van Oosterom-Strackee 1983 식 (per-query).
+    # Van Oosterom-Strackee 1983 식 (벡터화).
     # Ω = 2 atan2(|a · (b × c)|, |a||b||c| + (a·b)|c| + (b·c)|a| + (c·a)|b|)
     # with sign from triple product.
+    # C-PERF-30 / beta2481 — per-query loop 제거: (B, Nf, 3) broadcast 로
+    # 한 batch 의 모든 (query, face) 쌍을 1-shot 처리.
     batch = 32
+    Nf = int(F.shape[0])
     for qi in range(0, N, batch):
-        qs = Q[qi:qi + batch]
+        qs = Q[qi:qi + batch]                                    # (B, 3)
         B = qs.shape[0]
-        for li in range(B):
-            p = qs[li]
-            a = v0 - p
-            b = v1 - p
-            c = v2 - p
-            la = np.linalg.norm(a, axis=1)
-            lb = np.linalg.norm(b, axis=1)
-            lc = np.linalg.norm(c, axis=1)
-            # avoid 0-len.
-            tri = np.einsum("ij,ij->i", a, np.cross(b, c))  # signed volume of (a,b,c).
-            denom = (la * lb * lc
-                     + (a * b).sum(axis=1) * lc
-                     + (b * c).sum(axis=1) * la
-                     + (c * a).sum(axis=1) * lb)
-            # solid angle (signed).
-            omega = 2.0 * np.arctan2(tri, denom + 1e-30)
-            w = float(omega.sum()) / (4.0 * np.pi)
-            inside[qi + li] = abs(w) > threshold
+        a = v0[None, :, :] - qs[:, None, :]                       # (B, Nf, 3)
+        b = v1[None, :, :] - qs[:, None, :]
+        c = v2[None, :, :] - qs[:, None, :]
+        la = np.linalg.norm(a, axis=2)                            # (B, Nf)
+        lb = np.linalg.norm(b, axis=2)
+        lc = np.linalg.norm(c, axis=2)
+        tri = np.einsum("bfi,bfi->bf", a, np.cross(b, c))         # (B, Nf)
+        ab = np.einsum("bfi,bfi->bf", a, b)                       # (B, Nf)
+        bc = np.einsum("bfi,bfi->bf", b, c)
+        ca = np.einsum("bfi,bfi->bf", c, a)
+        denom = la * lb * lc + ab * lc + bc * la + ca * lb        # (B, Nf)
+        omega = 2.0 * np.arctan2(tri, denom + 1e-30)              # (B, Nf)
+        w = omega.sum(axis=1) / (4.0 * np.pi)                     # (B,)
+        inside[qi:qi + B] = np.abs(w) > threshold
     return inside
