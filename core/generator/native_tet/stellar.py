@@ -95,23 +95,27 @@ def compute_face_incident_tets_cached(
         cached_id, cached_shape, cached_map = _FACE_INCIDENT_CACHE
         if cached_id == key_id and cached_shape == key_shape:
             return cached_map
-    # Build map.
+    # Build map.  C-PERF-58 / beta2509 — vectorize via lexsort + group-boundary.
     face_map: dict[tuple[int, int, int], list[int]] = {}
-    for ti in range(tets.shape[0]):
-        t = tets[ti]
-        for fi, fj, fk in _FACES4:
-            a, b, c = int(t[fi]), int(t[fj]), int(t[fk])
-            if a > b:
-                a, b = b, a
-            if b > c:
-                b, c = c, b
-            if a > b:
-                a, b = b, a
-            key = (a, b, c)
-            if key in face_map:
-                face_map[key].append(ti)
-            else:
-                face_map[key] = [ti]
+    if tets.shape[0] > 0:
+        _FACES4_IDX = np.array(_FACES4, dtype=np.int64)              # (4, 3)
+        faces_arr = np.sort(
+            tets[:, _FACES4_IDX].reshape(-1, 3), axis=1,
+        )                                                             # (4T, 3)
+        ti_face = np.repeat(
+            np.arange(tets.shape[0], dtype=np.int64), 4,
+        )
+        order_fm = np.lexsort(
+            (faces_arr[:, 2], faces_arr[:, 1], faces_arr[:, 0]),
+        )
+        f_s = faces_arr[order_fm]
+        ti_s = ti_face[order_fm]
+        diff_fm = np.r_[True, np.any(f_s[1:] != f_s[:-1], axis=1)]
+        starts_fm = np.where(diff_fm)[0]
+        ends_fm = np.r_[starts_fm[1:], len(f_s)]
+        for s, e in zip(starts_fm.tolist(), ends_fm.tolist()):
+            k = (int(f_s[s, 0]), int(f_s[s, 1]), int(f_s[s, 2]))
+            face_map[k] = ti_s[s:e].tolist()
     _FACE_INCIDENT_CACHE = (key_id, key_shape, face_map)
     return face_map
 
