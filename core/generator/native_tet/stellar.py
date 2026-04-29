@@ -2725,13 +2725,14 @@ def _evidence_compare_lines(
         pts_j = copy.deepcopy(pts)
         tets_j = copy.deepcopy(tets)
         # Identify top-K worst vertices by min incident tet quality
+        # C-PERF-60 / beta2511 — vectorize via _tet_quality_batch + np.minimum.at scatter.
         n_verts = len(pts_j)
         vert_min_q = np.ones(n_verts, dtype=np.float64)
-        for ti in range(len(tets_j)):
-            q = _tet_quality(pts_j, tets_j[ti])
-            for vi in tets_j[ti]:
-                if q < vert_min_q[vi]:
-                    vert_min_q[vi] = q
+        if len(tets_j) > 0:
+            q_arr_j = _tet_quality_batch(pts_j, np.asarray(tets_j, dtype=np.int64))
+            flat_v_j = np.asarray(tets_j, dtype=np.int64).reshape(-1)
+            flat_q_j = np.repeat(q_arr_j, 4)
+            np.minimum.at(vert_min_q, flat_v_j, flat_q_j)
         worst_verts = list(np.argsort(vert_min_q)[:max_apply])
         for v in worst_verts:
             res = _slim_newton_step_one_vertex(pts_j, tets_j, int(v))
