@@ -257,12 +257,26 @@ def reduce_nonortho_tet(
         return pts, tets, 0
 
     # ── 1. Build face -> owner tets ──────────────────────────────────────────
-    _TET_FACES = ((0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3))
+    # C-PERF-44 / beta2495 — vectorize via lexsort + group-boundary.
+    _TET_FACES_IDX = np.array([
+        [0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3],
+    ], dtype=np.int64)
+    faces_flat = np.sort(
+        tets[:, _TET_FACES_IDX].reshape(-1, 3), axis=1,
+    )
+    ti_face = np.repeat(np.arange(n_tets, dtype=np.int64), 4)
+    order_fl = np.lexsort(
+        (faces_flat[:, 2], faces_flat[:, 1], faces_flat[:, 0]),
+    )
+    f_s = faces_flat[order_fl]
+    ti_f = ti_face[order_fl]
+    diff_fl = np.r_[True, np.any(f_s[1:] != f_s[:-1], axis=1)]
+    starts_fl = np.where(diff_fl)[0]
+    ends_fl = np.r_[starts_fl[1:], len(f_s)]
     face_owners: dict[tuple[int, int, int], list[int]] = {}
-    for ti in range(n_tets):
-        for fl in _TET_FACES:
-            key = tuple(sorted(int(tets[ti, k]) for k in fl))
-            face_owners.setdefault(key, []).append(ti)  # type: ignore[arg-type]
+    for s, e in zip(starts_fl.tolist(), ends_fl.tolist()):
+        k = (int(f_s[s, 0]), int(f_s[s, 1]), int(f_s[s, 2]))
+        face_owners[k] = ti_f[s:e].tolist()
 
     # ── 2. Collect internal faces with non-ortho > threshold ─────────────────
     bad: list[tuple[float, tuple[int, int, int], int, int]] = []
