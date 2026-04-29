@@ -159,12 +159,23 @@ class HistoryDialog(EscDismissMixin, QDialog):
                     "(catastrophic collapse 의심)",
                 )
             # C-GUI-12 / beta2437 — BL prism column with color-coding.
+            # C-GUI-13 / beta2439 — max_aspect_ratio 추가.
             _bl_prism = int(getattr(e, "bl_n_prism_cells", 0) or 0)
             _bl_lcr = int(getattr(e, "bl_lcr_n_reduced_verts", 0) or 0)
+            _bl_max_ar = float(getattr(e, "bl_max_aspect_ratio", 0.0) or 0.0)
             _bl_prism_item = QTableWidgetItem(f"{_bl_prism:,}" if _bl_prism > 0 else "—")
             if _bl_prism > 0:
                 _bl_prism_item.setForeground(QColor("#22c55e"))
                 _tooltip_parts = [f"prism cells: {_bl_prism:,}"]
+                if _bl_max_ar > 0:
+                    _aspect_label = (
+                        "OK" if _bl_max_ar < 1000 else
+                        "high" if _bl_max_ar < 10000 else
+                        "extreme (사용자 mesh 검토 권장)"
+                    )
+                    _tooltip_parts.append(
+                        f"max aspect: {_bl_max_ar:,.0f} ({_aspect_label})",
+                    )
                 if _bl_lcr > 0:
                     _tooltip_parts.append(
                         f"LCR reduced verts: {_bl_lcr} (Pointwise T-Rex 동등)"

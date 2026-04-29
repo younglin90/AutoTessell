@@ -43,6 +43,8 @@ class HistoryEntry:
     bl_n_prism_cells: int = 0
     bl_lcr_n_reduced_verts: int = 0
     bl_aniso_split_n_would_split: int = 0
+    # C-GUI-13 / beta2439 — BL prism quality (max aspect ratio).
+    bl_max_aspect_ratio: float = 0.0
     error: str | None = None
 
 
@@ -156,5 +158,7 @@ def make_entry_from_result(
         bl_aniso_split_n_would_split=int(
             getattr(bl_stats, "aniso_split_n_would_split", 0) or 0,
         ),
+        # C-GUI-13 / beta2439 — BL max aspect (CFD quality 지표).
+        bl_max_aspect_ratio=float(getattr(bl_stats, "max_aspect_ratio", 0.0) or 0.0),
         error=getattr(result, "error", None),
     )
