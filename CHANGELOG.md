@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.4.0-beta2520] - 2026-04-30 — "/loop perf saturation: 56 hot-loop 벡터화"
+
+### Added — CLI/GUI parity 신규 (beta2455-2464)
+
+- **--bl-floor-ratio** (beta2447) — BL curvature_adaptive_thickness floor.
+- **--hex-snap-budget-s** (beta2457) — hex feature snap budget.
+- **--lloyd-plateau-thresh** (beta2458) — poly Lloyd plateau early-exit.
+- **--patch-cap** (beta2459) — polyMesh patch count cap.
+- **--no-cvt3d / --no-aniso-cvt / --no-lcr** (beta2464) — 알고리즘 disable toggles.
+- 동등 GUI 위젯 7 개 (beta2460-2462) — BL floor / patch cap / hex snap / Lloyd plateau.
+
+### Added — Stellar split-pass 향상 (beta2463)
+
+- `AUTO_TESSELL_STELLAR_SLIVER_RATIO` env (default 1e-3 동일).
+- `max_splits` mesh-size auto-scale (`min(n_tets*0.001, 200)`, 이전 hard-cap 20).
+
+### Performance — 56 hot-loop 벡터화 (beta2465-2520)
+
+5 패턴 표준화:
+- **lexsort + group-boundary**: 17 sites (face/edge enumeration, owners maps)
+- **packed-key np.unique**: 10 sites (set comprehension)
+- **flat sort + bincount-offset**: 11 sites (CSR 1-ring builds, vert→tet)
+- **np.add.at scatter**: 6 sites (vertex normal, Laplacian, scatter-min)
+- **broadcast 3D ops**: 4 sites (winding number, AABB pre-filter)
+
+영향 모듈: tet (24) / hex (8) / poly (2) / BL (3) / preprocessor (8) / analyzer (3).
+
+### Added — 새 helper 함수
+
+- `_tet_quality_batch` (beta2467) — Stellar split monotone guard 의 vectorized
+  mean-ratio quality (max diff 1.66e-16 vs scalar).
+- `_chunk_bounds` (beta2483) — np.indices 로 n_div³ 블록 일괄 생성.
+
+### Fixed
+
+- **Möller `_interval` IndexError** (beta2473) — sd[0]==0 (vertex on plane)
+  degenerate case 4-branch 처리 (이전 idx_same[] 빈 배열 접근 IndexError).
+
+### Documentation
+
+- `docs/plans/loop-cycle-snapshot-beta2469.md` (87+18 cards).
+- `docs/plans/loop-cycle-snapshot-beta2481.md` (105 cards).
+- `docs/plans/loop-cycle-snapshot-beta2494.md` (132 cards).
+- `docs/plans/loop-cycle-snapshot-beta2509.md` (147 cards).
+- `docs/plans/loop-cycle-snapshot-beta2518.md` (165 cards).
+- `docs/env_vars.md` 업데이트 (beta2473 기준).
+
+---
+
 ## [0.4.0-beta2358] - 2026-04-29 — "Cycle 35-47: V-series GUI 완성 / quality-aware BL / production wiring"
 
 ### Added — V-series CLI/GUI parity 완성 (beta2344-2351)
