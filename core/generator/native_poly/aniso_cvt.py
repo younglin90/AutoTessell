@@ -90,15 +90,14 @@ def _surface_principal_curvatures(
     a1 = _angle(-e10, e21)
     a2 = _angle(-e20, -e21)
 
-    for fi in range(F.shape[0]):
-        v0, v1, v2 = int(F[fi, 0]), int(F[fi, 1]), int(F[fi, 2])
-        angle_sum[v0] += a0[fi]
-        angle_sum[v1] += a1[fi]
-        angle_sum[v2] += a2[fi]
-        # 1/3 of face area to each.
-        one_ring_area[v0] += face_area[fi] / 3.0
-        one_ring_area[v1] += face_area[fi] / 3.0
-        one_ring_area[v2] += face_area[fi] / 3.0
+    # C-PERF-18 / beta2468 — vectorize angle_sum + one_ring_area scatter.
+    np.add.at(angle_sum, F[:, 0], a0)
+    np.add.at(angle_sum, F[:, 1], a1)
+    np.add.at(angle_sum, F[:, 2], a2)
+    third = face_area / 3.0
+    np.add.at(one_ring_area, F[:, 0], third)
+    np.add.at(one_ring_area, F[:, 1], third)
+    np.add.at(one_ring_area, F[:, 2], third)
 
     one_ring_area = np.maximum(one_ring_area, 1e-30)
     K_gauss = (2.0 * np.pi - angle_sum) / one_ring_area
@@ -113,16 +112,16 @@ def _surface_principal_curvatures(
     curv[:, 0] = K_mean_approx + np.abs(K_gauss) / np.maximum(K_mean_approx, 1e-30)
     curv[:, 1] = np.maximum(K_mean_approx, 1e-30)
 
-    # smoothing — 1-ring Laplacian.
+    # smoothing — 1-ring Laplacian (vectorized).
+    # C-PERF-18 / beta2468 — replace triple nested loop with scatter-sum.
+    # 6 (vi, vj) pairs per face: (0,1),(0,2),(1,0),(1,2),(2,0),(2,1).
+    vi_flat = F[:, [0, 0, 1, 1, 2, 2]].reshape(-1)
+    vj_flat = F[:, [1, 2, 0, 2, 0, 1]].reshape(-1)
     for _ in range(int(smoothing_iters)):
         nbr_sum = np.zeros((n_v, 2), dtype=np.float64)
         nbr_cnt = np.zeros(n_v, dtype=np.int64)
-        for fi in range(F.shape[0]):
-            for vi in F[fi]:
-                for vj in F[fi]:
-                    if int(vi) != int(vj):
-                        nbr_sum[int(vi)] += curv[int(vj)]
-                        nbr_cnt[int(vi)] += 1
+        np.add.at(nbr_sum, vi_flat, curv[vj_flat])
+        np.add.at(nbr_cnt, vi_flat, 1)
         denom = np.maximum(nbr_cnt[:, None], 1)
         curv = 0.5 * curv + 0.5 * (nbr_sum / denom)
 
