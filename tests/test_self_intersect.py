@@ -100,6 +100,23 @@ def test_empty_input_returns_zero_report() -> None:
     assert r.n_intersections == 0
 
 
+def test_native_hex_and_poly_results_have_si_field() -> None:
+    """beta2337 — NativeHexResult / NativePolyResult 도 동일 SI 필드 노출.
+
+    native_tet (beta2336) 와 일관 schema. P2.6 chain 의 3 native engine
+    return type 모두 SI 정보 capture 가능."""
+    from dataclasses import fields
+    from core.generator.native_hex.mesher import NativeHexResult
+    from core.generator.native_poly.voronoi import NativePolyResult
+
+    hex_fields = {f.name for f in fields(NativeHexResult)}
+    poly_fields = {f.name for f in fields(NativePolyResult)}
+    assert "n_self_intersect_pre" in hex_fields, \
+        f"NativeHexResult.n_self_intersect_pre 누락"
+    assert "n_self_intersect_pre" in poly_fields, \
+        f"NativePolyResult.n_self_intersect_pre 누락"
+
+
 def test_native_tet_result_exposes_n_self_intersect_pre() -> None:
     """beta2336 — NativeTetResult 에 n_self_intersect_pre 필드 추가.
 

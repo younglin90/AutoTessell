@@ -97,6 +97,9 @@ class NativeHexResult:
     max_aspect: float = -1.0
     plane_coverage: float = -1.0
     plane_area_coverage: float = -1.0
+    # beta2337 — pre-mesh self-intersect (P2.6 chain). None = 측정 안 됨,
+    # 0 = clean, >0 = 입력 SI 존재. native_tet (beta2336) 와 동일 필드.
+    n_self_intersect_pre: int | None = None
 
 
 # OpenFOAM hex cell 의 6 face 정의 — 각 face 는 4 vertex (CCW from outside).

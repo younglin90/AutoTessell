@@ -207,6 +207,9 @@ class NativePolyResult:
     avg_faces_per_cell: float = -1.0
     plane_coverage: float = -1.0
     plane_area_coverage: float = -1.0
+    # beta2337 — pre-mesh self-intersect (P2.6 chain). None = 측정 안 됨,
+    # 0 = clean, >0 = 입력 SI 존재.
+    n_self_intersect_pre: int | None = None
 
 
 from core.utils.geometry import inside_winding_number as _inside_ray_cast
