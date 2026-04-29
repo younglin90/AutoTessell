@@ -70,7 +70,7 @@ def _gen_tet(V, F, td: Path) -> dict:
     except Exception as exc:
         return {"success": False, "elapsed": time.perf_counter() - t0,
                 "exc": str(exc)[:160]}
-    return {
+    out = {
         "success": bool(r.success),
         "elapsed": round(time.perf_counter() - t0, 2),
         "n_cells": int(r.n_cells),
@@ -82,6 +82,10 @@ def _gen_tet(V, F, td: Path) -> dict:
         # C-VAL-3 / beta2396 — input SI pre-mesh count (UUU2 결과).
         "n_self_intersect_pre": getattr(r, "n_self_intersect_pre", None),
     }
+    # C-VAL-6 / beta2403 — BL pipeline 시도.
+    if out["success"]:
+        out.update(_try_bl_after_volume(td))
+    return out
 
 
 def _gen_hex(V, F, td: Path) -> dict:
@@ -97,11 +101,14 @@ def _gen_hex(V, F, td: Path) -> dict:
     except Exception as exc:
         return {"success": False, "elapsed": time.perf_counter() - t0,
                 "exc": str(exc)[:160]}
-    return {
+    out = {
         "success": bool(r.success),
         "elapsed": round(time.perf_counter() - t0, 2),
         "n_cells": int(getattr(r, "n_cells", 0)),
     }
+    if out["success"]:
+        out.update(_try_bl_after_volume(td))
+    return out
 
 
 def _gen_poly(V, F, td: Path) -> dict:
@@ -117,13 +124,16 @@ def _gen_poly(V, F, td: Path) -> dict:
     except Exception as exc:
         return {"success": False, "elapsed": time.perf_counter() - t0,
                 "exc": str(exc)[:160]}
-    return {
+    out = {
         "success": bool(r.success),
         "elapsed": round(time.perf_counter() - t0, 2),
         "n_cells": int(getattr(r, "n_cells", 0)),
         "integrity_suspect": bool(getattr(r, "mesh_integrity_suspect", False)),
         "n_surface_v": int(V.shape[0]),
     }
+    if out["success"]:
+        out.update(_try_bl_after_volume(td))
+    return out
 
 
 def _run_one(info: dict, gen_fn) -> dict:
@@ -138,6 +148,39 @@ def _run_one(info: dict, gen_fn) -> dict:
                           np.asarray(F, dtype=np.int64), Path(td))
         except Exception:
             return {"success": False, "exc": traceback.format_exc()[:200]}
+
+
+def _try_bl_after_volume(td: Path) -> dict:
+    """C-VAL-6 / beta2403 — volume mesh 가 case_dir 에 있으면 BL 추가.
+
+    success → {"bl_success": True, "bl_n_prism_cells": N, ...}.
+    skip (BL 입력 invalid) → {"bl_success": False, "bl_skipped": "reason"}.
+    """
+    import time as _t
+    try:
+        from core.layers.native_bl import BLConfig, generate_native_bl
+    except Exception as exc:
+        return {"bl_success": False, "bl_skipped": f"import_fail:{str(exc)[:60]}"}
+    case_dir = td / "c"
+    if not (case_dir / "constant" / "polyMesh").exists():
+        return {"bl_success": False, "bl_skipped": "no_polymesh"}
+    t0 = _t.perf_counter()
+    try:
+        cfg = BLConfig(num_layers=3, first_thickness=0.0, growth_ratio=1.2)
+        r = generate_native_bl(case_dir, config=cfg, engine_tag="validator")
+        return {
+            "bl_success": bool(r.success),
+            "bl_elapsed": round(_t.perf_counter() - t0, 2),
+            "bl_n_prism_cells": int(getattr(r, "n_prism_cells", 0)),
+            "bl_n_wall_faces": int(getattr(r, "n_wall_faces", 0)),
+            "bl_max_diff_rel": float(getattr(r, "wall_preserve_max_diff_rel", 0.0)),
+        }
+    except Exception as exc:
+        return {
+            "bl_success": False,
+            "bl_elapsed": round(_t.perf_counter() - t0, 2),
+            "bl_skipped": f"exc:{str(exc)[:80]}",
+        }
 
 
 def main(argv: list[str]) -> int:
@@ -174,8 +217,16 @@ def main(argv: list[str]) -> int:
             si_s = f" si={si_pre}" if isinstance(si_pre, int) and si_pre > 0 else ""
             err = r.get("exc") or r.get("load_error") or r.get("message")
             err_s = f" err={str(err)[:80]}" if err and not r.get("success") else ""
+            # C-VAL-6 / beta2403 — BL 결과 표시.
+            if "bl_success" in r:
+                if r.get("bl_success"):
+                    bl_s = f" +BL[prism={r.get('bl_n_prism_cells', 0)}]"
+                else:
+                    bl_s = f" +BL[skip:{(r.get('bl_skipped') or 'fail')[:40]}]"
+            else:
+                bl_s = ""
             print(
-                f"  {engine_name}: {ok} cells={n_cells} t={elapsed}s{extra}{si_s} {integrity}{err_s}"
+                f"  {engine_name}: {ok} cells={n_cells} t={elapsed}s{extra}{si_s} {integrity}{bl_s}{err_s}"
                 .rstrip(),
             )
 
