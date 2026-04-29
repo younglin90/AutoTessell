@@ -182,6 +182,68 @@ def _kdtree_overlap_pairs(
     return list(out)
 
 
+def export_intersecting_faces_stl(
+    V: np.ndarray,
+    F: np.ndarray,
+    pairs: list[tuple[int, int]],
+    output_path: "str | object",
+) -> int:
+    """beta2330 — self-intersect 페어를 binary STL 로 export (시각화용).
+
+    상위 caller (GUI / CLI) 가 사용자에게 "어디 면이 self-intersect 하는가" 를
+    PyVista / Meshlab 등으로 보여주는 데 사용. unique 면 ID 만 추출하므로
+    실제 face 수 = unique(pairs flatten).
+
+    Args:
+        V: (N, 3) vertex 좌표.
+        F: (M, 3) triangle vertex indices.
+        pairs: detect_self_intersections().intersecting_face_pairs.
+        output_path: 출력 STL 파일 경로 (Path or str).
+
+    Returns:
+        실제 export 한 unique face 수.
+    """
+    from pathlib import Path
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    if not pairs:
+        # 빈 STL 생성 — 0 face.
+        with out.open("wb") as f:
+            f.write(b"\x00" * 80)  # 80-byte header.
+            f.write((0).to_bytes(4, "little"))
+        return 0
+
+    unique_fids = sorted({i for p in pairs for i in p})
+    V = np.asarray(V, dtype=np.float64)
+    F = np.asarray(F, dtype=np.int64)
+
+    n_tri = len(unique_fids)
+    with out.open("wb") as f:
+        # 80-byte header.
+        header = (
+            f"AutoTessell self-intersect dump ({n_tri} tri)"
+        ).encode("ascii", errors="replace")[:80]
+        f.write(header.ljust(80, b"\x00"))
+        # uint32 num_triangles.
+        f.write(int(n_tri).to_bytes(4, "little"))
+        # 50 bytes per tri: 12 (normal) + 36 (3 verts) + 2 (attr).
+        for fi in unique_fids:
+            a = V[F[fi, 0]]
+            b = V[F[fi, 1]]
+            c = V[F[fi, 2]]
+            n = np.cross(b - a, c - a)
+            nn = float(np.linalg.norm(n))
+            if nn > 1e-30:
+                n = n / nn
+            f.write(np.asarray(n, dtype=np.float32).tobytes())
+            f.write(np.asarray(a, dtype=np.float32).tobytes())
+            f.write(np.asarray(b, dtype=np.float32).tobytes())
+            f.write(np.asarray(c, dtype=np.float32).tobytes())
+            f.write((0).to_bytes(2, "little"))
+    return n_tri
+
+
 def detect_self_intersections(
     V: np.ndarray,
     F: np.ndarray,

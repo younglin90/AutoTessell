@@ -100,6 +100,51 @@ def test_empty_input_returns_zero_report() -> None:
     assert r.n_intersections == 0
 
 
+def test_export_intersecting_faces_stl_writes_binary_file() -> None:
+    """beta2330 — export_intersecting_faces_stl 가 unique face 만 binary STL 작성.
+
+    binary STL header (80 bytes) + uint32 n_tri + 50 bytes/tri 검증."""
+    import tempfile
+    from pathlib import Path
+    from core.preprocessor.native_repair.self_intersect import (
+        export_intersecting_faces_stl,
+    )
+
+    V = np.array(
+        [[0, 0, 0], [1, 0, 0], [0, 1, 0],
+         [0.5, 0.5, -1], [0.5, 0.5, 1], [1.5, 0.5, 0]],
+        dtype=np.float64,
+    )
+    F = np.array([[0, 1, 2], [3, 4, 5]], dtype=np.int64)
+    pairs = [(0, 1)]
+
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "si.stl"
+        n = export_intersecting_faces_stl(V, F, pairs, out)
+        assert n == 2, f"unique face count mismatch: {n}"
+        assert out.exists()
+        # 80 + 4 + 50*2 = 184 bytes
+        assert out.stat().st_size == 184
+
+
+def test_export_intersecting_faces_stl_handles_empty_pairs() -> None:
+    """beta2330 — 빈 pairs 입력 시 0-face STL 생성 (84 bytes header only)."""
+    import tempfile
+    from pathlib import Path
+    from core.preprocessor.native_repair.self_intersect import (
+        export_intersecting_faces_stl,
+    )
+
+    V = np.zeros((3, 3), dtype=np.float64)
+    F = np.array([[0, 1, 2]], dtype=np.int64)
+    with tempfile.TemporaryDirectory() as tmp:
+        out = Path(tmp) / "empty.stl"
+        n = export_intersecting_faces_stl(V, F, [], out)
+        assert n == 0
+        assert out.exists()
+        assert out.stat().st_size == 84   # 80 header + 4 count.
+
+
 def test_native_bl_quality_json_includes_pre_bl_si() -> None:
     """beta2328 — native_bl_quality.json 에 pre_bl_self_intersect 필드 포함."""
     import inspect
