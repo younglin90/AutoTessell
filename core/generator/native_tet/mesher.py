@@ -3261,14 +3261,39 @@ def generate_native_tet(
                     _VVV9P_APPLY_REAL: bool = bool(os.environ.get("AUTO_TESSELL_VVV9P_APPLY", "0") == "1")
                     from core.generator.native_tet.stellar import _multi_face_removal_apply as _mfra_9p  # noqa: PLC0415
                     _pts2, _tets2, _n_imp, _delta = _mfra_9p(final_pts, final_tets, candidates=_cands)
+                    # beta2321 — VVV9K (beta2320) 와 동일 monotone guard 표준화.
+                    # 이전엔 _delta >= 0 + n_imp ≥ 1 만 — multi-face removal 이
+                    # worst min_q 악화시킬 위험. RRR2 임계 (worst -0.015 + mean
+                    # improve) 추가.
                     if _VVV9P_APPLY_REAL and _delta >= 0.0 and int(_n_imp) >= 1:
-                        final_pts, final_tets = _pts2, _tets2
-                        log.info(
-                            "native_tet_vvv9p5_real_apply",
-                            n_improved=int(_n_imp),
-                            delta=float(_delta),
-                            mode="real_apply",
-                        )
+                        from core.generator.native_tet.quality import snapshot as _qsnap_9p
+                        _wd_9p = 0.0
+                        _mg_9p = 0.0
+                        _ok_9p = False
+                        try:
+                            _pre_9p = _qsnap_9p(final_pts, final_tets)
+                            _post_9p = _qsnap_9p(_pts2, _tets2)
+                            _wd_9p = float(_pre_9p.min_q) - float(_post_9p.min_q)
+                            _mg_9p = float(_post_9p.mean_q) - float(_pre_9p.mean_q)
+                            _ok_9p = _wd_9p <= 0.015 and _mg_9p >= -1e-12
+                        except Exception:
+                            _ok_9p = False
+                        if _ok_9p:
+                            final_pts, final_tets = _pts2, _tets2
+                            log.info(
+                                "native_tet_vvv9p5_real_apply",
+                                n_improved=int(_n_imp),
+                                delta=float(_delta),
+                                worst_drop=round(_wd_9p, 4),
+                                mean_gain=round(_mg_9p, 4),
+                                mode="real_apply",
+                            )
+                        else:
+                            log.info(
+                                "native_tet_vvv9p5_rejected",
+                                worst_drop=round(_wd_9p, 4),
+                                mean_gain=round(_mg_9p, 4),
+                            )
                     _wall_ms_9p = int((time.perf_counter() - _t0_9p) * 1000)
                     _top_q = float(_cands[0]["min_q"]) if _cands else 1.0
                     log.info(

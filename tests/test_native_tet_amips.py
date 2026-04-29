@@ -58,6 +58,16 @@ def test_amips_relocation_decreases_energy_on_sliver() -> None:
     assert r.energy_after <= r.energy_before + 1e-6
 
 
+def test_vvv9p_real_apply_has_monotone_guard() -> None:
+    """beta2321 — VVV9P real apply 가 monotone guard 표준화 (worst -0.015)."""
+    import inspect
+    from core.generator.native_tet import mesher
+    src = inspect.getsource(mesher)
+    assert "_wd_9p <= 0.015" in src, "VVV9P worst-drop guard 누락"
+    assert "_mg_9p >= -1e-12" in src, "VVV9P mean-gain guard 누락"
+    assert "native_tet_vvv9p5_rejected" in src, "VVV9P rejected 로그 누락"
+
+
 def test_vvv9k_real_apply_has_monotone_guard() -> None:
     """beta2320 — VVV9K real apply 가 RRR2 와 동일 monotone guard 사용.
 
