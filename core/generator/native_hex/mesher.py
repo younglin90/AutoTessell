@@ -788,8 +788,20 @@ def generate_native_hex(
 
     # WWW7 (beta2130) — feature edge snap (default ON, env AUTO_TESSELL_WWW7_OFF disables).
     # C-PERF-10 / beta2429 — pass timing log (perf attribution).
+    # C-PERF-12 / beta2431 — env AUTO_TESSELL_HEX_WWW7_BUDGET_S 로 cap.
+    # default ∞ (no cap). hard mesh 에서 600s+ 걸리던 케이스 사용자 control.
     _t_www7 = __import__("time").perf_counter()
-    if final_hexes.shape[0] > 0 and final_pts.shape[0] >= 100:
+    _www7_budget_s = float(_os_hex_budget.environ.get("AUTO_TESSELL_HEX_WWW7_BUDGET_S", "0"))
+    if (
+        _www7_budget_s > 0
+        and __import__("time").perf_counter() - _hex_t_start > _www7_budget_s
+    ):
+        log.warning(
+            "native_hex_www7_budget_skipped",
+            elapsed_s=round(__import__("time").perf_counter() - _hex_t_start, 1),
+            budget_s=_www7_budget_s,
+        )
+    elif final_hexes.shape[0] > 0 and final_pts.shape[0] >= 100:
         try:
             from core.generator.native_hex.snap import snap_to_feature_edges  # noqa: PLC0415
             final_pts, www7_stats = snap_to_feature_edges(
