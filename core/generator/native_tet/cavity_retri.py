@@ -76,11 +76,22 @@ def cavity_retri_for_missing_edges(
     alive = np.ones(tets.shape[0], dtype=bool)
 
     # vertex → tet index.
+    # C-PERF-31 / beta2482 — vectorize via flat sort + bincount-offset slicing.
     n = pts.shape[0]
-    v2t: list[list[int]] = [[] for _ in range(n)]
-    for ti in range(tets.shape[0]):
-        for k in range(4):
-            v2t[int(tets[ti, k])].append(ti)
+    if tets.shape[0] == 0:
+        v2t: list[list[int]] = [[] for _ in range(n)]
+    else:
+        flat_v_v2t = tets.reshape(-1).astype(np.int64)
+        flat_t_v2t = np.repeat(np.arange(tets.shape[0], dtype=np.int64), 4)
+        order_v2t = np.argsort(flat_v_v2t, kind="stable")
+        sorted_v_v2t = flat_v_v2t[order_v2t]
+        sorted_t_v2t = flat_t_v2t[order_v2t]
+        counts_v2t = np.bincount(sorted_v_v2t, minlength=n)
+        offs_v2t = np.concatenate(([0], np.cumsum(counts_v2t).astype(np.int64)))
+        v2t = [
+            sorted_t_v2t[offs_v2t[i]:offs_v2t[i + 1]].tolist()
+            for i in range(n)
+        ]
 
     new_tets_list: list[list[int]] = []
 
