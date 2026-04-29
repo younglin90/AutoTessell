@@ -948,20 +948,28 @@ def generate_native_hex(
             _triangle_planes_and_areas, _group_by_plane,
         )
         # hex boundary face (1-owner) 추출 → 2 triangle 로 분할.
-        face_owner_count: dict[tuple[int, int, int, int], int] = {}
-        for ci in range(final_hexes.shape[0]):
-            for face_local in _HEX_FACES:
-                v = tuple(int(final_hexes[ci, k]) for k in face_local)
-                key = tuple(sorted(v))
-                face_owner_count[key] = face_owner_count.get(key, 0) + 1
+        # C-PERF-53 / beta2504 — vectorize via lexsort group sizes.
         bnd_tris: list[list[int]] = []
-        for ci in range(final_hexes.shape[0]):
-            for face_local in _HEX_FACES:
-                v = [int(final_hexes[ci, k]) for k in face_local]
-                key = tuple(sorted(v))
-                if face_owner_count[key] == 1:
-                    bnd_tris.append([v[0], v[1], v[2]])
-                    bnd_tris.append([v[0], v[2], v[3]])
+        if final_hexes.shape[0] > 0:
+            _HF_IDX = np.array(_HEX_FACES, dtype=np.int64)              # (6, 4)
+            faces_v = final_hexes[:, _HF_IDX].reshape(-1, 4)            # (6C, 4)
+            faces_sorted = np.sort(faces_v, axis=1)
+            ci_arr = np.repeat(np.arange(final_hexes.shape[0]), 6)
+            order_bf = np.lexsort(
+                (faces_sorted[:, 3], faces_sorted[:, 2],
+                 faces_sorted[:, 1], faces_sorted[:, 0]),
+            )
+            fs_s = faces_sorted[order_bf]
+            faces_orig = faces_v[order_bf]                              # for actual quad verts
+            ci_s = ci_arr[order_bf]
+            diff_bf = np.r_[True, np.any(fs_s[1:] != fs_s[:-1], axis=1)]
+            starts_bf = np.where(diff_bf)[0]
+            sizes_bf = np.diff(np.r_[starts_bf, len(fs_s)])
+            bnd_face_starts = starts_bf[sizes_bf == 1]
+            for s in bnd_face_starts.tolist():
+                v = faces_orig[s].tolist()
+                bnd_tris.append([v[0], v[1], v[2]])
+                bnd_tris.append([v[0], v[2], v[3]])
         if bnd_tris:
             B_tri = np.asarray(bnd_tris, dtype=np.int64)
             bbox_diag = float(np.linalg.norm(V.max(axis=0) - V.min(axis=0))) + 1e-30
