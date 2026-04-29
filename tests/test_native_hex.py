@@ -182,3 +182,43 @@ def test_native_hex_escalate_recovers_when_cap_binding(tmp_case_dir: Path) -> No
     # 회복 — auto-escalate 가 cap 도 raise 해서 적어도 1 cell 도달.
     assert res.success, res.message
     assert res.n_cells >= 1
+
+
+def test_octree_buffer_layer_extends_level_transition() -> None:
+    """beta2312 — _add_buffer_layer_between_levels 가 1-cell buffer 추가.
+
+    snappy nBufferCellsNoExtrude 동등: refinement level 경계 (L vs L-1)
+    의 L-1 셀이 L-2 셀을 갖고 있으면 L-2 → L-1 upgrade. → level 경계가
+    한 cell 두께로 부드러워져 hex skewness ↓."""
+    from core.generator.native_hex.octree import (
+        _add_buffer_layer_between_levels,
+    )
+    # 5×5×5 concentric: center L=3, 1-ring L=2, 외곽 L=1 (이미 2:1 balance).
+    levels: dict[tuple[int, int, int], int] = {}
+    for i in range(5):
+        for j in range(5):
+            for k in range(5):
+                d = max(abs(i - 2), abs(j - 2), abs(k - 2))
+                if d == 0:
+                    levels[(i, j, k)] = 3
+                elif d == 1:
+                    levels[(i, j, k)] = 2
+                else:
+                    levels[(i, j, k)] = 1
+    buffered = _add_buffer_layer_between_levels(levels, n_buffer=1)
+    upgrades = sum(1 for k in levels if buffered[k] != levels[k])
+    assert upgrades > 0, "balanced concentric 입력에서 buffer upgrade 0 — 로직 결함"
+    # 새로 L=2 가 된 cells 는 모두 원래 L=1 였어야 함 (no downgrade).
+    for k in levels:
+        if buffered[k] != levels[k]:
+            assert buffered[k] >= levels[k], "downgrade 발생 (잘못)"
+
+
+def test_octree_buffer_layer_zero_passes_is_noop() -> None:
+    """beta2312 — n_buffer=0 시 입력 그대로 반환 (env=0 backward 호환)."""
+    from core.generator.native_hex.octree import (
+        _add_buffer_layer_between_levels,
+    )
+    levels = {(0, 0, 0): 3, (1, 0, 0): 2, (2, 0, 0): 1}
+    out = _add_buffer_layer_between_levels(levels, n_buffer=0)
+    assert out == levels

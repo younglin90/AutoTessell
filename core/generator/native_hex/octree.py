@@ -745,6 +745,18 @@ def build_octree_hex_cells(
             _balanced = _balance_octree_2to1_nodes(_levels_dict)
             _refined = _refine_surface_adjacent_nodes(_balanced, surface_V, surface_F, max_refine=20)
             _balanced = _balance_octree_2to1_nodes(_refined)
+            # P2.4 / beta2312 — snappy nBufferCellsNoExtrude 동등 buffer.
+            # AUTO_TESSELL_HEX_BUFFER_LAYER (default 1) 만큼 cell 두께 buffer
+            # 추가해 level transition 부드러워짐 → hex skewness ↓.
+            # 0 으로 설정 시 비활성 (이전 동작 정확 보존).
+            try:
+                import os as _os_bl
+                _n_buf = int(_os_bl.environ.get("AUTO_TESSELL_HEX_BUFFER_LAYER", "1"))
+                if _n_buf > 0:
+                    _buffered = _add_buffer_layer_between_levels(_balanced, n_buffer=_n_buf)
+                    _balanced = _balance_octree_2to1_nodes(_buffered)
+            except Exception as _exc_bl:
+                log.debug("native_hex_buffer_layer_skipped", reason=str(_exc_bl)[:120])
             for (i, j, k), lv in _balanced.items():
                 if lv > level_3d[i, j, k]:
                     level_3d[i, j, k] = np.int8(min(lv, n_lev))
@@ -785,6 +797,62 @@ def build_octree_hex_cells(
 # WWW1 스켈레톤: node-level octree 2:1 balance helper (Marechal 2009 §3)
 # _WWW1_OCTREE_BALANCE = False 이므로 호출 경로 없음 — 영향 없음.
 # --------------------------------------------------------------------------
+
+def _add_buffer_layer_between_levels(
+    levels: dict[tuple[int, int, int], int],
+    n_buffer: int = 1,
+) -> dict[tuple[int, int, int], int]:
+    """P2.4 / beta2312 — snappy `nBufferCellsNoExtrude` 동등.
+
+    refinement level 경계 (셀 L 과 셀 L-1 이 인접) 에서 L-1 셀 자체도 인접
+    L-2 셀이 있으면 그 L-2 셀을 L-1 로 upgrade — 1 cell 두께 buffer 추가.
+    n_buffer = N 회 반복하면 N cell 두께 buffer.
+
+    수학:
+      cell c (level L) → 26-neighbor 중 level L-1 셀 N1 →
+      N1 의 26-neighbor 중 level ≤ L-2 셀 N2 → N2 level := L-1.
+
+    효과: level 경계가 한 cell 두께 띠(buffer)로 부드러워져 hex skewness ↓.
+    snappy / cfMesh / Cubit refinement transition default 동작.
+    """
+    if len(levels) <= 1 or n_buffer <= 0:
+        return dict(levels)
+
+    _NEIGHBOR_OFFSETS: list[tuple[int, int, int]] = [
+        (di, dj, dk)
+        for di in (-1, 0, 1)
+        for dj in (-1, 0, 1)
+        for dk in (-1, 0, 1)
+        if not (di == 0 and dj == 0 and dk == 0)
+    ]
+
+    out = dict(levels)
+    for _pass in range(int(n_buffer)):
+        # 한 pass: 모든 cell 을 한 번 검사하고 upgrade 후보를 수집 → 일괄 적용.
+        upgrades: dict[tuple[int, int, int], int] = {}
+        for cell, lev_c in out.items():
+            # 각 cell 의 26-이웃 중 level == lev_c - 1 (transition partner) 찾기.
+            for di, dj, dk in _NEIGHBOR_OFFSETS:
+                n1 = (cell[0] + di, cell[1] + dj, cell[2] + dk)
+                n1_lev = out.get(n1)
+                if n1_lev is None or n1_lev != lev_c - 1:
+                    continue
+                # n1 의 이웃 중 level ≤ lev_c - 2 인 셀 → lev_c - 1 으로 upgrade.
+                target_lev = lev_c - 1
+                for ddi, ddj, ddk in _NEIGHBOR_OFFSETS:
+                    n2 = (n1[0] + ddi, n1[1] + ddj, n1[2] + ddk)
+                    n2_lev = out.get(n2)
+                    if n2_lev is None or n2_lev > target_lev - 1:
+                        continue
+                    cur_pending = upgrades.get(n2, n2_lev)
+                    if target_lev > cur_pending:
+                        upgrades[n2] = target_lev
+        if not upgrades:
+            break
+        for k, v in upgrades.items():
+            out[k] = max(out[k], v)
+    return out
+
 
 def _balance_octree_2to1_nodes(
     levels: dict[tuple[int, int, int], int],
