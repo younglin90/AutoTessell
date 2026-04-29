@@ -304,3 +304,25 @@ def test_extrude_hex_bl_empty() -> None:
     assert r.n_wall_quads == 0
     assert r.n_hex_cells == 0
     assert hexes.shape == (0, 8)
+
+
+def test_native_tet_aniso_metric_wired_to_split_collapse() -> None:
+    """C1.4 / beta2372 — mesher 가 metric_full 을 split + collapse 에 전달."""
+    import inspect
+    from core.generator.native_tet import mesher
+    src = inspect.getsource(mesher)
+    # split_long_edges + metric=metric_full 전달.
+    assert "metric=metric_full" in src, "split_long_edges metric kwarg 누락"
+    # collapse_short_edges + metric=m_collapse 전달.
+    assert "metric=m_collapse" in src, "collapse_short_edges metric kwarg 누락"
+    # propagation 가시성 로그.
+    assert "native_tet_metric_propagated" in src, "metric propagation 로그 누락"
+
+
+def test_harness_params_fine_uses_aniso_metric() -> None:
+    """C1.4 — fine quality 가 use_anisotropic_metric=True."""
+    from core.generator._tier_native_common import HARNESS_PARAMS
+    p = HARNESS_PARAMS["tier_native_tet"]["fine"]
+    assert p.get("use_anisotropic_metric") is True
+    assert "anisotropic_ratio" in p
+    assert 0.0 < float(p["anisotropic_ratio"]) <= 1.0

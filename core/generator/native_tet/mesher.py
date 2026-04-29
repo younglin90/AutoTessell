@@ -1282,6 +1282,16 @@ def generate_native_tet(
 
             # Round 66: split 에도 surface edge 보호.
             _split_surf_edges: set[tuple[int, int]] = _surf_edges_from_faces(F)
+            # C1.4 / beta2372 — metric_full 활성 진단 (bench 에서 anisotropic
+            # path 도달 검증용). 실 wiring 은 이미 존재 (metric=metric_full),
+            # 이 로그는 propagation 가시성만 추가.
+            if metric_full is not None and metric_full.shape[0] == final_pts.shape[0]:
+                log.info(
+                    "native_tet_metric_propagated",
+                    component="native_tet", phase="beta2372",
+                    n_vertices=int(metric_full.shape[0]),
+                    target_path="split+collapse",
+                )
             final_pts, final_tets, n_s = split_long_edges(
                 final_pts, final_tets,
                 target_edge=effective_target if enable_phase_b else float(target_edge_length),
