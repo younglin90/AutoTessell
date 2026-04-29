@@ -738,11 +738,14 @@ def build_octree_hex_cells(
     if n_lev > 1:
         level_3d = _apply_2to1_balance(level_3d, n_lev)
         if _WWW1_OCTREE_BALANCE and n_lev > 1:
-            _levels_dict = {
-                (int(i), int(j), int(k)): int(level_3d[i, j, k])
-                for i in range(nfx) for j in range(nfy) for k in range(nfz)
-                if fine_inside_3d[i, j, k] and level_3d[i, j, k] > 0
-            }
+            # C-PERF-92 / beta2544 — 3-nested dict-comp 을 np.where + zip 로 벡터화.
+            _mask_lvl = fine_inside_3d & (level_3d > 0)
+            _ii, _jj, _kk = np.where(_mask_lvl)
+            _lv_at = level_3d[_ii, _jj, _kk]
+            _levels_dict = dict(zip(
+                zip(_ii.tolist(), _jj.tolist(), _kk.tolist()),
+                _lv_at.tolist(),
+            ))
             _balanced = _balance_octree_2to1_nodes(_levels_dict)
             _refined = _refine_surface_adjacent_nodes(_balanced, surface_V, surface_F, max_refine=20)
             _balanced = _balance_octree_2to1_nodes(_refined)
