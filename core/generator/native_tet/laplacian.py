@@ -279,20 +279,15 @@ def reduce_nonortho_tet(
         face_owners[k] = ti_f[s:e].tolist()
 
     # ── 2. Collect internal faces with non-ortho > threshold ─────────────────
+    # C-PERF-61 / beta2512 — iterate face_owners directly (already unique faces);
+    # avoid redundant tet × 4 Python loop + seen-set.
     bad: list[tuple[float, tuple[int, int, int], int, int]] = []
-    seen: set[tuple[int, int, int]] = set()
-    for ti in range(n_tets):
-        for fl in _TET_FACES:
-            key2: tuple[int, int, int] = tuple(sorted(int(tets[ti, k]) for k in fl))  # type: ignore[assignment]
-            if key2 in seen:
-                continue
-            seen.add(key2)
-            owners = face_owners.get(key2, [])
-            if len(owners) < 2:
-                continue  # boundary face
-            ang = _tet_face_nonortho(pts, tets[owners[0]], tets[owners[1]], key2)
-            if ang > threshold_deg:
-                bad.append((ang, key2, owners[0], owners[1]))
+    for key2, owners in face_owners.items():
+        if len(owners) < 2:
+            continue
+        ang = _tet_face_nonortho(pts, tets[owners[0]], tets[owners[1]], key2)
+        if ang > threshold_deg:
+            bad.append((ang, key2, owners[0], owners[1]))
 
     if not bad:
         return pts, tets, 0
