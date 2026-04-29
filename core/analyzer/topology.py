@@ -178,7 +178,17 @@ def split_components(faces: np.ndarray) -> np.ndarray:
         base = flist[0]
         for other in flist[1:]:
             _uf_union(parent, base, other)
-    roots = np.array([_uf_find(parent, i) for i in range(F)])
+    # C-PERF-33 / beta2484 — vectorize root-find via iterative path doubling.
+    # parent[i] points to (eventual) root after unions; doubling parent =
+    # parent[parent] log2(F)+2 times converges all paths to roots.
+    parent_arr = np.asarray(parent, dtype=np.int64)
+    n_steps = int(np.log2(max(F, 2))) + 2
+    for _ in range(n_steps):
+        new_parent = parent_arr[parent_arr]
+        if np.array_equal(new_parent, parent_arr):
+            break
+        parent_arr = new_parent
+    roots = parent_arr
     # compact 0..K-1
     unique_roots, comp = np.unique(roots, return_inverse=True)
     return comp.astype(np.int64)
