@@ -236,11 +236,10 @@ def _flip_edges_to_improve_valence(
     for _pass in range(n_passes):
         edge_map = _build_edge_map(np.asarray(F_list, dtype=np.int64))
 
-        # valence map
-        valence = np.zeros(n_verts, dtype=np.int64)
-        for f in F_list:
-            for v in f:
-                valence[int(v)] += 1
+        # valence map (C-PERF-81 / beta2532 — np.bincount 벡터화).
+        valence = np.bincount(
+            np.asarray(F_list, dtype=np.int64).ravel(), minlength=n_verts,
+        ).astype(np.int64)
         # interior vs boundary — boundary edge = 1 face 만 공유
         on_boundary = np.zeros(n_verts, dtype=bool)
         for (a, b), fl in edge_map.items():
