@@ -1735,9 +1735,12 @@ def generate_native_bl(
         # Feature lock 기반 scale (beta64)
         s = float(cfg.feature_reduction_ratio) if v in feature_verts else 1.0
         # Collision 기반 per-vertex cap (beta90)
+        # C-BL-17 / beta2451 — collision cap floor 를 effective_first_thickness 기반.
+        # 이전: max(v_cap, cfg.first_thickness) — raw value 기준.
+        # 이제: effective_first_thickness × 0.5 (auto-scale 보존 + 추가 안전 floor).
         if collision_dist and v in collision_dist and total > 1e-30:
             v_cap = collision_dist[v] * float(cfg.collision_safety_factor)
-            v_cap = max(v_cap, cfg.first_thickness)
+            v_cap = max(v_cap, effective_first_thickness * 0.5)
             v_scale_coll = min(v_cap / total, 1.0)
             s = min(s, v_scale_coll)  # 두 제약 중 더 엄격한 쪽
         vertex_scale[v] = s
