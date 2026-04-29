@@ -1547,6 +1547,40 @@ def generate_native_bl(
     # target_y_plus 가 설정되면 cfg.first_thickness 를 무시하고 Schlichting
     # flat plate 공식으로 자동 계산.
     effective_first_thickness = float(cfg.first_thickness)
+    # C-BL-1 / beta2423 — bbox-relative auto-scale.
+    # validator: 1mm-bbox mesh 에 first_thickness=1e-3 (절대값) → 1mm/1mm=100%
+    # 두께가 됨 → collision_safety 가 모든 prism 차단. 반대로 100mm-bbox mesh
+    # 에 1e-3 → 0.001% 두께 → 의미 없는 BL.
+    # 자동 scale: first_thickness < bbox_diag * 1e-5 면 bbox_diag * 1e-3 로 bump,
+    # > bbox_diag * 0.1 이면 bbox_diag * 0.01 로 cap.
+    try:
+        if bbox_diag > 0 and cfg.target_y_plus is None:
+            _abs_min = bbox_diag * 1e-5
+            _abs_max = bbox_diag * 0.1
+            if effective_first_thickness < _abs_min:
+                _new_ft = bbox_diag * 1e-3
+                log.warning(
+                    "native_bl_first_thickness_auto_bump",
+                    component="native_bl", phase="beta2423",
+                    user_first_thickness=effective_first_thickness,
+                    bbox_diag=round(bbox_diag, 6),
+                    auto_first_thickness=round(_new_ft, 9),
+                    reason="too_small_relative_to_bbox",
+                )
+                effective_first_thickness = _new_ft
+            elif effective_first_thickness > _abs_max:
+                _new_ft = bbox_diag * 0.01
+                log.warning(
+                    "native_bl_first_thickness_auto_cap",
+                    component="native_bl", phase="beta2423",
+                    user_first_thickness=effective_first_thickness,
+                    bbox_diag=round(bbox_diag, 6),
+                    auto_first_thickness=round(_new_ft, 9),
+                    reason="too_large_relative_to_bbox",
+                )
+                effective_first_thickness = _new_ft
+    except Exception:
+        pass
     if cfg.target_y_plus is not None and cfg.target_y_plus > 0:
         try:
             U = float(cfg.flow_velocity)
