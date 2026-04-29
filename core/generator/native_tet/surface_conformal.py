@@ -52,6 +52,7 @@ def _input_faces_present_set(F_surf: np.ndarray) -> set[tuple[int, int, int]]:
 
 
 def _tet_faces_set(tets: np.ndarray) -> set[tuple[int, int, int]]:
+    """C-PERF-56 / beta2507 — vectorize via packed-key np.unique."""
     if tets.size == 0:
         return set()
     faces = np.stack([
@@ -59,7 +60,18 @@ def _tet_faces_set(tets: np.ndarray) -> set[tuple[int, int, int]]:
         tets[:, [0, 2, 3]], tets[:, [1, 2, 3]],
     ], axis=1).reshape(-1, 3)
     sf = np.sort(faces, axis=1)
-    return {(int(sf[i, 0]), int(sf[i, 1]), int(sf[i, 2])) for i in range(sf.shape[0])}
+    n_max = int(tets.max()) + 1
+    pack = (
+        sf[:, 0].astype(np.int64) * (n_max * n_max)
+        + sf[:, 1].astype(np.int64) * n_max
+        + sf[:, 2].astype(np.int64)
+    )
+    uniq = np.unique(pack)
+    return set(zip(
+        (uniq // (n_max * n_max)).tolist(),
+        ((uniq // n_max) % n_max).tolist(),
+        (uniq % n_max).tolist(),
+    ))
 
 
 def _face_ratio(F_surf: np.ndarray, tets: np.ndarray) -> tuple[float, list[tuple[int, int, int]]]:
