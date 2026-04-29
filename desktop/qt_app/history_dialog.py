@@ -158,6 +158,21 @@ class HistoryDialog(EscDismissMixin, QDialog):
                     "Mesh integrity suspect: 셀 수가 비정상적으로 적음 "
                     "(catastrophic collapse 의심)",
                 )
+            # C-GUI-12 / beta2437 — BL prism column with color-coding.
+            _bl_prism = int(getattr(e, "bl_n_prism_cells", 0) or 0)
+            _bl_lcr = int(getattr(e, "bl_lcr_n_reduced_verts", 0) or 0)
+            _bl_prism_item = QTableWidgetItem(f"{_bl_prism:,}" if _bl_prism > 0 else "—")
+            if _bl_prism > 0:
+                _bl_prism_item.setForeground(QColor("#22c55e"))
+                _tooltip_parts = [f"prism cells: {_bl_prism:,}"]
+                if _bl_lcr > 0:
+                    _tooltip_parts.append(
+                        f"LCR reduced verts: {_bl_lcr} (Pointwise T-Rex 동등)"
+                    )
+                _bl_prism_item.setToolTip("\n".join(_tooltip_parts))
+            else:
+                _bl_prism_item.setForeground(QColor("#5a6270"))
+                _bl_prism_item.setToolTip("BL not executed or 0 prisms")
             items = [
                 QTableWidgetItem(e.timestamp.replace("T", " ")),
                 QTableWidgetItem(Path(e.input_file).name),
@@ -173,10 +188,8 @@ class HistoryDialog(EscDismissMixin, QDialog):
                 _si_item,
                 _int_item,
                 # C-GUI-6 / beta2416 — BL prism 셀 수 (Pointwise T-Rex 동등).
-                QTableWidgetItem(
-                    f"{getattr(e, 'bl_n_prism_cells', 0):,}"
-                    if getattr(e, "bl_n_prism_cells", 0) > 0 else ""
-                ),
+                # C-GUI-12 / beta2437 — 회색 (BL 미실행) 또는 초록 (실행됨).
+                _bl_prism_item,
             ]
             # 결과 컬러
             if e.success:
