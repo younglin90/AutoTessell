@@ -220,13 +220,18 @@ def check_edge_recovery(
     F = np.asarray(F, dtype=np.int64)
     if F.size == 0:
         return CDTCheckResult(0, 0, 0, [], 0, 0, 0)
-    # surface edge set.
-    surf_edges: set[tuple[int, int]] = set()
-    for ti in range(F.shape[0]):
-        a, b, c = int(F[ti, 0]), int(F[ti, 1]), int(F[ti, 2])
-        for u, v in ((a, b), (b, c), (c, a)):
-            k = (u, v) if u < v else (v, u)
-            surf_edges.add(k)
+    # surface edge set.  C-PERF-37 / beta2488 — vectorized via packed-key.
+    src_se = F[:, [0, 1, 2]].reshape(-1).astype(np.int64)
+    dst_se = F[:, [1, 2, 0]].reshape(-1).astype(np.int64)
+    u_se = np.minimum(src_se, dst_se)
+    v_se = np.maximum(src_se, dst_se)
+    n_max_se = int(F.max()) + 1
+    pack_se = u_se * n_max_se + v_se
+    uniq_se = np.unique(pack_se)
+    surf_edges: set[tuple[int, int]] = set(zip(
+        (uniq_se // n_max_se).tolist(),
+        (uniq_se % n_max_se).tolist(),
+    ))
 
     tet_edges = _tet_edges(tets)
 
