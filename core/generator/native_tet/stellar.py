@@ -1659,23 +1659,33 @@ def _apply_klingner_edge_contract_topK(
             continue
 
         # --- pre-snapshot (star-local: tets incident to a or b) ---------------
+        # C-PERF-89 / beta2541 — batched _tet_quality + sorted-row 4-uniq.
         pre_mask = ((tets_out == a) | (tets_out == b)).any(axis=1)
         pre_idx = np.flatnonzero(pre_mask)
-        pre_qs = [_tet_quality(pts_out, tets_out[i]) for i in pre_idx]
-        pre_min_q = min(pre_qs) if pre_qs else 0.0
+        pre_qs_arr = (
+            _tet_quality_batch(pts_out, tets_out[pre_idx])
+            if pre_idx.size else np.array([], dtype=np.float64)
+        )
+        pre_min_q = float(pre_qs_arr.min()) if pre_qs_arr.size else 0.0
         pre_n_neg = _count_neg_vol(pts_out, tets_out)
 
         # --- apply: b -> a reindex + degenerate drop --------------------------
         t_new = np.where(tets_out == b, a, tets_out)
-        # drop degenerate tets (any two identical vertex indices in a row)
-        keep = np.array([(len(set(row)) == 4) for row in t_new], dtype=bool)
+        rs_n = np.sort(t_new, axis=1)
+        keep = (
+            (rs_n[:, 0] != rs_n[:, 1]) & (rs_n[:, 1] != rs_n[:, 2])
+            & (rs_n[:, 2] != rs_n[:, 3])
+        )
         t_new = t_new[keep]
 
         # --- post-snapshot (star-local: tets incident to a in t_new) ----------
         post_mask = (t_new == a).any(axis=1)
         post_idx = np.flatnonzero(post_mask)
-        post_qs = [_tet_quality(pts_out, t_new[i]) for i in post_idx]
-        post_min_q = min(post_qs) if post_qs else pre_min_q
+        post_qs_arr = (
+            _tet_quality_batch(pts_out, t_new[post_idx])
+            if post_idx.size else np.array([], dtype=np.float64)
+        )
+        post_min_q = float(post_qs_arr.min()) if post_qs_arr.size else pre_min_q
         post_n_neg = _count_neg_vol(pts_out, t_new)
 
         _last_pre_min_q_star = float(pre_min_q)
