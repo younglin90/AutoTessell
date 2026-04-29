@@ -233,14 +233,24 @@ def _apply_face_split(
     # 1-pass Laplacian cleanup for new vertices (UUU7)
     hausdorff_tol = float(op.get("hausdorff_tol", 0.0)) if split_ops else 0.0
     if new_vertex_indices:
-        # build adjacency for all vertices in V_out
+        # build adjacency for all vertices in V_out.
+        # C-PERF-43 / beta2494 — vectorize: 6 directed edges per face,
+        # sort + bincount-offset slicing + per-vertex unique.
         n_verts = len(V_out)
-        adjacency: list = [set() for _ in range(n_verts)]
-        for tri in F_out:
-            i0, i1, i2 = int(tri[0]), int(tri[1]), int(tri[2])
-            adjacency[i0].add(i1); adjacency[i0].add(i2)
-            adjacency[i1].add(i0); adjacency[i1].add(i2)
-            adjacency[i2].add(i0); adjacency[i2].add(i1)
+        if F_out.size == 0:
+            adjacency: list = [set() for _ in range(n_verts)]
+        else:
+            src_adj = F_out[:, [0, 0, 1, 1, 2, 2]].reshape(-1).astype(np.int64)
+            dst_adj = F_out[:, [1, 2, 0, 2, 0, 1]].reshape(-1).astype(np.int64)
+            order_adj = np.argsort(src_adj, kind="stable")
+            src_s = src_adj[order_adj]
+            dst_s = dst_adj[order_adj]
+            counts_adj = np.bincount(src_s, minlength=n_verts)
+            offs_adj = np.concatenate(([0], np.cumsum(counts_adj).astype(np.int64)))
+            adjacency = [
+                set(np.unique(dst_s[offs_adj[i]:offs_adj[i + 1]]).tolist())
+                for i in range(n_verts)
+            ]
 
         for m_idx in new_vertex_indices:
             neighbors = adjacency[m_idx]
