@@ -645,3 +645,23 @@ def test_native_hex_integrity_log_wired() -> None:
     src = inspect.getsource(mesher)
     assert "native_hex_mesh_integrity_suspect" in src, "log 키 누락"
     assert "_n_surface_v_hex // 32" in src, "ratio threshold 누락"
+
+
+def test_native_bl_wall_face_indices_guard_wired() -> None:
+    """C-BL-2 / beta2424 — wall_face_indices 가 stale 일 때 graceful filter."""
+    import inspect
+    from core.layers import native_bl
+    src = inspect.getsource(native_bl)
+    assert "native_bl_wall_face_indices_filtered" in src, "log 키 누락"
+    assert "fi >= _n_faces" in src, "out-of-range 가드 누락"
+
+
+def test_native_bl_first_thickness_auto_scale_wired() -> None:
+    """C-BL-1 / beta2423 — bbox-relative first_thickness 자동 보정."""
+    import inspect
+    from core.layers import native_bl
+    src = inspect.getsource(native_bl)
+    assert "native_bl_first_thickness_auto_bump" in src, "auto_bump log 누락"
+    assert "native_bl_first_thickness_auto_cap" in src, "auto_cap log 누락"
+    assert "bbox_diag * 1e-5" in src, "min threshold 누락"
+    assert "bbox_diag * 0.1" in src, "max threshold 누락"
