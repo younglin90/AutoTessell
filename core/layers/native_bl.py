@@ -1885,9 +1885,12 @@ def generate_native_bl(
     if not cfg.per_vertex_first_thickness and not use_per_vertex_cum:
         try:
             wall_surface_faces = [faces[fi] for fi in wall_face_indices]
+            # C-BL-6 / beta2434 — effective_first_thickness 사용 (beta2423 의 auto-scale 보존).
+            # 이전: cfg.first_thickness (raw 값) 사용 → bbox-relative auto-bump 무시.
+            # 결과 thickness 가 1e-6 단위로 떨어져 hex BL aspect 50k+ 발생.
             adap_thick = _curvature_adaptive_thickness(
                 points, wall_surface_faces, wall_vert_indices,
-                base_thickness=cfg.first_thickness,
+                base_thickness=effective_first_thickness,
                 max_aspect=cfg.aspect_ratio_threshold,
             )
             # BL3: relative first thickness (ratio × local mean edge length)
@@ -1900,8 +1903,9 @@ def generate_native_bl(
             if rel_valid:
                 # BL3 combines with BL1: take min → conservative thickness
                 combined_thick = np.minimum(adap_thick, rel_thick)
-                # Clamp: never below 1% of cfg.first_thickness (avoid near-zero collapse)
-                combined_thick = np.maximum(combined_thick, cfg.first_thickness * 0.01)
+                # Clamp: never below 1% of effective_first_thickness (avoid near-zero collapse).
+                # C-BL-6 / beta2434 — auto-scaled value 사용.
+                combined_thick = np.maximum(combined_thick, effective_first_thickness * 0.01)
                 _rel_mean = float(rel_thick.mean())
                 _rel_min = float(rel_thick.min())
                 log.info(
