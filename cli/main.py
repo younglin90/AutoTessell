@@ -640,6 +640,21 @@ def evaluate(
          "exudation real apply 활성. 환경변수 AUTO_TESSELL_OFFPLANE_STEINER=1 동등.",
 )
 @click.option(
+    "--enable-vvv9j-apply", is_flag=True,
+    help="beta2346 — VVV9J SLIM global-pass real apply (smoothing 강화). "
+         "환경변수 AUTO_TESSELL_VVV9J_APPLY=1 동등.",
+)
+@click.option(
+    "--enable-vvv9k-apply", is_flag=True,
+    help="beta2346 — VVV9K priority-queue main-loop real apply. "
+         "환경변수 AUTO_TESSELL_VVV9K_APPLY=1 동등 (monotone guard, beta2320).",
+)
+@click.option(
+    "--enable-vvv9p-apply", is_flag=True,
+    help="beta2346 — VVV9P multi-face removal real apply. "
+         "환경변수 AUTO_TESSELL_VVV9P_APPLY=1 동등 (monotone guard, beta2321).",
+)
+@click.option(
     "--flow-velocity", type=float, default=1.0, show_default=True,
     help="v0.4.0-beta78+ 유입 속도 [m/s]. 0/U 자동 생성 기준값. "
          "turbulence 필드 (k, epsilon/omega) 에 반영.",
@@ -715,6 +730,9 @@ def run(
     cross_engine_fallback: bool,
     enable_vvv9h_apply: bool,
     enable_offplane_steiner: bool,
+    enable_vvv9j_apply: bool,
+    enable_vvv9k_apply: bool,
+    enable_vvv9p_apply: bool,
     flow_velocity: float,
     turbulence_model: str,
     auto_retry: str,
@@ -739,13 +757,19 @@ def run(
     if repair_engine == "none":
         no_repair = True
 
-    # beta2344 — 실험적 V-series real-apply 플래그를 환경변수로 변환.
+    # beta2344 + beta2346 — 실험적 V-series real-apply 플래그를 환경변수로 변환.
     # 사용자가 GUI/CLI 에서 toggle 한 결과를 mesher 가 inspect 할 수 있게.
     import os as _os_v9
     if enable_vvv9h_apply:
         _os_v9.environ["AUTO_TESSELL_VVV9H_APPLY"] = "1"
     if enable_offplane_steiner:
         _os_v9.environ["AUTO_TESSELL_OFFPLANE_STEINER"] = "1"
+    if enable_vvv9j_apply:
+        _os_v9.environ["AUTO_TESSELL_VVV9J_APPLY"] = "1"
+    if enable_vvv9k_apply:
+        _os_v9.environ["AUTO_TESSELL_VVV9K_APPLY"] = "1"
+    if enable_vvv9p_apply:
+        _os_v9.environ["AUTO_TESSELL_VVV9P_APPLY"] = "1"
 
     console.print(f"[bold magenta]Auto-Tessell[/bold magenta] {input_file} → {output}")
     console.print(

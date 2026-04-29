@@ -309,6 +309,25 @@ def test_cli_enable_offplane_steiner_flag_sets_env_var(
     assert os.environ.get("AUTO_TESSELL_OFFPLANE_STEINER") == "1"
 
 
+def test_cli_enable_vvv9jkp_flags_set_env_vars(
+    runner: CliRunner, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """beta2346 — VVV9J / VVV9K / VVV9P 3 추가 플래그도 env 동등."""
+    from cli.main import run
+    for k in ("AUTO_TESSELL_VVV9J_APPLY", "AUTO_TESSELL_VVV9K_APPLY",
+              "AUTO_TESSELL_VVV9P_APPLY"):
+        monkeypatch.delenv(k, raising=False)
+    r = runner.invoke(run, [
+        STL_PATH, "--dry-run", "--mesh-type", "tet", "--quality", "fine",
+        "--enable-vvv9j-apply", "--enable-vvv9k-apply", "--enable-vvv9p-apply",
+    ])
+    assert r.exit_code == 0
+    import os
+    assert os.environ.get("AUTO_TESSELL_VVV9J_APPLY") == "1"
+    assert os.environ.get("AUTO_TESSELL_VVV9K_APPLY") == "1"
+    assert os.environ.get("AUTO_TESSELL_VVV9P_APPLY") == "1"
+
+
 def test_tier_param_native_hex_post_smooth_keys_reach_orchestrator(
     runner: CliRunner,
 ) -> None:
