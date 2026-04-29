@@ -1522,21 +1522,36 @@ def generate_native_tet(
                 from core.generator.native_tet.quality import snapshot as _qsnap
 
                 use_multistage = False
+                _pre_mq = 0.0
                 try:
                     pre_q = _qsnap(final_pts, final_tets)
-                    if float(pre_q.mean_q) < 0.15:
+                    _pre_mq = float(pre_q.mean_q)
+                    if _pre_mq < 0.15:
                         use_multistage = True
                 except Exception:
                     pass
 
                 if use_multistage:
+                    # C-QUAL-7 / beta2399 — 매우 낮은 quality (mq < 0.05) 에 대해
+                    # alpha 4단계로 확장 (validator: hard mesh tet grade D, mq~0.05-0.1).
+                    # 추가 (4.0) alpha pass 가 sliver 더 적극 처리.
+                    if _pre_mq < 0.05:
+                        _alphas = (0.5, 1.0, 2.0, 4.0)
+                    else:
+                        _alphas = (0.5, 1.0, 2.0)
                     ar, new_pts_amips = smooth_amips_multistage(
                         final_pts, final_tets,
                         locked_vertex_ids=surface_new_ids2,
-                        alphas=(0.5, 1.0, 2.0),
+                        alphas=_alphas,
                         n_iter_per=1,
                     )
-                    log.info("native_tet_amips_multistage", e_before=round(ar.energy_before, 3), e_after=round(ar.energy_after, 3))
+                    log.info(
+                        "native_tet_amips_multistage",
+                        e_before=round(ar.energy_before, 3),
+                        e_after=round(ar.energy_after, 3),
+                        n_alphas=len(_alphas),
+                        pre_mq=round(_pre_mq, 4),
+                    )
                 else:
                     ar, new_pts_amips = smooth_amips(
                         final_pts, final_tets,

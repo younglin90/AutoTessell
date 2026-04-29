@@ -579,3 +579,13 @@ def test_harness_params_fine_poly_auto_escalate_2() -> None:
     p = HARNESS_PARAMS["tier_native_poly"]["fine"]
     assert p.get("auto_escalate_max") == 2, \
         f"auto_escalate_max=2 expected, got {p.get('auto_escalate_max')}"
+
+
+def test_amips_multistage_4alpha_for_very_low_mq() -> None:
+    """C-QUAL-7 / beta2399 — pre_mq < 0.05 에서 alpha 4-stage 확장."""
+    import inspect
+    from core.generator.native_tet import mesher
+    src = inspect.getsource(mesher)
+    assert "if _pre_mq < 0.05:" in src, "low mq 분기 누락"
+    assert "(0.5, 1.0, 2.0, 4.0)" in src, "4-stage alphas 누락"
+    assert "n_alphas=len(_alphas)" in src, "log 키 누락"
