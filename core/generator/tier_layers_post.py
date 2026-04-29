@@ -63,13 +63,18 @@ def _build_bl_config(
     # beta2347 — quality-aware Phase 2 defaults (cfMesh / Pointwise T-Rex 정렬).
     # fine: 더 보수적 feature_angle (30° vs 45°) → sharp edge 보존 강화.
     # collision_safety_factor 0.4 → 더 안전한 layer (50% → 40%).
+    # beta2348 — aspect_ratio_threshold 도 quality-aware:
+    #   fine 300 (Pointwise T-Rex 동급, sliver 격감 적극 신호)
+    #   default 1000 (전 quality 균일 — 너무 관대했음).
     # 사용자 명시 override (params 키) 가 있으면 그것이 우선.
     _ql = str(quality_level or "").lower()
     _fa_default = defaults.feature_angle_deg
     _csf_default = defaults.collision_safety_factor
+    _ar_default = defaults.aspect_ratio_threshold
     if _ql == "fine":
         _fa_default = 30.0
         _csf_default = 0.4
+        _ar_default = 300.0
 
     # beta2287: in-engine y+ flow params (CLI / 미래 GUI auto-y+).
     _typ = params.get("bl_target_y_plus")
@@ -108,7 +113,7 @@ def _build_bl_config(
             params.get("bl_quality_check_enabled"), defaults.quality_check_enabled,
         ),
         aspect_ratio_threshold=float(
-            params.get("bl_aspect_ratio_threshold", defaults.aspect_ratio_threshold),
+            params.get("bl_aspect_ratio_threshold", _ar_default),
         ),
         # beta2287: y+ 자동 first_thickness 역산 경로.
         target_y_plus=target_y_plus,

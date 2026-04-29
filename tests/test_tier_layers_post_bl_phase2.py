@@ -190,11 +190,13 @@ def test_build_bl_config_flow_fluid_preset_propagated() -> None:
 
 
 def test_build_bl_config_fine_quality_uses_strict_feature_angle() -> None:
-    """beta2347 — quality_level='fine' 시 feature_angle_deg=30 + safety_factor=0.4
-    (cfMesh / Pointwise T-Rex 보수적 default)."""
+    """beta2347 + beta2348 — quality_level='fine' 시 feature_angle_deg=30 +
+    safety_factor=0.4 + aspect_ratio_threshold=300 (cfMesh/T-Rex 정렬)."""
     cfg = _build_bl_config(BLConfig, {}, 3, 1.2, 0.001, quality_level="fine")
     assert cfg.feature_angle_deg == pytest.approx(30.0)
     assert cfg.collision_safety_factor == pytest.approx(0.4)
+    # beta2348 — 1000 (default) → 300 (fine).
+    assert cfg.aspect_ratio_threshold == pytest.approx(300.0)
 
 
 def test_build_bl_config_draft_quality_keeps_default() -> None:
