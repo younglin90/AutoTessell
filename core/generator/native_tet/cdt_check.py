@@ -238,11 +238,24 @@ def check_edge_recovery(
     missing = [e for e in surf_edges if e not in tet_edges]
 
     # beta970 (R94): face 회복 집계.
+    # C-PERF-48 / beta2499 — surf_faces vectorized via packed-key.
     tet_faces = _tet_triangles(tets)
-    surf_faces: set[tuple[int, int, int]] = set()
-    for ti in range(F.shape[0]):
-        tri = sorted((int(F[ti, 0]), int(F[ti, 1]), int(F[ti, 2])))
-        surf_faces.add((tri[0], tri[1], tri[2]))
+    if F.size == 0:
+        surf_faces: set[tuple[int, int, int]] = set()
+    else:
+        sf_arr = np.sort(F, axis=1)
+        n_max_sf = int(F.max()) + 1
+        pack_sf = (
+            sf_arr[:, 0].astype(np.int64) * (n_max_sf * n_max_sf)
+            + sf_arr[:, 1].astype(np.int64) * n_max_sf
+            + sf_arr[:, 2].astype(np.int64)
+        )
+        uniq_sf = np.unique(pack_sf)
+        surf_faces = set(zip(
+            (uniq_sf // (n_max_sf * n_max_sf)).tolist(),
+            ((uniq_sf // n_max_sf) % n_max_sf).tolist(),
+            (uniq_sf % n_max_sf).tolist(),
+        ))
     n_face_present = sum(1 for t in surf_faces if t in tet_faces)
     n_face_missing = len(surf_faces) - n_face_present
 
