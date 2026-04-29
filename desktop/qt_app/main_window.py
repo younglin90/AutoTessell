@@ -3271,6 +3271,18 @@ class AutoTessellWindow:  # type: ignore[misc]
 
         if success:
             self._log("[OK] 파이프라인 완료")
+            # C-GUI-9 / beta2422 — integrity_suspect 시 사용자 경고 로그.
+            try:
+                _gen_log = getattr(result, "generator_log", None)
+                _summary = getattr(_gen_log, "execution_summary", None) if _gen_log else None
+                if bool(getattr(_summary, "mesh_integrity_suspect", False)):
+                    self._log(
+                        "[WARN] Mesh integrity suspect: 셀 수가 비정상적으로 적습니다. "
+                        "입력 mesh 의 self-intersect / non-manifold 가 영향 가능. "
+                        "history dialog 의 Integrity 컬럼 확인."
+                    )
+            except Exception:
+                pass
             # Export 탭 활성화 — 메시가 생성된 이후에만 사용 가능
             if self._right_column is not None:
                 try:
