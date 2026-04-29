@@ -58,6 +58,24 @@ def test_amips_relocation_decreases_energy_on_sliver() -> None:
     assert r.energy_after <= r.energy_before + 1e-6
 
 
+def test_vvv9h_real_apply_uses_n_applied_key() -> None:
+    """beta2319 — VVV9H real apply 가 stats["n_applied"] 로 검사
+    (이전 버그: 'accepted' 라는 미존재 key 검사 → env 켜도 dead).
+
+    _apply_klingner_edge_contract_topK 의 stats 는 n_applied/n_reverted/
+    n_conflict 만 반환. 이전 코드는 .get("accepted", False) 로 항상 False.
+    """
+    import inspect
+    from core.generator.native_tet import mesher
+    src = inspect.getsource(mesher)
+    # 새 분기.
+    assert '_st.get("n_applied", 0)) > 0' in src, \
+        "VVV9H real apply 의 n_applied 분기 누락"
+    # 옛 버그 패턴 잔존 금지.
+    assert '_st.get("accepted", False)' not in src, \
+        "VVV9H 옛 'accepted' key 검사 잔존 — beta2319 에서 bug fix 됐어야 함"
+
+
 def test_offplane_steiner_apply_default_off_but_present() -> None:
     """beta2318 — off-plane Steiner exudation 이 mesher 에 wired (env-gated).
 

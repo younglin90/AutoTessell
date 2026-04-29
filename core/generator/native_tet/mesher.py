@@ -3080,11 +3080,18 @@ def generate_native_tet(
                                     wall_ms=_wall_ms,
                                     mode="dry_run",
                                 )
-                                if _VVV9H_APPLY_REAL and _st.get("accepted", False):
+                                # beta2319 — bug fix: stats key 가 "accepted" 가 아닌
+                                # "n_applied" 임. 이전엔 _st.get("accepted") 가 항상
+                                # False (key 없음) → env 가 켜져도 real apply 사실상
+                                # dead code. _apply_klingner_edge_contract_topK 가
+                                # 내부 monotone guard 로 reject 도 처리하므로
+                                # n_applied > 0 만 보면 안전.
+                                if _VVV9H_APPLY_REAL and int(_st.get("n_applied", 0)) > 0:
                                     final_pts, final_tets = _np, _nt
                                     log.info(
                                         "native_tet_vvv9h8_real_apply",
-                                        n_apply=int(_st.get("n_apply_accepted", 0)),
+                                        n_apply=int(_st.get("n_applied", 0)),
+                                        n_reverted=int(_st.get("n_reverted", 0)),
                                     )
                             except Exception as exc:  # noqa: BLE001
                                 log.warning("native_tet_vvv9h4_skipped", reason=str(exc)[:120])
