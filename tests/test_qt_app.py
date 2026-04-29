@@ -4093,17 +4093,23 @@ def test_history_entry_captures_hausdorff_fidelity() -> None:
 
 
 def test_pdf_report_includes_hausdorff_criterion() -> None:
-    """beta2302 — ReportData 가 Hausdorff 필드 보유 + PDF 합격 기준 행 노출."""
+    """beta2302 + beta2354 — ReportData 가 Hausdorff + n_self_intersect_pre
+    필드 보유 + PDF 합격 기준 행 노출."""
     from desktop.qt_app.report_pdf import ReportData
     import inspect
-    rd = ReportData(hausdorff_distance=0.001, hausdorff_relative=0.0001)
+    rd = ReportData(
+        hausdorff_distance=0.001, hausdorff_relative=0.0001,
+        n_self_intersect_pre=0,
+    )
     assert rd.hausdorff_distance == 0.001
     assert rd.hausdorff_relative == 0.0001
+    assert rd.n_self_intersect_pre == 0
 
-    # _write_page src 에 Hausdorff 합격 기준 라인 존재.
     from desktop.qt_app import report_pdf
     src = inspect.getsource(report_pdf._write_page)
     assert "Hausdorff" in src, "PDF 리포트 _write_page 에 Hausdorff 기준 누락"
+    # beta2354 — pre-BL Self-Intersect criterion.
+    assert "pre-BL Self-Intersect" in src, "pre-BL SI 합격 기준 누락"
 
 
 def test_gui_auto_retry_combo_wired() -> None:

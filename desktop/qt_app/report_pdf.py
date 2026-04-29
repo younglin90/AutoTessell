@@ -46,6 +46,8 @@ class ReportData:
     # beta2302 — Hausdorff geometry fidelity (Pointwise/Star-CCM+ "Surface Deviation").
     hausdorff_distance: float | None = None
     hausdorff_relative: float | None = None
+    # beta2354 — pre-BL self-intersect count (P2.6 chain).
+    n_self_intersect_pre: int | None = None
     # 히스토그램 배열
     hist_aspect: list[float] = field(default_factory=list)
     hist_skew: list[float] = field(default_factory=list)
@@ -159,6 +161,8 @@ def _write_page(pdf, data: ReportData) -> None:
         ("Negative volumes = 0", data.negative_volumes, 0),
         # beta2302 — Hausdorff relative < 1% (상용 툴 표준 임계).
         ("Hausdorff (rel) < 0.01", data.hausdorff_relative, 0.01),
+        # beta2354 — pre-BL self-intersect = 0 (clean input geometry).
+        ("pre-BL Self-Intersect = 0", data.n_self_intersect_pre, 0),
     ]
     for i, (label, val, thr) in enumerate(criteria):
         y = 0.7 - i * 0.17
