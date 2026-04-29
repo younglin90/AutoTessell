@@ -267,6 +267,24 @@ class BLConfig:
     # 50 은 일반 polyhedral cell 기준, BL prism 은 anisotropic 본질상 50 초과 정상.
     # 1000 = cfMesh / Pointwise T-Rex 의 BL 전용 threshold (truly degenerate 만).
     aspect_ratio_threshold: float = 1000.0
+
+    def __post_init__(self) -> None:
+        # C-VAL-8 / beta2409 — fast-fail validation. quick_validator 발견:
+        # first_thickness=0.0 → "list index out of range" exception (배열
+        # 빈 list 로 layer indexing 실패). 명확한 오류로 변환.
+        if self.first_thickness <= 0:
+            raise ValueError(
+                f"BLConfig.first_thickness 는 양수여야 합니다 "
+                f"(got {self.first_thickness}). bbox * 0.001 권장."
+            )
+        if self.num_layers < 1:
+            raise ValueError(
+                f"BLConfig.num_layers >= 1 필수 (got {self.num_layers})."
+            )
+        if self.growth_ratio < 1.0:
+            raise ValueError(
+                f"BLConfig.growth_ratio >= 1.0 필수 (got {self.growth_ratio})."
+            )
     # beta2267 — CFD engineer-friendly y+ targeting (cfMesh/Fluent/Pointwise 동급).
     # 사용자가 절대 first_thickness 대신 target_y_plus + flow_velocity 지정 가능.
     # 공식 (Schlichting flat plate): u_tau = U * sqrt(Cf/2), Cf = 0.058/Re^0.2
