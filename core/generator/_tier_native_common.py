@@ -89,7 +89,11 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
                      "use_torch_amips": True,
                      # beta810: fine 에서는 더 엄격한 sliver drop.
                      "sliver_drop_min_dihedral_deg": 1.0,
-                     "sliver_drop_max_aspect": 5e4},
+                     "sliver_drop_max_aspect": 5e4,
+                     # beta2332: fine 에서 Phase B collapse 더 적극.
+                     # 200 → 1000 (5×). cell_drop_rollback_ratio 가 안전망 —
+                     # 50% 이상 cell 떨어지면 자동 revert.
+                     "max_collapses_per_iter": 1000},
     },
     "tier_native_hex": {
         # native_hex 는 uniform grid (harness 미사용). seed_density / snap_boundary 만 의미.
@@ -275,6 +279,8 @@ def run_native_tier(
         "use_torch_amips",
         # P2.4 / beta2313: hex buffer cells (snappy nBufferCellsNoExtrude 동등).
         "hex_buffer_cells",
+        # beta2332: native_tet Phase B collapse cap (fine 1000, default 200).
+        "max_collapses_per_iter",
     }
     tsp = getattr(strategy, "tier_specific_params", None) or {}
     for k in _TIER_PARAM_KEYS:

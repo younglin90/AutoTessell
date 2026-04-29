@@ -146,6 +146,22 @@ def test_mesher_signature_accepts_use_torch_amips() -> None:
     assert sig.parameters["use_torch_amips"].default is False
 
 
+def test_fine_quality_max_collapses_per_iter_raised() -> None:
+    """beta2332 — fine quality 가 Phase B max_collapses_per_iter=1000 자동 활성.
+
+    이전엔 default 200 (5× 적음). fine 의 enable_phase_b=True 와 결합 시
+    sliver 격감 잠재력 미충분 활용. cell_drop_rollback_ratio 가 안전망."""
+    from core.generator._tier_native_common import HARNESS_PARAMS, run_native_tier
+    fine = HARNESS_PARAMS["tier_native_tet"]["fine"]
+    assert fine.get("max_collapses_per_iter") == 1000, \
+        f"fine max_collapses_per_iter 1000 미설정: {fine.get('max_collapses_per_iter')}"
+
+    import inspect
+    src = inspect.getsource(run_native_tier)
+    assert '"max_collapses_per_iter"' in src, \
+        "_TIER_PARAM_KEYS allowlist 누락"
+
+
 def test_qed_decimate_auto_triggers_on_large_input() -> None:
     """beta2308 — quadric_decimate 가 50k+ face 입력에 자동 활성화.
 
