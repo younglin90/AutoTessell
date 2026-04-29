@@ -1026,7 +1026,10 @@ def _curvature_adaptive_thickness(
     # base_thickness * 1.0 (curvature adaptive 효과적으로 disable).
     # 모든 vertex 가 base_thickness 사용 — uniform BL.
     # cfMesh의 maxFirstLayerThickness 와 minFirstLayerThickness 를 동일화한 상태와 동등.
-    _absolute_floor = float(base_thickness) * 1.0
+    # C-BL-16 / beta2447 — env AUTO_TESSELL_BL_FLOOR_RATIO 로 override.
+    import os as _os_bl_floor
+    _floor_ratio = float(_os_bl_floor.environ.get("AUTO_TESSELL_BL_FLOOR_RATIO", "1.0"))
+    _absolute_floor = float(base_thickness) * _floor_ratio
     for vi, v in enumerate(wall_vert_indices):
         nbrs = neighbours[v]
         if not nbrs:
