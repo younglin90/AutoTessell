@@ -254,7 +254,14 @@ def collapse_short_face_edges(
         return pts, cells, 0
 
     # 각 root vertex 에 좌표 평균 부여.
-    roots = np.array([_find(i) for i in range(n)], dtype=np.int64)
+    # C-PERF-80 / beta2531 — path-doubling UF: per-element _find 루프 제거.
+    parent_arr = np.asarray(parent, dtype=np.int64)
+    for _ in range(int(np.log2(max(n, 2))) + 2):
+        new_parent = parent_arr[parent_arr]
+        if np.array_equal(new_parent, parent_arr):
+            break
+        parent_arr = new_parent
+    roots = parent_arr.copy()
     new_pts = pts.copy()
     sums = np.zeros_like(pts)
     counts = np.zeros(n, dtype=np.int64)
