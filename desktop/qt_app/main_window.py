@@ -2290,6 +2290,31 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._enable_vvv9p_apply_check.setToolTip(
             "AUTO_TESSELL_VVV9P_APPLY=1 — multi-face removal + monotone guard."
         )
+        # C-GUI-8 / beta2419 — 최근 backend env flags 의 GUI 체크박스 노출.
+        self._seed_gwn_check = QCheckBox(
+            "Seed GWN (Jacobson 2013 SI-robust)"
+        )
+        self._seed_gwn_check.setToolTip(
+            "체크 시 시드 inside test 에 generalized winding number 사용.\n"
+            "SI/non-manifold 입력 robust. AUTO_TESSELL_SEED_GWN=1 동등.\n"
+            "기본값은 자동 fallback (SI 검출 시 자동 ON, beta2394)."
+        )
+        self._stellar_split_check = QCheckBox(
+            "Stellar 4-op split-pass (실험적)"
+        )
+        self._stellar_split_check.setToolTip(
+            "체크 시 Stellar queue 의 split-pass 가 강제 활성.\n"
+            "fine quality 는 자동 ON (beta2378).\n"
+            "AUTO_TESSELL_STELLAR_SPLIT=1 동등."
+        )
+        self._parallel_delaunay_check = QCheckBox(
+            "Parallel chunked Delaunay (V > 30k)"
+        )
+        self._parallel_delaunay_check.setToolTip(
+            "체크 시 ProcessPoolExecutor 기반 chunked Delaunay 강제 활성.\n"
+            "기본은 cpu_count() ≥ 2 시 자동 (beta2375).\n"
+            "AUTO_TESSELL_PARALLEL_DELAUNAY=1 동등."
+        )
         # 기본값: native L1 은 기본 On (beta26 철학), native tier 는 opt-in
         self._no_repair_check.setChecked(False)
         self._surface_remesh_check.setChecked(False)
@@ -2974,6 +2999,16 @@ class AutoTessellWindow:  # type: ignore[misc]
                     _os_v9.environ["AUTO_TESSELL_VVV9K_APPLY"] = "1"
                 if _vvv9p_on:
                     _os_v9.environ["AUTO_TESSELL_VVV9P_APPLY"] = "1"
+                # C-GUI-8 / beta2419 — 신규 env wiring (CLI parity).
+                if (getattr(self, "_seed_gwn_check", None)
+                        and self._seed_gwn_check.isChecked()):
+                    _os_v9.environ["AUTO_TESSELL_SEED_GWN"] = "1"
+                if (getattr(self, "_stellar_split_check", None)
+                        and self._stellar_split_check.isChecked()):
+                    _os_v9.environ["AUTO_TESSELL_STELLAR_SPLIT"] = "1"
+                if (getattr(self, "_parallel_delaunay_check", None)
+                        and self._parallel_delaunay_check.isChecked()):
+                    _os_v9.environ["AUTO_TESSELL_PARALLEL_DELAUNAY"] = "1"
             except Exception:
                 pass
             worker = PipelineWorker(
