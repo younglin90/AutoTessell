@@ -102,6 +102,23 @@ def test_vvv9h_real_apply_uses_n_applied_key() -> None:
         "VVV9H 옛 'accepted' key 검사 잔존 — beta2319 에서 bug fix 됐어야 함"
 
 
+def test_p3_sss_revival_iterates_multiple_passes() -> None:
+    """C1.2 / beta2361 — SSS_REVIVAL 이 1-pass → multi-pass (max 3) 로 iterate.
+
+    각 pass 가 채택되면 다음 pass input 이 되어 효과 compound. plateau
+    (mean_gain < 1e-4) 또는 reject 시 중단."""
+    import inspect
+    from core.generator.native_tet import mesher
+    src = inspect.getsource(mesher)
+    # 새 패턴 — for loop + max_passes env.
+    assert "AUTO_TESSELL_P3_SSS_REVIVAL_PASSES" in src, \
+        "max_passes env 누락"
+    assert "for _pass_idx in range" in src, \
+        "multi-pass iteration 누락"
+    # plateau detect.
+    assert "_mean_gain < 1e-4" in src, "plateau detection 누락"
+
+
 def test_offplane_steiner_apply_default_off_but_present() -> None:
     """beta2318 — off-plane Steiner exudation 이 mesher 에 wired (env-gated).
 

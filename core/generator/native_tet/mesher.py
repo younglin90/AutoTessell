@@ -2555,43 +2555,53 @@ def generate_native_tet(
                 from core.generator.native_tet.envelope import Envelope as _Env
                 from core.generator.native_tet.envelope_relocate import _envelope_bounded_relocate
                 from core.generator.native_tet.quality import tet_shape_quality as _tsq
-                _q_pre = _tsq(final_pts, final_tets)
-                _pre_min = float(_q_pre.min())
-                _pre_mean = float(_q_pre.mean())
-                if _pre_min < 0.10 and final_tets.shape[0] > 50:
-                    n_surface = int(min(V.shape[0], final_pts.shape[0]))
-                    surface_idx = np.arange(n_surface, dtype=np.intp)
-                    # vertex normal: input F 의 vertex 별 face normal 평균.
-                    e1_in = V[F[:, 1]] - V[F[:, 0]]
-                    e2_in = V[F[:, 2]] - V[F[:, 0]]
-                    fn = np.cross(e1_in, e2_in)
-                    fn_len = np.linalg.norm(fn, axis=1, keepdims=True)
-                    fn = fn / np.maximum(fn_len, 1e-30)
-                    vn = np.zeros((n_surface, 3), dtype=np.float64)
-                    for fi in range(F.shape[0]):
-                        for vk in F[fi]:
-                            if int(vk) < n_surface:
-                                vn[int(vk)] += fn[fi]
-                    vn_len = np.linalg.norm(vn, axis=1, keepdims=True)
-                    vn = vn / np.maximum(vn_len, 1e-30)
-                    env = _Env.build_auto_eps(V, F, base_ratio=0.001)
-                    step_eps = 0.5 * env.eps  # 0.05→0.5: 효과 0 회피.
-                    # target: Laplacian smoothing (1-ring face neighbor 평균).
-                    # surface vertex i 의 1-ring = F 에서 i 가 포함된 face 의 다른 vertex 들.
-                    nbr_sum = np.zeros((n_surface, 3), dtype=np.float64)
-                    nbr_cnt = np.zeros(n_surface, dtype=np.int64)
-                    for fi in range(F.shape[0]):
-                        f = F[fi]
-                        for vk in f:
-                            if int(vk) >= n_surface:
-                                continue
-                            for wk in f:
-                                if wk != vk:
-                                    nbr_sum[int(vk)] += V[int(wk)]
-                                    nbr_cnt[int(vk)] += 1
-                    target_lap = nbr_sum / np.maximum(nbr_cnt[:, None], 1)
-                    # tangent projection 의 target: Laplacian centroid.
-                    target_pts = target_lap
+                # C1.2 / beta2361 — 1-pass → multi-pass iteration (max 3 passes).
+                # 각 pass 가 채택되면 다음 pass 의 input 이 되어 효과가 compound.
+                # 거부되거나 quality 개선 < 1e-4 (plateau) 면 중단.
+                # 기본 3 passes; AUTO_TESSELL_P3_SSS_REVIVAL_PASSES env 로 override.
+                _max_passes = int(os.environ.get("AUTO_TESSELL_P3_SSS_REVIVAL_PASSES", "3"))
+                # vertex normal + Laplacian target 은 pass 간 동일 (입력 V/F 기준).
+                # pass 마다 final_pts 만 바뀌므로 미리 계산.
+                env = None
+                vn = None
+                target_pts = None
+                surface_idx = None
+                n_surface = 0
+                for _pass_idx in range(max(1, _max_passes)):
+                    _q_pre = _tsq(final_pts, final_tets)
+                    _pre_min = float(_q_pre.min())
+                    _pre_mean = float(_q_pre.mean())
+                    if not (_pre_min < 0.10 and final_tets.shape[0] > 50):
+                        break  # 정책 (아직 sliver 없음 또는 너무 작은 mesh) — 중단.
+                    if env is None:
+                        # 첫 pass 에서만 expensive 한 정규/이웃 계산 수행.
+                        n_surface = int(min(V.shape[0], final_pts.shape[0]))
+                        surface_idx = np.arange(n_surface, dtype=np.intp)
+                        e1_in = V[F[:, 1]] - V[F[:, 0]]
+                        e2_in = V[F[:, 2]] - V[F[:, 0]]
+                        fn = np.cross(e1_in, e2_in)
+                        fn_len = np.linalg.norm(fn, axis=1, keepdims=True)
+                        fn = fn / np.maximum(fn_len, 1e-30)
+                        vn = np.zeros((n_surface, 3), dtype=np.float64)
+                        for fi in range(F.shape[0]):
+                            for vk in F[fi]:
+                                if int(vk) < n_surface:
+                                    vn[int(vk)] += fn[fi]
+                        vn_len = np.linalg.norm(vn, axis=1, keepdims=True)
+                        vn = vn / np.maximum(vn_len, 1e-30)
+                        env = _Env.build_auto_eps(V, F, base_ratio=0.001)
+                        nbr_sum = np.zeros((n_surface, 3), dtype=np.float64)
+                        nbr_cnt = np.zeros(n_surface, dtype=np.int64)
+                        for fi in range(F.shape[0]):
+                            f = F[fi]
+                            for vk in f:
+                                if int(vk) >= n_surface:
+                                    continue
+                                for wk in f:
+                                    if wk != vk:
+                                        nbr_sum[int(vk)] += V[int(wk)]
+                                        nbr_cnt[int(vk)] += 1
+                        target_pts = nbr_sum / np.maximum(nbr_cnt[:, None], 1)
                     new_pts = _envelope_bounded_relocate(
                         final_pts, surface_idx, target_pts, vn, env,
                     )
@@ -2600,20 +2610,25 @@ def generate_native_tet(
                     _post_mean = float(_q_post.mean())
                     _worst_drop = _pre_min - _post_min
                     _mean_gain = _post_mean - _pre_mean
-                    # 가드 완화: worst 하락 ≤ 0.015 + mean 비감소.
                     accepted = bool(_worst_drop <= 0.015 and _mean_gain >= -1e-12)
-                    if accepted:
-                        final_pts = new_pts
                     log.info(
                         "native_tet_p3_sss_revival",
+                        pass_idx=int(_pass_idx),
                         n_surface=int(n_surface),
                         envelope_eps=round(float(env.eps), 6),
-                        step_eps=round(float(step_eps), 6),
                         pre_min=_pre_min, post_min=_post_min,
                         pre_mean=_pre_mean, post_mean=_post_mean,
                         worst_drop=_worst_drop, mean_gain=_mean_gain,
                         accepted=accepted,
                     )
+                    if accepted:
+                        final_pts = new_pts
+                        # plateau detect: mean_gain < 1e-4 면 추가 pass 효과 미미.
+                        if _mean_gain < 1e-4:
+                            break
+                    else:
+                        # reject 시 즉시 중단 (다음 pass 도 동일 quality plateau).
+                        break
             except Exception as exc:
                 log.warning("native_tet_p3_sss_revival_skipped", reason=str(exc)[:120])
 
