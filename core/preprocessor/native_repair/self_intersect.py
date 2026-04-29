@@ -157,25 +157,28 @@ def _kdtree_overlap_pairs(
     if idx.ndim == 1:
         idx = idx[:, None]
 
-    out: set[tuple[int, int]] = set()
-    for i in range(n):
-        a_min = aabb_min[i]
-        a_max = aabb_max[i]
-        for jcol in range(idx.shape[1]):
-            j = int(idx[i, jcol])
-            if j <= i or j >= n:
-                continue
-            if (
-                a_max[0] < aabb_min[j, 0]
-                or aabb_max[j, 0] < a_min[0]
-                or a_max[1] < aabb_min[j, 1]
-                or aabb_max[j, 1] < a_min[1]
-                or a_max[2] < aabb_min[j, 2]
-                or aabb_max[j, 2] < a_min[2]
-            ):
-                continue
-            out.add((i, j))
-    return list(out)
+    # C-PERF-24 / beta2475 — vectorize the (i, kth-neighbor) AABB filter.
+    # Build (n*K,) flat (i, j) candidate pairs, mask invalid (j<=i or out-of-bound),
+    # then AABB-overlap test in one np.all step.
+    K = int(idx.shape[1])
+    if K == 0 or n == 0:
+        return []
+    i_idx = np.repeat(np.arange(n, dtype=np.int64), K)        # (n*K,)
+    j_idx = idx.reshape(-1).astype(np.int64)                   # (n*K,)
+    valid = (j_idx > i_idx) & (j_idx < n)
+    if not valid.any():
+        return []
+    i_v = i_idx[valid]; j_v = j_idx[valid]
+    a_min = aabb_min[i_v]; a_max = aabb_max[i_v]
+    b_min = aabb_min[j_v]; b_max = aabb_max[j_v]
+    overlap = np.all(
+        (a_max >= b_min) & (b_max >= a_min),
+        axis=1,
+    )
+    pairs = np.unique(
+        np.stack([i_v[overlap], j_v[overlap]], axis=1), axis=0,
+    )
+    return list(zip(pairs[:, 0].tolist(), pairs[:, 1].tolist()))
 
 
 def export_intersecting_faces_stl(
