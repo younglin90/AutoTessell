@@ -4038,9 +4038,11 @@ def test_history_dialog_table_has_hausdorff_column() -> None:
     ]
     assert "Hausdorff(rel)" in headers, f"Hausdorff(rel) 컬럼 누락: {headers}"
     # beta2303 = 9 컬럼, beta2352 = + pre-BL SI = 10 컬럼.
-    assert dlg.table.columnCount() == 10, \
-        f"컬럼 수 mismatch (10 expected): {dlg.table.columnCount()}"
+    # beta2411 = + Integrity = 11 컬럼.
+    assert dlg.table.columnCount() == 11, \
+        f"컬럼 수 mismatch (11 expected): {dlg.table.columnCount()}"
     assert "pre-BL SI" in headers, f"pre-BL SI 컬럼 누락 (beta2352): {headers}"
+    assert "Integrity" in headers, f"Integrity 컬럼 누락 (beta2411): {headers}"
 
 
 def test_history_csv_export_includes_hausdorff_columns() -> None:

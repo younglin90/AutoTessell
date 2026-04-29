@@ -68,10 +68,12 @@ class HistoryDialog(EscDismissMixin, QDialog):
         # ── 테이블 ─────────────────────────────────────────────
         # beta2303 — Hausdorff (rel) 컬럼 추가 (상용 툴 'Surface Deviation' 동등).
         # beta2352 — pre-BL Self-Intersect 컬럼 추가 (P2.6 chain).
-        self.table = QTableWidget(0, 10)
+        # C-GUI-1 / beta2411 — mesh_integrity_suspect 컬럼 (3-engine catastrophic flag).
+        self.table = QTableWidget(0, 11)
         self.table.setHorizontalHeaderLabels([
             "시각", "입력", "Tier", "품질", "결과",
             "시간(s)", "셀수", "Non-ortho", "Hausdorff(rel)", "pre-BL SI",
+            "Integrity",
         ])
         self.table.setStyleSheet(get_table_qss())
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -145,6 +147,16 @@ class HistoryDialog(EscDismissMixin, QDialog):
                     _si_item.setForeground(QColor("#ef4444"))
                 else:
                     _si_item.setForeground(QColor("#22c55e"))
+            # C-GUI-1 / beta2411 — mesh_integrity_suspect column.
+            # True (의심) 빨강 + ⚠ 경고; False 초록 + ✓.
+            _int = bool(getattr(e, "mesh_integrity_suspect", False))
+            _int_item = QTableWidgetItem("⚠" if _int else "✓")
+            _int_item.setForeground(QColor("#ef4444" if _int else "#22c55e"))
+            if _int:
+                _int_item.setToolTip(
+                    "Mesh integrity suspect: 셀 수가 비정상적으로 적음 "
+                    "(catastrophic collapse 의심)",
+                )
             items = [
                 QTableWidgetItem(e.timestamp.replace("T", " ")),
                 QTableWidgetItem(Path(e.input_file).name),
@@ -158,6 +170,7 @@ class HistoryDialog(EscDismissMixin, QDialog):
                 ),
                 _hr_item,
                 _si_item,
+                _int_item,
             ]
             # 결과 컬러
             if e.success:
@@ -207,17 +220,19 @@ class HistoryDialog(EscDismissMixin, QDialog):
         try:
             # beta2303 — CSV 에 Hausdorff (distance + relative) 컬럼 포함.
             # beta2353 — pre_bl_self_intersect 도 CSV 에 포함 (P2.6 chain).
+            # C-GUI-1 / beta2411 — mesh_integrity_suspect 도 CSV 에 포함.
             lines = [
                 "timestamp,input_file,tier,quality,success,"
                 "elapsed_seconds,n_cells,max_aspect_ratio,"
                 "max_skewness,max_non_orthogonality,"
                 "hausdorff_distance,hausdorff_relative,"
-                "pre_bl_self_intersect,error"
+                "pre_bl_self_intersect,mesh_integrity_suspect,error"
             ]
             for e in filtered:
                 _hd = getattr(e, "hausdorff_distance", None)
                 _hr = getattr(e, "hausdorff_relative", None)
                 _si = getattr(e, "n_self_intersect_pre", None)
+                _int = bool(getattr(e, "mesh_integrity_suspect", False))
                 lines.append(
                     f'{e.timestamp},"{e.input_file}",{e.tier_used},{e.quality_level},'
                     f"{int(e.success)},{e.elapsed_seconds:.2f},{e.n_cells},"
@@ -226,6 +241,7 @@ class HistoryDialog(EscDismissMixin, QDialog):
                     f'{_hd if _hd is not None else ""},'
                     f'{_hr if _hr is not None else ""},'
                     f'{_si if _si is not None else ""},'
+                    f'{int(_int)},'
                     f'"{(e.error or "").replace(chr(34), chr(39))}"'
                 )
             Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
