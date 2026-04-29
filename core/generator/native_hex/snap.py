@@ -719,11 +719,22 @@ def snap_to_feature_edges(
         order = np.argsort(best_dist[eligible])
         eligible = eligible[order[:top_k]]
 
-    # Step 4 — build vert → incident cells map for quality guard
-    vert_cells: list[list[int]] = [[] for _ in range(n_verts)]
-    for ci in range(cells.shape[0]):
-        for vi in cells[ci]:
-            vert_cells[int(vi)].append(ci)
+    # Step 4 — build vert → incident cells map for quality guard.
+    # C-PERF-27 / beta2478 — vectorize via flat sort + bincount-offset slicing.
+    if cells.shape[0] == 0:
+        vert_cells: list[list[int]] = [[] for _ in range(n_verts)]
+    else:
+        flat_v_vc = cells.reshape(-1).astype(np.int64)
+        flat_c_vc = np.repeat(np.arange(cells.shape[0], dtype=np.int64), 8)
+        order_vc = np.argsort(flat_v_vc, kind="stable")
+        sorted_v_vc = flat_v_vc[order_vc]
+        sorted_c_vc = flat_c_vc[order_vc]
+        counts_vc = np.bincount(sorted_v_vc, minlength=n_verts)
+        offs_vc = np.concatenate(([0], np.cumsum(counts_vc).astype(np.int64)))
+        vert_cells = [
+            sorted_c_vc[offs_vc[i]:offs_vc[i + 1]].tolist()
+            for i in range(n_verts)
+        ]
 
     def _hex_skewness_cells(pts: np.ndarray, cids: list[int]) -> float:
         """Approximate max skewness over a set of hex cells (centroid-based)."""
