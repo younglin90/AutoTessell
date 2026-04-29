@@ -35,6 +35,10 @@ class HistoryEntry:
     # beta2352: pre-BL self-intersect (P2.6 chain). 입력 mesh 의 self-intersect
     # 면 페어 수. None = 미측정 (>5000 face), 0 = clean, >0 = 입력 SI 존재.
     n_self_intersect_pre: int | None = None
+    # C-GUI-1 / beta2410 — mesh_integrity_suspect (3-engine parity).
+    # tet (beta2382) / poly (beta2401) / hex (beta2407) 의 catastrophic
+    # cell-drop flag. True 시 GUI history 가 사용자에게 경고 표시.
+    mesh_integrity_suspect: bool = False
     error: str | None = None
 
 
@@ -62,6 +66,9 @@ def load_all() -> list[HistoryEntry]:
                     continue
                 try:
                     data = json.loads(line)
+                    # C-GUI-1 / beta2410 — schema 호환: 누락 field 무시.
+                    _allowed = set(HistoryEntry.__dataclass_fields__.keys())
+                    data = {k: v for k, v in data.items() if k in _allowed}
                     entries.append(HistoryEntry(**data))
                 except Exception:
                     continue
@@ -123,5 +130,13 @@ def make_entry_from_result(
         hausdorff_relative=getattr(fidelity, "hausdorff_relative", None),
         # beta2352 — pre-BL self-intersect (beta2334 evaluator populate 후 schema).
         n_self_intersect_pre=getattr(fidelity, "n_self_intersect_pre", None),
+        # C-GUI-1 / beta2410 — mesh_integrity_suspect 추출.
+        # generator result (NativeTetResult / NativeHexResult / NativePolyResult)
+        # 에서 직접 lookup. fallback Tier (snappy/cfMesh/etc) 는 False.
+        mesh_integrity_suspect=bool(
+            getattr(getattr(result, "generator_result", None),
+                    "mesh_integrity_suspect", False)
+            or False,
+        ),
         error=getattr(result, "error", None),
     )
