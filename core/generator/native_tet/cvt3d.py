@@ -144,30 +144,40 @@ def lloyd_cvt_3d(
             accepted=False, elapsed_s=_t.perf_counter() - t0,
         )
 
-    v2t = _build_vertex_to_tets(n_v, tets)
-
+    # C-PERF-16 / beta2465 — vectorize per-vertex Lloyd target via scatter-sum.
+    # Replaces O(V) Python loop + per-vertex numpy mean with single np.add.at +
+    # broadcast — speedup ~10-50× for V > 1k.
     cur_pts = pts.copy()
     n_moved_total = 0
     last_iter = 0
+    interior_count = int(interior_idx.size)
+    relax_f = float(relax)
     for it in range(int(n_iter)):
-        # Lloyd target = 인접 tet centroid 평균.
-        centroids = _tet_centroids(cur_pts, tets)
+        # Lloyd target = 인접 tet centroid 평균 (scatter-sum vectorized).
+        centroids = _tet_centroids(cur_pts, tets)              # (T, 3)
+        flat_v = tets.reshape(-1)                              # (T*4,)
+        flat_c = np.repeat(centroids, 4, axis=0)               # (T*4, 3)
+        sums = np.zeros((n_v, 3), dtype=np.float64)
+        counts = np.zeros(n_v, dtype=np.int64)
+        np.add.at(sums, flat_v, flat_c)
+        np.add.at(counts, flat_v, 1)
+        nz = counts > 0
+        targets = np.zeros_like(sums)
+        targets[nz] = sums[nz] / counts[nz, None]
+        # Update only interior vertices that actually have ≥ 1 incident tet.
+        movable = interior_mask & nz
+        movable_idx = np.where(movable)[0]
         new_pts = cur_pts.copy()
-        n_moved = 0
-        for vi in interior_idx:
-            ts = v2t[int(vi)]
-            if not ts:
-                continue
-            target = centroids[ts].mean(axis=0)
-            new_pos = (1.0 - relax) * cur_pts[vi] + relax * target
-            new_pts[vi] = new_pos
-            n_moved += 1
+        new_pts[movable_idx] = (
+            (1.0 - relax_f) * cur_pts[movable_idx]
+            + relax_f * targets[movable_idx]
+        )
 
         # iteration 간 monotone check (cumulative — 최종 accept/reject).
-        # 초기 cur_pts 와 비교 → cumulative 향상 측정.
         cur_pts = new_pts
-        n_moved_total += n_moved
+        n_moved_total += int(movable_idx.size)
         last_iter = it + 1
+    _ = interior_count  # kept for reference; legacy v2t no longer needed.
 
     # Final monotone guard — pre vs post (cumulative).
     post_q = _tsq(cur_pts, tets)
