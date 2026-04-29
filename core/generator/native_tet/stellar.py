@@ -1558,10 +1558,12 @@ def _klingner_edge_contract_candidates(
         if edge_lengths[idx] >= l_max:
             continue
 
-        # low-quality incident tet filter
-        pre_qs = [_tet_quality(pts, tets[ti]) for ti in inc_tets]
-        pre_min_q = min(pre_qs)
-        if not any(q < q_max for q in pre_qs):
+        # low-quality incident tet filter — batched.
+        # C-PERF-88 / beta2540 — _tet_quality_batch + sorted-row dup mask.
+        _inc_idx = list(inc_tets)
+        pre_qs_arr = _tet_quality_batch(pts, tets[_inc_idx])
+        pre_min_q = float(pre_qs_arr.min())
+        if not (pre_qs_arr < q_max).any():
             continue
 
         # weak-link pre-check: |N(a) ∩ N(b)| <= 2
@@ -1571,22 +1573,23 @@ def _klingner_edge_contract_candidates(
 
         # simulate contraction b → a
         t_remap = np.where(tets == b, a, tets)
-        # drop degenerate tets (a appears >= 2 times in row)
-        keep = np.array(
-            [(len(set(row)) == 4) for row in t_remap], dtype=bool
+        # drop degenerate tets — sorted-row 4-uniq check.
+        rs = np.sort(t_remap, axis=1)
+        keep = (
+            (rs[:, 0] != rs[:, 1]) & (rs[:, 1] != rs[:, 2]) & (rs[:, 2] != rs[:, 3])
         )
         if not keep.any():
             continue
         t_remapped = t_remap[keep]
 
-        # recompute quality for affected tets (contain a in remapped)
+        # recompute quality for affected tets (contain a in remapped) — batched.
         affected_mask = (t_remapped == a).any(axis=1)
         if not affected_mask.any():
             post_min_q = pre_min_q
         else:
             t_affected = t_remapped[affected_mask]
-            post_qs = [_tet_quality(pts, t_affected[i]) for i in range(len(t_affected))]
-            post_min_q = min(post_qs) if post_qs else pre_min_q
+            post_qs_arr = _tet_quality_batch(pts, t_affected)
+            post_min_q = float(post_qs_arr.min()) if post_qs_arr.size else pre_min_q
 
         # monotone guard
         if post_min_q < pre_min_q - 0.015:
