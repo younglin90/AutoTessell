@@ -56,6 +56,8 @@ def inside_winding_number(
 
     inside = np.zeros(N, dtype=bool)
     batch = 64
+    # C-PERF-29 / beta2480 — vectorize per-query Möller-Trumbore by flattening
+    # all (query, face) AABB-candidate pairs into 1D arrays + np.add.at hit count.
     for qi in range(0, N, batch):
         qs = Q[qi:qi + batch]
         B = qs.shape[0]
@@ -67,18 +69,18 @@ def inside_winding_number(
         )
         if not mask_qf.any():
             continue
-        for li in range(B):
-            cand = np.where(mask_qf[li])[0]
-            if cand.size == 0:
-                continue
-            tv = qs[li] - v0[cand]
-            u = (tv * pvec[cand]).sum(axis=1) * inv_det[cand]
-            qvec = np.cross(tv, edge1[cand])
-            v = (qvec * d).sum(axis=1) * inv_det[cand]
-            t = (edge2[cand] * qvec).sum(axis=1) * inv_det[cand]
-            hit = (u >= 0) & (v >= 0) & (u + v <= 1) & (t > 1e-9)
-            if int(hit.sum()) % 2 == 1:
-                inside[qi + li] = True
+        li_arr, fi_arr = np.where(mask_qf)
+        if li_arr.size == 0:
+            continue
+        tv = qs[li_arr] - v0[fi_arr]
+        u_arr = (tv * pvec[fi_arr]).sum(axis=1) * inv_det[fi_arr]
+        qvec = np.cross(tv, edge1[fi_arr])
+        v_arr = (qvec * d).sum(axis=1) * inv_det[fi_arr]
+        t_arr = (edge2[fi_arr] * qvec).sum(axis=1) * inv_det[fi_arr]
+        hit_arr = (u_arr >= 0) & (v_arr >= 0) & (u_arr + v_arr <= 1) & (t_arr > 1e-9)
+        hit_count = np.zeros(B, dtype=np.int64)
+        np.add.at(hit_count, li_arr, hit_arr.astype(np.int64))
+        inside[qi:qi + B] = (hit_count % 2 == 1)
     return inside
 
 
