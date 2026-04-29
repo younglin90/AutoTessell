@@ -73,17 +73,27 @@ def _group_by_plane(
     *, normal_tol: float = 1e-3, offset_rel_tol: float = 1e-4,
     bbox_diag: float = 1.0,
 ) -> dict[tuple[int, int, int, int], list[int]]:
-    """grid quantize 로 plane → triangle indices."""
+    """grid quantize 로 plane → triangle indices.
+
+    C-PERF-72 / beta2523 — vectorize via lexsort + group-boundary.
+    """
     if unit.shape[0] == 0:
         return {}
-    # quantize normals to grid of 1/normal_tol cells.
     qn = np.round(unit / normal_tol).astype(np.int64)
     abs_off_tol = max(offset_rel_tol * bbox_diag, 1e-9)
     qo = np.round(offset / abs_off_tol).astype(np.int64)
+    keys = np.column_stack([qn[:, 0], qn[:, 1], qn[:, 2], qo])  # (N, 4)
+    idx_arr = np.arange(unit.shape[0], dtype=np.int64)
+    order = np.lexsort((keys[:, 3], keys[:, 2], keys[:, 1], keys[:, 0]))
+    k_s = keys[order]; i_s = idx_arr[order]
+    diff = np.r_[True, np.any(k_s[1:] != k_s[:-1], axis=1)]
+    starts = np.where(diff)[0]
+    ends = np.r_[starts[1:], len(k_s)]
     out: dict[tuple[int, int, int, int], list[int]] = {}
-    for i in range(unit.shape[0]):
-        k = (int(qn[i, 0]), int(qn[i, 1]), int(qn[i, 2]), int(qo[i]))
-        out.setdefault(k, []).append(i)
+    for s, e in zip(starts.tolist(), ends.tolist()):
+        kt = (int(k_s[s, 0]), int(k_s[s, 1]),
+              int(k_s[s, 2]), int(k_s[s, 3]))
+        out[kt] = i_s[s:e].tolist()
     return out
 
 
