@@ -1000,9 +1000,34 @@ def _curvature_adaptive_thickness(
         return np.full(len(wall_vert_indices), base_thickness, dtype=np.float64)
 
     # build adjacency: vertex → set of neighbouring vertices (wall faces only)
+    # C-PERF-66 / beta2517 — triangle-only fast path: flat src/dst + sort + bincount-offset.
     vert_set = set(wall_vert_indices)
     neighbours: dict[int, list[int]] = {v: [] for v in wall_vert_indices}
-    for f in surface_faces:
+    tri_faces_only = [f for f in surface_faces if len(f) == 3]
+    other_faces = [f for f in surface_faces if len(f) != 3]
+    if tri_faces_only:
+        F_tri = np.asarray(tri_faces_only, dtype=np.int64)
+        src_nb = F_tri[:, [0, 0, 1, 1, 2, 2]].reshape(-1)
+        dst_nb = F_tri[:, [1, 2, 0, 2, 0, 1]].reshape(-1)
+        # mask: src must be in wall_vert_indices.
+        wall_arr = np.asarray(sorted(vert_set), dtype=np.int64)
+        wall_set_np = set(wall_arr.tolist())
+        # Use np.isin for membership.
+        mask = np.isin(src_nb, wall_arr)
+        src_v = src_nb[mask]; dst_v = dst_nb[mask]
+        order = np.argsort(src_v, kind="stable")
+        src_s = src_v[order]; dst_s = dst_v[order]
+        # Group by unique src.
+        if src_s.size > 0:
+            diff = np.r_[True, src_s[1:] != src_s[:-1]]
+            starts = np.where(diff)[0]
+            ends = np.r_[starts[1:], len(src_s)]
+            for s, e in zip(starts.tolist(), ends.tolist()):
+                v_int = int(src_s[s])
+                if v_int in neighbours:
+                    neighbours[v_int].extend(dst_s[s:e].tolist())
+    # Polygon faces fallback (rare in BL, but supported).
+    for f in other_faces:
         if len(f) < 2:
             continue
         for ai in range(len(f)):
