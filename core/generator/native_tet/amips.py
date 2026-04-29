@@ -357,18 +357,21 @@ def smooth_amips(
     if locked_vertex_ids is not None and len(locked_vertex_ids) > 0:
         locked_mask[np.asarray(locked_vertex_ids, dtype=np.int64)] = True
 
-    # 1-ring tet index.
-    counts = np.zeros(n, dtype=np.int64)
-    for k in range(4):
-        np.add.at(counts, tets[:, k], 1)
-    offsets = np.concatenate([[0], np.cumsum(counts)])
-    flat = np.empty(int(counts.sum()), dtype=np.int64)
-    cursor = offsets[:-1].copy()
-    for ti in range(tets.shape[0]):
-        for k in range(4):
-            v = int(tets[ti, k])
-            flat[cursor[v]] = ti
-            cursor[v] += 1
+    # 1-ring tet index.  C-PERF-39 / beta2490 — flat sort + bincount-offset.
+    if tets.shape[0] == 0:
+        counts = np.zeros(n, dtype=np.int64)
+        offsets = np.zeros(n + 1, dtype=np.int64)
+        flat = np.zeros(0, dtype=np.int64)
+    else:
+        flat_v_csr2 = tets.reshape(-1).astype(np.int64)
+        flat_t_csr2 = np.repeat(
+            np.arange(tets.shape[0], dtype=np.int64), 4,
+        )
+        order_csr2 = np.argsort(flat_v_csr2, kind="stable")
+        sorted_v_csr2 = flat_v_csr2[order_csr2]
+        flat = flat_t_csr2[order_csr2]
+        counts = np.bincount(sorted_v_csr2, minlength=n)
+        offsets = np.concatenate([[0], np.cumsum(counts)])
 
     # T3 — per-vertex 1-ring 평균 edge length 캐시 (step_init scaling).
     bbox = pts.max(axis=0) - pts.min(axis=0)
