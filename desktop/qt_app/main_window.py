@@ -4143,6 +4143,22 @@ class AutoTessellWindow:  # type: ignore[misc]
         """1-페이지 PDF 리포트 생성 — 메타 + 스크린샷 + 3 히스토그램 + 합격 판정."""
         from desktop.qt_app.report_pdf import ReportData, write_pdf
 
+        # C-GUI-10 / beta2427 — selected tier 의 native_bl_phase2 lookup helper.
+        def _bl_lookup(res, attr_name):
+            try:
+                gl = getattr(res, "generator_log", None)
+                summary_local = getattr(gl, "execution_summary", None) if gl else None
+                if not summary_local:
+                    return None
+                for at in getattr(summary_local, "tiers_attempted", []) or []:
+                    if (getattr(at, "tier", "") == getattr(summary_local, "selected_tier", "")
+                            and getattr(at, "status", "") == "success"):
+                        bl = getattr(at, "native_bl_phase2", None)
+                        return getattr(bl, attr_name, None) if bl else None
+            except Exception:
+                return None
+            return None
+
         result = self._pipeline_result
         hist_data = self._histogram_data or {}
 
@@ -4198,6 +4214,16 @@ class AutoTessellWindow:  # type: ignore[misc]
                     "mesh_integrity_suspect", False,
                 )
                 or False,
+            ),
+            # C-GUI-10 / beta2427 — BL stats (selected attempt 의 native_bl_phase2).
+            bl_n_prism_cells=int(
+                _bl_lookup(result, "n_prism_cells") or 0,
+            ),
+            bl_lcr_n_reduced_verts=int(
+                _bl_lookup(result, "lcr_n_reduced_verts") or 0,
+            ),
+            bl_aniso_split_n_would_split=int(
+                _bl_lookup(result, "aniso_split_n_would_split") or 0,
             ),
             hist_aspect=hist_data.get("aspect_ratio", []) or [],
             hist_skew=hist_data.get("skewness", []) or [],

@@ -50,6 +50,10 @@ class ReportData:
     n_self_intersect_pre: int | None = None
     # C-GUI-2 / beta2412 — mesh_integrity_suspect (3-engine catastrophic flag).
     mesh_integrity_suspect: bool = False
+    # C-GUI-10 / beta2427 — BL stats (Pointwise T-Rex / cfMesh 동등).
+    bl_n_prism_cells: int = 0
+    bl_lcr_n_reduced_verts: int = 0
+    bl_aniso_split_n_would_split: int = 0
     # 히스토그램 배열
     hist_aspect: list[float] = field(default_factory=list)
     hist_skew: list[float] = field(default_factory=list)
