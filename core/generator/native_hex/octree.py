@@ -378,8 +378,9 @@ def _build_nlevel_cells(
                                     _nbrs[_fdir] = _NB()
                                 else:
                                     _nbrs[_fdir] = None
-                            _ctype = _classify_cell_type(_N(), _nbrs)
-                            log.debug("wwww6_cell_type", ctype=_ctype, fi=fi, fj=fj, fk=fk)
+                            # C-PERF-7 / beta2397 — wwww6 debug log + 미사용 _ctype 계산
+                            # 제거 (60k+ cells × log evaluator overhead). 로직 영향 0:
+                            # _ctype 은 debug log 외 미사용.
                         cell_face_verts.append(faces_of_cell)
                         covered[fi, fj, fk] = True
                         continue
