@@ -51,19 +51,28 @@ def _detect_self_intersections(V: np.ndarray, F: np.ndarray) -> np.ndarray:
     aabb_min = tris.min(axis=1)  # (T, 3)
     aabb_max = tris.max(axis=1)  # (T, 3)
 
+    # C-PERF-22 / beta2472 — vectorize AABB overlap pre-filter.
+    # Pairwise overlap: (i,j) overlap iff for all axis a, min[i,a] <= max[j,a]
+    # and min[j,a] <= max[i,a].  → boolean (T,T) matrix.
+    if n == 0:
+        return np.empty((0, 2), dtype=np.intp)
+    ov = (
+        np.all(aabb_min[:, None, :] <= aabb_max[None, :, :], axis=2)
+        & np.all(aabb_min[None, :, :] <= aabb_max[:, None, :], axis=2)
+    )
+    np.fill_diagonal(ov, False)
+    cand_i, cand_j = np.where(np.triu(ov, k=1))
+
     pairs: list[tuple[int, int]] = []
-    for i in range(n):
-        for j in range(i + 1, n):
-            # skip adjacent triangles sharing an edge or vertex
-            shared = np.intersect1d(F[i], F[j])
-            if len(shared) >= 2:
-                continue
-            # AABB overlap test
-            if np.any(aabb_min[i] > aabb_max[j]) or np.any(aabb_min[j] > aabb_max[i]):
-                continue
-            # Möller 1997 triangle-triangle intersection test
-            if _moller_tri_tri(tris[i], tris[j]):
-                pairs.append((i, j))
+    for k in range(cand_i.size):
+        i = int(cand_i[k]); j = int(cand_j[k])
+        # skip adjacent triangles sharing an edge or vertex (≥ 2 shared verts).
+        shared = np.intersect1d(F[i], F[j])
+        if len(shared) >= 2:
+            continue
+        # Möller 1997 triangle-triangle intersection test.
+        if _moller_tri_tri(tris[i], tris[j]):
+            pairs.append((i, j))
 
     if not pairs:
         return np.empty((0, 2), dtype=np.intp)
