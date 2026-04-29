@@ -724,6 +724,17 @@ def test_local_cap_floor_uses_effective_first_thickness() -> None:
         "local_cap floor 가 effective_first_thickness 사용 안 함"
 
 
+def test_cli_hex_snap_budget_flag_wired() -> None:
+    """C-CLI-3 / beta2457 — --hex-snap-budget-s CLI flag 가 env wiring."""
+    import inspect
+    from cli import main as cli_main
+    src = inspect.getsource(cli_main)
+    assert "--hex-snap-budget-s" in src, "--hex-snap-budget-s flag 누락"
+    assert "AUTO_TESSELL_HEX_WWW7_BUDGET_S" in src, \
+        "AUTO_TESSELL_HEX_WWW7_BUDGET_S env wiring 누락"
+    assert "hex_snap_budget_s" in src, "hex_snap_budget_s param 누락"
+
+
 def test_validator_filter_to_sig_drops_invalid_kwargs() -> None:
     """C-VAL-9 / beta2453 — _filter_to_sig 가 invalid kwargs drop."""
     from tests.stl.validate_30_hard_meshes import _filter_to_sig

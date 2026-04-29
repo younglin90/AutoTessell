@@ -685,6 +685,12 @@ def evaluate(
          "환경변수 AUTO_TESSELL_BL_FLOOR_RATIO 동등.",
 )
 @click.option(
+    "--hex-snap-budget-s", type=float, default=None,
+    help="beta2457 — hex feature snap pass 의 wall-clock budget (초). "
+         "0=off (기본). 설정 시 강제 cap (hard hex 메쉬에서 hang 방지). "
+         "환경변수 AUTO_TESSELL_HEX_WWW7_BUDGET_S 동등.",
+)
+@click.option(
     "--flow-velocity", type=float, default=1.0, show_default=True,
     help="v0.4.0-beta78+ 유입 속도 [m/s]. 0/U 자동 생성 기준값. "
          "turbulence 필드 (k, epsilon/omega) 에 반영.",
@@ -768,6 +774,7 @@ def run(
     stellar_split: bool,
     poly_budget_s: float | None,
     bl_floor_ratio: float | None,
+    hex_snap_budget_s: float | None,
     flow_velocity: float,
     turbulence_model: str,
     auto_retry: str,
@@ -833,6 +840,9 @@ def run(
     # C-CLI-2 / beta2448 — BL floor ratio CLI exposure.
     if bl_floor_ratio is not None:
         _os_v9.environ["AUTO_TESSELL_BL_FLOOR_RATIO"] = str(float(bl_floor_ratio))
+    # C-CLI-3 / beta2457 — hex feature snap budget CLI exposure.
+    if hex_snap_budget_s is not None:
+        _os_v9.environ["AUTO_TESSELL_HEX_WWW7_BUDGET_S"] = str(float(hex_snap_budget_s))
 
     console.print(f"[bold magenta]Auto-Tessell[/bold magenta] {input_file} → {output}")
     console.print(
