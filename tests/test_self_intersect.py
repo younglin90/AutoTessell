@@ -140,6 +140,26 @@ def test_native_hex_mesher_populates_si_pre_field() -> None:
     assert "detect_self_intersections as _det_si_hex" in src
 
 
+def test_native_hex_actually_populates_si_value_end_to_end() -> None:
+    """beta2359 — generate_native_hex 가 실 mesh 생성 후 n_self_intersect_pre
+    가 int (None 아님) 로 채워짐. Schema/contract 기반 검증과 별도로
+    end-to-end 동작 확인."""
+    import tempfile
+    from pathlib import Path
+    from core.generator.native_hex import generate_native_hex
+
+    V = np.array(
+        [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        dtype=np.float64,
+    )
+    F = np.array([[0, 1, 2], [0, 1, 3], [1, 2, 3], [0, 2, 3]], dtype=np.int64)
+    with tempfile.TemporaryDirectory() as tmp:
+        r = generate_native_hex(V, F, Path(tmp), seed_density=4)
+    # ≤5000 face → populate 됨 (None 아님).
+    assert r.n_self_intersect_pre is not None
+    assert isinstance(r.n_self_intersect_pre, int)
+
+
 def test_native_hex_and_poly_results_have_si_field() -> None:
     """beta2337 — NativeHexResult / NativePolyResult 도 동일 SI 필드 노출.
 
