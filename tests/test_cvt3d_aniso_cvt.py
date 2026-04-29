@@ -496,3 +496,35 @@ def test_harness_params_fine_hex_snap_iterations_3() -> None:
         f"snap_iterations=3 expected, got {p.get('snap_iterations')}"
     assert p.get("post_smooth_iterations") == 2, \
         f"post_smooth_iterations=2 expected, got {p.get('post_smooth_iterations')}"
+
+
+def test_generalized_winding_number_unit_cube() -> None:
+    """C-QUAL-3 / beta2390 — Jacobson generalized winding number 정확."""
+    from core.utils.geometry import inside_generalized_winding_number
+    V = np.array([
+        [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+        [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+    ], dtype=np.float64)
+    F = np.array([
+        [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7],
+        [0, 1, 5], [0, 5, 4], [2, 3, 7], [2, 7, 6],
+        [1, 2, 6], [1, 6, 5], [0, 4, 7], [0, 7, 3],
+    ], dtype=np.int64)
+    Q = np.array([
+        [0.5, 0.5, 0.5],   # inside
+        [2.0, 0.5, 0.5],   # outside
+        [-0.5, 0.5, 0.5],  # outside
+        [0.1, 0.1, 0.1],   # inside (corner)
+    ], dtype=np.float64)
+    res = inside_generalized_winding_number(Q, V, F)
+    assert res.tolist() == [True, False, False, True], f"got {res.tolist()}"
+
+
+def test_generalized_winding_number_empty() -> None:
+    """C-QUAL-3 — 빈 입력 정상 처리."""
+    from core.utils.geometry import inside_generalized_winding_number
+    Q = np.zeros((0, 3), dtype=np.float64)
+    V = np.zeros((0, 3), dtype=np.float64)
+    F = np.zeros((0, 3), dtype=np.int64)
+    res = inside_generalized_winding_number(Q, V, F)
+    assert res.shape == (0,)

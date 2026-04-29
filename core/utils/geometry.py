@@ -5,6 +5,10 @@
         Möller-Trumbore triangle intersection + y/z bbox prefilter 로 대형 surface
         에서 빠르게 동작. native_tet / native_hex / native_poly 3 엔진이 공유한다.
 
+    inside_generalized_winding_number(query, V, F) — Jacobson 2013 §3 동등.
+        triangle 별 solid angle 합 / 4π. self-intersecting / non-manifold 입력
+        에서도 robust. ray-casting 보다 ~3× 느리나 hard mesh 에서 정확도 ↑.
+
 v0.4.0-beta9 기준 추출. 이후 triangle areas, normals 등 공통 계산이 추가될 예정.
 """
 from __future__ import annotations
@@ -75,4 +79,64 @@ def inside_winding_number(
             hit = (u >= 0) & (v >= 0) & (u + v <= 1) & (t > 1e-9)
             if int(hit.sum()) % 2 == 1:
                 inside[qi + li] = True
+    return inside
+
+
+def inside_generalized_winding_number(
+    query: np.ndarray, V: np.ndarray, F: np.ndarray,
+    *, threshold: float = 0.5,
+) -> np.ndarray:
+    """C-QUAL-3 / beta2390 — Jacobson 2013 §3 generalized winding number.
+
+    Self-intersecting / non-manifold mesh 에서도 robust. 각 query 점 p 에 대해
+    surface 의 모든 triangle 의 solid angle 부호 합 / (4π) 을 계산.
+    값이 threshold (0.5) 초과면 inside.
+
+    SOTA fTetWild §3.5 가 이 식을 사용. ray-casting 보다 ~3× 느리지만
+    self-intersecting 입력에서 inside 판정 정확.
+
+    Args:
+        query: (N, 3) 판정 점.
+        V: (Nv, 3) surface vertex.
+        F: (Nf, 3) triangle index.
+        threshold: 0.5 default — solid_angle_sum > threshold = inside.
+
+    Returns:
+        (N,) bool array.
+    """
+    Q = np.asarray(query, dtype=np.float64)
+    N = Q.shape[0]
+    if N == 0 or F.size == 0:
+        return np.zeros(N, dtype=bool)
+
+    v0 = V[F[:, 0]]
+    v1 = V[F[:, 1]]
+    v2 = V[F[:, 2]]
+
+    inside = np.zeros(N, dtype=bool)
+    # Van Oosterom-Strackee 1983 식 (per-query).
+    # Ω = 2 atan2(|a · (b × c)|, |a||b||c| + (a·b)|c| + (b·c)|a| + (c·a)|b|)
+    # with sign from triple product.
+    batch = 32
+    for qi in range(0, N, batch):
+        qs = Q[qi:qi + batch]
+        B = qs.shape[0]
+        for li in range(B):
+            p = qs[li]
+            a = v0 - p
+            b = v1 - p
+            c = v2 - p
+            la = np.linalg.norm(a, axis=1)
+            lb = np.linalg.norm(b, axis=1)
+            lc = np.linalg.norm(c, axis=1)
+            # avoid 0-len.
+            tri = np.einsum("ij,ij->i", a, np.cross(b, c))  # signed volume of (a,b,c).
+            denom = (la * lb * lc
+                     + (a * b).sum(axis=1) * lc
+                     + (b * c).sum(axis=1) * la
+                     + (c * a).sum(axis=1) * lb)
+            # solid angle (signed).
+            omega = 2.0 * np.arctan2(tri, denom + 1e-30)
+            w = float(omega.sum()) / (4.0 * np.pi)
+            inside[qi + li] = abs(w) > threshold
     return inside
