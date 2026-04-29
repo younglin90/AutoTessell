@@ -120,10 +120,11 @@ def smooth_then_drop_slivers(
     if not bad.any():
         return pts, tets, 0, 0
 
+    # C-PERF-78 / beta2529 — vectorized: gather all bad-tet verts in one shot.
     affected = np.zeros(pts.shape[0], dtype=bool)
-    for ti in np.where(bad)[0]:
-        for vi in tets[ti]:
-            affected[int(vi)] = True
+    bad_verts = tets[bad].ravel()
+    if bad_verts.size > 0:
+        affected[bad_verts] = True
     affected &= ~locked_mask
     n_moved = 0
     if affected.any():
