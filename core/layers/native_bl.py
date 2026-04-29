@@ -1715,8 +1715,9 @@ def generate_native_bl(
             safety = float(cfg.collision_safety_factor)
             # beta90: 전역 cap (기존) + per-vertex cap (신규).
             # 전역 cap: global min collision distance → global thickness 축소.
+            # C-BL-19 / beta2452 — floor 도 effective_first_thickness 기반.
             min_collision = float(min(collision_dist.values()))
-            collision_cap = max(min_collision * safety, cfg.first_thickness)
+            collision_cap = max(min_collision * safety, effective_first_thickness)
             if total > collision_cap:
                 scale = collision_cap / total
                 thicknesses *= scale
@@ -1743,6 +1744,10 @@ def generate_native_bl(
             v_cap = max(v_cap, effective_first_thickness * 0.5)
             v_scale_coll = min(v_cap / total, 1.0)
             s = min(s, v_scale_coll)  # 두 제약 중 더 엄격한 쪽
+        # C-BL-18 / beta2452 — minimum vertex scale floor (avoid vanishingly thin prisms).
+        # vertex_scale < 0.1 (10% of full thickness) 면 0.1 로 floor.
+        # 이로써 어떠한 wall vertex 도 thickness 10% 미만 떨어지지 않음.
+        s = max(s, 0.1)
         vertex_scale[v] = s
     if any(s < 1.0 for s in vertex_scale.values()):
         n_limited = sum(1 for s in vertex_scale.values() if s < 1.0)
