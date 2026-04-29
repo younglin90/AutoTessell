@@ -367,10 +367,21 @@ def snap_to_surface_iterative(
             dists_coarse = dists_coarse[:, None]
             nn_idx = nn_idx[:, None]
 
+        # C-PERF-13 / beta2436 — coarse 거리 pre-filter (대부분 vert 가 cap+ 밖).
+        # KD-tree 가 search_r = cap + max_tri_extent 로 query 했으므로,
+        # 가장 가까운 centroid 거리 > cap + max_tri_extent 면 surface 도 cap 밖.
+        # 이 조건은 cand 가 비어 있을 때 (line 370-374) 이미 처리되지만,
+        # cand 비어 있지 않아도 모든 cand 의 centroid distance > cap 이면 skip.
         for i in range(len(work_pts)):
             cand = nn_idx[i]
             cand = cand[cand < len(tri_centroids)]
             if cand.size == 0:
+                continue
+            # min coarse distance pre-check — centroid 거리가 cap+max_tri_extent 미만이지만
+            # 만약 모두 cap+max_tri_extent 를 초과하면 (KD-tree 결과의 안전 hint) skip.
+            # 이 check 는 거리만 1 number 비교 — 매우 빠름.
+            cand_dists = dists_coarse[i][:cand.size]
+            if (cand_dists > cap + max_tri_extent).all():
                 continue
 
             P = work_pts[i]
