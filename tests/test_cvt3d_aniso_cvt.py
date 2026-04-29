@@ -528,3 +528,15 @@ def test_generalized_winding_number_empty() -> None:
     F = np.zeros((0, 3), dtype=np.int64)
     res = inside_generalized_winding_number(Q, V, F)
     assert res.shape == (0,)
+
+
+def test_p4c_fallback_monotone_guard_wired() -> None:
+    """C-QUAL-4 / beta2391 — pytetwild fallback 의 monotone guard 검증."""
+    import inspect
+    from core.generator.native_tet import mesher
+    src = inspect.getsource(mesher)
+    # accept 조건 명시.
+    assert "_accept_fb" in src, "monotone guard accept 변수 누락"
+    assert "_mq_new > _mq_old" in src, "mq 비교 누락"
+    assert "_n_cells_old // 4" in src, "n_cells/4 floor 누락"
+    assert "accepted=_accept_fb" in src, "log accepted 키 누락"

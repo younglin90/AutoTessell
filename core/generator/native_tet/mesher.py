@@ -3769,20 +3769,36 @@ def generate_native_tet(
                     grade = "C"
                 else:
                     grade = "D"
+                # C-QUAL-4 / beta2391 — monotone guard 추가 (validator 발견:
+                # mesh #2 의 fallback 이 1072 cells → 3 cells 로 악화).
+                # 채택 조건: (a) mq_new > mq_old AND
+                #            (b) n_cells_new >= max(50, n_cells_old / 4)
+                # b 는 catastrophic cell drop 방지 (>75% 손실 시 reject).
+                _n_cells_old = int(final_tets.shape[0])
+                _n_cells_new = int(_tw_f.shape[0])
+                _accept_fb = bool(
+                    _mq_new > _mq_old
+                    and _n_cells_new >= max(50, _n_cells_old // 4)
+                )
                 log.info(
                     "native_tet_p4c_pytetwild_fallback",
                     grade_old=_grade_old, grade_new=grade,
-                    n_cells_old=int(final_tets.shape[0]),
-                    n_cells_new=int(_tw_f.shape[0]),
+                    n_cells_old=_n_cells_old,
+                    n_cells_new=_n_cells_new,
                     mq_old=round(_mq_old, 3),
                     mq_new=round(_mq_new, 3),
                     elapsed=round(_t_fb, 2),
+                    accepted=_accept_fb,
                 )
-                final_pts = _tw_v.astype(np.float64)
-                final_tets = _tw_f.astype(np.int64)
-                final_quality = _q_fb
-                n_cells = int(_tw_f.shape[0])
-                n_points = int(_tw_v.shape[0])
+                if _accept_fb:
+                    final_pts = _tw_v.astype(np.float64)
+                    final_tets = _tw_f.astype(np.int64)
+                    final_quality = _q_fb
+                    n_cells = _n_cells_new
+                    n_points = int(_tw_v.shape[0])
+                else:
+                    # reject: keep self-impl mesh, restore 'grade'.
+                    grade = _grade_old
         except Exception as exc:
             log.warning("native_tet_p4c_pytetwild_skipped", reason=str(exc)[:120])
 
