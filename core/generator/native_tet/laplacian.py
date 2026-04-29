@@ -146,14 +146,24 @@ def smooth_interior_laplacian(
     # interior_safe_mask[v] = True iff depth[v] >= 2.
     interior_safe_mask = depth >= 2
 
-    # Build vert_neighbors (edge-connected) — vectorised over 6 edge pairs.
+    # Build vert_neighbors (edge-connected) — fully vectorised.
+    # C-PERF-76 / beta2527 — lexsort + group-boundary, dedup via diff.
     _PAIRS6 = ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3))
-    vert_neighbors: list[set[int]] = [set() for _ in range(n_verts)]
-    for _a, _b in _PAIRS6:
-        _ua = tets[:, _a]; _ub = tets[:, _b]
-        for _va, _vb in zip(_ua.tolist(), _ub.tolist()):
-            vert_neighbors[_va].add(_vb)
-            vert_neighbors[_vb].add(_va)
+    _ua_arr = np.concatenate([tets[:, a] for a, _ in _PAIRS6])
+    _ub_arr = np.concatenate([tets[:, b] for _, b in _PAIRS6])
+    _all_a = np.concatenate([_ua_arr, _ub_arr])
+    _all_b = np.concatenate([_ub_arr, _ua_arr])
+    vert_neighbors: list[list[int]] = [[] for _ in range(n_verts)]
+    if _all_a.size > 0:
+        _ord_n = np.lexsort((_all_b, _all_a))
+        _a_s = _all_a[_ord_n]; _b_s = _all_b[_ord_n]
+        _diff_a = np.r_[True, _a_s[1:] != _a_s[:-1]]
+        _starts_n = np.where(_diff_a)[0]
+        _ends_n = np.r_[_starts_n[1:], len(_a_s)]
+        for _s, _e in zip(_starts_n.tolist(), _ends_n.tolist()):
+            _grp = _b_s[_s:_e]
+            _keep = np.r_[True, _grp[1:] != _grp[:-1]] if _grp.size > 1 else np.array([True])
+            vert_neighbors[int(_a_s[_s])] = _grp[_keep].tolist()
 
     interior_safe = set(int(v) for v in np.where(interior_safe_mask)[0])
 
@@ -466,14 +476,24 @@ def smooth_boundary_envelope(
     boundary_mask = np.zeros(n_verts, dtype=bool)
     boundary_mask[boundary_verts_arr] = True
 
-    # ── 2. Vert neighbors (edge-connected) — vectorised over 6 edge pairs ────
+    # ── 2. Vert neighbors (edge-connected) — fully vectorised ────────────────
+    # C-PERF-76 / beta2527 — lexsort + group-boundary, dedup via diff.
     _PAIRS6b = ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3))
-    vert_neighbors: list[set[int]] = [set() for _ in range(n_verts)]
-    for _a2, _b2 in _PAIRS6b:
-        _ua2 = tets[:, _a2]; _ub2 = tets[:, _b2]
-        for _va2, _vb2 in zip(_ua2.tolist(), _ub2.tolist()):
-            vert_neighbors[_va2].add(_vb2)
-            vert_neighbors[_vb2].add(_va2)
+    _ua_b = np.concatenate([tets[:, a] for a, _ in _PAIRS6b])
+    _ub_b = np.concatenate([tets[:, b] for _, b in _PAIRS6b])
+    _all_a2 = np.concatenate([_ua_b, _ub_b])
+    _all_b2 = np.concatenate([_ub_b, _ua_b])
+    vert_neighbors: list[list[int]] = [[] for _ in range(n_verts)]
+    if _all_a2.size > 0:
+        _ord_n2 = np.lexsort((_all_b2, _all_a2))
+        _a_s2 = _all_a2[_ord_n2]; _b_s2 = _all_b2[_ord_n2]
+        _diff_a2 = np.r_[True, _a_s2[1:] != _a_s2[:-1]]
+        _st_n2 = np.where(_diff_a2)[0]
+        _en_n2 = np.r_[_st_n2[1:], len(_a_s2)]
+        for _s2, _e2 in zip(_st_n2.tolist(), _en_n2.tolist()):
+            _g2v = _b_s2[_s2:_e2]
+            _keep2 = np.r_[True, _g2v[1:] != _g2v[:-1]] if _g2v.size > 1 else np.array([True])
+            vert_neighbors[int(_a_s2[_s2])] = _g2v[_keep2].tolist()
 
     # ── 3. Candidate verts: boundary + incident to top-K worst tets (vectorised)
     q_all = _tet_shape_quality(pts, tets)
