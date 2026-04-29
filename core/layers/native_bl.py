@@ -1461,14 +1461,24 @@ def _build_edge_to_wall_faces(
     edge key 는 정렬된 (min, max) vertex pair. manifold wall 이면 각 edge 당
     정확히 2 triangle (boundary of wall 일 땐 1).
     """
+    # C-PERF-74 / beta2525 — vectorize via lexsort + group-boundary.
     edge_map: dict[tuple[int, int], list[int]] = {}
-    for fi in wall_face_indices:
-        v = faces[fi]
-        if len(v) != 3:
-            continue
-        for a, b in ((v[0], v[1]), (v[1], v[2]), (v[2], v[0])):
-            key = (a, b) if a < b else (b, a)
-            edge_map.setdefault(key, []).append(fi)
+    tri_pairs = [(fi, faces[fi]) for fi in wall_face_indices if len(faces[fi]) == 3]
+    if not tri_pairs:
+        return edge_map
+    tri_fi = np.asarray([p[0] for p in tri_pairs], dtype=np.int64)
+    F_arr = np.asarray([list(p[1]) for p in tri_pairs], dtype=np.int64)
+    src = F_arr[:, [0, 1, 2]].reshape(-1)
+    dst = F_arr[:, [1, 2, 0]].reshape(-1)
+    fi_flat = np.repeat(tri_fi, 3)
+    u = np.minimum(src, dst); v = np.maximum(src, dst)
+    order = np.lexsort((v, u))
+    u_s = u[order]; v_s = v[order]; fi_s = fi_flat[order]
+    diff = np.r_[True, (u_s[1:] != u_s[:-1]) | (v_s[1:] != v_s[:-1])]
+    starts = np.where(diff)[0]
+    ends = np.r_[starts[1:], len(u_s)]
+    for s, e in zip(starts.tolist(), ends.tolist()):
+        edge_map[(int(u_s[s]), int(v_s[s]))] = fi_s[s:e].tolist()
     return edge_map
 
 
