@@ -38,20 +38,28 @@ def compute_edge_incident_tets_cached(
         cached_id, cached_shape, cached_map = _EDGE_INCIDENT_CACHE
         if cached_id == key_id and cached_shape == key_shape:
             return cached_map
-    # Build map.
-    _PAIRS6 = ((0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3))
+    # Build map.  C-PERF-57 / beta2508 — vectorize via lexsort + group-boundary.
     edge_map: dict[tuple[int, int], list[int]] = {}
-    for ti in range(tets.shape[0]):
-        t = tets[ti]
-        for pi, pj in _PAIRS6:
-            u, v = int(t[pi]), int(t[pj])
-            if u > v:
-                u, v = v, u
-            key = (u, v)
-            if key in edge_map:
-                edge_map[key].append(ti)
-            else:
-                edge_map[key] = [ti]
+    if tets.shape[0] == 0:
+        _EDGE_INCIDENT_CACHE = (key_id, key_shape, edge_map)
+        return edge_map
+    _PAIRS6_IDX = np.array(
+        [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]], dtype=np.int64,
+    )
+    edges_arr = tets[:, _PAIRS6_IDX].reshape(-1, 2)              # (6T, 2)
+    edges_arr = np.sort(edges_arr, axis=1)
+    ti_edge = np.repeat(
+        np.arange(tets.shape[0], dtype=np.int64), 6,
+    )
+    order_em = np.lexsort((edges_arr[:, 1], edges_arr[:, 0]))
+    e_s = edges_arr[order_em]
+    ti_s = ti_edge[order_em]
+    diff_em = np.r_[True, np.any(e_s[1:] != e_s[:-1], axis=1)]
+    starts_em = np.where(diff_em)[0]
+    ends_em = np.r_[starts_em[1:], len(e_s)]
+    for s, e in zip(starts_em.tolist(), ends_em.tolist()):
+        k = (int(e_s[s, 0]), int(e_s[s, 1]))
+        edge_map[k] = ti_s[s:e].tolist()
     _EDGE_INCIDENT_CACHE = (key_id, key_shape, edge_map)
     return edge_map
 
