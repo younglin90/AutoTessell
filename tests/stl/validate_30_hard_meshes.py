@@ -183,6 +183,16 @@ def main(argv: list[str]) -> int:
     for r in out_rows:
         if r.get("grade"):
             grade_counts[r["grade"]] = grade_counts.get(r["grade"], 0) + 1
+    # C-VAL-4 / beta2398 — tet 평균 cell count + 평균 mean_q 집계.
+    tet_rows = [r for r in out_rows if r.get("engine") == "tet" and r.get("success")]
+    avg_tet_cells = (
+        sum(r.get("n_cells", 0) for r in tet_rows) / len(tet_rows)
+        if tet_rows else 0.0
+    )
+    avg_tet_mq = (
+        sum(r.get("mean_q", 0.0) for r in tet_rows) / len(tet_rows)
+        if tet_rows else 0.0
+    )
     summary = {
         "seed": seed,
         "n_meshes": n_meshes,
@@ -190,6 +200,8 @@ def main(argv: list[str]) -> int:
         "n_pass": n_pass,
         "n_integrity_suspect": n_integrity_suspect,
         "grade_counts": grade_counts,
+        "avg_tet_cells": round(avg_tet_cells, 1),
+        "avg_tet_mq": round(avg_tet_mq, 4),
         "pass_rate": round(n_pass / max(1, len(out_rows)), 3),
         "rows": out_rows,
     }
@@ -204,6 +216,7 @@ def main(argv: list[str]) -> int:
         print(f"INTEGRITY_SUSPECT (tet): {n_integrity_suspect}/{len(out_rows)}")
     if grade_counts:
         print(f"GRADES: {grade_counts}")
+    print(f"AVG_TET cells={avg_tet_cells:.0f} mq={avg_tet_mq:.4f}")
     print(f"saved: {out_path}")
     return 0
 
