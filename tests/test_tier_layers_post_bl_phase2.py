@@ -189,6 +189,33 @@ def test_build_bl_config_flow_fluid_preset_propagated() -> None:
     assert cfg.flow_fluid_preset == "water_20C"
 
 
+def test_build_bl_config_fine_quality_uses_strict_feature_angle() -> None:
+    """beta2347 — quality_level='fine' 시 feature_angle_deg=30 + safety_factor=0.4
+    (cfMesh / Pointwise T-Rex 보수적 default)."""
+    cfg = _build_bl_config(BLConfig, {}, 3, 1.2, 0.001, quality_level="fine")
+    assert cfg.feature_angle_deg == pytest.approx(30.0)
+    assert cfg.collision_safety_factor == pytest.approx(0.4)
+
+
+def test_build_bl_config_draft_quality_keeps_default() -> None:
+    """beta2347 — draft / standard / 미설정 시 BLConfig default 유지 (45° / 0.5)."""
+    for ql in ("draft", "standard", "", None):
+        cfg = _build_bl_config(BLConfig, {}, 3, 1.2, 0.001, quality_level=ql)
+        assert cfg.feature_angle_deg == pytest.approx(45.0), f"ql={ql}"
+        assert cfg.collision_safety_factor == pytest.approx(0.5), f"ql={ql}"
+
+
+def test_build_bl_config_explicit_override_wins_over_quality_default() -> None:
+    """beta2347 — 사용자 명시 override (params 키) 가 quality default 보다 우선."""
+    params = {
+        "bl_feature_angle_deg": 60.0,
+        "bl_collision_safety_factor": 0.7,
+    }
+    cfg = _build_bl_config(BLConfig, params, 3, 1.2, 0.001, quality_level="fine")
+    assert cfg.feature_angle_deg == pytest.approx(60.0)
+    assert cfg.collision_safety_factor == pytest.approx(0.7)
+
+
 def test_build_bl_config_y_plus_full_chain() -> None:
     """y+ + 모든 flow_* 필드 동시 propagation."""
     params = {

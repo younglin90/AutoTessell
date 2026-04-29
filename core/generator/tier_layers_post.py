@@ -49,15 +49,27 @@ def _build_bl_config(
     num_layers,
     growth_ratio,
     first_thickness,
+    quality_level: str | None = None,
 ):
     """beta75: Phase 1 필드 + Phase 2 (beta63-65) 필드를 params 에서 읽어 BLConfig
     조립. GUI `bl_collision_safety=false` 등이 여기서 전파된다.
 
-    beta2287: target_y_plus / flow_* 필드 propagation 추가. 이전엔
-    BLConfig 에 필드가 있어도 params 에서 안 읽혀 in-engine y+ 경로
-    (CLI --target-y-plus / 향후 GUI auto-y+) 가 silently 무시됐다.
+    beta2287: target_y_plus / flow_* 필드 propagation 추가.
+    beta2347: quality_level (fine 시 cfMesh-style 보수적 feature_angle 30°).
+        params 에 명시 override 가 있으면 그게 우선.
     """
     defaults = bl_config_cls()
+
+    # beta2347 — quality-aware Phase 2 defaults (cfMesh / Pointwise T-Rex 정렬).
+    # fine: 더 보수적 feature_angle (30° vs 45°) → sharp edge 보존 강화.
+    # collision_safety_factor 0.4 → 더 안전한 layer (50% → 40%).
+    # 사용자 명시 override (params 키) 가 있으면 그것이 우선.
+    _ql = str(quality_level or "").lower()
+    _fa_default = defaults.feature_angle_deg
+    _csf_default = defaults.collision_safety_factor
+    if _ql == "fine":
+        _fa_default = 30.0
+        _csf_default = 0.4
 
     # beta2287: in-engine y+ flow params (CLI / 미래 GUI auto-y+).
     _typ = params.get("bl_target_y_plus")
@@ -81,13 +93,13 @@ def _build_bl_config(
             params.get("bl_collision_safety"), defaults.collision_safety,
         ),
         collision_safety_factor=float(
-            params.get("bl_collision_safety_factor", defaults.collision_safety_factor),
+            params.get("bl_collision_safety_factor", _csf_default),
         ),
         feature_lock=_coerce_bool(
             params.get("bl_feature_lock"), defaults.feature_lock,
         ),
         feature_angle_deg=float(
-            params.get("bl_feature_angle_deg", defaults.feature_angle_deg),
+            params.get("bl_feature_angle_deg", _fa_default),
         ),
         feature_reduction_ratio=float(
             params.get("bl_feature_reduction_ratio", defaults.feature_reduction_ratio),
@@ -1229,6 +1241,11 @@ class LayersPostGenerator:
             getattr(strategy, "tier_specific_params", None) or {}
         )
         engine = str(params.get("post_layers_engine", "disabled")).lower()
+        # beta2347 — quality_level 추출 (fine 시 cfMesh-style 보수적 BL 기본).
+        _ql_raw = getattr(strategy, "quality_level", None)
+        _quality_level = (
+            getattr(_ql_raw, "value", None) or str(_ql_raw or "")
+        ).lower()
 
         if engine in ("disabled", "none", "off", ""):
             elapsed = time.monotonic() - t_start
@@ -1325,7 +1342,8 @@ class LayersPostGenerator:
                 ok, msg = False, f"native_bl import 실패: {exc}"
             else:
                 cfg_bl = _build_bl_config(BLConfig, params, num_layers,
-                                          growth_ratio, first_thickness)
+                                          growth_ratio, first_thickness,
+                                          quality_level=_quality_level)
                 _res = generate_native_bl(case_dir, cfg_bl)
                 ok, msg = bool(_res.success), str(_res.message)
                 _bl_p2 = _extract_bl_phase2_stats(_res)
@@ -1341,7 +1359,8 @@ class LayersPostGenerator:
                 ok, msg = False, f"tet_bl 유틸 import 실패: {exc}"
             else:
                 cfg_bl = _build_bl_config(BLConfig, params, num_layers,
-                                          growth_ratio, first_thickness)
+                                          growth_ratio, first_thickness,
+                                          quality_level=_quality_level)
                 _res = generate_native_bl(case_dir, cfg_bl)
                 _bl_p2 = _extract_bl_phase2_stats(_res)
                 if not _res.success:
