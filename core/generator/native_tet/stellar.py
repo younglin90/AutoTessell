@@ -2756,7 +2756,7 @@ def _evidence_compare_lines(
     try:
         pts_k = copy.deepcopy(pts)
         tets_k = copy.deepcopy(tets)
-        qs_k = np.array([_tet_quality(pts_k, tets_k[i]) for i in range(len(tets_k))], dtype=np.float64)
+        qs_k = _tet_quality_batch(pts_k, tets_k).astype(np.float64)
         _, tets_k, _ni, _nu, _td, _nr, _er = _priority_queue_main_loop(
             pts_k, tets_k, qs_k, max_iters=max_apply, time_budget_ms=200.0
         )
@@ -2819,9 +2819,8 @@ def _multi_face_removal_candidates(
         return []
 
     # Step 1: vectorised quality array → top-K worst tet indices.
-    q_arr = np.array(
-        [_tet_quality(pts, tets[i]) for i in range(len(tets))], dtype=np.float64
-    )
+    # C-PERF-87 / beta2539 — batched.
+    q_arr = _tet_quality_batch(pts, tets).astype(np.float64)
     worst_indices = np.argsort(q_arr)[: k_worst]
 
     # Step 2: face → incident-tet map (LRU cache hit O(1) if already built).
@@ -2936,8 +2935,8 @@ def _env_aware_run_all_gates(
         empty: dict = {"n_app": 0, "post_min_q": 0.0, "delta_worst": 0.0, "wall_ms": 0.0}
         return {"line_H": empty, "line_J": empty, "line_K": empty, "line_P": empty}
 
-    # Pre-quality baseline (original mesh).
-    pre_quals = np.array([float(_tet_quality(pts, t)) for t in tets], dtype=np.float64)
+    # Pre-quality baseline (original mesh) — batched.
+    pre_quals = _tet_quality_batch(pts, tets).astype(np.float64)
     pre_min_q: float = float(pre_quals.min()) if len(pre_quals) > 0 else 0.0
 
     results: dict[str, dict] = {}
@@ -2961,7 +2960,7 @@ def _env_aware_run_all_gates(
     t0 = time.perf_counter()
     pts_j = pts.copy()
     tets_j = tets.copy()
-    quals_j = np.array([float(_tet_quality(pts_j, t)) for t in tets_j], dtype=np.float64)
+    quals_j = _tet_quality_batch(pts_j, tets_j).astype(np.float64)
     worst_verts = set()
     for ti, q in enumerate(quals_j):
         if q < q_thr:
