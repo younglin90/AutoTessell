@@ -735,6 +735,17 @@ def test_cli_hex_snap_budget_flag_wired() -> None:
     assert "hex_snap_budget_s" in src, "hex_snap_budget_s param 누락"
 
 
+def test_cli_lloyd_plateau_thresh_flag_wired() -> None:
+    """C-CLI-4 / beta2458 — --lloyd-plateau-thresh CLI flag 가 env wiring."""
+    import inspect
+    from cli import main as cli_main
+    src = inspect.getsource(cli_main)
+    assert "--lloyd-plateau-thresh" in src, "--lloyd-plateau-thresh flag 누락"
+    assert "AUTO_TESSELL_LLOYD_PLATEAU_THRESH" in src, \
+        "AUTO_TESSELL_LLOYD_PLATEAU_THRESH env wiring 누락"
+    assert "lloyd_plateau_thresh" in src, "lloyd_plateau_thresh param 누락"
+
+
 def test_validator_filter_to_sig_drops_invalid_kwargs() -> None:
     """C-VAL-9 / beta2453 — _filter_to_sig 가 invalid kwargs drop."""
     from tests.stl.validate_30_hard_meshes import _filter_to_sig

@@ -691,6 +691,12 @@ def evaluate(
          "환경변수 AUTO_TESSELL_HEX_WWW7_BUDGET_S 동등.",
 )
 @click.option(
+    "--lloyd-plateau-thresh", type=float, default=None,
+    help="beta2454/beta2458 — poly Lloyd CVT plateau early-exit threshold "
+         "(rel-disp/bbox). 기본 1e-4. 작을수록 더 수렴 (느림), 클수록 일찍 종료. "
+         "환경변수 AUTO_TESSELL_LLOYD_PLATEAU_THRESH 동등.",
+)
+@click.option(
     "--flow-velocity", type=float, default=1.0, show_default=True,
     help="v0.4.0-beta78+ 유입 속도 [m/s]. 0/U 자동 생성 기준값. "
          "turbulence 필드 (k, epsilon/omega) 에 반영.",
@@ -775,6 +781,7 @@ def run(
     poly_budget_s: float | None,
     bl_floor_ratio: float | None,
     hex_snap_budget_s: float | None,
+    lloyd_plateau_thresh: float | None,
     flow_velocity: float,
     turbulence_model: str,
     auto_retry: str,
@@ -843,6 +850,9 @@ def run(
     # C-CLI-3 / beta2457 — hex feature snap budget CLI exposure.
     if hex_snap_budget_s is not None:
         _os_v9.environ["AUTO_TESSELL_HEX_WWW7_BUDGET_S"] = str(float(hex_snap_budget_s))
+    # C-CLI-4 / beta2458 — Lloyd plateau threshold CLI exposure.
+    if lloyd_plateau_thresh is not None:
+        _os_v9.environ["AUTO_TESSELL_LLOYD_PLATEAU_THRESH"] = str(float(lloyd_plateau_thresh))
 
     console.print(f"[bold magenta]Auto-Tessell[/bold magenta] {input_file} → {output}")
     console.print(
