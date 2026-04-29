@@ -550,3 +550,13 @@ def test_native_tet_seed_gwn_env_gated() -> None:
     assert "AUTO_TESSELL_SEED_GWN" in src, "env-gate 누락"
     assert "inside_generalized_winding_number" in src, "GWN import 누락"
     assert "native_tet_seed_gwn_used" in src, "log 키 누락"
+
+
+def test_polymesh_writer_patch_cap_wired() -> None:
+    """C-PERF-5 / beta2393 — patch_cap env-gated wall_misc 병합."""
+    import inspect
+    from core.generator import polymesh_writer
+    src = inspect.getsource(polymesh_writer)
+    assert "AUTO_TESSELL_PATCH_CAP" in src, "env-gate 누락"
+    assert "wall_misc" in src, "wall_misc patch name 누락"
+    assert "polymesh_writer_patches_capped" in src, "log 키 누락"

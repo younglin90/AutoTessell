@@ -113,10 +113,39 @@ def _segment_boundary_by_features(
     # Sort groups by first absolute face index
     groups.sort(key=lambda g: n_internal + min(g))
 
+    # C-PERF-5 / beta2393 — patch count cap (perf + ergonomics).
+    # validator 발견: hard mesh 의 fragmented patches (n_patches=2187) 가
+    # boundary 작성 시간 + CFD setup 부담. AUTO_TESSELL_PATCH_CAP env (default
+    # 64) 초과 시 작은 patches 들을 'wall_misc' 단일 patch 로 병합.
+    import os as _os_pwc
+    _patch_cap = int(_os_pwc.environ.get("AUTO_TESSELL_PATCH_CAP", "64"))
     patches: list[tuple[str, list[int]]] = []
-    for idx, group in enumerate(groups):
-        abs_indices = [n_internal + li for li in group]
-        patches.append((f"wall_{idx}", abs_indices))
+    if len(groups) > _patch_cap:
+        # 큰 patch 부터 _patch_cap-1 개까지 분리, 나머지는 wall_misc 로 합병.
+        groups_by_size = sorted(groups, key=lambda g: -len(g))
+        kept = groups_by_size[:_patch_cap - 1]
+        merged_misc: list[int] = [
+            n_internal + li for g in groups_by_size[_patch_cap - 1:] for li in g
+        ]
+        # restore stable ordering of kept by first abs idx.
+        kept.sort(key=lambda g: n_internal + min(g))
+        for idx, group in enumerate(kept):
+            abs_indices = [n_internal + li for li in group]
+            patches.append((f"wall_{idx}", abs_indices))
+        if merged_misc:
+            patches.append(("wall_misc", merged_misc))
+        logger.info(
+            "polymesh_writer_patches_capped",
+            n_boundary_faces=n_bnd,
+            n_groups=len(groups),
+            n_kept=len(kept),
+            n_misc=len(merged_misc),
+            cap=_patch_cap,
+        )
+    else:
+        for idx, group in enumerate(groups):
+            abs_indices = [n_internal + li for li in group]
+            patches.append((f"wall_{idx}", abs_indices))
 
     logger.info(
         "polymesh_writer_patches",
