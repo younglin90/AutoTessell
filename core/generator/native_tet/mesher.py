@@ -559,9 +559,27 @@ def generate_native_tet(
 
     # 1) 시드 = 표면 vertex + 내부 uniform grid
     grid = _seed_points_uniform(bmin, bmax, float(target_edge_length))
-    # grid 중 outside 제거 (아니면 bbox 밖으로 tet 이 많이 생김)
+    # grid 중 outside 제거 (아니면 bbox 밖으로 tet 이 많이 생김).
+    # C-QUAL-5 / beta2392 — env AUTO_TESSELL_SEED_GWN=1 이면 Jacobson 2013
+    # generalized winding number (SI-robust) 사용. SI / non-manifold 입력
+    # 의 mesh #1 (V=3116) 같은 hard mesh 에서 ray-cast 가 거의 모든 seed 를
+    # outside 판정하던 케이스 회복.
     if grid.shape[0] > 0:
-        inside_mask = _inside_winding_number(grid, V, F)
+        if os.environ.get("AUTO_TESSELL_SEED_GWN", "0") == "1":
+            try:
+                from core.utils.geometry import inside_generalized_winding_number
+                inside_mask = inside_generalized_winding_number(grid, V, F)
+                log.info(
+                    "native_tet_seed_gwn_used",
+                    component="native_tet", phase="beta2392",
+                    n_grid=int(grid.shape[0]),
+                    n_inside=int(inside_mask.sum()),
+                )
+            except Exception as _gwn_exc:
+                log.debug("native_tet_seed_gwn_skipped", reason=str(_gwn_exc)[:120])
+                inside_mask = _inside_winding_number(grid, V, F)
+        else:
+            inside_mask = _inside_winding_number(grid, V, F)
         grid = grid[inside_mask]
 
     all_pts = np.vstack([V, grid]) if grid.shape[0] else V.copy()

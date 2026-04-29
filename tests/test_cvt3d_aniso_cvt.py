@@ -540,3 +540,13 @@ def test_p4c_fallback_monotone_guard_wired() -> None:
     assert "_mq_new > _mq_old" in src, "mq 비교 누락"
     assert "_n_cells_old // 4" in src, "n_cells/4 floor 누락"
     assert "accepted=_accept_fb" in src, "log accepted 키 누락"
+
+
+def test_native_tet_seed_gwn_env_gated() -> None:
+    """C-QUAL-5 / beta2392 — AUTO_TESSELL_SEED_GWN env 로 GWN inside test 활성."""
+    import inspect
+    from core.generator.native_tet import mesher
+    src = inspect.getsource(mesher)
+    assert "AUTO_TESSELL_SEED_GWN" in src, "env-gate 누락"
+    assert "inside_generalized_winding_number" in src, "GWN import 누락"
+    assert "native_tet_seed_gwn_used" in src, "log 키 누락"
