@@ -1466,6 +1466,19 @@ def generate_native_bl(
     # beta89: Poly 전용 prism BL — polygon wall face 를 fan-triangulation 으로 분해.
     # 이전: non-tri wall face 는 skip (MVP 제약).
     # 이후: polygon face 를 합성 tri 로 분해 → poly mesh 에도 BL 생성 가능.
+    # C-BL-2 / beta2424 — wall_face_indices 가 faces 범위 벗어나는 케이스 가드.
+    # validator: hard mesh 에서 polymesh_writer 가 patch_cap 으로 wall_misc 병합
+    # 시 일부 indices 가 stale → IndexError 발생. 안전 필터로 회피.
+    _n_faces = len(faces)
+    _stale = [fi for fi in wall_face_indices if fi >= _n_faces or fi < 0]
+    if _stale:
+        log.warning(
+            "native_bl_wall_face_indices_filtered",
+            component="native_bl", phase="beta2424",
+            n_stale=len(_stale), n_total=len(wall_face_indices),
+            n_faces=_n_faces,
+        )
+        wall_face_indices = [fi for fi in wall_face_indices if 0 <= fi < _n_faces]
     non_tri = [fi for fi in wall_face_indices if len(faces[fi]) != 3]
     if non_tri:
         log.info(
