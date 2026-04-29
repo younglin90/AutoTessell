@@ -86,9 +86,22 @@ def hex_quality_report(pts: np.ndarray, hexes: np.ndarray) -> HexQualityReport:
     face_keys = [tuple(int(x) for x in row) for row in face_keys_arr]
 
     # face → owner cells dict.
+    # C-PERF-75 / beta2526 — vectorize via lexsort + group-boundary.
     face_dict: dict[tuple[int, int, int, int], list[int]] = {}
-    for i, k in enumerate(face_keys):
-        face_dict.setdefault(k, []).append(i)
+    if face_keys_arr.size > 0:
+        order = np.lexsort(
+            (face_keys_arr[:, 3], face_keys_arr[:, 2],
+             face_keys_arr[:, 1], face_keys_arr[:, 0]),
+        )
+        k_s = face_keys_arr[order]
+        i_s = np.arange(face_keys_arr.shape[0])[order]
+        diff = np.r_[True, np.any(k_s[1:] != k_s[:-1], axis=1)]
+        starts = np.where(diff)[0]
+        ends = np.r_[starts[1:], len(k_s)]
+        for s, e in zip(starts.tolist(), ends.tolist()):
+            kt = (int(k_s[s, 0]), int(k_s[s, 1]),
+                  int(k_s[s, 2]), int(k_s[s, 3]))
+            face_dict[kt] = i_s[s:e].tolist()
 
     non_orths: list[float] = []
     skews: list[float] = []
