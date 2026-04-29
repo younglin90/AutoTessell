@@ -107,14 +107,22 @@ def _optimal_target(
 
 
 def _enumerate_edges(F: NDArray[np.int64]) -> set[tuple[int, int]]:
-    """face 의 unique edge set. canonical (min, max) tuple."""
-    edges: set[tuple[int, int]] = set()
-    for fi in range(F.shape[0]):
-        a, b, c = int(F[fi, 0]), int(F[fi, 1]), int(F[fi, 2])
-        edges.add((min(a, b), max(a, b)))
-        edges.add((min(b, c), max(b, c)))
-        edges.add((min(c, a), max(c, a)))
-    return edges
+    """face 의 unique edge set. canonical (min, max) tuple.
+
+    C-PERF-21 / beta2471 — vectorized via lexsort + np.unique.
+    """
+    if F.shape[0] == 0:
+        return set()
+    src = F[:, [0, 1, 2]].reshape(-1)
+    dst = F[:, [1, 2, 0]].reshape(-1)
+    u = np.minimum(src, dst).astype(np.int64)
+    v = np.maximum(src, dst).astype(np.int64)
+    n_max = int(F.max()) + 1
+    pack = u * n_max + v
+    uniq = np.unique(pack)
+    a_arr = (uniq // n_max).tolist()
+    b_arr = (uniq % n_max).tolist()
+    return set(zip(a_arr, b_arr))
 
 
 def _build_collapse_heap(
@@ -143,13 +151,20 @@ def _build_collapse_heap(
 
 
 def _build_v2f(F: NDArray[np.int64], n_v: int) -> list[set[int]]:
-    """vertex → set of incident face indices."""
-    v2f: list[set[int]] = [set() for _ in range(n_v)]
-    for fi in range(F.shape[0]):
-        v2f[int(F[fi, 0])].add(fi)
-        v2f[int(F[fi, 1])].add(fi)
-        v2f[int(F[fi, 2])].add(fi)
-    return v2f
+    """vertex → set of incident face indices.
+
+    C-PERF-21 / beta2471 — vectorized via sort+offset slicing.
+    """
+    if F.shape[0] == 0:
+        return [set() for _ in range(n_v)]
+    flat_v = F.reshape(-1).astype(np.int64)
+    flat_f = np.repeat(np.arange(F.shape[0], dtype=np.int64), 3)
+    order = np.argsort(flat_v, kind="stable")
+    sorted_v = flat_v[order]
+    sorted_f = flat_f[order]
+    counts = np.bincount(sorted_v, minlength=n_v)
+    offsets = np.concatenate(([0], np.cumsum(counts).astype(np.int64)))
+    return [set(sorted_f[offsets[i]:offsets[i + 1]].tolist()) for i in range(n_v)]
 
 
 def _collapse_edge(
