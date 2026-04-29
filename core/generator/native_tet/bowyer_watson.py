@@ -127,16 +127,24 @@ def _boundary_faces_of_cavity(
     """cavity 의 boundary face = cavity tet 에만 속한 face.
 
     내부 face (cavity 내 2 tet 공유) 는 제외.
+    C-PERF-83 / beta2534 — packed int key + np.unique count 로 벡터화.
     """
     tets = np.asarray(tets, dtype=np.int64)
     cavity_mask = np.asarray(cavity_mask, dtype=bool)
-    face_count: dict[tuple[int, int, int], int] = {}
-    for ti in np.where(cavity_mask)[0]:
-        a, b, c, d = (int(x) for x in tets[ti])
-        for tri in ((a, b, c), (a, b, d), (a, c, d), (b, c, d)):
-            k = tuple(sorted(tri))
-            face_count[k] = face_count.get(k, 0) + 1  # type: ignore[arg-type]
-    return [k for k, cnt in face_count.items() if cnt == 1]
+    cav = tets[cavity_mask]
+    if cav.size == 0:
+        return []
+    faces = np.stack([
+        cav[:, [0, 1, 2]], cav[:, [0, 1, 3]],
+        cav[:, [0, 2, 3]], cav[:, [1, 2, 3]],
+    ], axis=1).reshape(-1, 3)
+    fs = np.sort(faces, axis=1)
+    M = int(fs.max()) + 1
+    keys = fs[:, 0] * M * M + fs[:, 1] * M + fs[:, 2]
+    _, inv, counts = np.unique(keys, return_inverse=True, return_counts=True)
+    bnd_idx = np.where(counts[inv] == 1)[0]
+    bnd = fs[bnd_idx]
+    return [(int(t[0]), int(t[1]), int(t[2])) for t in bnd]
 
 
 def bowyer_watson_insert(
