@@ -401,6 +401,13 @@ def snap_to_surface_iterative(
         # snap 결과 적용
         work_pts = snap_surface_pts
 
+        # C-PERF-9 / beta2426 — early-exit: snap 횟수 < 5 또는 displacement
+        # 가 cap × 0.05 이하면 다음 iter 추가 효과 미미.
+        if n_snapped_this < max(5, int(0.001 * len(work_pts))):
+            break
+        if max_displacement < cap * 0.05:
+            break
+
         # 4. Laplacian smoothing (스냅된 vertex 는 고정, non-snap vertex 만 이동)
         if smooth_after_snap and n_snapped_this > 0 and smooth_iters > 0:
             # non-snap vertex 의 이웃 중 스냅된 vertex 가 있는 것만 smoothing
