@@ -529,7 +529,9 @@ def split_sliver_longest_edge(
 
         # Compute q_old_min over all incident tets.
         pts_arr = np.array(pts_list)
-        q_old = min(_tet_quality(pts_arr, np.array(tets_list[ti])) for ti in incident)
+        # C-PERF-86 / beta2538 — batched quality.
+        _inc_arr = np.array([tets_list[ti] for ti in incident], dtype=tets.dtype)
+        q_old = float(_tet_quality_batch(pts_arr, _inc_arr).min())
 
         # Midpoint m.
         m = 0.5 * (pts_arr[edge_i] + pts_arr[edge_j])
@@ -551,8 +553,9 @@ def split_sliver_longest_edge(
             new_tets.append(np.array(st1, dtype=tets.dtype))
             new_tets.append(np.array(st2, dtype=tets.dtype))
 
-        # Compute q_new_min.
-        q_new = min(_tet_quality(pts_arr_new, nt) for nt in new_tets)
+        # Compute q_new_min — batched.
+        _new_arr = np.array(new_tets, dtype=tets.dtype)
+        q_new = float(_tet_quality_batch(pts_arr_new, _new_arr).min())
 
         if q_new >= q_old + min_quality_improvement:
             # Accept: replace incident tets (reverse order to preserve indices).
@@ -867,7 +870,9 @@ def split_anisotropic_tet_edges(
 
         # Compute q_old_min over all incident tets.
         pts_arr = np.array(pts_list)
-        q_old = min(_tet_quality(pts_arr, np.array(tets_list[ti])) for ti in incident)
+        # C-PERF-86 / beta2538 — batched quality.
+        _inc_arr = np.array([tets_list[ti] for ti in incident], dtype=tets.dtype)
+        q_old = float(_tet_quality_batch(pts_arr, _inc_arr).min())
 
         # Midpoint m.
         m = 0.5 * (pts_arr[edge_i] + pts_arr[edge_j])
@@ -887,8 +892,9 @@ def split_anisotropic_tet_edges(
             new_tets.append(np.array(st1, dtype=tets.dtype))
             new_tets.append(np.array(st2, dtype=tets.dtype))
 
-        # Compute q_new_min.
-        q_new = min(_tet_quality(pts_arr_new, nt) for nt in new_tets)
+        # Compute q_new_min — batched.
+        _new_arr = np.array(new_tets, dtype=tets.dtype)
+        q_new = float(_tet_quality_batch(pts_arr_new, _new_arr).min())
 
         if q_new >= q_old + min_quality_improvement:
             # Accept.
