@@ -309,6 +309,26 @@ def test_cli_enable_offplane_steiner_flag_sets_env_var(
     assert os.environ.get("AUTO_TESSELL_OFFPLANE_STEINER") == "1"
 
 
+def test_cli_volume_engine_native_routes_to_correct_tier(
+    runner: CliRunner,
+) -> None:
+    """beta2349 — --volume-engine native_tet/hex/poly 가 effective_tier 로 라우팅.
+
+    이전엔 tier_map 이 4 entries (tetwild/netgen/snappy/cfmesh) 만 포함 →
+    native_* 등 ~15 옵션 선택해도 tier=auto 로 silently fallback."""
+    from cli.main import run
+    for engine in ("native_tet", "native_hex", "native_poly", "wildmesh", "mmg3d"):
+        r = runner.invoke(run, [
+            STL_PATH, "--dry-run",
+            "--volume-engine", engine,
+            "--mesh-type", "tet", "--quality", "fine",
+        ])
+        assert r.exit_code == 0, f"{engine}: {r.output[-200:]}"
+        # output 에 effective tier 표시 확인.
+        assert f"tier={engine}" in r.output, \
+            f"{engine}: tier_map fallback 또는 표시 누락"
+
+
 def test_cli_enable_vvv9jkp_flags_set_env_vars(
     runner: CliRunner, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

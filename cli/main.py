@@ -750,7 +750,23 @@ def run(
     # volume_engine이 지정되면 tier를 override
     effective_tier = tier
     if volume_engine != "auto":
-        tier_map = {"tetwild": "tetwild", "netgen": "netgen", "snappy": "snappy", "cfmesh": "cfmesh"}
+        # beta2349 — 이전엔 4 entries 만 — native_tet/hex/poly + 나머지 ~12 choices
+        # 가 fall back 으로 tier (auto) 가 되어 GUI/CLI 사용자의 명시 선택 무시.
+        # 모든 click.Choice 값을 tier_hint 와 동일하게 매핑 (identity).
+        tier_map = {
+            "tetwild": "tetwild", "netgen": "netgen",
+            "snappy": "snappy", "cfmesh": "cfmesh",
+            "wildmesh": "wildmesh", "mmg3d": "mmg3d",
+            "algohex": "algohex", "robust_hex": "robust_hex",
+            "jigsaw": "jigsaw", "jigsaw_fallback": "jigsaw_fallback",
+            "meshpy": "meshpy", "hex_classy": "hex_classy",
+            "classy_blocks": "classy_blocks",
+            "gmsh_hex": "gmsh_hex", "cinolib_hex": "cinolib_hex",
+            "voro_poly": "voro_poly", "polyhedral": "polyhedral",
+            "hohqmesh": "hohqmesh", "2d": "2d",
+            "native_tet": "native_tet", "native_hex": "native_hex",
+            "native_poly": "native_poly",
+        }
         effective_tier = tier_map.get(volume_engine, tier)
 
     # repair_engine=none이면 no_repair 강제
