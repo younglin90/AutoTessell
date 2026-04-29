@@ -179,6 +179,10 @@ def generate_native_tet(
     # HARNESS_PARAMS["tier_native_tet"]["fine"] 에서 자동 활성. CPU 환경
     # 에서는 torch CPU 텐서 batch (numpy 대비 약간 느릴 수 있어 fine only).
     use_torch_amips: bool = False,
+    # C1.5 / beta2373 — tier-aware QED min-face threshold override (Hu 2018 §3.4).
+    # None 이면 env / default (20000). HARNESS_PARAMS 에서 fine 은 10000 로
+    # 더 적극적으로 simplification.
+    qed_min_faces: int | None = None,
 ) -> NativeTetResult:
     """입력 표면 메쉬 → tet polyMesh (MVP).
 
@@ -324,7 +328,11 @@ def generate_native_tet(
             #   격감 효과. small mesh (<20k) 영향 여전히 0.
             try:
                 _qed_env = os.environ.get("AUTO_TESSELL_QED", "auto")
-                _qed_min = int(os.environ.get("AUTO_TESSELL_QED_MIN_F", "20000"))
+                # C1.5 / beta2373 — tier-aware override 우선, 없으면 env, default 20k.
+                if qed_min_faces is not None:
+                    _qed_min = int(qed_min_faces)
+                else:
+                    _qed_min = int(os.environ.get("AUTO_TESSELL_QED_MIN_F", "20000"))
                 if _qed_env == "0":
                     _qed_on = False
                 elif _qed_env == "1":

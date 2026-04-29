@@ -326,3 +326,19 @@ def test_harness_params_fine_uses_aniso_metric() -> None:
     assert p.get("use_anisotropic_metric") is True
     assert "anisotropic_ratio" in p
     assert 0.0 < float(p["anisotropic_ratio"]) <= 1.0
+
+
+def test_native_tet_qed_min_faces_kwarg_overrides_env() -> None:
+    """C1.5 / beta2373 — qed_min_faces kwarg 가 env 보다 우선."""
+    import inspect
+    from core.generator.native_tet.mesher import generate_native_tet
+    sig = inspect.signature(generate_native_tet)
+    assert "qed_min_faces" in sig.parameters, "qed_min_faces kwarg 누락"
+
+
+def test_harness_params_fine_qed_min_faces_10k() -> None:
+    """C1.5 / beta2373 — fine 의 qed_min_faces=10000 (Hu 2018 §3.4 적극)."""
+    from core.generator._tier_native_common import HARNESS_PARAMS
+    p = HARNESS_PARAMS["tier_native_tet"]["fine"]
+    assert p.get("qed_min_faces") == 10000, \
+        f"fine qed_min_faces=10000 expected, got {p.get('qed_min_faces')}"

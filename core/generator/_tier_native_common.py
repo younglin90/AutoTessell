@@ -87,6 +87,9 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
                      # AMIPS 라우팅. amips_torch.is_available() 가 False 면
                      # mesher 가 자동 numpy fallback.
                      "use_torch_amips": True,
+                     # C1.5 / beta2373: fine 에서 QED 더 적극 (10k face 부터).
+                     # Hu 2018 §3.4 simplification — sliver 격감 효과.
+                     "qed_min_faces": 10000,
                      # beta810: fine 에서는 더 엄격한 sliver drop.
                      "sliver_drop_min_dihedral_deg": 1.0,
                      "sliver_drop_max_aspect": 5e4,
