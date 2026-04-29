@@ -1559,7 +1559,19 @@ def generate_native_tet(
                         n_iter=int(amips_iterations),
                         alpha=float(amips_alpha),
                     )
-                if ar.energy_after <= ar.energy_before * 1.05:
+                # C-QUAL-9 / beta2404 — accept 조건 확장: energy 5% 악화 시
+                # mq (별도 지표) 가 향상됐으면 채택. validator 발견: hard mesh
+                # 의 grade D 가 AMIPS energy reverts 로 stuck. 둘 중 하나라도
+                # 향상이면 accept (단조성 이중-criterion).
+                _energy_ok = ar.energy_after <= ar.energy_before * 1.05
+                _mq_ok = False
+                if not _energy_ok:
+                    try:
+                        _post_q = _qsnap(new_pts_amips, final_tets)
+                        _mq_ok = float(_post_q.mean_q) >= _pre_mq + 0.005
+                    except Exception:
+                        pass
+                if _energy_ok or _mq_ok:
                     final_pts = new_pts_amips
                     log.info(
                         "native_tet_amips",
@@ -1567,6 +1579,7 @@ def generate_native_tet(
                         e_before=round(ar.energy_before, 3),
                         e_after=round(ar.energy_after, 3),
                         max_disp=round(ar.max_disp, 6),
+                        accept_via=("energy" if _energy_ok else "mq"),
                     )
                 else:
                     log.warning(

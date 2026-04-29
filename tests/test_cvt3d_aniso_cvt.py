@@ -616,3 +616,13 @@ def test_native_poly_integrity_log_wired() -> None:
     src = inspect.getsource(voronoi)
     assert "native_poly_mesh_integrity_suspect" in src, "log 키 누락"
     assert "_n_surface_v // 32" in src, "ratio threshold 누락"
+
+
+def test_amips_dual_criterion_accept_wired() -> None:
+    """C-QUAL-9 / beta2404 — energy_revert 시 mq 향상도 허용."""
+    import inspect
+    from core.generator.native_tet import mesher
+    src = inspect.getsource(mesher)
+    assert "_energy_ok" in src, "energy 분기 변수 누락"
+    assert "_mq_ok" in src, "mq 분기 변수 누락"
+    assert "accept_via" in src, "log accept_via 키 누락"
