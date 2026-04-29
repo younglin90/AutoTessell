@@ -4242,6 +4242,35 @@ def test_gui_vvv9h_and_offplane_checkboxes_wired() -> None:
     assert "AUTO_TESSELL_OFFPLANE_STEINER" in src
 
 
+def test_gui_seed_gwn_stellar_split_parallel_delaunay_wired() -> None:
+    """C-GUI-8 / beta2419-2420 — 신규 3 env-toggle GUI 체크박스 + wiring."""
+    import os
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    import sys
+    from PySide6.QtWidgets import QApplication, QCheckBox
+    app = QApplication.instance() or QApplication(sys.argv)
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    win._build()
+    for attr in (
+        "_seed_gwn_check",
+        "_stellar_split_check",
+        "_parallel_delaunay_check",
+    ):
+        c = getattr(win, attr, None)
+        assert isinstance(c, QCheckBox), f"{attr} 미생성"
+
+    import inspect
+    src = inspect.getsource(AutoTessellWindow._on_run_clicked)
+    for env in (
+        "AUTO_TESSELL_SEED_GWN",
+        "AUTO_TESSELL_STELLAR_SPLIT",
+        "AUTO_TESSELL_PARALLEL_DELAUNAY",
+    ):
+        assert env in src, f"{env} env wiring 누락"
+
+
 def test_gui_cross_engine_fallback_checkbox_wired() -> None:
     """beta2299 — GUI cross_engine_fallback 체크박스 → PipelineWorker 전달.
 
