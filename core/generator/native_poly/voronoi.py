@@ -1233,6 +1233,10 @@ def generate_native_poly_voronoi(
                     )
                     if _r.vertices.shape[0] < 4 or _r.faces.shape[0] < 4:
                         continue
+                    # beta2326 — repair 의 SI delta (before / after) 노출.
+                    # beta2325 의 NativeRepairResult.n_self_intersect_* 활용.
+                    _si_b = getattr(_r, "n_self_intersect_before", None)
+                    _si_a = getattr(_r, "n_self_intersect_after", None)
                     log.info(
                         "native_poly_p2_repair_retry",
                         variant=_v_idx, aggressive=_aggr,
@@ -1240,6 +1244,13 @@ def generate_native_poly_voronoi(
                         v_after=int(_r.vertices.shape[0]),
                         f_before=int(faces.shape[0]),
                         f_after=int(_r.faces.shape[0]),
+                        si_before=int(_si_b) if _si_b is not None else None,
+                        si_after=int(_si_a) if _si_a is not None else None,
+                        si_delta=(
+                            int(_si_a) - int(_si_b)
+                            if (_si_a is not None and _si_b is not None)
+                            else None
+                        ),
                     )
                     # beta2306: p=2 와 p=4 모두 시도.
                     for _lp_p in (2.0, 4.0):

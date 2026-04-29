@@ -224,6 +224,20 @@ def test_native_poly_lloyd_signature_accepts_n_lloyd() -> None:
     assert sig.parameters["n_lloyd"].default == 2
 
 
+def test_native_poly_repair_retry_logs_si_delta() -> None:
+    """beta2326 — repair-retry 로그에 si_before/si_after/si_delta 노출.
+
+    이전 (beta2306) 엔 v_before/f_before/aggressive 만 — repair 가 실제로
+    SI 를 줄였는지 외부 visibility 0. beta2325 의 SI tracking 결과를 활용해
+    (si_after - si_before) 를 로그에 추가."""
+    import inspect
+    from core.generator.native_poly import voronoi
+    src = inspect.getsource(voronoi.generate_native_poly_voronoi)
+    assert "si_before=int(_si_b)" in src or "si_before=" in src, \
+        "repair retry 로그에 si_before 누락"
+    assert "si_delta=" in src, "si_delta 로그 누락"
+
+
 def test_native_poly_self_intersect_diag_in_best_of_n_fail() -> None:
     """beta2324 — best-of-N fail 분기에서 self-intersect detect 호출.
 
