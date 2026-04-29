@@ -4312,6 +4312,27 @@ def test_gui_hex_snap_budget_spin_wired() -> None:
         "AUTO_TESSELL_HEX_WWW7_BUDGET_S env wiring 누락"
 
 
+def test_gui_lloyd_plateau_spin_wired() -> None:
+    """C-GUI-17 / beta2462 — _lloyd_plateau_spin GUI widget + env wiring."""
+    import os
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    import sys
+    from PySide6.QtWidgets import QApplication, QDoubleSpinBox
+    app = QApplication.instance() or QApplication(sys.argv)
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    win._build()
+    spin = getattr(win, "_lloyd_plateau_spin", None)
+    assert isinstance(spin, QDoubleSpinBox), "_lloyd_plateau_spin 미생성"
+    assert abs(spin.value() - 1e-4) < 1e-9, "default 1e-4 미적용"
+
+    import inspect
+    src = inspect.getsource(AutoTessellWindow._on_run_clicked)
+    assert "AUTO_TESSELL_LLOYD_PLATEAU_THRESH" in src, \
+        "AUTO_TESSELL_LLOYD_PLATEAU_THRESH env wiring 누락"
+
+
 def test_gui_cross_engine_fallback_checkbox_wired() -> None:
     """beta2299 — GUI cross_engine_fallback 체크박스 → PipelineWorker 전달.
 

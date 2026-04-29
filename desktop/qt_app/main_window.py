@@ -2351,6 +2351,17 @@ class AutoTessellWindow:  # type: ignore[misc]
             "0 = off (기본). 설정 시 강제 cap (hard hex 메쉬에서 hang 방지).\n"
             "AUTO_TESSELL_HEX_WWW7_BUDGET_S 환경변수 동등."
         )
+        # C-GUI-17 / beta2462 — Lloyd plateau threshold (poly CVT 수렴).
+        self._lloyd_plateau_spin = QDoubleSpinBox()
+        self._lloyd_plateau_spin.setRange(1e-7, 1e-1)
+        self._lloyd_plateau_spin.setSingleStep(5e-5)
+        self._lloyd_plateau_spin.setDecimals(7)
+        self._lloyd_plateau_spin.setValue(1e-4)  # default
+        self._lloyd_plateau_spin.setToolTip(
+            "Poly Lloyd CVT plateau early-exit threshold (rel-disp/bbox).\n"
+            "기본 1e-4. 작을수록 더 수렴 (느림), 클수록 일찍 종료.\n"
+            "AUTO_TESSELL_LLOYD_PLATEAU_THRESH 환경변수 동등."
+        )
         # 기본값: native L1 은 기본 On (beta26 철학), native tier 는 opt-in
         self._no_repair_check.setChecked(False)
         self._surface_remesh_check.setChecked(False)
@@ -2415,6 +2426,19 @@ class AutoTessellWindow:  # type: ignore[misc]
             _hs_layout.addWidget(self._hex_snap_budget_spin)
             _hs_layout.addStretch(1)
             v.addWidget(_hs_row)
+        except Exception:
+            pass
+        # C-GUI-17 / beta2462 — Lloyd plateau threshold spin row.
+        try:
+            from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
+            _lp_row = QWidget()
+            _lp_row.setStyleSheet("background: transparent;")
+            _lp_layout = QHBoxLayout(_lp_row)
+            _lp_layout.setContentsMargins(0, 0, 0, 0); _lp_layout.setSpacing(8)
+            _lp_layout.addWidget(QLabel("Lloyd plateau thresh:"))
+            _lp_layout.addWidget(self._lloyd_plateau_spin)
+            _lp_layout.addStretch(1)
+            v.addWidget(_lp_row)
         except Exception:
             pass
             try:
@@ -3105,6 +3129,11 @@ class AutoTessellWindow:  # type: ignore[misc]
                     _hs_val = float(self._hex_snap_budget_spin.value())
                     if _hs_val > 0.0:  # 0 = off (default) → no env.
                         _os_v9.environ["AUTO_TESSELL_HEX_WWW7_BUDGET_S"] = str(_hs_val)
+                # C-GUI-17 / beta2462 — Lloyd plateau threshold spin → env.
+                if (getattr(self, "_lloyd_plateau_spin", None) is not None):
+                    _lp_val = float(self._lloyd_plateau_spin.value())
+                    if abs(_lp_val - 1e-4) > 1e-9:  # default 1e-4 → no env.
+                        _os_v9.environ["AUTO_TESSELL_LLOYD_PLATEAU_THRESH"] = str(_lp_val)
             except Exception:
                 pass
             worker = PipelineWorker(
