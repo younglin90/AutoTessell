@@ -55,7 +55,10 @@ def _tet_triangles(tets: np.ndarray) -> set[tuple[int, int, int]]:
 
 
 def _tet_edges(tets: np.ndarray) -> set[tuple[int, int]]:
-    """tet 배열의 모든 edge (canonical sorted)."""
+    """tet 배열의 모든 edge (canonical sorted).
+
+    C-PERF-35 / beta2486 — vectorize via packed-key np.unique.
+    """
     tets = np.asarray(tets, dtype=np.int64)
     if tets.size == 0:
         return set()
@@ -66,10 +69,12 @@ def _tet_edges(tets: np.ndarray) -> set[tuple[int, int]]:
         [tets[:, pair_idx[:, 0]], tets[:, pair_idx[:, 1]]], axis=2,
     ).reshape(-1, 2)
     edges.sort(axis=1)
-    s: set[tuple[int, int]] = set()
-    for i in range(edges.shape[0]):
-        s.add((int(edges[i, 0]), int(edges[i, 1])))
-    return s
+    n_max = int(tets.max()) + 1
+    pack = edges[:, 0].astype(np.int64) * n_max + edges[:, 1].astype(np.int64)
+    uniq = np.unique(pack)
+    a = (uniq // n_max).tolist()
+    b = (uniq % n_max).tolist()
+    return set(zip(a, b))
 
 
 def check_edge_recovery_chained(
