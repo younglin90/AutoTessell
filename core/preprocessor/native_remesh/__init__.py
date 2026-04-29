@@ -118,15 +118,24 @@ def _moller_tri_tri(t1: np.ndarray, t2: np.ndarray) -> bool:
 
     def _interval(tri: np.ndarray, sd: np.ndarray) -> tuple[float, float]:
         p = tri @ D
-        # two vertices on same side
+        # C-FIX-1 / beta2473 — robust degenerate handling.
+        # 이전: sd[0]==0 시 idx_same 가 empty 인데도 idx_same[0] 접근 → IndexError.
+        # 새 로직: vertex 가 plane 위 (sd≈0) 인 경우 그 점을 통과 구간으로 처리.
         idx_same = np.where(sd * sd[0] > 0)[0]
         idx_diff = np.where(sd * sd[0] <= 0)[0]
         if len(idx_same) == 2:
             # vertex 0 is alone
             alone, others = 0, [1, 2]
-        else:
-            alone = int(idx_diff[0]) if len(idx_diff) == 1 else int(idx_same[0])
+        elif len(idx_diff) == 1:
+            alone = int(idx_diff[0])
             others = [k for k in range(3) if k != alone]
+        elif len(idx_same) == 1:
+            alone = int(idx_same[0])
+            others = [k for k in range(3) if k != alone]
+        else:
+            # Degenerate (all sd ≈ 0 or only zeros against vertex 0).
+            # Use vertex 0 as alone with others = [1, 2] (safe default).
+            alone, others = 0, [1, 2]
         t_vals = []
         for o in others:
             denom = sd[alone] - sd[o]
