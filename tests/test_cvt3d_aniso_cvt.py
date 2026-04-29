@@ -208,3 +208,44 @@ def test_native_bl_quality_json_lcr_block_wired() -> None:
     src = inspect.getsource(native_bl)
     assert '"lcr":' in src or "'lcr':" in src, "quality_summary 의 lcr 블록 누락"
     assert "n_reduced_verts" in src, "lcr.n_reduced_verts 키 누락"
+
+
+def test_split_thick_prisms_halves_high_aspect() -> None:
+    """C3.1 / beta2370 — aspect > threshold 인 prism 이 mid-split 으로 절반."""
+    from core.layers.native_bl_split import split_thick_prisms
+    pts = np.array([
+        [0, 0, 0], [1, 0, 0], [0, 1, 0],
+        [0, 0, 6], [1, 0, 6], [0, 1, 6],
+    ], dtype=np.float64)
+    pr = np.array([[0, 1, 2, 3, 4, 5]], dtype=np.int64)
+    new_p, new_pr, r = split_thick_prisms(pts, pr, threshold=4.0)
+    assert r.n_split_prisms == 1
+    assert r.n_output_prisms == 2
+    assert r.n_new_points == 3
+    # split 후 aspect 가 절반 근처.
+    assert r.max_aspect_out < r.max_aspect_in * 0.55
+
+
+def test_split_thick_prisms_skips_thin_aspect() -> None:
+    """C3.1 — aspect ≤ threshold 인 prism 은 그대로."""
+    from core.layers.native_bl_split import split_thick_prisms
+    pts = np.array([
+        [0, 0, 0], [1, 0, 0], [0, 1, 0],
+        [0, 0, 1], [1, 0, 1], [0, 1, 1],
+    ], dtype=np.float64)
+    pr = np.array([[0, 1, 2, 3, 4, 5]], dtype=np.int64)
+    _, _, r = split_thick_prisms(pts, pr, threshold=4.0)
+    assert r.n_split_prisms == 0
+    assert r.n_output_prisms == 1
+    assert r.n_new_points == 0
+
+
+def test_split_thick_prisms_empty() -> None:
+    """C3.1 — 빈 입력 정상 처리."""
+    from core.layers.native_bl_split import split_thick_prisms
+    pts = np.zeros((0, 3), dtype=np.float64)
+    pr = np.zeros((0, 6), dtype=np.int64)
+    new_p, new_pr, r = split_thick_prisms(pts, pr)
+    assert r.n_input_prisms == 0
+    assert new_p.shape == (0, 3)
+    assert new_pr.shape == (0, 6)
