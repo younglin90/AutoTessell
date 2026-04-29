@@ -100,6 +100,9 @@ class NativeHexResult:
     # beta2337 — pre-mesh self-intersect (P2.6 chain). None = 측정 안 됨,
     # 0 = clean, >0 = 입력 SI 존재. native_tet (beta2336) 와 동일 필드.
     n_self_intersect_pre: int | None = None
+    # C-QUAL-11 / beta2407 — mesh_integrity_suspect (NativeTetResult / NativePolyResult parity).
+    # n_cells < 50 (절대 floor) 또는 V_surf >= 100 + n_cells < V_surf/32 시 True.
+    mesh_integrity_suspect: bool = False
 
 
 # OpenFOAM hex cell 의 6 face 정의 — 각 face 는 4 vertex (CCW from outside).
@@ -961,6 +964,22 @@ def generate_native_hex(
             grade=grade,
         )
 
+    # C-QUAL-11 / beta2407 — hex mesh_integrity_suspect (parity with tet/poly).
+    _n_surface_v_hex = int(np.asarray(vertices).shape[0])
+    _hex_suspect = bool(
+        _n_kept > 0
+        and (
+            (_n_surface_v_hex >= 100 and _n_kept < _n_surface_v_hex // 32)
+            or _n_kept < 50
+        )
+    )
+    if _hex_suspect:
+        log.warning(
+            "native_hex_mesh_integrity_suspect",
+            component="native_hex", phase="beta2407",
+            n_cells=_n_kept, n_surface_v=_n_surface_v_hex,
+            ratio=round(_n_kept / max(1, _n_surface_v_hex), 4),
+        )
     return NativeHexResult(
         success=True,
         elapsed=time.perf_counter() - t0,
@@ -985,4 +1004,5 @@ def generate_native_hex(
         plane_area_coverage=float(plane_area),
         # beta2338 — pre-mesh SI count.
         n_self_intersect_pre=_pre_mesh_si_count,
+        mesh_integrity_suspect=_hex_suspect,
     )
