@@ -41,20 +41,68 @@ class TetAdjacency:
 
     @classmethod
     def build(cls, tets: np.ndarray) -> "TetAdjacency":
+        """C-PERF-41 / beta2492 — vectorize adjacency build via group-by-key.
+
+        face_to_tets / edge_to_tets / vertex_to_tets 모두 lexsort + group
+        boundary 로 한 번에 빌드. 이전 tet × {4 faces + 6 edges + 4 verts}
+        Python loop (14T iterations) 제거.
+        """
         tets = np.asarray(tets, dtype=np.int64)
         adj = cls(tets=tets)
-        for ti in range(tets.shape[0]):
-            a, b, c, d = (int(x) for x in tets[ti])
-            # 4 faces
-            for tri in ((a, b, c), (a, b, d), (a, c, d), (b, c, d)):
-                key = _sorted3(*tri)
-                adj.face_to_tets.setdefault(key, []).append(ti)
-            # 6 edges
-            for e in ((a, b), (a, c), (a, d), (b, c), (b, d), (c, d)):
-                adj.edge_to_tets.setdefault(_sorted2(*e), []).append(ti)
-            # vertices
-            for v in (a, b, c, d):
-                adj.vertex_to_tets.setdefault(v, []).append(ti)
+        T = int(tets.shape[0])
+        if T == 0:
+            return adj
+
+        # ── Faces (4 per tet, each sorted 3-tuple). ───────────────────────
+        face_idx = np.array([
+            [0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3],
+        ], dtype=np.int64)
+        faces_flat = np.sort(
+            tets[:, face_idx].reshape(-1, 3), axis=1,
+        )                                                 # (4T, 3)
+        ti_face = np.repeat(np.arange(T, dtype=np.int64), 4)
+        order_f = np.lexsort(
+            (faces_flat[:, 2], faces_flat[:, 1], faces_flat[:, 0]),
+        )
+        f_s = faces_flat[order_f]
+        ti_f = ti_face[order_f]
+        diff_f = np.r_[True, np.any(f_s[1:] != f_s[:-1], axis=1)]
+        starts_f = np.where(diff_f)[0]
+        ends_f = np.r_[starts_f[1:], len(f_s)]
+        for s, e in zip(starts_f.tolist(), ends_f.tolist()):
+            k = (int(f_s[s, 0]), int(f_s[s, 1]), int(f_s[s, 2]))
+            adj.face_to_tets[k] = ti_f[s:e].tolist()
+
+        # ── Edges (6 per tet, each sorted 2-tuple). ───────────────────────
+        edge_idx = np.array([
+            [0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3],
+        ], dtype=np.int64)
+        edges_flat = np.sort(
+            tets[:, edge_idx].reshape(-1, 2), axis=1,
+        )                                                 # (6T, 2)
+        ti_edge = np.repeat(np.arange(T, dtype=np.int64), 6)
+        order_e = np.lexsort((edges_flat[:, 1], edges_flat[:, 0]))
+        e_s = edges_flat[order_e]
+        ti_e = ti_edge[order_e]
+        diff_e = np.r_[True, np.any(e_s[1:] != e_s[:-1], axis=1)]
+        starts_e = np.where(diff_e)[0]
+        ends_e = np.r_[starts_e[1:], len(e_s)]
+        for s, e in zip(starts_e.tolist(), ends_e.tolist()):
+            k2 = (int(e_s[s, 0]), int(e_s[s, 1]))
+            adj.edge_to_tets[k2] = ti_e[s:e].tolist()
+
+        # ── Vertices (4 per tet). ─────────────────────────────────────────
+        flat_v = tets.reshape(-1)
+        ti_vert = np.repeat(np.arange(T, dtype=np.int64), 4)
+        order_v = np.argsort(flat_v, kind="stable")
+        v_s = flat_v[order_v]
+        ti_v = ti_vert[order_v]
+        diff_v = np.r_[True, v_s[1:] != v_s[:-1]]
+        starts_v = np.where(diff_v)[0]
+        ends_v = np.r_[starts_v[1:], len(v_s)]
+        for s, e in zip(starts_v.tolist(), ends_v.tolist()):
+            adj.vertex_to_tets[int(v_s[s])] = ti_v[s:e].tolist()
+
         return adj
 
     def boundary_faces(self) -> list[tuple[int, int, int]]:
