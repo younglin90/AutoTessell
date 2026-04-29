@@ -1668,6 +1668,38 @@ def generate_native_bl(
     n_prism_total = n_wall_faces * n_prism_per_face
     prism_cell_id_start = n_cells  # prism cell IDs: [n_cells, n_cells + n_prism_total)
 
+    # beta2327 — pre-BL wall surface 의 self-intersect 진단.
+    # SI 가 있는 wall surface 는 prism extrusion 단계에서 collision_safety
+    # 로 잡히지만, 사전에 알면 사용자가 입력 전처리를 강화하거나 num_layers
+    # 줄이는 의사결정 가능. ≤ 5000 face 만 측정 (KDTree 비용 회피).
+    if 0 < n_wall_faces <= 5000:
+        try:
+            from core.preprocessor.native_repair.self_intersect import (
+                detect_self_intersections as _det_si_bl,
+            )
+            _wall_F = np.array(
+                [list(faces[fi]) for fi in wall_face_indices], dtype=np.int64,
+            )
+            _si_bl = _det_si_bl(points, _wall_F)
+            if _si_bl.has_self_intersection:
+                log.warning(
+                    "native_bl_pre_extrude_self_intersect",
+                    n_wall_faces=int(n_wall_faces),
+                    n_intersections=int(_si_bl.n_intersections),
+                    hint=(
+                        "wall surface 에 self-intersect 존재 — collision_safety "
+                        "로 thickness 자동 축소되거나 prism quality 저하 가능. "
+                        "L1 repair 강화 또는 num_layers ↓ 권장."
+                    ),
+                )
+            else:
+                log.info(
+                    "native_bl_pre_extrude_si_clean",
+                    n_wall_faces=int(n_wall_faces),
+                )
+        except Exception as _si_bl_exc:
+            log.debug("native_bl_pre_extrude_si_skipped", reason=str(_si_bl_exc)[:120])
+
     edge_to_walls = _build_edge_to_wall_faces(wall_face_indices, faces)
     wall_fi_to_wi: dict[int, int] = {fi: wi for wi, fi in enumerate(wall_face_indices)}
 

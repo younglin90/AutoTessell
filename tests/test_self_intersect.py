@@ -100,6 +100,21 @@ def test_empty_input_returns_zero_report() -> None:
     assert r.n_intersections == 0
 
 
+def test_native_bl_pre_extrude_si_check_wired() -> None:
+    """beta2327 — native_bl 진입에 pre-extrude SI 진단 추가.
+
+    wall surface 에 SI 가 있으면 prism extrusion collision_safety 가
+    thickness 자동 축소 — 사전 진단으로 사용자가 L1 repair 강화 또는
+    num_layers ↓ 의사결정 가능."""
+    import inspect
+    from core.layers import native_bl
+    src = inspect.getsource(native_bl.generate_native_bl)
+    assert "detect_self_intersections as _det_si_bl" in src or \
+        "detect_self_intersections" in src, "SI detect import 누락"
+    assert "native_bl_pre_extrude_self_intersect" in src or \
+        "native_bl_pre_extrude_si_clean" in src, "pre-BL SI 진단 로그 누락"
+
+
 def test_run_native_repair_captures_self_intersect_count() -> None:
     """beta2325 — run_native_repair 결과에 n_self_intersect_before/after 포함."""
     from core.preprocessor.native_repair import run_native_repair
