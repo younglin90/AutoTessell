@@ -237,15 +237,24 @@ def validate_hex_cell_volumes(
 
     n_flipped = 0
     n_degenerate = 0
-    for ci in range(n):
-        vol = _hex_signed_vol(hex_cells[ci])
-        if vol < -float(degenerate_eps):
-            # Attempt flip: swap top/bottom layers
+    # C-PERF-54 / beta2505 — bulk pre-compute volumes, only loop over negative.
+    if n > 0:
+        _5T = np.array([[0,1,3,4],[1,2,3,6],[3,4,6,7],[1,4,5,6],[1,3,4,6]],
+                       dtype=np.int64)
+        verts = pts[hex_cells[:, _5T]]                         # (N, 5, 4, 3)
+        v0_b = verts[:, :, 0, :]
+        v1_b = verts[:, :, 1, :] - v0_b
+        v2_b = verts[:, :, 2, :] - v0_b
+        v3_b = verts[:, :, 3, :] - v0_b
+        vols = (v1_b * np.cross(v2_b, v3_b)).sum(axis=2).sum(axis=1)
+        neg_idx = np.where(vols < -float(degenerate_eps))[0]
+        for ci_int in neg_idx.tolist():
+            ci = int(ci_int)
+            vol = float(vols[ci])
             orig = hex_cells[ci].copy()
             hex_cells[ci] = orig[[4, 5, 6, 7, 0, 1, 2, 3]]
             vol2 = _hex_signed_vol(hex_cells[ci])
             if vol2 < -float(degenerate_eps):
-                # Revert and mark degenerate
                 hex_cells[ci] = orig
                 n_degenerate += 1
                 log.warning(
