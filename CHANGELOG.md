@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.4.0-beta2521] - 2026-04-30 — STL writer single-buffer write 추가.
+
+- beta2521 — SI dump STL writer 가 per-tri f.write (5n 호출) → numpy 일괄 + bytearray
+  단일 fwrite 로 ~10× syscall 감소.
+
 ## [0.4.0-beta2520] - 2026-04-30 — "/loop perf saturation: 56 hot-loop 벡터화"
 
 ### Added — CLI/GUI parity 신규 (beta2455-2464)
