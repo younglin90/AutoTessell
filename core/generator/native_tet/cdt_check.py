@@ -97,12 +97,20 @@ def check_edge_recovery_chained(
     pts = np.asarray(pts, dtype=np.float64)
     tets = np.asarray(tets, dtype=np.int64)
 
-    # 모든 surface edge.
-    surf_edges: set[tuple[int, int]] = set()
-    for ti in range(F_surf.shape[0]):
-        a, b, c = int(F_surf[ti, 0]), int(F_surf[ti, 1]), int(F_surf[ti, 2])
-        for u, v in ((a, b), (b, c), (c, a)):
-            surf_edges.add((u, v) if u < v else (v, u))
+    # 모든 surface edge.  C-PERF-36 / beta2487 — vectorized via packed-key.
+    if F_surf.size == 0:
+        surf_edges: set[tuple[int, int]] = set()
+    else:
+        src_se = F_surf[:, [0, 1, 2]].reshape(-1).astype(np.int64)
+        dst_se = F_surf[:, [1, 2, 0]].reshape(-1).astype(np.int64)
+        u_se = np.minimum(src_se, dst_se)
+        v_se = np.maximum(src_se, dst_se)
+        n_max_se = int(F_surf.max()) + 1
+        pack_se = u_se * n_max_se + v_se
+        uniq_se = np.unique(pack_se)
+        a_se = (uniq_se // n_max_se).tolist()
+        b_se = (uniq_se % n_max_se).tolist()
+        surf_edges = set(zip(a_se, b_se))
 
     tet_edges = _tet_edges(tets)
 
