@@ -336,6 +336,24 @@ class GeometryFidelityChecker:
             abs(boundary.area - original.area) / max(original.area, 1e-30) * 100.0
         )
 
+        # beta2334 — pre-mesh self-intersect count (P2.6 chain).
+        # 원본 STL 입력의 SI 검출. 결과 mesh quality 와 별도로 입력 품질
+        # 신호 (사용자가 입력 강건도 평가 가능).
+        import numpy as _np_si  # noqa: PLC0415
+        n_si_pre: int | None = None
+        try:
+            if int(original.faces.shape[0]) <= 5000:
+                from core.preprocessor.native_repair.self_intersect import (  # noqa: PLC0415
+                    detect_self_intersections as _det_si,
+                )
+                _r_si = _det_si(
+                    _np_si.asarray(original.vertices, dtype=_np_si.float64),
+                    _np_si.asarray(original.faces, dtype=_np_si.int64),
+                )
+                n_si_pre = int(_r_si.n_intersections)
+        except Exception:
+            n_si_pre = None
+
         safe_diagonal = max(diagonal, 1e-30)
         hausdorff_relative = hausdorff / safe_diagonal
 
@@ -344,12 +362,14 @@ class GeometryFidelityChecker:
             hausdorff=hausdorff,
             hausdorff_relative=hausdorff_relative,
             area_deviation_percent=area_deviation,
+            n_self_intersect_pre=n_si_pre,
         )
 
         return GeometryFidelity(
             hausdorff_distance=hausdorff,
             hausdorff_relative=hausdorff_relative,
             surface_area_deviation_percent=area_deviation,
+            n_self_intersect_pre=n_si_pre,
         )
 
     # ------------------------------------------------------------------

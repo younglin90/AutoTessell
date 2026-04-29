@@ -100,6 +100,21 @@ def test_empty_input_returns_zero_report() -> None:
     assert r.n_intersections == 0
 
 
+def test_evaluator_fidelity_populates_n_self_intersect_pre() -> None:
+    """beta2334 — GeometryFidelityChecker 가 schemas.GeometryFidelity 의
+    n_self_intersect_pre 필드를 채움.
+
+    소스 검사 — 실 mesh 평가는 trimesh + polyMesh 필요해 비용 큼."""
+    import inspect
+    from core.evaluator import fidelity
+    src = inspect.getsource(fidelity)
+    # detect_self_intersections import 호출.
+    assert "detect_self_intersections" in src, "SI detect import 누락"
+    # GeometryFidelity 생성 시 n_self_intersect_pre 채움.
+    assert "n_self_intersect_pre=n_si_pre" in src, \
+        "GeometryFidelity n_self_intersect_pre 채움 누락"
+
+
 def test_geometry_fidelity_schema_has_self_intersect_field() -> None:
     """beta2333 — schemas.GeometryFidelity 에 n_self_intersect_pre 필드 추가.
 
