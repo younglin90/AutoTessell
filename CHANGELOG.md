@@ -1,5 +1,49 @@
 # Changelog
 
+## [0.4.0-beta2358] - 2026-04-29 — "Cycle 35-47: V-series GUI 완성 / quality-aware BL / production wiring"
+
+### Added — V-series CLI/GUI parity 완성 (beta2344-2351)
+
+- CLI 5 플래그: `--enable-vvv9h-apply` / `--enable-offplane-steiner` / `--enable-vvv9j-apply` / `--enable-vvv9k-apply` / `--enable-vvv9p-apply`.
+  - 각 환경변수 (`AUTO_TESSELL_VVV9*_APPLY=1`) 동등.
+  - Click flag → `os.environ` 설정 (worker 진입 직전).
+- GUI 5 체크박스 (동일 옵션, `_build_section_preprocess`).
+- 모든 V-series 알고리즘이 monotone guard (worst -0.015 + mean improve, beta2320/2321) 표준화.
+
+### Added — fine quality cfMesh-style strict defaults (beta2347-2348)
+
+- `_build_bl_config(quality_level=...)` 인자 추가.
+- fine quality:
+  - `feature_angle_deg`: 45 → 30 (sharp edge 보존 강화).
+  - `collision_safety_factor`: 0.5 → 0.4 (gap 의 40% 만 채움).
+  - `aspect_ratio_threshold`: 1000 → 300 (sliver 적극 검출).
+- 사용자 명시 override (`bl_*` params 키) 가 항상 우선.
+
+### Fixed
+
+- **`--volume-engine` production 버그** (beta2349): tier_map 4 entries 만 등록 → 18 옵션 (native_tet/hex/poly + 15+) silent auto fallback. 22 entries identity-map 으로 확장.
+- **UUU6 face split monotone guard** (beta2350): split 후 SI 재검출 → 늘어났으면 revert.
+- **CompareDialog brittle row index** (beta2335): _METRICS 6→ 확장 후 hardcoded 인덱스 회귀.
+- **history dialog SI 미노출** (beta2352): HistoryEntry + 컬럼 + CSV (beta2353) 모두 추가.
+- **PDF report SI 미채움** (beta2355): `_export_pdf` 가 fidelity capture 누락 → ReportData production 채움 추가.
+
+### Added — P2.6 SI chain 21 카드 완성
+
+- detect (Möller 1997 + KDTree O(M log M)) → schema field × 4 dataclass.
+- populate × 3 engine (모든 success + fail return path).
+- run_native_repair before/after tracking.
+- Compare GUI / history GUI / history CSV / JSON quality / PDF report 모두 일관.
+- bench 결과 JSON + console 요약 (`si=K` 태그) 노출.
+- `export_intersecting_faces_stl` 시각화 도구.
+
+### Added — Bench 가독성
+
+- `bench_difficulty_tiers.py` 결과 JSON / 콘솔 요약 line 에 `n_si_pre` 노출.
+
+### Performance
+
+- 누적 53 카드 변경 (beta2305-2357), 회귀: 357 passed, 8 skipped, 0 failed (10 모듈).
+
 ## [0.4.0-beta2340] - 2026-04-29 — "P1+P2 quick wins / V-series guard 표준화 / P2.6 SI chain"
 
 ### Added — P2.6 SI 진단 chain (15 카드, beta2322-2339)
