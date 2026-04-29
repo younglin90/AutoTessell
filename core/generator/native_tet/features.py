@@ -72,12 +72,26 @@ def detect_features(
     n = np.where(n_norm > 1e-30, n / np.where(n_norm > 0, n_norm, 1.0), n)
 
     # 2) edge → 공유 triangle 맵.
-    edge_tri: dict[tuple[int, int], list[int]] = {}
-    for ti in range(F.shape[0]):
-        a, b, c = int(F[ti, 0]), int(F[ti, 1]), int(F[ti, 2])
-        for u, v in ((a, b), (b, c), (c, a)):
-            key = (u, v) if u < v else (v, u)
-            edge_tri.setdefault(key, []).append(ti)
+    # C-PERF-46 / beta2497 — vectorize via lexsort + group-boundary.
+    if F.size == 0:
+        edge_tri: dict[tuple[int, int], list[int]] = {}
+    else:
+        src_et = F[:, [0, 1, 2]].reshape(-1).astype(np.int64)
+        dst_et = F[:, [1, 2, 0]].reshape(-1).astype(np.int64)
+        ti_et = np.repeat(np.arange(F.shape[0], dtype=np.int64), 3)
+        u_et = np.minimum(src_et, dst_et)
+        v_et = np.maximum(src_et, dst_et)
+        order_et = np.lexsort((v_et, u_et))
+        u_s_et = u_et[order_et]
+        v_s_et = v_et[order_et]
+        ti_s_et = ti_et[order_et]
+        diff_et = np.r_[True, (u_s_et[1:] != u_s_et[:-1]) | (v_s_et[1:] != v_s_et[:-1])]
+        starts_et = np.where(diff_et)[0]
+        ends_et = np.r_[starts_et[1:], len(u_s_et)]
+        edge_tri = {}
+        for s, e in zip(starts_et.tolist(), ends_et.tolist()):
+            k = (int(u_s_et[s]), int(v_s_et[s]))
+            edge_tri[k] = ti_s_et[s:e].tolist()
 
     # 3) edge 별 dihedral angle.
     cos_thresh = float(np.cos(np.deg2rad(180.0 - feature_angle_deg)))
