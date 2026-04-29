@@ -224,6 +224,19 @@ def test_native_poly_lloyd_signature_accepts_n_lloyd() -> None:
     assert sig.parameters["n_lloyd"].default == 2
 
 
+def test_native_poly_self_intersect_diag_in_best_of_n_fail() -> None:
+    """beta2324 — best-of-N fail 분기에서 self-intersect detect 호출.
+
+    fail 시 사용자에게 'n_intersections=K' 신호 → 입력 품질 가이드 +
+    repair-retry 동작 근거. Möller 1997 separating axis 기반."""
+    import inspect
+    from core.generator.native_poly import voronoi
+    src = inspect.getsource(voronoi.generate_native_poly_voronoi)
+    assert "detect_self_intersections" in src, "self-intersect 진단 import 누락"
+    assert "native_poly_self_intersect_diag" in src, \
+        "self-intersect 진단 로그 누락"
+
+
 def test_native_poly_qed_decimate_wired_for_large_input() -> None:
     """beta2314 — generate_native_poly_voronoi 가 quadric_decimate 호출 분기 보유.
 

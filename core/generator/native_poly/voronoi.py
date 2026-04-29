@@ -1197,7 +1197,26 @@ def generate_native_poly_voronoi(
             # 모든 후보 실패 시: run_native_repair → voronoi 재시도.
             # beta2306: 단일 lp_p=2.0 → (p=2, p=4) 양쪽 시도 + 2 회 repair param
             # variant (aggressive=3 → aggressive=2 + 더 큰 hole fill cap).
-            # extreme tier 4/5 fail 회복률 ↑.
+            # beta2324 — best-of-N fail 시 self-intersect 진단 (Möller 1997).
+            # 결과 로그로 사용자에게 입력 품질 신호 + repair-retry 의사결정 근거.
+            try:
+                from core.preprocessor.native_repair.self_intersect import (
+                    detect_self_intersections as _det_si,
+                )
+                _si_report = _det_si(
+                    np.asarray(vertices, dtype=np.float64),
+                    np.asarray(faces, dtype=np.int64),
+                )
+                log.info(
+                    "native_poly_self_intersect_diag",
+                    n_faces=int(_si_report.n_faces),
+                    n_intersections=int(_si_report.n_intersections),
+                    has_si=bool(_si_report.has_self_intersection),
+                    elapsed_ms=int(_si_report.elapsed_s * 1000),
+                )
+            except Exception as _si_exc:
+                log.debug("native_poly_si_diag_skipped", reason=str(_si_exc)[:120])
+
             try:
                 from core.preprocessor.native_repair import run_native_repair  # noqa: PLC0415
                 _repair_variants = [
