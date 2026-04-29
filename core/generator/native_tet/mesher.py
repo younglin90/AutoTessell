@@ -561,19 +561,30 @@ def generate_native_tet(
     grid = _seed_points_uniform(bmin, bmax, float(target_edge_length))
     # grid 중 outside 제거 (아니면 bbox 밖으로 tet 이 많이 생김).
     # C-QUAL-5 / beta2392 — env AUTO_TESSELL_SEED_GWN=1 이면 Jacobson 2013
-    # generalized winding number (SI-robust) 사용. SI / non-manifold 입력
-    # 의 mesh #1 (V=3116) 같은 hard mesh 에서 ray-cast 가 거의 모든 seed 를
-    # outside 판정하던 케이스 회복.
+    # generalized winding number (SI-robust) 사용.
+    # C-QUAL-6 / beta2394 — 자동 fallback: 입력에 self-intersect 검출 시
+    # (_pre_mesh_si_count > 0) GWN 자동 활성. mesh #1 (V=3116, SI) 류
+    # hard 케이스 자동 회복. env=0 강제 OFF, =1 강제 ON, 기타 (auto) 자동.
     if grid.shape[0] > 0:
-        if os.environ.get("AUTO_TESSELL_SEED_GWN", "0") == "1":
+        _gwn_env = os.environ.get("AUTO_TESSELL_SEED_GWN", "auto")
+        _has_si = bool(_pre_mesh_si_count is not None and _pre_mesh_si_count > 0)
+        if _gwn_env == "0":
+            _use_gwn = False
+        elif _gwn_env == "1":
+            _use_gwn = True
+        else:  # "auto" 또는 미설정 — SI 검출 시 자동 ON.
+            _use_gwn = _has_si
+        if _use_gwn:
             try:
                 from core.utils.geometry import inside_generalized_winding_number
                 inside_mask = inside_generalized_winding_number(grid, V, F)
                 log.info(
                     "native_tet_seed_gwn_used",
-                    component="native_tet", phase="beta2392",
+                    component="native_tet", phase="beta2394",
                     n_grid=int(grid.shape[0]),
                     n_inside=int(inside_mask.sum()),
+                    si_detected=_has_si,
+                    mode=_gwn_env,
                 )
             except Exception as _gwn_exc:
                 log.debug("native_tet_seed_gwn_skipped", reason=str(_gwn_exc)[:120])

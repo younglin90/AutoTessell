@@ -560,3 +560,14 @@ def test_polymesh_writer_patch_cap_wired() -> None:
     assert "AUTO_TESSELL_PATCH_CAP" in src, "env-gate 누락"
     assert "wall_misc" in src, "wall_misc patch name 누락"
     assert "polymesh_writer_patches_capped" in src, "log 키 누락"
+
+
+def test_native_tet_seed_gwn_auto_si_fallback() -> None:
+    """C-QUAL-6 / beta2394 — 입력 SI 검출 시 GWN 자동 활성."""
+    import inspect
+    from core.generator.native_tet import mesher
+    src = inspect.getsource(mesher)
+    assert "_pre_mesh_si_count is not None and _pre_mesh_si_count > 0" in src, \
+        "auto-fallback 조건 누락"
+    assert "_use_gwn = _has_si" in src, "auto 분기 누락"
+    assert "si_detected=_has_si" in src, "log si_detected 키 누락"
