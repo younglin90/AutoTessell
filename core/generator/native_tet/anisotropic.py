@@ -76,15 +76,15 @@ def curvature_aligned_metric(
     V = np.asarray(V, dtype=np.float64)
     F = np.asarray(F, dtype=np.int64)
     n = V.shape[0]
-    # vertex normal (area-weighted).
+    # vertex normal (area-weighted).  C-PERF-40 / beta2491 — np.add.at scatter.
     if F.shape[0] > 0:
         e1 = V[F[:, 1]] - V[F[:, 0]]
         e2 = V[F[:, 2]] - V[F[:, 0]]
         face_n = np.cross(e1, e2)
         vn = np.zeros_like(V)
-        for i in range(F.shape[0]):
-            for vi in F[i]:
-                vn[vi] += face_n[i]
+        np.add.at(vn, F[:, 0], face_n)
+        np.add.at(vn, F[:, 1], face_n)
+        np.add.at(vn, F[:, 2], face_n)
         norms = np.linalg.norm(vn, axis=1, keepdims=True)
         safe = norms[:, 0] > 1e-30
         unit = np.zeros_like(vn)
