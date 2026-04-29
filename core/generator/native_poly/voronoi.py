@@ -999,14 +999,19 @@ def _lloyd_3d_iteration(
         # C-PERF-1 / beta2380 — Lloyd plateau early-exit (Du 1999 §3 monotonicity).
         # 이전 seed 와의 평균 displacement 가 bbox 의 1e-4 이하면 수렴 →
         # 추가 iteration 비용 회수 불가. 5×, 10× 가속.
+        # C-PERF-15 / beta2454 — threshold env-tunable.
         try:
+            import os as _os_lp
+            _plateau_thresh = float(
+                _os_lp.environ.get("AUTO_TESSELL_LLOYD_PLATEAU_THRESH", "1e-4"),
+            )
             _bbox = float(np.linalg.norm(V.max(axis=0) - V.min(axis=0)))
             if _bbox > 0:
                 _disp = float(np.linalg.norm(
                     new_seeds_arr - seeds_inside, axis=1,
                 ).mean())
                 _rel_disp = _disp / max(_bbox, 1e-30)
-                if _rel_disp < 1e-4:
+                if _rel_disp < _plateau_thresh:
                     seeds_inside = new_seeds_arr
                     inside_mask_p = _inside_ray_cast(seeds_inside, V, F)
                     seeds_inside = seeds_inside[inside_mask_p]

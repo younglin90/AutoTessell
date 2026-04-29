@@ -426,14 +426,16 @@ def test_native_tet_enable_stellar_split_kwarg_and_fine_param() -> None:
 
 
 def test_native_poly_lloyd_plateau_early_exit() -> None:
-    """C-PERF-1 / beta2380 — Lloyd 가 displacement plateau 시 early-exit."""
+    """C-PERF-1 / beta2380 → beta2454 — Lloyd plateau early-exit (env-tunable)."""
     import inspect
     from core.generator.native_poly import voronoi
     src = inspect.getsource(voronoi)
-    # plateau early-exit 주석 + 1e-4 임계값 검증.
+    # plateau early-exit 주석 + threshold 검증.
     assert "plateau early-exit" in src or "Lloyd plateau" in src, \
         "plateau early-exit 주석 누락"
-    assert "_rel_disp < 1e-4" in src, "displacement threshold 누락"
+    # beta2454: env tunable.
+    assert "AUTO_TESSELL_LLOYD_PLATEAU_THRESH" in src, "env 누락"
+    assert "_plateau_thresh" in src, "_plateau_thresh 변수 누락"
 
 
 def test_native_poly_wall_clock_budget_wired() -> None:
