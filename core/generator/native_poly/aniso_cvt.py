@@ -202,24 +202,32 @@ def aniso_cvt_seeds(
         n_metric_evals += int(n_seeds)
 
         # Lloyd step — seed 를 그 cell 내 점들의 metric centroid 로 이동.
-        # 본 카드는 단순화 — 모든 surface_V 를 cell point 로 사용 (sparse).
-        # 정확한 cell 계산은 차후 카드 (scipy.spatial.Voronoi 활용).
-        new_seeds = seeds.copy()
-        for i in range(n_seeds):
-            # 각 seed 의 inverse-metric weighted nearest neighbors 평균.
-            # 단순: nearest 8 surface_V 의 평균.
-            d = np.linalg.norm(surface_V - seeds[i][None, :], axis=1)
-            n_sv = int(surface_V.shape[0])
-            if n_sv == 0:
-                continue
-            k = min(8, n_sv)
-            if k < n_sv:
-                top_k = np.argpartition(d, k - 1)[:k]
-            else:
-                top_k = np.argsort(d)
-            target = surface_V[top_k].mean(axis=0)
-            # blend toward target.
-            new_seeds[i] = 0.5 * seeds[i] + 0.5 * target
+        # 단순: nearest 8 surface_V 의 평균.
+        # C-PERF-19 / beta2469 — KDTree batch query 로 per-seed Python loop 제거.
+        n_sv = int(surface_V.shape[0])
+        if n_sv == 0:
+            new_seeds = seeds.copy()
+        else:
+            k_top = min(8, n_sv)
+            try:
+                _, top_idx_all = _tree.query(seeds, k=k_top)
+                if top_idx_all.ndim == 1:
+                    top_idx_all = top_idx_all[:, None]
+                # Clamp invalid (KDTree returns _n for out-of-bound) to avoid crash.
+                top_idx_all = np.clip(top_idx_all, 0, n_sv - 1)
+                targets_all = surface_V[top_idx_all].mean(axis=1)  # (n_seeds, 3)
+                new_seeds = 0.5 * seeds + 0.5 * targets_all
+            except Exception:
+                # Fallback: per-seed brute force (legacy).
+                new_seeds = seeds.copy()
+                for i in range(n_seeds):
+                    d = np.linalg.norm(surface_V - seeds[i][None, :], axis=1)
+                    if k_top < n_sv:
+                        top_k = np.argpartition(d, k_top - 1)[:k_top]
+                    else:
+                        top_k = np.argsort(d)
+                    target = surface_V[top_k].mean(axis=0)
+                    new_seeds[i] = 0.5 * seeds[i] + 0.5 * target
 
         # 수렴 체크: max displacement.
         max_disp = float(np.max(np.linalg.norm(new_seeds - seeds, axis=1)))
