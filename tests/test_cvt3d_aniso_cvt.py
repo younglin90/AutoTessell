@@ -370,3 +370,14 @@ def test_stellar_apply_op_queue_default_no_split() -> None:
     finally:
         if _prev is not None:
             _os.environ["AUTO_TESSELL_STELLAR_SPLIT"] = _prev
+
+
+def test_parallel_delaunay_auto_dispatch_wired() -> None:
+    """C5.2 / beta2375 — mesher 가 AUTO_TESSELL_PARALLEL_DELAUNAY auto 모드 분기."""
+    import inspect
+    from core.generator.native_tet import mesher
+    src = inspect.getsource(mesher)
+    # auto-detect 분기 존재.
+    assert 'AUTO_TESSELL_PARALLEL_DELAUNAY", "auto"' in src, "auto 모드 분기 누락"
+    # cpu_count() 분기.
+    assert "os.cpu_count()" in src, "cpu_count auto-detect 누락"

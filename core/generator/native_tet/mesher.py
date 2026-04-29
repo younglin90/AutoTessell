@@ -600,9 +600,15 @@ def generate_native_tet(
             enable_chunked_delaunay
             and seed_pts.shape[0] > int(chunked_delaunay_threshold)
         ):
-            _use_parallel = (
-                os.environ.get("AUTO_TESSELL_PARALLEL_DELAUNAY", "0") == "1"
-            )
+            # C5.2 / beta2375 — auto-detect: cpu_count >= 2 + seed > threshold
+            # 시 자동 활성. env=0 강제 OFF, =1 강제 ON, 기타 (auto) 자동.
+            _ppar_env = os.environ.get("AUTO_TESSELL_PARALLEL_DELAUNAY", "auto")
+            if _ppar_env == "0":
+                _use_parallel = False
+            elif _ppar_env == "1":
+                _use_parallel = True
+            else:  # "auto" — cpu_count >= 2 면 자동 ON.
+                _use_parallel = bool((os.cpu_count() or 1) >= 2)
             if _use_parallel:
                 try:
                     from core.generator.native_tet.parallel import (
