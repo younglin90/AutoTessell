@@ -43,18 +43,38 @@ def _build_hex_adjacency(hex_cells: np.ndarray) -> _HexAdjCache:
     n_cells = hex_cells.shape[0]
 
     # face_map: sorted 4-tuple → list of owner cell indices
-    face_map: dict[tuple[int, int, int, int], list[int]] = {}
-    for ci in range(n_cells):
-        for face_local in _HEX_FACES:
-            v = tuple(int(hex_cells[ci, k]) for k in face_local)
-            key_f: tuple[int, int, int, int] = tuple(sorted(v))  # type: ignore[assignment]
-            face_map.setdefault(key_f, []).append(ci)
+    # C-PERF-51 / beta2502 — vectorize via lexsort + group-boundary.
+    if n_cells == 0:
+        face_map: dict[tuple[int, int, int, int], list[int]] = {}
+        boundary_verts: set[int] = set()
+    else:
+        _HEX_FACES_IDX = np.array(_HEX_FACES, dtype=np.int64)  # (6, 4)
+        # gather all face vertices: (n_cells, 6, 4)
+        faces_arr = np.sort(
+            hex_cells[:, _HEX_FACES_IDX].reshape(-1, 4), axis=1,
+        )
+        ci_face = np.repeat(np.arange(n_cells, dtype=np.int64), 6)
+        order_hf = np.lexsort(
+            (faces_arr[:, 3], faces_arr[:, 2],
+             faces_arr[:, 1], faces_arr[:, 0]),
+        )
+        f_s = faces_arr[order_hf]
+        ci_s = ci_face[order_hf]
+        diff_hf = np.r_[True, np.any(f_s[1:] != f_s[:-1], axis=1)]
+        starts_hf = np.where(diff_hf)[0]
+        ends_hf = np.r_[starts_hf[1:], len(f_s)]
+        sizes_hf = ends_hf - starts_hf
+        face_map = {}
+        for s, e in zip(starts_hf.tolist(), ends_hf.tolist()):
+            k = (int(f_s[s, 0]), int(f_s[s, 1]),
+                 int(f_s[s, 2]), int(f_s[s, 3]))
+            face_map[k] = ci_s[s:e].tolist()
 
-    # boundary vertices (faces with exactly 1 owner)
-    boundary_verts: set[int] = set()
-    for key_f, owners in face_map.items():
-        if len(owners) == 1:
-            boundary_verts.update(key_f)
+        # boundary vertices: faces with exactly 1 owner.
+        bnd_starts = starts_hf[sizes_hf == 1]
+        boundary_verts = set()
+        if bnd_starts.size > 0:
+            boundary_verts.update(np.unique(f_s[bnd_starts].ravel()).tolist())
 
     # edge neighbour map for Laplacian smooth
     _EDGE_PAIRS = [(0,1),(1,2),(2,3),(3,0),(4,5),(5,6),(6,7),(7,4),
