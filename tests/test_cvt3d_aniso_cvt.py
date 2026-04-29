@@ -665,3 +665,27 @@ def test_native_bl_first_thickness_auto_scale_wired() -> None:
     assert "native_bl_first_thickness_auto_cap" in src, "auto_cap log 누락"
     assert "bbox_diag * 1e-5" in src, "min threshold 누락"
     assert "bbox_diag * 0.1" in src, "max threshold 누락"
+
+
+def test_bl1_uses_effective_first_thickness() -> None:
+    """C-BL-6 / beta2434 — BL1 의 _curvature_adaptive_thickness 가
+    effective_first_thickness (auto-scaled) 사용."""
+    import inspect
+    from core.layers import native_bl
+    src = inspect.getsource(native_bl)
+    # base_thickness=effective_first_thickness 가 BL1 호출에 있어야 함.
+    assert "base_thickness=effective_first_thickness" in src, \
+        "BL1 이 cfg.first_thickness 대신 effective 사용 누락"
+    # clamp 도 effective_first_thickness 기준.
+    assert "effective_first_thickness * 0.01" in src, \
+        "BL3 clamp 가 effective 기준 누락"
+
+
+def test_native_bl_patch_face_index_guard() -> None:
+    """C-BL-4 / beta2432 — patch loop 의 face index 안전 가드."""
+    import inspect
+    from core.layers import native_bl
+    src = inspect.getsource(native_bl)
+    # 두 번째 site 의 가드 (patch loop).
+    assert "fi_p < 0 or fi_p >= len(faces) or fi_p >= len(owner)" in src, \
+        "patch face index guard 누락"
