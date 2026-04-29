@@ -54,6 +54,9 @@ def find_missing_triangles(
 ) -> np.ndarray:
     """입력 triangle F 중 tet facet 에 포함되지 않은 것의 index array.
 
+    C-PERF-77 / beta2528 — set[tuple] → packed int keys + np.isin 으로
+    완전 벡터화. _tet_facet_keys 의 Python 루프 (n_tets×4) 제거.
+
     Args:
         F: (m, 3) 입력 triangle index. 반드시 Delaunay 에 들어간 vertex array
             기준 (surface vertex 는 [0, n_surf) 로 가정).
@@ -66,14 +69,21 @@ def find_missing_triangles(
     tets = np.asarray(tets, dtype=np.int64)
     if F.size == 0 or tets.size == 0:
         return np.zeros(0, dtype=np.int64)
-    facet_set = _tet_facet_keys(tets)
-    missing: list[int] = []
-    for idx in range(F.shape[0]):
-        a, b, c = int(F[idx, 0]), int(F[idx, 1]), int(F[idx, 2])
-        key = tuple(sorted((a, b, c)))
-        if key not in facet_set:
-            missing.append(idx)
-    return np.asarray(missing, dtype=np.int64)
+    M = int(max(int(F.max()), int(tets.max()))) + 1
+    # 4 facets per tet, sorted 3-tuple → packed key
+    facets = np.stack([
+        tets[:, [0, 1, 2]], tets[:, [0, 1, 3]],
+        tets[:, [0, 2, 3]], tets[:, [1, 2, 3]],
+    ], axis=1).reshape(-1, 3)
+    facets_s = np.sort(facets, axis=1)
+    facet_keys = (
+        facets_s[:, 0] * M * M + facets_s[:, 1] * M + facets_s[:, 2]
+    )
+    facet_keys_uniq = np.unique(facet_keys)
+    F_s = np.sort(F, axis=1)
+    F_keys = F_s[:, 0] * M * M + F_s[:, 1] * M + F_s[:, 2]
+    is_missing = ~np.isin(F_keys, facet_keys_uniq)
+    return np.where(is_missing)[0].astype(np.int64)
 
 
 def recovery_seeds(
