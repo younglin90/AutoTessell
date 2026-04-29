@@ -286,6 +286,9 @@ def smooth_amips_multistage(
     """
     pts_cur = np.asarray(pts, dtype=np.float64).copy()
     last_result: AMIPSResult | None = None
+    # C-PERF-8 / beta2400 — plateau early-exit:
+    # 이전 stage 의 e_before 와 e_after 차이 < 1% 면 추가 stage 효과 미미 → break.
+    _prev_e_after: float | None = None
     for a in alphas:
         last_result, pts_cur = smooth_amips_analytic(
             pts_cur, tets,
@@ -294,6 +297,16 @@ def smooth_amips_multistage(
             alpha=float(a),
             step_init=float(step_init),
         )
+        if last_result is None:
+            continue
+        # plateau detect.
+        if _prev_e_after is not None and last_result.energy_before > 0:
+            _rel_drop = (
+                (_prev_e_after - last_result.energy_after) / max(_prev_e_after, 1e-30)
+            )
+            if abs(_rel_drop) < 0.01:
+                break  # 1% 미만 변화 — 추가 stage 효과 없음.
+        _prev_e_after = float(last_result.energy_after)
     if last_result is None:
         last_result = AMIPSResult(0, 0, 0.0, 0.0, 0.0)
     return last_result, pts_cur

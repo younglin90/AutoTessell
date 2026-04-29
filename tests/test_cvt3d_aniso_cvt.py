@@ -589,3 +589,13 @@ def test_amips_multistage_4alpha_for_very_low_mq() -> None:
     assert "if _pre_mq < 0.05:" in src, "low mq 분기 누락"
     assert "(0.5, 1.0, 2.0, 4.0)" in src, "4-stage alphas 누락"
     assert "n_alphas=len(_alphas)" in src, "log 키 누락"
+
+
+def test_amips_multistage_plateau_early_exit() -> None:
+    """C-PERF-8 / beta2400 — multistage 의 1% rel_drop 미만 시 break."""
+    import inspect
+    from core.generator.native_tet import amips
+    src = inspect.getsource(amips)
+    assert "_prev_e_after" in src, "plateau 추적 변수 누락"
+    assert "_rel_drop" in src, "rel_drop 변수 누락"
+    assert "abs(_rel_drop) < 0.01" in src, "1% threshold 누락"
