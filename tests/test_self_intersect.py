@@ -100,6 +100,32 @@ def test_empty_input_returns_zero_report() -> None:
     assert r.n_intersections == 0
 
 
+def test_geometry_fidelity_schema_has_self_intersect_field() -> None:
+    """beta2333 — schemas.GeometryFidelity 에 n_self_intersect_pre 필드 추가.
+
+    P2.6 SI chain 의 evaluator 측 wiring. EvaluationSummary.geometry_fidelity
+    가 SI 정보를 담아 verdict / recommendation 에 활용 가능."""
+    from core.schemas import GeometryFidelity
+    fields = GeometryFidelity.model_fields
+    assert "n_self_intersect_pre" in fields, \
+        f"n_self_intersect_pre 필드 누락: {list(fields)}"
+    # default None 검증.
+    f = GeometryFidelity(
+        hausdorff_distance=0.01,
+        hausdorff_relative=0.001,
+        surface_area_deviation_percent=0.5,
+    )
+    assert f.n_self_intersect_pre is None
+    # 명시 값 검증.
+    f2 = GeometryFidelity(
+        hausdorff_distance=0.01,
+        hausdorff_relative=0.001,
+        surface_area_deviation_percent=0.5,
+        n_self_intersect_pre=7,
+    )
+    assert f2.n_self_intersect_pre == 7
+
+
 def test_blconfig_fluid_presets_match_yplus_module() -> None:
     """beta2331 — BLConfig _FLUID_PRESETS 가 yplus.py FLUID_PROPERTIES 와
     동기화 (simple aliases air/water/oil 도 포함).

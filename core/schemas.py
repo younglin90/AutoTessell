@@ -390,6 +390,9 @@ class GeometryFidelity(BaseModel):
     hausdorff_distance: float
     hausdorff_relative: float
     surface_area_deviation_percent: float
+    # beta2333 — Möller 1997 self-intersect count (P2.6 chain). None = 측정
+    # 안 됨 (>5000 face). 0 = clean. >0 = 입력 wall surface 에 SI 존재.
+    n_self_intersect_pre: int | None = None
 
 
 class FailCriterion(BaseModel):
