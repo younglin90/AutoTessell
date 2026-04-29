@@ -121,6 +121,8 @@ def _gen_poly(V, F, td: Path) -> dict:
         "success": bool(r.success),
         "elapsed": round(time.perf_counter() - t0, 2),
         "n_cells": int(getattr(r, "n_cells", 0)),
+        "integrity_suspect": bool(getattr(r, "mesh_integrity_suspect", False)),
+        "n_surface_v": int(V.shape[0]),
     }
 
 

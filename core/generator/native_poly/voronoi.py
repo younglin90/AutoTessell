@@ -210,6 +210,10 @@ class NativePolyResult:
     # beta2337 — pre-mesh self-intersect (P2.6 chain). None = 측정 안 됨,
     # 0 = clean, >0 = 입력 SI 존재.
     n_self_intersect_pre: int | None = None
+    # C-QUAL-8 / beta2401 — poly 의 mesh_integrity_suspect (NativeTetResult 와 parity).
+    # validator 발견: mesh #2 (V=12k) 의 poly 가 5 cells 만 — 사용자 입장에서
+    # success=True 인데 사실상 빈 mesh. n_cells < n_surface_v / 32 시 True.
+    mesh_integrity_suspect: bool = False
 
 
 from core.utils.geometry import inside_winding_number as _inside_ray_cast
@@ -2218,10 +2222,26 @@ def _generate_native_poly_voronoi_inner(
         elapsed=round(time.perf_counter() - t0, 3),
     )
 
+    # C-QUAL-8 / beta2401 — mesh_integrity_suspect (poly).
+    _n_cells_final = int(stats["num_cells"])
+    _n_surface_v = int(np.asarray(vertices).shape[0])
+    _poly_suspect = bool(
+        _n_surface_v >= 100 and _n_cells_final > 0
+        and _n_cells_final < _n_surface_v // 32
+    )
+    if _poly_suspect:
+        log.warning(
+            "native_poly_mesh_integrity_suspect",
+            component="native_poly", phase="beta2401",
+            n_cells=_n_cells_final,
+            n_surface_v=_n_surface_v,
+            ratio=round(_n_cells_final / max(1, _n_surface_v), 4),
+            message="cells/V_surf < 1/32 — sparse poly mesh suspect",
+        )
     return NativePolyResult(
         success=True,
         elapsed=time.perf_counter() - t0,
-        n_cells=int(stats["num_cells"]),
+        n_cells=_n_cells_final,
         n_points=int(stats["num_points"]),
         n_faces=int(stats["num_faces"]),
         message=(
@@ -2236,4 +2256,5 @@ def _generate_native_poly_voronoi_inner(
         avg_faces_per_cell=float(avg_fpc),
         plane_coverage=float(plane_cov),
         plane_area_coverage=float(plane_area),
+        mesh_integrity_suspect=_poly_suspect,
     )

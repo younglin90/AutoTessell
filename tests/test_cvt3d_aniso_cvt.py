@@ -599,3 +599,20 @@ def test_amips_multistage_plateau_early_exit() -> None:
     assert "_prev_e_after" in src, "plateau 추적 변수 누락"
     assert "_rel_drop" in src, "rel_drop 변수 누락"
     assert "abs(_rel_drop) < 0.01" in src, "1% threshold 누락"
+
+
+def test_native_poly_result_has_integrity_suspect_field() -> None:
+    """C-QUAL-8 / beta2401 — NativePolyResult 의 mesh_integrity_suspect 필드."""
+    from core.generator.native_poly.voronoi import NativePolyResult
+    r = NativePolyResult(success=True, elapsed=0.0)
+    assert hasattr(r, "mesh_integrity_suspect")
+    assert r.mesh_integrity_suspect is False  # default
+
+
+def test_native_poly_integrity_log_wired() -> None:
+    """C-QUAL-8 — poly mesher 의 integrity 로그 + threshold 검증."""
+    import inspect
+    from core.generator.native_poly import voronoi
+    src = inspect.getsource(voronoi)
+    assert "native_poly_mesh_integrity_suspect" in src, "log 키 누락"
+    assert "_n_surface_v // 32" in src, "ratio threshold 누락"
