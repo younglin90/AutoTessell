@@ -756,6 +756,20 @@ def test_cli_patch_cap_flag_wired() -> None:
     assert "patch_cap" in src, "patch_cap param 누락"
 
 
+def test_stellar_split_sliver_ratio_env_tunable() -> None:
+    """C-TET-1 / beta2463 — Stellar split-pass sliver_ratio + max_splits env."""
+    import inspect
+    from core.generator.native_tet import stellar
+    src = inspect.getsource(stellar)
+    assert "AUTO_TESSELL_STELLAR_SLIVER_RATIO" in src, \
+        "sliver_ratio env 누락"
+    assert "AUTO_TESSELL_STELLAR_MAX_SPLITS" in src, \
+        "max_splits env 누락"
+    # auto-scale 로직 (큰 mesh 에서 더 많은 sliver 처리).
+    assert "tets_44.shape[0] * 0.001" in src, \
+        "max_splits auto-scale 로직 누락"
+
+
 def test_validator_filter_to_sig_drops_invalid_kwargs() -> None:
     """C-VAL-9 / beta2453 — _filter_to_sig 가 invalid kwargs drop."""
     from tests.stl.validate_30_hard_meshes import _filter_to_sig

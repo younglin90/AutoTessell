@@ -286,13 +286,23 @@ def _apply_op_queue(
     import os as _os
     _stellar_split = _os.environ.get("AUTO_TESSELL_STELLAR_SPLIT", "0") == "1"
     if _stellar_split and tets_44.shape[0] > 0:
+        # C-TET-1 / beta2463 — sliver_ratio + max_splits env-tunable.
+        # Default 보존 (1e-3, 20) — 더 넓은 sliver 탐지 시 사용자가 조정.
+        _sr = float(_os.environ.get("AUTO_TESSELL_STELLAR_SLIVER_RATIO", "1e-3"))
+        _ms_base = int(_os.environ.get("AUTO_TESSELL_STELLAR_MAX_SPLITS", "20"))
+        # max_splits 자동 scale (mesh 크기 비례, cap 200) — 큰 mesh 에서 더 많은
+        # sliver 처리 가능. base 가 default 일 때만 auto-scale 적용.
+        if _ms_base == 20:
+            _ms = max(20, min(int(tets_44.shape[0] * 0.001), 200))
+        else:
+            _ms = _ms_base
         try:
             tets_split_out, _new_pts, n_sp = pts, tets_44, 0  # unused init
             pts_split, tets_split_out, n_sp = split_sliver_longest_edge(
                 pts, tets_44,
-                sliver_ratio=1e-3,
+                sliver_ratio=_sr,
                 min_quality_improvement=min_quality_improvement,
-                max_splits=20,
+                max_splits=_ms,
             )
             if n_sp > 0:
                 # split 결과의 worst quality 가 같거나 좋아진 경우에만 채택
