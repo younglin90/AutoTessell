@@ -1022,6 +1022,32 @@ def generate_native_poly_voronoi(
     import os as _os_poly
     _V = np.asarray(vertices, dtype=np.float64)
     _F = np.asarray(faces, dtype=np.int64)
+
+    # P1.4 / beta2314 — quadric error decimation (G&H 1997) wiring for poly.
+    # native_tet (beta2308) 와 동일 패턴 — 50k+ face 입력 자동 단순화 →
+    # voronoi seed/CVT 시간 ↓ + boundary snap 안정도 ↑.
+    # AUTO_TESSELL_QED (default "auto") — 0=OFF, 1=ON, auto=large only.
+    _qed_env = _os_poly.environ.get("AUTO_TESSELL_QED", "auto")
+    _qed_min = int(_os_poly.environ.get("AUTO_TESSELL_QED_MIN_F", "50000"))
+    if _qed_env == "1" or (_qed_env == "auto" and _F.shape[0] > _qed_min):
+        try:
+            from core.preprocessor.native_remesh.quadric_decimate import (
+                quadric_decimate as _qed,
+            )
+            _qed_target = max(int(_F.shape[0] * 0.5), 200)
+            V_q, F_q = _qed(_V, _F, target_n_faces=_qed_target, max_iters=20000)
+            if F_q.shape[0] > 50 and V_q.shape[0] > 30 and F_q.shape[0] < _F.shape[0]:
+                log.info(
+                    "native_poly_qed_decimate",
+                    f_before=int(_F.shape[0]), f_after=int(F_q.shape[0]),
+                    target=_qed_target, mode=_qed_env,
+                )
+                _V = V_q.astype(np.float64)
+                _F = F_q.astype(np.int64)
+                vertices = _V
+                faces = _F
+        except Exception as _qed_exc:
+            log.debug("native_poly_qed_skipped", reason=str(_qed_exc)[:120])
     if not _os_poly.environ.get("AUTO_TESSELL_PRE3_POLY_OFF") and _F.shape[0] >= 100:
         try:
             _pre3_edges = np.concatenate([

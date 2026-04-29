@@ -222,3 +222,19 @@ def test_native_poly_lloyd_signature_accepts_n_lloyd() -> None:
     sig = inspect.signature(generate_native_poly_voronoi)
     assert "n_lloyd" in sig.parameters, "n_lloyd 파라미터 누락"
     assert sig.parameters["n_lloyd"].default == 2
+
+
+def test_native_poly_qed_decimate_wired_for_large_input() -> None:
+    """beta2314 — generate_native_poly_voronoi 가 quadric_decimate 호출 분기 보유.
+
+    50k+ face 입력 자동 단순화 (native_tet beta2308 동일 패턴). voronoi
+    seed/CVT 시간 ↓ + boundary snap 안정도 ↑. AUTO_TESSELL_QED env 로
+    on/off/auto 제어."""
+    import inspect
+    from core.generator.native_poly import voronoi
+    src = inspect.getsource(voronoi.generate_native_poly_voronoi)
+    assert "quadric_decimate" in src, "quadric_decimate import/call 누락"
+    assert 'AUTO_TESSELL_QED", "auto"' in src or "_qed_env" in src, \
+        "QED env-gate 누락"
+    assert '"AUTO_TESSELL_QED_MIN_F", "50000"' in src, \
+        "50000 default threshold 누락"
