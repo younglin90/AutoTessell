@@ -1245,6 +1245,11 @@ def generate_native_tet(
                 max_collapses=int(max_collapses_per_iter),
                 metric=m_collapse,
                 protected_edges=_cur_surf_edges,
+                # P2.1 / beta2311 — fine quality (enable_phase_c=True) 시
+                # fTetWild §3.4 식 surface→interior collapse 활성. surface
+                # 위치는 keeper guard 로 자동 보존, protected_edges 도 그대로
+                # 유지 → safety net 2 중.
+                allow_surface_keeper=bool(enable_phase_c),
             )
             # cell 수 급감 rollback: iteration 전 대비 급락하면 이전 상태로.
             if (
@@ -1792,6 +1797,9 @@ def generate_native_tet(
                 ratio=collapse_ratio,
                 locked_vertices=lock_ids,
                 max_collapses=4000,
+                # P2.1 / beta2311 — hard input cleanup pass (mq < 0.15) 에서
+                # surface→interior collapse 도 활성 (fTetWild §3.4 sliver 격감).
+                allow_surface_keeper=bool(enable_phase_c),
             )
             if n_c > 0 and new_tets.shape[0] > 50:
                 post_q = _qsnap_pre(new_pts, new_tets)
