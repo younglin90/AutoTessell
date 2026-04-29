@@ -2316,7 +2316,7 @@ class AutoTessellWindow:  # type: ignore[misc]
             "AUTO_TESSELL_PARALLEL_DELAUNAY=1 동등."
         )
         # C-GUI-14 / beta2449 — BL floor ratio (curvature_adaptive 강도).
-        from PySide6.QtWidgets import QDoubleSpinBox, QLabel, QHBoxLayout, QWidget
+        from PySide6.QtWidgets import QDoubleSpinBox, QLabel, QHBoxLayout, QWidget, QSpinBox
         self._bl_floor_ratio_spin = QDoubleSpinBox()
         self._bl_floor_ratio_spin.setRange(0.0, 1.0)
         self._bl_floor_ratio_spin.setSingleStep(0.05)
@@ -2329,6 +2329,16 @@ class AutoTessellWindow:  # type: ignore[misc]
             "0.5 = balanced.\n"
             "0.3 = aggressive curvature adaptation (sharp feature 자동 thinning).\n"
             "AUTO_TESSELL_BL_FLOOR_RATIO 환경변수 동등."
+        )
+        # C-GUI-15 / beta2460 — patch count cap (polyMesh boundary).
+        self._patch_cap_spin = QSpinBox()
+        self._patch_cap_spin.setRange(8, 1024)
+        self._patch_cap_spin.setSingleStep(8)
+        self._patch_cap_spin.setValue(64)
+        self._patch_cap_spin.setToolTip(
+            "polyMesh patch count cap. 이 값을 초과하는 patch 는 wall_misc 로 병합.\n"
+            "기본 64. 늘리면 BC 별 세분화 가능 (boundary 파일 증가).\n"
+            "AUTO_TESSELL_PATCH_CAP 환경변수 동등."
         )
         # 기본값: native L1 은 기본 On (beta26 철학), native tier 는 opt-in
         self._no_repair_check.setChecked(False)
@@ -2368,6 +2378,19 @@ class AutoTessellWindow:  # type: ignore[misc]
             _bl_layout.addWidget(self._bl_floor_ratio_spin)
             _bl_layout.addStretch(1)
             v.addWidget(_bl_row)
+        except Exception:
+            pass
+        # C-GUI-15 / beta2460 — patch cap spin row.
+        try:
+            from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
+            _pc_row = QWidget()
+            _pc_row.setStyleSheet("background: transparent;")
+            _pc_layout = QHBoxLayout(_pc_row)
+            _pc_layout.setContentsMargins(0, 0, 0, 0); _pc_layout.setSpacing(8)
+            _pc_layout.addWidget(QLabel("Patch cap:"))
+            _pc_layout.addWidget(self._patch_cap_spin)
+            _pc_layout.addStretch(1)
+            v.addWidget(_pc_row)
         except Exception:
             pass
             try:
@@ -3048,6 +3071,11 @@ class AutoTessellWindow:  # type: ignore[misc]
                     _val = float(self._bl_floor_ratio_spin.value())
                     if abs(_val - 1.0) > 1e-6:  # default 1.0 → no env.
                         _os_v9.environ["AUTO_TESSELL_BL_FLOOR_RATIO"] = str(_val)
+                # C-GUI-15 / beta2460 — patch cap spin → env.
+                if (getattr(self, "_patch_cap_spin", None) is not None):
+                    _pc_val = int(self._patch_cap_spin.value())
+                    if _pc_val != 64:  # default 64 → no env.
+                        _os_v9.environ["AUTO_TESSELL_PATCH_CAP"] = str(_pc_val)
             except Exception:
                 pass
             worker = PipelineWorker(

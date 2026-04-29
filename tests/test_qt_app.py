@@ -4271,6 +4271,26 @@ def test_gui_seed_gwn_stellar_split_parallel_delaunay_wired() -> None:
         assert env in src, f"{env} env wiring 누락"
 
 
+def test_gui_patch_cap_spin_wired() -> None:
+    """C-GUI-15 / beta2460 — _patch_cap_spin GUI widget + env wiring."""
+    import os
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    import sys
+    from PySide6.QtWidgets import QApplication, QSpinBox
+    app = QApplication.instance() or QApplication(sys.argv)
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    win._build()
+    spin = getattr(win, "_patch_cap_spin", None)
+    assert isinstance(spin, QSpinBox), "_patch_cap_spin 미생성"
+    assert spin.value() == 64, "default 64 미적용"
+
+    import inspect
+    src = inspect.getsource(AutoTessellWindow._on_run_clicked)
+    assert "AUTO_TESSELL_PATCH_CAP" in src, "AUTO_TESSELL_PATCH_CAP env wiring 누락"
+
+
 def test_gui_cross_engine_fallback_checkbox_wired() -> None:
     """beta2299 — GUI cross_engine_fallback 체크박스 → PipelineWorker 전달.
 
