@@ -48,6 +48,8 @@ class ReportData:
     hausdorff_relative: float | None = None
     # beta2354 — pre-BL self-intersect count (P2.6 chain).
     n_self_intersect_pre: int | None = None
+    # C-GUI-2 / beta2412 — mesh_integrity_suspect (3-engine catastrophic flag).
+    mesh_integrity_suspect: bool = False
     # 히스토그램 배열
     hist_aspect: list[float] = field(default_factory=list)
     hist_skew: list[float] = field(default_factory=list)
@@ -163,6 +165,9 @@ def _write_page(pdf, data: ReportData) -> None:
         ("Hausdorff (rel) < 0.01", data.hausdorff_relative, 0.01),
         # beta2354 — pre-BL self-intersect = 0 (clean input geometry).
         ("pre-BL Self-Intersect = 0", data.n_self_intersect_pre, 0),
+        # C-GUI-2 / beta2412 — mesh_integrity_suspect (catastrophic cell-drop) = 0.
+        # 0 = OK / 1 = suspect.
+        ("Mesh Integrity OK (=0)", int(data.mesh_integrity_suspect), 0),
     ]
     for i, (label, val, thr) in enumerate(criteria):
         y = 0.7 - i * 0.17
