@@ -423,3 +423,14 @@ def test_native_tet_enable_stellar_split_kwarg_and_fine_param() -> None:
     assert "enable_stellar_split" in sig.parameters, "kwarg 누락"
     p = HARNESS_PARAMS["tier_native_tet"]["fine"]
     assert p.get("enable_stellar_split") is True, "fine quality 자동 ON 누락"
+
+
+def test_native_poly_lloyd_plateau_early_exit() -> None:
+    """C-PERF-1 / beta2380 — Lloyd 가 displacement plateau 시 early-exit."""
+    import inspect
+    from core.generator.native_poly import voronoi
+    src = inspect.getsource(voronoi)
+    # plateau early-exit 주석 + 1e-4 임계값 검증.
+    assert "plateau early-exit" in src or "Lloyd plateau" in src, \
+        "plateau early-exit 주석 누락"
+    assert "_rel_disp < 1e-4" in src, "displacement threshold 누락"
