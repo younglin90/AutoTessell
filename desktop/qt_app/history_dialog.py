@@ -206,15 +206,18 @@ class HistoryDialog(EscDismissMixin, QDialog):
         filtered = self._filter()
         try:
             # beta2303 — CSV 에 Hausdorff (distance + relative) 컬럼 포함.
+            # beta2353 — pre_bl_self_intersect 도 CSV 에 포함 (P2.6 chain).
             lines = [
                 "timestamp,input_file,tier,quality,success,"
                 "elapsed_seconds,n_cells,max_aspect_ratio,"
                 "max_skewness,max_non_orthogonality,"
-                "hausdorff_distance,hausdorff_relative,error"
+                "hausdorff_distance,hausdorff_relative,"
+                "pre_bl_self_intersect,error"
             ]
             for e in filtered:
                 _hd = getattr(e, "hausdorff_distance", None)
                 _hr = getattr(e, "hausdorff_relative", None)
+                _si = getattr(e, "n_self_intersect_pre", None)
                 lines.append(
                     f'{e.timestamp},"{e.input_file}",{e.tier_used},{e.quality_level},'
                     f"{int(e.success)},{e.elapsed_seconds:.2f},{e.n_cells},"
@@ -222,6 +225,7 @@ class HistoryDialog(EscDismissMixin, QDialog):
                     f'{e.max_non_orthogonality or ""},'
                     f'{_hd if _hd is not None else ""},'
                     f'{_hr if _hr is not None else ""},'
+                    f'{_si if _si is not None else ""},'
                     f'"{(e.error or "").replace(chr(34), chr(39))}"'
                 )
             Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")

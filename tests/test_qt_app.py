@@ -4044,12 +4044,15 @@ def test_history_dialog_table_has_hausdorff_column() -> None:
 
 
 def test_history_csv_export_includes_hausdorff_columns() -> None:
-    """beta2303 — CSV export 헤더 + 데이터 라인에 hausdorff 컬럼 포함."""
+    """beta2303 + beta2353 — CSV export 헤더 + 데이터 라인에 hausdorff +
+    pre_bl_self_intersect 컬럼 포함."""
     from desktop.qt_app import history_dialog
     import inspect
     src = inspect.getsource(history_dialog.HistoryDialog._on_export_csv)
     assert "hausdorff_distance" in src
     assert "hausdorff_relative" in src
+    # beta2353 — pre-BL SI CSV 컬럼.
+    assert "pre_bl_self_intersect" in src, "pre_bl_self_intersect CSV 컬럼 누락"
 
 
 def test_history_entry_captures_hausdorff_fidelity() -> None:
