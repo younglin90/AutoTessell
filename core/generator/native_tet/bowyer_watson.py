@@ -195,11 +195,21 @@ def bowyer_watson_insert(
         pair_i = np.where(eq)[0]
         a_ids = st[pair_i]
         b_ids = st[pair_i + 1]
-        nbrs: list[list[int]] = [[] for _ in range(T.shape[0])]
-        for a, b in zip(a_ids.tolist(), b_ids.tolist()):
-            nbrs[a].append(b)
-            nbrs[b].append(a)
-        return nbrs
+        # C-PERF-42 / beta2493 — flat sort + bincount-offset 으로 nbrs 빌드.
+        n_tets = int(T.shape[0])
+        if a_ids.size == 0:
+            return [[] for _ in range(n_tets)]
+        # 각 (a,b) pair 는 양 방향 (a→b, b→a) 으로 분해.
+        src = np.concatenate([a_ids, b_ids])
+        dst = np.concatenate([b_ids, a_ids])
+        order_n = np.argsort(src, kind="stable")
+        src_s = src[order_n]; dst_s = dst[order_n]
+        counts_n = np.bincount(src_s, minlength=n_tets)
+        offs_n = np.concatenate(([0], np.cumsum(counts_n).astype(np.int64)))
+        return [
+            dst_s[offs_n[i]:offs_n[i + 1]].tolist()
+            for i in range(n_tets)
+        ]
 
     def _single_circumsphere_test(T: np.ndarray, ti: int, p: np.ndarray, pts_arr) -> bool:
         a = pts_arr[T[ti, 0]]; b = pts_arr[T[ti, 1]]
