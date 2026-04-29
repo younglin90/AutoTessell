@@ -50,11 +50,20 @@ def _pick_hard_meshes(n: int = 10, seed: int = 42) -> list[dict]:
     return chosen
 
 
+def _filter_to_sig(fn, params: dict) -> dict:
+    """Drop kwargs that fn does not accept (HARNESS_PARAMS 와 sig 불일치 흡수)."""
+    import inspect
+    sig = inspect.signature(fn)
+    return {k: v for k, v in params.items() if k in sig.parameters}
+
+
 def _gen_tet(V, F, td: Path) -> dict:
     """Tet via fine-quality HARNESS_PARAMS (실 fine path 검증)."""
     from core.generator.native_tet.mesher import generate_native_tet
     from core.generator._tier_native_common import HARNESS_PARAMS
-    fine_p = dict(HARNESS_PARAMS["tier_native_tet"]["fine"])
+    fine_p = _filter_to_sig(
+        generate_native_tet, HARNESS_PARAMS["tier_native_tet"]["fine"],
+    )
     t0 = time.perf_counter()
     try:
         r = generate_native_tet(V, F, td / "c", **fine_p)
@@ -74,7 +83,9 @@ def _gen_hex(V, F, td: Path) -> dict:
     """Hex via fine-quality HARNESS_PARAMS."""
     from core.generator.native_hex.mesher import generate_native_hex
     from core.generator._tier_native_common import HARNESS_PARAMS
-    fine_p = dict(HARNESS_PARAMS["tier_native_hex"]["fine"])
+    fine_p = _filter_to_sig(
+        generate_native_hex, HARNESS_PARAMS["tier_native_hex"]["fine"],
+    )
     t0 = time.perf_counter()
     try:
         r = generate_native_hex(V, F, td / "c", **fine_p)
@@ -92,7 +103,9 @@ def _gen_poly(V, F, td: Path) -> dict:
     """Poly via fine-quality HARNESS_PARAMS."""
     from core.generator.native_poly.voronoi import generate_native_poly_voronoi
     from core.generator._tier_native_common import HARNESS_PARAMS
-    fine_p = dict(HARNESS_PARAMS["tier_native_poly"]["fine"])
+    fine_p = _filter_to_sig(
+        generate_native_poly_voronoi, HARNESS_PARAMS["tier_native_poly"]["fine"],
+    )
     t0 = time.perf_counter()
     try:
         r = generate_native_poly_voronoi(V, F, td / "c", **fine_p)

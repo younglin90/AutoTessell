@@ -288,6 +288,10 @@ def run_native_tier(
         "hex_buffer_cells",
         # beta2332: native_tet Phase B collapse cap (fine 1000, default 200).
         "max_collapses_per_iter",
+        # C1.5 / beta2373: tier-aware QED simplification threshold.
+        "qed_min_faces",
+        # C1.7 / beta2378: Stellar split-pass auto-enable for fine.
+        "enable_stellar_split",
     }
     tsp = getattr(strategy, "tier_specific_params", None) or {}
     for k in _TIER_PARAM_KEYS:
