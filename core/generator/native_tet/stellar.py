@@ -658,20 +658,24 @@ def _slim_global_pass(
         return empty_result
 
     # --- Boundary vertex detection (faces appearing exactly once) ---
-    # Build all 4 faces per tet: combinations of columns (0,1,2,3) taken 3 at a time
-    face_indices = [(0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3)]
-    face_list: list[tuple[int, int, int]] = []
-    for fi in face_indices:
-        faces = np.sort(tets[:, fi], axis=1)  # (T, 3) sorted
-        for row in faces:
-            face_list.append((int(row[0]), int(row[1]), int(row[2])))
-
-    from collections import Counter
-    face_count = Counter(face_list)
+    # C-PERF-68 / beta2519 — vectorize via lexsort + group sizes.
+    _FACES4_IDX = np.array(
+        [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]], dtype=np.int64,
+    )
+    faces_arr = np.sort(
+        tets[:, _FACES4_IDX].reshape(-1, 3), axis=1,
+    )                                                      # (4T, 3)
+    order = np.lexsort(
+        (faces_arr[:, 2], faces_arr[:, 1], faces_arr[:, 0]),
+    )
+    f_s = faces_arr[order]
+    diff = np.r_[True, np.any(f_s[1:] != f_s[:-1], axis=1)]
+    starts = np.where(diff)[0]
+    sizes = np.diff(np.r_[starts, len(f_s)])
+    bnd_starts = starts[sizes == 1]
     boundary_set: set[int] = set()
-    for (a, b, c), cnt in face_count.items():
-        if cnt == 1:
-            boundary_set.update([a, b, c])
+    if bnd_starts.size > 0:
+        boundary_set.update(np.unique(f_s[bnd_starts].ravel()).tolist())
 
     interior_idx = sorted(set(range(N)) - boundary_set)
 
