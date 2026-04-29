@@ -39,6 +39,10 @@ class HistoryEntry:
     # tet (beta2382) / poly (beta2401) / hex (beta2407) 의 catastrophic
     # cell-drop flag. True 시 GUI history 가 사용자에게 경고 표시.
     mesh_integrity_suspect: bool = False
+    # C-GUI-5 / beta2415 — BL LCR + aniso_split 통계 (Pointwise T-Rex / cfMesh 동등).
+    bl_n_prism_cells: int = 0
+    bl_lcr_n_reduced_verts: int = 0
+    bl_aniso_split_n_would_split: int = 0
     error: str | None = None
 
 
@@ -113,6 +117,17 @@ def make_entry_from_result(
     generator_log = getattr(result, "generator_log", None)
     summary = getattr(generator_log, "execution_summary", None) if generator_log else None
 
+    # C-GUI-5 / beta2415 — BL phase2 stats lookup (selected tier 의 attempt).
+    bl_stats = None
+    if summary is not None:
+        for attempt in getattr(summary, "tiers_attempted", []) or []:
+            if (
+                getattr(attempt, "tier", "") == getattr(summary, "selected_tier", "")
+                and getattr(attempt, "status", "") == "success"
+            ):
+                bl_stats = getattr(attempt, "native_bl_phase2", None)
+                break
+
     return HistoryEntry(
         timestamp=datetime.now().isoformat(timespec="seconds"),
         input_file=str(input_file),
@@ -134,6 +149,12 @@ def make_entry_from_result(
         # ExecutionSummary 경유 (selected tier 의 native result 에서 propagate).
         mesh_integrity_suspect=bool(
             getattr(summary, "mesh_integrity_suspect", False) or False,
+        ),
+        # C-GUI-5 / beta2415 — BL stats lookup.
+        bl_n_prism_cells=int(getattr(bl_stats, "n_prism_cells", 0) or 0),
+        bl_lcr_n_reduced_verts=int(getattr(bl_stats, "lcr_n_reduced_verts", 0) or 0),
+        bl_aniso_split_n_would_split=int(
+            getattr(bl_stats, "aniso_split_n_would_split", 0) or 0,
         ),
         error=getattr(result, "error", None),
     )
