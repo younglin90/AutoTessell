@@ -69,6 +69,29 @@ def _read_hausdorff_relative(path: Path) -> float | None:
     return None
 
 
+def _read_pre_bl_si_count(path: Path) -> int | None:
+    """beta2329 — case_dir 의 native_bl_quality.json 에서 pre_bl_self_intersect."""
+    import json
+    candidates: list[Path] = []
+    if path.is_dir():
+        candidates.append(path / "native_bl_quality.json")
+        candidates.append(path / "quality_report.json")
+    else:
+        candidates.append(path.parent / "native_bl_quality.json")
+        candidates.append(path.parent / "quality_report.json")
+    for p in candidates:
+        if not p.exists():
+            continue
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        v = data.get("pre_bl_self_intersect") if isinstance(data, dict) else None
+        if isinstance(v, int):
+            return int(v)
+    return None
+
+
 class _SyncableMeshViewer(MeshViewerWidget):
     """CompareDialog용 viewer wrapper.
 
@@ -103,6 +126,8 @@ class CompareDialog(EscDismissMixin, QDialog):
         # beta2304 — Pointwise/Star-CCM+ 동등 Surface Deviation 행.
         # case_dir 의 quality_report.json / native_bl_quality.json 에서 자동 capture.
         ("hausdorff_rel", "Hausdorff (rel %)"),
+        # beta2329 — pre-BL wall surface 의 self-intersect count.
+        ("pre_bl_si", "pre-BL Self-Int"),
         ("cells", "Cells"),
     )
 
@@ -243,6 +268,11 @@ class CompareDialog(EscDismissMixin, QDialog):
             stats["hausdorff_relative"] = _read_hausdorff_relative(path)
         except Exception:
             pass
+        # beta2329 — pre-BL self-intersect count capture.
+        try:
+            stats["pre_bl_self_intersect"] = _read_pre_bl_si_count(path)
+        except Exception:
+            pass
         self._on_stats(side, stats)
         return ok
 
@@ -285,6 +315,15 @@ class CompareDialog(EscDismissMixin, QDialog):
                 return None
             try:
                 return float(v) * 100.0  # 표시 단위: % (e.g. 0.0042 → 0.42)
+            except (TypeError, ValueError):
+                return None
+        # beta2329 — pre-BL wall self-intersect count.
+        if key == "pre_bl_si":
+            v = stats.get("pre_bl_self_intersect")
+            if v is None:
+                return None
+            try:
+                return float(int(v))
             except (TypeError, ValueError):
                 return None
         values = self._hist_data(stats).get(key) or []

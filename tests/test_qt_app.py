@@ -3942,6 +3942,29 @@ def test_gui_engine_spec_native_hex_exposes_post_smooth() -> None:
     assert not missing, f"native_hex spec X3 post-smooth 누락: {missing}"
 
 
+def test_compare_dialog_includes_pre_bl_si_row() -> None:
+    """beta2329 — CompareDialog._METRICS 에 pre_bl_si 행 + JSON loader."""
+    from desktop.qt_app.compare_dialog import (
+        CompareDialog, _read_pre_bl_si_count,
+    )
+    keys = [k for k, _ in CompareDialog._METRICS]
+    assert "pre_bl_si" in keys, f"pre_bl_si 행 누락: {keys}"
+
+    import json, tempfile
+    from pathlib import Path as _P
+    with tempfile.TemporaryDirectory() as tmp:
+        case_dir = _P(tmp)
+        (case_dir / "native_bl_quality.json").write_text(
+            json.dumps({"pre_bl_self_intersect": 7}),
+            encoding="utf-8",
+        )
+        assert _read_pre_bl_si_count(case_dir) == 7
+        # None 케이스
+        case_dir2 = case_dir / "alt"
+        case_dir2.mkdir()
+        assert _read_pre_bl_si_count(case_dir2) is None
+
+
 def test_compare_dialog_includes_hausdorff_metric_row() -> None:
     """beta2304 — CompareDialog._METRICS 에 hausdorff_rel 행 노출 + JSON loader."""
     from desktop.qt_app.compare_dialog import CompareDialog, _read_hausdorff_relative
