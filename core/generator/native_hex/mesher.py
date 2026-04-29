@@ -550,6 +550,8 @@ def generate_native_hex(
                         f"native_hex octree OK — cells={n_t} "
                         f"(coarse={oct_stats['n_coarse']}, fine={oct_stats['n_fine']})"
                     ),
+                    # beta2341 — octree path 도 SI populate (uniform path 와 일관).
+                    n_self_intersect_pre=_pre_mesh_si_count,
                 )
             log.warning("native_hex_octree_empty_fallback", msg="no cells produced, falling back")
         except Exception as exc:
