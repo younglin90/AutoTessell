@@ -1161,8 +1161,22 @@ def generate_native_poly_voronoi(
         candidates: list[tuple[float, float, int, int, NativePolyResult, str]] = []
 
         # voronoi escalate.
+        # C-PERF-2 / beta2381 — wall-clock budget 적용 (hard mesh 614s 회피).
+        # AUTO_TESSELL_POLY_BUDGET_S env 로 override (default 90s).
+        import time as _t_budget
+        _budget_s = float(_os_poly.environ.get("AUTO_TESSELL_POLY_BUDGET_S", "90"))
+        _t_budget_start = _t_budget.perf_counter()
         cur_seed = int(seed_density)
         for attempt in range(int(auto_escalate_max)):
+            if _t_budget.perf_counter() - _t_budget_start > _budget_s:
+                log.warning(
+                    "native_poly_budget_exhausted",
+                    component="native_poly", phase="beta2381",
+                    elapsed_s=round(_t_budget.perf_counter() - _t_budget_start, 1),
+                    budget_s=_budget_s,
+                    attempts_done=int(attempt),
+                )
+                break
             r_attempt = _generate_native_poly_voronoi_inner(
                 vertices, faces, case_dir,
                 target_edge_length=target_edge_length,

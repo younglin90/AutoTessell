@@ -434,3 +434,13 @@ def test_native_poly_lloyd_plateau_early_exit() -> None:
     assert "plateau early-exit" in src or "Lloyd plateau" in src, \
         "plateau early-exit 주석 누락"
     assert "_rel_disp < 1e-4" in src, "displacement threshold 누락"
+
+
+def test_native_poly_wall_clock_budget_wired() -> None:
+    """C-PERF-2 / beta2381 — voronoi escalate loop 이 wall-clock budget 적용."""
+    import inspect
+    from core.generator.native_poly import voronoi
+    src = inspect.getsource(voronoi)
+    assert "AUTO_TESSELL_POLY_BUDGET_S" in src, "budget env 누락"
+    assert "native_poly_budget_exhausted" in src, "log 키 누락"
+    assert "_budget_s" in src, "budget 변수 누락"
