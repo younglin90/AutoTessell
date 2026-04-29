@@ -158,10 +158,11 @@ def test_native_hex_and_poly_results_have_si_field() -> None:
 
 
 def test_native_tet_result_exposes_n_self_intersect_pre() -> None:
-    """beta2336 — NativeTetResult 에 n_self_intersect_pre 필드 추가.
+    """beta2336 + beta2343 — NativeTetResult.n_self_intersect_pre 필드 +
+    success path + 4 fail path 모두 SI populate.
 
-    UUU2 에서 capture 한 si_pairs 개수가 final result 에 도달 → harness /
-    bench / GUI history 에서 입력 SI 신호 활용 가능."""
+    UUU2 capture 후 발생할 수 있는 5 fail return (post-UUU2) 까지 wired.
+    전체 6 분기 (success + 5 fail post-UUU2) 모두 채움."""
     import inspect
     from core.generator.native_tet.mesher import NativeTetResult, generate_native_tet
     from dataclasses import fields
@@ -169,11 +170,12 @@ def test_native_tet_result_exposes_n_self_intersect_pre() -> None:
     assert "n_self_intersect_pre" in fnames, \
         f"NativeTetResult.n_self_intersect_pre 필드 누락: {fnames}"
 
-    # mesher src 에 _pre_mesh_si_count capture + return wiring.
     src = inspect.getsource(generate_native_tet)
     assert "_pre_mesh_si_count" in src, "_pre_mesh_si_count capture 누락"
-    assert "n_self_intersect_pre=_pre_mesh_si_count" in src, \
-        "NativeTetResult 에 n_self_intersect_pre 채움 누락"
+    # success + 5 post-UUU2 fail path (max_input / Delaunay / inside tet=0 /
+    # polyMesh write / polyMesh post-P4C) 모두 wired = 최소 5 분기.
+    n = src.count("n_self_intersect_pre=_pre_mesh_si_count")
+    assert n >= 5, f"populate 분기 < 5 (현재 {n})"
 
 
 def test_evaluator_fidelity_populates_n_self_intersect_pre() -> None:

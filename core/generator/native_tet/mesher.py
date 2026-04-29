@@ -465,6 +465,7 @@ def generate_native_tet(
                 f"max_input_vertices={cap}. "
                 "표면 리메쉬(--force-remesh) 또는 max_input_vertices 상향 권장."
             ),
+            n_self_intersect_pre=_pre_mesh_si_count,
         )
 
     bmin = V.min(axis=0); bmax = V.max(axis=0)
@@ -597,6 +598,7 @@ def generate_native_tet(
     if dl_res is None:
         return NativeTetResult(
             False, time.perf_counter() - t0, message="Delaunay 실패 또는 0 tet",
+            n_self_intersect_pre=_pre_mesh_si_count,
         )
     all_pts, tets = dl_res
     _prog("delaunay_done", 0.3, n_tets=int(tets.shape[0]))
@@ -963,6 +965,7 @@ def generate_native_tet(
         return NativeTetResult(
             False, time.perf_counter() - t0,
             message="inside tet 0 — target_edge_length 조정 필요",
+            n_self_intersect_pre=_pre_mesh_si_count,
         )
 
     # 4) 사용된 vertex 만 추출 + 인덱스 압축.
@@ -1580,6 +1583,7 @@ def generate_native_tet(
             return NativeTetResult(
                 False, time.perf_counter() - t0,
                 message=f"polyMesh 쓰기 실패: {exc}",
+                n_self_intersect_pre=_pre_mesh_si_count,
             )
 
     elapsed = time.perf_counter() - t0
@@ -3659,6 +3663,7 @@ def generate_native_tet(
             return NativeTetResult(
                 False, time.perf_counter() - t0,
                 message=f"polyMesh post-P4C 쓰기 실패: {exc}",
+                n_self_intersect_pre=_pre_mesh_si_count,
             )
 
     _prog("done", 1.0, n_cells=n_cells, n_points=n_points, elapsed=elapsed)
