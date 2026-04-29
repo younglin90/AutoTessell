@@ -4092,6 +4092,23 @@ def test_history_entry_captures_hausdorff_fidelity() -> None:
     assert e2.hausdorff_relative == 0.00045
 
 
+def test_main_window_export_pdf_populates_fidelity_fields() -> None:
+    """beta2355 — main_window 의 PDF export 가 fidelity (hausdorff + SI) 채움.
+
+    이전엔 ReportData 생성 시 6 metric (cells, aspect, skew, non_ortho,
+    neg_vol, min_cell_vol) 만 — fidelity (hausdorff_*, n_self_intersect_pre)
+    None 로 PDF 생성. 이제 quality_report.geometry_fidelity 에서 capture."""
+    import inspect
+    from desktop.qt_app.main_window import AutoTessellWindow
+    src = inspect.getsource(AutoTessellWindow)
+    # PDF export 분기에 fidelity capture 코드.
+    assert "geometry_fidelity" in src, "fidelity capture 누락"
+    assert "hausdorff_distance=getattr(fidelity" in src, \
+        "hausdorff_distance ReportData 채움 누락"
+    assert "n_self_intersect_pre=getattr(fidelity" in src, \
+        "n_self_intersect_pre ReportData 채움 누락"
+
+
 def test_pdf_report_includes_hausdorff_criterion() -> None:
     """beta2302 + beta2354 — ReportData 가 Hausdorff + n_self_intersect_pre
     필드 보유 + PDF 합격 기준 행 노출."""

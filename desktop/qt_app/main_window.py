@@ -4110,6 +4110,11 @@ class AutoTessellWindow:  # type: ignore[misc]
         # 품질 메트릭 — Quality 탭에서 이미 계산된 값 사용
         quality_report = getattr(result, "quality_report", None) if result else None
         checkmesh = getattr(quality_report, "check_mesh", None) if quality_report else None
+        # beta2355 — fidelity 에서 hausdorff + n_self_intersect_pre capture (P2.6 chain).
+        fidelity = (
+            getattr(quality_report, "geometry_fidelity", None)
+            if quality_report else None
+        )
 
         data = ReportData(
             input_file=str(self._input_path) if self._input_path else "",
@@ -4128,6 +4133,10 @@ class AutoTessellWindow:  # type: ignore[misc]
             max_non_orthogonality=getattr(checkmesh, "max_non_orthogonality", None),
             negative_volumes=getattr(checkmesh, "negative_volumes", None),
             min_cell_volume=getattr(checkmesh, "min_cell_volume", None),
+            # beta2355 — Hausdorff + pre-BL SI 도 PDF 에 포함.
+            hausdorff_distance=getattr(fidelity, "hausdorff_distance", None),
+            hausdorff_relative=getattr(fidelity, "hausdorff_relative", None),
+            n_self_intersect_pre=getattr(fidelity, "n_self_intersect_pre", None),
             hist_aspect=hist_data.get("aspect_ratio", []) or [],
             hist_skew=hist_data.get("skewness", []) or [],
             hist_non_ortho=hist_data.get("non_orthogonality", []) or [],
