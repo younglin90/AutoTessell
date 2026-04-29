@@ -80,3 +80,24 @@ def test_aniso_cvt_curvature_on_flat_face_is_low() -> None:
     F = np.array([[0, 1, 2], [0, 2, 3]], dtype=np.int64)
     curv = _surface_principal_curvatures(V, F)
     assert curv.shape == (4, 2)
+
+
+def test_mesher_cvt3d_wired() -> None:
+    """C1.3 / beta2363 — mesher.py 가 lloyd_cvt_3d 호출."""
+    import inspect
+    from core.generator.native_tet import mesher
+    src = inspect.getsource(mesher)
+    assert "from core.generator.native_tet.cvt3d import lloyd_cvt_3d" in src or \
+        "lloyd_cvt_3d" in src
+    assert "AUTO_TESSELL_CVT3D_OFF" in src, "env-gate 누락"
+    assert "native_tet_cvt3d_lloyd" in src, "log 키 누락"
+
+
+def test_voronoi_aniso_cvt_diag_wired() -> None:
+    """C4 / beta2363 — voronoi.py 가 aniso_cvt_seeds 호출 (diagnostic)."""
+    import inspect
+    from core.generator.native_poly import voronoi
+    src = inspect.getsource(voronoi)
+    assert "aniso_cvt_seeds" in src, "aniso_cvt_seeds import 누락"
+    assert "native_poly_aniso_cvt_seeds_generated" in src, "log 키 누락"
+    assert "AUTO_TESSELL_ANISO_CVT_OFF" in src, "env-gate 누락"

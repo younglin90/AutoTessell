@@ -2632,6 +2632,37 @@ def generate_native_tet(
             except Exception as exc:
                 log.warning("native_tet_p3_sss_revival_skipped", reason=str(exc)[:120])
 
+        # C1.3 / beta2363 — Volumetric Lloyd CVT 3D (interior vertex relaxation).
+        # SSS_REVIVAL (surface) 와 보완적: 내부 vertex 의 1-ring tet centroid
+        # 평균. monotone guard 표준. env AUTO_TESSELL_CVT3D_OFF=1 로 비활성.
+        if os.environ.get("AUTO_TESSELL_CVT3D_OFF", "0") != "1":
+            try:
+                from core.generator.native_tet.cvt3d import lloyd_cvt_3d
+                _n_surface_cvt = int(min(V.shape[0], final_pts.shape[0]))
+                _cvt3d_iter = int(os.environ.get("AUTO_TESSELL_CVT3D_ITER", "3"))
+                _cvt3d_relax = float(os.environ.get("AUTO_TESSELL_CVT3D_RELAX", "0.5"))
+                _new_pts_cvt, _cvt_res = lloyd_cvt_3d(
+                    final_pts, final_tets,
+                    n_surface=_n_surface_cvt,
+                    n_iter=_cvt3d_iter,
+                    relax=_cvt3d_relax,
+                )
+                if _cvt_res.accepted:
+                    final_pts = _new_pts_cvt
+                log.info(
+                    "native_tet_cvt3d_lloyd",
+                    n_iter=_cvt_res.n_iter_used,
+                    n_moved=_cvt_res.n_moved,
+                    pre_min=_cvt_res.pre_min_q,
+                    post_min=_cvt_res.post_min_q,
+                    pre_mean=_cvt_res.pre_mean_q,
+                    post_mean=_cvt_res.post_mean_q,
+                    accepted=_cvt_res.accepted,
+                    elapsed_s=round(_cvt_res.elapsed_s, 3),
+                )
+            except Exception as exc:
+                log.warning("native_tet_cvt3d_skipped", reason=str(exc)[:120])
+
     except Exception as exc:
         log.debug("native_tet_post_bsp_pass_skipped", reason=str(exc))
 

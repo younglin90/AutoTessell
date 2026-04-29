@@ -1204,6 +1204,33 @@ def generate_native_poly_voronoi(
         except Exception as exc:
             log.warning("native_poly_ppp5_skipped", reason=str(exc)[:120])
 
+        # C4 / beta2363 — anisotropic curvature CVT seed 생성 (StarCCM+ 동등).
+        # 본 카드는 metric-aware seed 만 생성 + voronoi(p=2) 호출. 정확한
+        # anisotropic Voronoi cell 구축은 C4 phase 2 (multi-week).
+        # env AUTO_TESSELL_ANISO_CVT_OFF=1 로 비활성.
+        if _os_poly.environ.get("AUTO_TESSELL_ANISO_CVT_OFF", "0") != "1":
+            try:
+                from core.generator.native_poly.aniso_cvt import aniso_cvt_seeds
+                _bbox_min_a = vertices.min(axis=0)
+                _bbox_max_a = vertices.max(axis=0)
+                _aniso_seeds, _aniso_res = aniso_cvt_seeds(
+                    vertices, faces, _bbox_min_a, _bbox_max_a,
+                    n_seeds=int(seed_density) ** 2,
+                    n_iter=3,
+                    aniso_strength=0.5,
+                )
+                log.info(
+                    "native_poly_aniso_cvt_seeds_generated",
+                    n_seeds=int(_aniso_res.n_seeds),
+                    n_iter=int(_aniso_res.n_iter_used),
+                    converged=bool(_aniso_res.converged),
+                    elapsed_s=round(_aniso_res.elapsed_s, 3),
+                )
+                # NOTE: full aniso Voronoi cell 구축은 차후 카드 — seeds 생성만
+                # 측정. best-of-N 후보로는 미포함 (cell 구축 미완성).
+            except Exception as exc:
+                log.debug("native_poly_aniso_cvt_skipped", reason=str(exc)[:120])
+
         # hex fallback 후보.
         try:
             tmp_case = case_dir.parent / (case_dir.name + "_hex_cand")
