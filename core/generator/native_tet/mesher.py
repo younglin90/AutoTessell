@@ -2969,29 +2969,50 @@ def generate_native_tet(
                     n_offplane_candidates=_n_offp,
                     flatness_thresh=1e-2,
                 )
-                # VVV9D (beta2249) — dry-run off-plane Steiner (mesh unchanged, log only)
-                _VVV9D_DRYRUN: bool = False  # R187/VVV9F2: evidence collected (R185 n_offplane=0 across 20 fids), revert to skip dry-run path
-                if _VVV9D_DRYRUN:
+                # VVV9D / beta2318 — off-plane Steiner application (env-gated).
+                # 이전엔 dry-run 만 (mesh 미변경 + log only). beta2318 부터 env
+                # AUTO_TESSELL_OFFPLANE_STEINER=1 시 실 apply + 단조 가드 검증
+                # 후 결과 반영. n_offplane>0 이고 monotone (post_min ≥ pre_min -
+                # 0.005 + post_mean ≥ pre_mean - 1e-3) 통과 시만 commit.
+                if (
+                    os.environ.get("AUTO_TESSELL_OFFPLANE_STEINER", "0") == "1"
+                    and _n_offp > 0
+                ):
                     try:
                         from core.generator.native_tet.stellar import (  # noqa: PLC0415
-                            _apply_offplane_steiner_topK as _aost_dr,
+                            _apply_offplane_steiner_topK as _aost,
                         )
-                        _t_dr0 = time.perf_counter()
-                        # discard pts/tets copies (truly dry-run); retain only n_inserted_dr/wall_ms for R186 input
-                        _, _, _n_ins_dr = _aost_dr(
+                        from core.generator.native_tet.quality import snapshot as _qsnap_ofp
+                        _t_ofp0 = time.perf_counter()
+                        _pre_ofp = _qsnap_ofp(final_pts, final_tets)
+                        _pts_ofp, _tets_ofp, _n_ins = _aost(
                             final_pts, final_tets,
-                            top_k=3, eps_factor=0.05, flatness_thresh=1e-2,
+                            top_k=int(min(20, _n_offp)),
+                            eps_factor=0.05,
+                            flatness_thresh=1e-2,
                         )
-                        _wall_ms_dr = int((time.perf_counter() - _t_dr0) * 1000)
+                        _post_ofp = _qsnap_ofp(_pts_ofp, _tets_ofp)
+                        _acc_ofp = (
+                            _post_ofp.min_q >= _pre_ofp.min_q - 0.005
+                            and _post_ofp.mean_q >= _pre_ofp.mean_q - 1e-3
+                        )
+                        _wall_ms = int((time.perf_counter() - _t_ofp0) * 1000)
+                        if _acc_ofp and _n_ins > 0:
+                            final_pts, final_tets = _pts_ofp, _tets_ofp
                         log.info(
-                            "native_tet_vvv9d_dryrun",
+                            "native_tet_offplane_steiner_apply",
                             n_offplane_candidates=int(_n_offp),
-                            n_inserted_dr=int(_n_ins_dr),
-                            wall_ms=int(_wall_ms_dr),
-                            mode="dry_run",
+                            n_inserted=int(_n_ins),
+                            pre_min=float(_pre_ofp.min_q),
+                            post_min=float(_post_ofp.min_q),
+                            accepted=bool(_acc_ofp),
+                            wall_ms=_wall_ms,
                         )
                     except Exception as exc:  # noqa: BLE001
-                        log.warning("native_tet_vvv9d_skipped", reason=str(exc)[:120])
+                        log.warning(
+                            "native_tet_offplane_steiner_skipped",
+                            reason=str(exc)[:120],
+                        )
                 # VVV9F (beta2255) — dry-run exudation wire (mesh unchanged, log only)
                 _VVV9F_EXUDATION_DRYRUN: bool = True  # R191/VVV9F #5 evidence emit (mesh discard, sliver-gated)
                 if _VVV9F_EXUDATION_DRYRUN and _n_sliver_pre >= 1:

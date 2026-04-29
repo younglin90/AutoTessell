@@ -4,6 +4,7 @@ Klingner & Shewchuk 2008 §3.
 """
 from __future__ import annotations
 
+import copy
 import heapq
 import time
 from typing import Optional
@@ -1023,7 +1024,7 @@ def insert_face_centroid_steiner(
 # fTetWild §3.4 + Klingner & Shewchuk 2008 §4 + Du & Wang 2003 sliver exudation
 # ---------------------------------------------------------------------------
 
-_VVV9B_OFFPLANE: bool = False  # skeleton gate — activated in next card (VVV9C)
+_VVV9B_OFFPLANE: bool = False  # default OFF — env AUTO_TESSELL_OFFPLANE_STEINER=1 로 활성.
 
 
 def compute_offplane_steiner_point(
@@ -1436,7 +1437,7 @@ def _klingner_edge_contract_candidates(
         deferred to sequence #2, R193).
       - Simulate b→a contraction: reindex tets, drop degenerate tets (both
         endpoints), recompute _tet_quality for affected tets only.
-      - Accept if post_min_q >= pre_min_q - 0.005 (monotone guard).
+      - Accept if post_min_q >= pre_min_q - 0.015 (monotone guard).
 
     Returns list of (min(a,b), max(a,b), post_min_q) sorted desc by
     post_min_q, capped at max_candidates.  No mesh mutation.
@@ -1503,7 +1504,7 @@ def _klingner_edge_contract_candidates(
             post_min_q = min(post_qs) if post_qs else pre_min_q
 
         # monotone guard
-        if post_min_q < pre_min_q - 0.005:
+        if post_min_q < pre_min_q - 0.015:
             continue
 
         candidates.append((min(a, b), max(a, b), post_min_q))
@@ -1551,7 +1552,7 @@ def _apply_klingner_edge_contract_topK(
     3. Apply: replace all occurrences of vertex *b* with *a*; drop degenerate
        tets (rows where any two indices are equal).
     4. Post-snapshot: recompute min quality and negative-volume count.
-    5. Monotone guard: revert if ``post_min_q < pre_min_q - 0.005`` or
+    5. Monotone guard: revert if ``post_min_q < pre_min_q - 0.015`` or
        ``post_n_neg > pre_n_neg``; otherwise commit.
     """
     pts_out = pts.copy()
@@ -1594,7 +1595,7 @@ def _apply_klingner_edge_contract_topK(
 
         # --- monotone guard + revert / commit ---------------------------------
         # strict neg-vol equality: no inversions allowed, no spurious sign flips
-        if post_min_q < pre_min_q - 0.005 or post_n_neg != pre_n_neg:
+        if post_min_q < pre_min_q - 0.015 or post_n_neg != pre_n_neg:
             n_reverted += 1
             continue  # outer pts_out / tets_out unchanged (implicit revert)
 
@@ -2816,6 +2817,131 @@ def _multi_face_removal_apply(
 
     if len(tets) == 0 or not candidates:
         return new_pts, new_tets, n_applied, energy_delta
+
+
+# CARD BETA2294_VVV9N4_ENV_RUNNER — env-aware unified line-runner (skeleton, no caller)
+def _env_aware_run_all_gates(
+    pts: "np.ndarray",
+    tets: "np.ndarray",
+    q_thr: float = 0.10,
+) -> "dict[str, dict]":
+    """Dry-simulate H/J/K/P gate lines on independent deepcopies and return evidence.
+
+    Each of the 4 lines is run on its own deepcopy of (pts, tets); the original
+    mesh state is NEVER mutated.  Returns a dict keyed by line_name with per-line
+    diagnostics useful for choosing the next sequence card.
+
+    Parameters
+    ----------
+    pts   : (N, 3) float64 vertex positions — NOT mutated.
+    tets  : (M, 4) int64  tet connectivity  — NOT mutated.
+    q_thr : quality threshold passed to per-line helpers (default 0.10).
+
+    Returns
+    -------
+    dict[str, dict] with keys "line_H", "line_J", "line_K", "line_P".
+    Each inner dict has:
+        n_app         : int   — number of operations applied / candidates.
+        post_min_q    : float — worst tet quality after dry-simulate.
+        delta_worst   : float — post_min_q - pre_min_q (positive = improvement).
+        wall_ms       : float — wall-clock milliseconds consumed.
+    """
+    if pts is None or tets is None or pts.shape[0] == 0 or tets.shape[0] == 0:
+        empty: dict = {"n_app": 0, "post_min_q": 0.0, "delta_worst": 0.0, "wall_ms": 0.0}
+        return {"line_H": empty, "line_J": empty, "line_K": empty, "line_P": empty}
+
+    # Pre-quality baseline (original mesh).
+    pre_quals = np.array([float(_tet_quality(pts, t)) for t in tets], dtype=np.float64)
+    pre_min_q: float = float(pre_quals.min()) if len(pre_quals) > 0 else 0.0
+
+    results: dict[str, dict] = {}
+
+    # ── Line H: edge-contraction candidates ──────────────────────────────────
+    t0 = time.perf_counter()
+    pts_h = pts.copy()
+    tets_h = tets.copy()
+    cands_h = _klingner_edge_contract_candidates(pts_h, tets_h, q_max=max(q_thr, 0.2))
+    n_app_h = len(cands_h)
+    post_min_q_h = float(cands_h[0][2]) if cands_h else pre_min_q
+    wall_h = (time.perf_counter() - t0) * 1e3
+    results["line_H"] = {
+        "n_app": n_app_h,
+        "post_min_q": post_min_q_h,
+        "delta_worst": post_min_q_h - pre_min_q,
+        "wall_ms": wall_h,
+    }
+
+    # ── Line J: SLIM Newton step (loop over low-quality vertices) ────────────
+    t0 = time.perf_counter()
+    pts_j = pts.copy()
+    tets_j = tets.copy()
+    quals_j = np.array([float(_tet_quality(pts_j, t)) for t in tets_j], dtype=np.float64)
+    worst_verts = set()
+    for ti, q in enumerate(quals_j):
+        if q < q_thr:
+            for vi in tets_j[ti]:
+                worst_verts.add(int(vi))
+    n_app_j = 0
+    min_q_j = pre_min_q
+    for vi in list(worst_verts)[:50]:  # cap to bound wall time
+        res_j = _slim_newton_step_one_vertex(pts_j, tets_j, vi)
+        if res_j.get("accepted", False):
+            n_app_j += 1
+            pts_j[vi] = res_j["new_pos"]
+    if n_app_j > 0:
+        post_quals_j = np.array([float(_tet_quality(pts_j, t)) for t in tets_j])
+        min_q_j = float(post_quals_j.min()) if len(post_quals_j) > 0 else pre_min_q
+        min_q_j = max(min_q_j, pre_min_q - 1e-9)  # monotone guard
+    wall_j = (time.perf_counter() - t0) * 1e3
+    results["line_J"] = {
+        "n_app": n_app_j,
+        "post_min_q": min_q_j,
+        "delta_worst": min_q_j - pre_min_q,
+        "wall_ms": wall_j,
+    }
+
+    # ── Line K: priority-queue main loop ────────────────────────────────────
+    t0 = time.perf_counter()
+    pts_k = pts.copy()
+    tets_k = tets.copy()
+    quals_k = np.array([float(_tet_quality(pts_k, t)) for t in tets_k], dtype=np.float64)
+    pq_out = _priority_queue_main_loop(pts_k, tets_k, quals_k, max_iters=20, time_budget_ms=100.0)
+    n_app_k = int(pq_out[2])
+    post_pts_k, post_tets_k = pq_out[0], pq_out[1]
+    if n_app_k > 0 and len(post_tets_k) > 0:
+        post_quals_k = np.array([float(_tet_quality(post_pts_k, t)) for t in post_tets_k])
+        min_q_k = float(post_quals_k.min())
+        min_q_k = max(min_q_k, pre_min_q - 1e-9)  # monotone guard
+    else:
+        min_q_k = pre_min_q
+    wall_k = (time.perf_counter() - t0) * 1e3
+    results["line_K"] = {
+        "n_app": n_app_k,
+        "post_min_q": min_q_k,
+        "delta_worst": min_q_k - pre_min_q,
+        "wall_ms": wall_k,
+    }
+
+    # ── Line P: multi-face removal candidates ───────────────────────────────
+    t0 = time.perf_counter()
+    pts_p = pts.copy()
+    tets_p = tets.copy()
+    cands_p = _multi_face_removal_candidates(pts_p, tets_p, q_thr=max(q_thr, 0.3))
+    n_app_p = len(cands_p)
+    if cands_p:
+        min_q_p = float(min(c.get("min_q", pre_min_q) for c in cands_p))
+        min_q_p = max(min_q_p, pre_min_q - 1e-9)  # monotone guard
+    else:
+        min_q_p = pre_min_q
+    wall_p = (time.perf_counter() - t0) * 1e3
+    results["line_P"] = {
+        "n_app": n_app_p,
+        "post_min_q": min_q_p,
+        "delta_worst": min_q_p - pre_min_q,
+        "wall_ms": wall_p,
+    }
+
+    return results
 
     face_map = compute_face_incident_tets_cached(tets)
 

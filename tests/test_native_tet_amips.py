@@ -58,6 +58,26 @@ def test_amips_relocation_decreases_energy_on_sliver() -> None:
     assert r.energy_after <= r.energy_before + 1e-6
 
 
+def test_offplane_steiner_apply_default_off_but_present() -> None:
+    """beta2318 — off-plane Steiner exudation 이 mesher 에 wired (env-gated).
+
+    이전 (beta2249) 엔 dry-run only (mesh 미변경). beta2318 은 env
+    AUTO_TESSELL_OFFPLANE_STEINER=1 시 실 apply + 단조 가드 (post_min ≥
+    pre_min - 0.005 + post_mean ≥ pre_mean - 1e-3) 통과 시 commit."""
+    import inspect
+    from core.generator.native_tet import mesher
+    src = inspect.getsource(mesher)
+    # 환경변수 게이트.
+    assert 'AUTO_TESSELL_OFFPLANE_STEINER' in src, \
+        "off-plane Steiner env-gate 누락"
+    # 실 apply (dry-run 아님).
+    assert "native_tet_offplane_steiner_apply" in src, \
+        "off-plane Steiner apply 로그 누락"
+    # 단조 가드.
+    assert "_pre_ofp.min_q - 0.005" in src, \
+        "off-plane monotone guard 누락"
+
+
 def test_use_torch_amips_in_harness_params_fine() -> None:
     """beta2310 — HARNESS_PARAMS["tier_native_tet"]["fine"] 가 use_torch_amips=True.
 
