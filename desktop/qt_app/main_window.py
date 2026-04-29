@@ -2315,6 +2315,21 @@ class AutoTessellWindow:  # type: ignore[misc]
             "기본은 cpu_count() ≥ 2 시 자동 (beta2375).\n"
             "AUTO_TESSELL_PARALLEL_DELAUNAY=1 동등."
         )
+        # C-GUI-14 / beta2449 — BL floor ratio (curvature_adaptive 강도).
+        from PySide6.QtWidgets import QDoubleSpinBox, QLabel, QHBoxLayout, QWidget
+        self._bl_floor_ratio_spin = QDoubleSpinBox()
+        self._bl_floor_ratio_spin.setRange(0.0, 1.0)
+        self._bl_floor_ratio_spin.setSingleStep(0.05)
+        self._bl_floor_ratio_spin.setDecimals(2)
+        self._bl_floor_ratio_spin.setValue(1.0)
+        self._bl_floor_ratio_spin.setToolTip(
+            "BL curvature_adaptive_thickness floor ratio.\n"
+            "1.0 = uniform thickness (안정성 ↑, hard mesh 권장).\n"
+            "0.7 = cfMesh maxFirstLayerThickness parity.\n"
+            "0.5 = balanced.\n"
+            "0.3 = aggressive curvature adaptation (sharp feature 자동 thinning).\n"
+            "AUTO_TESSELL_BL_FLOOR_RATIO 환경변수 동등."
+        )
         # 기본값: native L1 은 기본 On (beta26 철학), native tier 는 opt-in
         self._no_repair_check.setChecked(False)
         self._surface_remesh_check.setChecked(False)
@@ -2342,6 +2357,19 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._parallel_delaunay_check,
         ):
             v.addWidget(chk)
+        # C-GUI-14 / beta2449 — BL floor ratio spin row.
+        try:
+            from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
+            _bl_row = QWidget()
+            _bl_row.setStyleSheet("background: transparent;")
+            _bl_layout = QHBoxLayout(_bl_row)
+            _bl_layout.setContentsMargins(0, 0, 0, 0); _bl_layout.setSpacing(8)
+            _bl_layout.addWidget(QLabel("BL floor ratio:"))
+            _bl_layout.addWidget(self._bl_floor_ratio_spin)
+            _bl_layout.addStretch(1)
+            v.addWidget(_bl_row)
+        except Exception:
+            pass
             try:
                 chk.toggled.connect(lambda _v: self._refresh_tier_strip_engine_labels())
             except Exception:
@@ -3015,6 +3043,11 @@ class AutoTessellWindow:  # type: ignore[misc]
                 if (getattr(self, "_parallel_delaunay_check", None)
                         and self._parallel_delaunay_check.isChecked()):
                     _os_v9.environ["AUTO_TESSELL_PARALLEL_DELAUNAY"] = "1"
+                # C-GUI-14 / beta2449 — BL floor ratio spin → env.
+                if (getattr(self, "_bl_floor_ratio_spin", None) is not None):
+                    _val = float(self._bl_floor_ratio_spin.value())
+                    if abs(_val - 1.0) > 1e-6:  # default 1.0 → no env.
+                        _os_v9.environ["AUTO_TESSELL_BL_FLOOR_RATIO"] = str(_val)
             except Exception:
                 pass
             worker = PipelineWorker(
