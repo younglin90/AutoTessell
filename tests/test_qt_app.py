@@ -3467,9 +3467,14 @@ def test_compare_dialog_loads_two_cases(tmp_path) -> None:
 
     assert loaded_a is True
     assert loaded_b is True
-    assert dlg.table.rowCount() == 4
-    assert dlg.table.item(3, 1).text() != "-"
-    assert dlg.table.item(3, 2).text() != "-"
+    # beta2304 + beta2329: _METRICS 6 = 4 base + hausdorff + pre_bl_si.
+    assert dlg.table.rowCount() == len(dlg._METRICS)
+    # "cells" row 의 A / B 컬럼은 placeholder cells_count 가 채워져 "-" 아님.
+    cells_row = next(
+        i for i, (k, _) in enumerate(dlg._METRICS) if k == "cells"
+    )
+    assert dlg.table.item(cells_row, 1).text() != "-"
+    assert dlg.table.item(cells_row, 2).text() != "-"
 
 
 def test_compare_dialog_camera_sync() -> None:
@@ -3515,7 +3520,12 @@ def test_compare_dialog_histogram_overlay() -> None:
     if dlg.histogram._fig is not None:
         axes = dlg.histogram._fig.get_axes()
         assert len(axes) == 3
-    assert dlg.table.item(3, 3).text().startswith("+")
+    # beta2304 + beta2329: cells row index 가 _METRICS 확장으로 이동했으므로
+    # 정확히 lookup. B-A = 12-10 = +2 → "+" prefix.
+    cells_row = next(
+        i for i, (k, _) in enumerate(dlg._METRICS) if k == "cells"
+    )
+    assert dlg.table.item(cells_row, 3).text().startswith("+")
 
 
 def test_main_window_compare_menu_action_wired() -> None:
