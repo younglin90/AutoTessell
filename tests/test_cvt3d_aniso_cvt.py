@@ -477,3 +477,12 @@ def test_harness_params_fine_recovery_iterations_3() -> None:
     from core.generator import _tier_native_common
     src = inspect.getsource(_tier_native_common)
     assert '"recovery_iterations"' in src, "_TIER_PARAM_KEYS whitelist 추가 누락"
+
+
+def test_native_hex_wall_clock_log_wired() -> None:
+    """C-PERF-3 / beta2388 — native_hex 가 wall-clock 측정 로그 emit."""
+    import inspect
+    from core.generator.native_hex import mesher
+    src = inspect.getsource(mesher)
+    assert "native_hex_wall_clock_high" in src, "log 키 누락"
+    assert "AUTO_TESSELL_HEX_BUDGET_LOG_S" in src, "env 누락"

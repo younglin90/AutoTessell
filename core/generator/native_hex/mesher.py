@@ -392,6 +392,16 @@ def generate_native_hex(
     # 환경변수 임시 설정하는 단발 wiring.
     hex_buffer_cells: int = 1,
 ) -> NativeHexResult:
+    # C-PERF-3 / beta2388 — wall-clock soft budget 진단.
+    # validator 발견: hard mesh #1 (V=3116) 의 fine hex 가 627s.
+    # AUTO_TESSELL_HEX_BUDGET_S env 로 budget 설정 → 초과 시 warn 로그
+    # (실제 cancel 은 아직 없음 — 후속 카드에서 graceful early-exit 추가).
+    # 현재는 측정만 — bench 결과 분석에 활용.
+    import os as _os_hex_budget
+    _hex_budget_log_threshold = float(
+        _os_hex_budget.environ.get("AUTO_TESSELL_HEX_BUDGET_LOG_S", "120"),
+    )
+    _hex_t_start = __import__("time").perf_counter()
     """uniform hex grid 생성 + inside filter.
 
     Args:
@@ -938,6 +948,18 @@ def generate_native_hex(
         fill_ratio=round(_fill, 4),
         elapsed=round(time.perf_counter() - t0, 3),
     )
+
+    # C-PERF-3 / beta2388 — wall-clock budget 진단.
+    _hex_elapsed = __import__("time").perf_counter() - _hex_t_start
+    if _hex_elapsed > _hex_budget_log_threshold:
+        log.warning(
+            "native_hex_wall_clock_high",
+            component="native_hex", phase="beta2388",
+            elapsed_s=round(_hex_elapsed, 1),
+            threshold_s=_hex_budget_log_threshold,
+            n_cells=_n_kept,
+            grade=grade,
+        )
 
     return NativeHexResult(
         success=True,
