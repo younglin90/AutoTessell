@@ -54,26 +54,22 @@ def _aabb_overlap_pairs(
 ) -> list[tuple[int, int]]:
     """모든 (i<j) 페어 중 AABB 가 겹치는 것을 반환.
 
-    O(M^2) — 작은 mesh 전용. 대형 mesh 에선 KDTree 기반 spatial hash 필요
-    (다음 카드).
+    C-PERF-23 / beta2474 — broadcast 기반 (T,T) overlap matrix 로 벡터화.
     """
     n = aabb_min.shape[0]
-    out: list[tuple[int, int]] = []
-    for i in range(n):
-        a_min = aabb_min[i]
-        a_max = aabb_max[i]
-        for j in range(i + 1, n):
-            if (
-                a_max[0] < aabb_min[j, 0] - eps
-                or aabb_max[j, 0] < a_min[0] - eps
-                or a_max[1] < aabb_min[j, 1] - eps
-                or aabb_max[j, 1] < a_min[1] - eps
-                or a_max[2] < aabb_min[j, 2] - eps
-                or aabb_max[j, 2] < a_min[2] - eps
-            ):
-                continue
-            out.append((i, j))
-    return out
+    if n == 0:
+        return []
+    # (i,j) overlap: a_max[i] >= b_min[j] - eps AND b_max[j] >= a_min[i] - eps,
+    # for all 3 axes.
+    ov = np.all(
+        (aabb_max[:, None, :] >= aabb_min[None, :, :] - eps)
+        & (aabb_max[None, :, :] >= aabb_min[:, None, :] - eps),
+        axis=2,
+    )
+    # i < j 만.
+    ov_upper = np.triu(ov, k=1)
+    ii, jj = np.where(ov_upper)
+    return list(zip(ii.tolist(), jj.tolist()))
 
 
 def _shares_vertex(F: np.ndarray, i: int, j: int) -> bool:
