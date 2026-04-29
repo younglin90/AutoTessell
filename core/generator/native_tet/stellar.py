@@ -420,21 +420,19 @@ def insert_steiner_flip14(
         N = len(pts_list)
         pts_list.append(centroid)
 
-        sub_tets = [
-            np.array([a, b, c, N], dtype=tets.dtype),
-            np.array([a, b, N, d], dtype=tets.dtype),
-            np.array([a, N, c, d], dtype=tets.dtype),
-            np.array([N, b, c, d], dtype=tets.dtype),
-        ]
+        sub_tets_arr = np.array([
+            [a, b, c, N], [a, b, N, d], [a, N, c, d], [N, b, c, d],
+        ], dtype=tets.dtype)
 
         pts_arr_tmp = np.array(pts_list)
-        q_news = [_tet_quality(pts_arr_tmp, st) for st in sub_tets]
-        q_new_min = min(q_news)
+        # C-PERF-85 / beta2537 — batched quality (4 sub-tets in one call).
+        q_news_arr = _tet_quality_batch(pts_arr_tmp, sub_tets_arr)
+        q_new_min = float(q_news_arr.min())
 
         if q_new_min >= q_old + min_quality_improvement:
             # Accept: replace old tet with 4 sub-tets.
-            tets_list[ti] = sub_tets[0]
-            tets_list.extend(sub_tets[1:])
+            tets_list[ti] = sub_tets_arr[0]
+            tets_list.extend([sub_tets_arr[k] for k in (1, 2, 3)])
             invalidated.add(ti)
             n_inserted += 1
         else:
