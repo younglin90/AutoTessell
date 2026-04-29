@@ -1052,6 +1052,11 @@ def _curvature_adaptive_thickness(
         med = float(np.median(curvatures))
         sharp_mask = curvatures > (2.0 * med)
         thickness[sharp_mask] *= 0.5
+    # C-BL-20 / beta2455 — re-enforce absolute floor after sharp halving so
+    # AUTO_TESSELL_BL_FLOOR_RATIO is a truly absolute lower bound on thickness.
+    # Sharp halving could drop below floor (e.g. floor=0.5*base → 0.25*base);
+    # clamp ensures env contract holds.
+    thickness = np.maximum(thickness, _absolute_floor)
 
     return thickness
 

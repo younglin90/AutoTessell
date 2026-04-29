@@ -706,6 +706,15 @@ def test_curvature_adaptive_thickness_floor_env_gated() -> None:
         "default 1.0 누락"
 
 
+def test_curvature_adaptive_thickness_sharp_respects_floor() -> None:
+    """C-BL-20 / beta2455 — sharp halving 후 absolute floor 재적용."""
+    import inspect
+    from core.layers import native_bl
+    src = inspect.getsource(native_bl)
+    assert "thickness = np.maximum(thickness, _absolute_floor)" in src, \
+        "sharp halving 후 floor 재적용 누락"
+
+
 def test_validator_filter_to_sig_drops_invalid_kwargs() -> None:
     """C-VAL-9 / beta2453 — _filter_to_sig 가 invalid kwargs drop."""
     from tests.stl.validate_30_hard_meshes import _filter_to_sig
