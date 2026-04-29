@@ -2340,6 +2340,17 @@ class AutoTessellWindow:  # type: ignore[misc]
             "기본 64. 늘리면 BC 별 세분화 가능 (boundary 파일 증가).\n"
             "AUTO_TESSELL_PATCH_CAP 환경변수 동등."
         )
+        # C-GUI-16 / beta2461 — hex feature snap budget (s).
+        self._hex_snap_budget_spin = QDoubleSpinBox()
+        self._hex_snap_budget_spin.setRange(0.0, 600.0)
+        self._hex_snap_budget_spin.setSingleStep(5.0)
+        self._hex_snap_budget_spin.setDecimals(1)
+        self._hex_snap_budget_spin.setValue(0.0)  # 0 = off
+        self._hex_snap_budget_spin.setToolTip(
+            "Hex feature snap pass 의 wall-clock budget (초).\n"
+            "0 = off (기본). 설정 시 강제 cap (hard hex 메쉬에서 hang 방지).\n"
+            "AUTO_TESSELL_HEX_WWW7_BUDGET_S 환경변수 동등."
+        )
         # 기본값: native L1 은 기본 On (beta26 철학), native tier 는 opt-in
         self._no_repair_check.setChecked(False)
         self._surface_remesh_check.setChecked(False)
@@ -2391,6 +2402,19 @@ class AutoTessellWindow:  # type: ignore[misc]
             _pc_layout.addWidget(self._patch_cap_spin)
             _pc_layout.addStretch(1)
             v.addWidget(_pc_row)
+        except Exception:
+            pass
+        # C-GUI-16 / beta2461 — hex snap budget spin row.
+        try:
+            from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
+            _hs_row = QWidget()
+            _hs_row.setStyleSheet("background: transparent;")
+            _hs_layout = QHBoxLayout(_hs_row)
+            _hs_layout.setContentsMargins(0, 0, 0, 0); _hs_layout.setSpacing(8)
+            _hs_layout.addWidget(QLabel("Hex snap budget (s):"))
+            _hs_layout.addWidget(self._hex_snap_budget_spin)
+            _hs_layout.addStretch(1)
+            v.addWidget(_hs_row)
         except Exception:
             pass
             try:
@@ -3076,6 +3100,11 @@ class AutoTessellWindow:  # type: ignore[misc]
                     _pc_val = int(self._patch_cap_spin.value())
                     if _pc_val != 64:  # default 64 → no env.
                         _os_v9.environ["AUTO_TESSELL_PATCH_CAP"] = str(_pc_val)
+                # C-GUI-16 / beta2461 — hex snap budget spin → env.
+                if (getattr(self, "_hex_snap_budget_spin", None) is not None):
+                    _hs_val = float(self._hex_snap_budget_spin.value())
+                    if _hs_val > 0.0:  # 0 = off (default) → no env.
+                        _os_v9.environ["AUTO_TESSELL_HEX_WWW7_BUDGET_S"] = str(_hs_val)
             except Exception:
                 pass
             worker = PipelineWorker(
