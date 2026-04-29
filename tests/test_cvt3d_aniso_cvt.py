@@ -392,3 +392,23 @@ def test_native_bl_aniso_split_diagnostic_wired() -> None:
     assert "from core.layers.native_bl_split import split_thick_prisms" in src, \
         "split_thick_prisms import 누락"
     assert "native_bl_aniso_split_diagnostic" in src, "log 키 누락"
+
+
+def test_native_bl_result_aniso_split_schema() -> None:
+    """C3.3 / beta2377 — NativeBLResult 가 aniso_split 필드를 가진다."""
+    from core.layers.native_bl import NativeBLResult
+    r = NativeBLResult(success=True, elapsed=0.0)
+    assert hasattr(r, "aniso_split_n_examined")
+    assert hasattr(r, "aniso_split_n_would_split")
+    assert hasattr(r, "aniso_split_max_aspect_in")
+    assert r.aniso_split_n_examined == 0
+    assert r.aniso_split_max_aspect_in == 0.0
+
+
+def test_native_bl_quality_json_aniso_split_block() -> None:
+    """C3.3 / beta2377 — quality_summary 에 aniso_split 블록 포함."""
+    import inspect
+    from core.layers import native_bl
+    src = inspect.getsource(native_bl)
+    assert '"aniso_split":' in src or "'aniso_split':" in src, "aniso_split 블록 누락"
+    assert "n_would_split" in src, "n_would_split 키 누락"

@@ -334,6 +334,14 @@ class NativeBLResult:
     lcr_max_reduction: int = 0
     lcr_min_layers_used: int = 0
     lcr_n_safe_full_layers: int = 0
+    # C3.3 / beta2377 — anisotropic prism splitting (cfMesh splitInternalLayers 동등) 통계.
+    # aniso_split_n_examined: split_thick_prisms 가 검사한 prism 수.
+    # aniso_split_n_would_split: aspect threshold 초과로 split 가능한 prism 수.
+    # aniso_split_max_aspect_in: 최대 wall-normal aspect ratio (입력 mesh 기준).
+    # 현재는 diagnostic-only (env-gated). 실 mesh split 은 후속 카드.
+    aniso_split_n_examined: int = 0
+    aniso_split_n_would_split: int = 0
+    aniso_split_max_aspect_in: float = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -2450,6 +2458,9 @@ def generate_native_bl(
     # C3.2 / beta2376 — anisotropic prism split diagnostic (cfMesh
     # splitInternalLayers 동등). env-gated: AUTO_TESSELL_BL_ANISO_SPLIT_DIAG=1.
     # mesh 변경 없이 split 가능한 prism 수만 측정 (실 split 은 후속 카드).
+    aniso_split_n_examined = 0
+    aniso_split_n_would = 0
+    aniso_split_max_asp_in = 0.0
     if (
         os.environ.get("AUTO_TESSELL_BL_ANISO_SPLIT_DIAG", "0") == "1"
         and n_prism_total > 0
@@ -2479,12 +2490,15 @@ def generate_native_bl(
                 _, _, _spr = split_thick_prisms(
                     final_points, _arr, threshold=4.0,
                 )
+                aniso_split_n_examined = int(_spr.n_input_prisms)
+                aniso_split_n_would = int(_spr.n_split_prisms)
+                aniso_split_max_asp_in = float(_spr.max_aspect_in)
                 log.info(
                     "native_bl_aniso_split_diagnostic",
                     component="native_bl", phase="beta2376",
-                    n_prisms_examined=int(_spr.n_input_prisms),
-                    n_would_split=int(_spr.n_split_prisms),
-                    max_aspect_in=float(_spr.max_aspect_in),
+                    n_prisms_examined=aniso_split_n_examined,
+                    n_would_split=aniso_split_n_would,
+                    max_aspect_in=aniso_split_max_asp_in,
                     threshold=4.0,
                 )
         except Exception as _split_exc:
@@ -2563,6 +2577,12 @@ def generate_native_bl(
                 "min_layers_used": int(lcr_min_layers_used),
                 "n_safe_full_layers": int(lcr_n_safe_full),
             },
+            # C3.3 / beta2377 — anisotropic prism split diagnostic (cfMesh 동등).
+            "aniso_split": {
+                "n_examined": int(aniso_split_n_examined),
+                "n_would_split": int(aniso_split_n_would),
+                "max_aspect_in": float(aniso_split_max_asp_in),
+            },
             # beta2328 — pre-BL wall surface SI count (P2.6 series).
             # None = 측정 안 됨 (>5000 face), 0 = clean, >0 = 입력에 SI 존재.
             "pre_bl_self_intersect": _pre_bl_si_count,
@@ -2603,6 +2623,9 @@ def generate_native_bl(
         lcr_max_reduction=int(lcr_max_reduction),
         lcr_min_layers_used=int(lcr_min_layers_used),
         lcr_n_safe_full_layers=int(lcr_n_safe_full),
+        aniso_split_n_examined=int(aniso_split_n_examined),
+        aniso_split_n_would_split=int(aniso_split_n_would),
+        aniso_split_max_aspect_in=float(aniso_split_max_asp_in),
         message=(
             f"native_bl Phase 2 OK — {n_prism_total} prism cells inserted "
             f"({cfg.num_layers} layers × {n_wall_faces} wall triangles). "
