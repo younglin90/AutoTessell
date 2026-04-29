@@ -4156,6 +4156,35 @@ def test_gui_max_cells_widget_wired() -> None:
     assert "max_cells=max_cells" in src or "max_cells = " in src
 
 
+def test_gui_vvv9jkp_checkboxes_wired() -> None:
+    """beta2351 — VVV9J/K/P GUI 체크박스 (CLI parity 완성)."""
+    import os
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    import sys
+    from PySide6.QtWidgets import QApplication, QCheckBox
+    app = QApplication.instance() or QApplication(sys.argv)
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    win._build()
+    for attr in (
+        "_enable_vvv9j_apply_check",
+        "_enable_vvv9k_apply_check",
+        "_enable_vvv9p_apply_check",
+    ):
+        c = getattr(win, attr, None)
+        assert isinstance(c, QCheckBox), f"{attr} 미생성"
+
+    import inspect
+    src = inspect.getsource(AutoTessellWindow._on_run_clicked)
+    for env in (
+        "AUTO_TESSELL_VVV9J_APPLY",
+        "AUTO_TESSELL_VVV9K_APPLY",
+        "AUTO_TESSELL_VVV9P_APPLY",
+    ):
+        assert env in src, f"{env} env wiring 누락"
+
+
 def test_gui_vvv9h_and_offplane_checkboxes_wired() -> None:
     """beta2345 — VVV9H Klingner / off-plane Steiner real-apply GUI 체크박스.
 

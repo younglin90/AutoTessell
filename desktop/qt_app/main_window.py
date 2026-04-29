@@ -2271,6 +2271,25 @@ class AutoTessellWindow:  # type: ignore[misc]
             "체크 시 Klingner-Shewchuk 2008 §4.1 off-plane Steiner 가 실 apply.\n"
             "AUTO_TESSELL_OFFPLANE_STEINER=1 동등. flat sliver tet 격감용."
         )
+        # beta2351 — CLI VVV9J/K/P 동등 GUI 체크박스 (V-series 5 완전).
+        self._enable_vvv9j_apply_check = QCheckBox(
+            "VVV9J SLIM global-pass (실험적)"
+        )
+        self._enable_vvv9j_apply_check.setToolTip(
+            "AUTO_TESSELL_VVV9J_APPLY=1 — SLIM smoothing 강화 (sliver-gated)."
+        )
+        self._enable_vvv9k_apply_check = QCheckBox(
+            "VVV9K priority-queue main-loop (실험적)"
+        )
+        self._enable_vvv9k_apply_check.setToolTip(
+            "AUTO_TESSELL_VVV9K_APPLY=1 — worst-first priority queue + monotone guard."
+        )
+        self._enable_vvv9p_apply_check = QCheckBox(
+            "VVV9P multi-face removal (실험적)"
+        )
+        self._enable_vvv9p_apply_check.setToolTip(
+            "AUTO_TESSELL_VVV9P_APPLY=1 — multi-face removal + monotone guard."
+        )
         # 기본값: native L1 은 기본 On (beta26 철학), native tier 는 opt-in
         self._no_repair_check.setChecked(False)
         self._surface_remesh_check.setChecked(False)
@@ -2280,11 +2299,16 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._cross_engine_fallback_check.setChecked(False)
         self._enable_vvv9h_apply_check.setChecked(False)
         self._enable_offplane_steiner_check.setChecked(False)
+        self._enable_vvv9j_apply_check.setChecked(False)
+        self._enable_vvv9k_apply_check.setChecked(False)
+        self._enable_vvv9p_apply_check.setChecked(False)
         for chk in (
             self._no_repair_check, self._surface_remesh_check,
             self._allow_ai_fallback_check, self._prefer_native_check,
             self._prefer_native_tier_check, self._cross_engine_fallback_check,
             self._enable_vvv9h_apply_check, self._enable_offplane_steiner_check,
+            self._enable_vvv9j_apply_check, self._enable_vvv9k_apply_check,
+            self._enable_vvv9p_apply_check,
         ):
             v.addWidget(chk)
             try:
@@ -2928,6 +2952,28 @@ class AutoTessellWindow:  # type: ignore[misc]
                     _os_v9.environ["AUTO_TESSELL_VVV9H_APPLY"] = "1"
                 if _offplane_on:
                     _os_v9.environ["AUTO_TESSELL_OFFPLANE_STEINER"] = "1"
+                # beta2351 — VVV9J/K/P GUI 체크박스 → env vars.
+                _vvv9j_on = bool(
+                    self._enable_vvv9j_apply_check.isChecked()
+                    if getattr(self, "_enable_vvv9j_apply_check", None)
+                    else False
+                )
+                _vvv9k_on = bool(
+                    self._enable_vvv9k_apply_check.isChecked()
+                    if getattr(self, "_enable_vvv9k_apply_check", None)
+                    else False
+                )
+                _vvv9p_on = bool(
+                    self._enable_vvv9p_apply_check.isChecked()
+                    if getattr(self, "_enable_vvv9p_apply_check", None)
+                    else False
+                )
+                if _vvv9j_on:
+                    _os_v9.environ["AUTO_TESSELL_VVV9J_APPLY"] = "1"
+                if _vvv9k_on:
+                    _os_v9.environ["AUTO_TESSELL_VVV9K_APPLY"] = "1"
+                if _vvv9p_on:
+                    _os_v9.environ["AUTO_TESSELL_VVV9P_APPLY"] = "1"
             except Exception:
                 pass
             worker = PipelineWorker(
