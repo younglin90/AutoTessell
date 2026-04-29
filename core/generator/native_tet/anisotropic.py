@@ -92,25 +92,34 @@ def curvature_aligned_metric(
     else:
         unit = np.zeros_like(V)
 
-    M = np.zeros((n, 3, 3), dtype=np.float64)
     h_n = base_edge
     h_t = base_edge * aniso_ratio
 
-    for i in range(n):
-        nv = unit[i]
-        if np.linalg.norm(nv) < 0.5:
-            # isotropic.
-            M[i] = np.eye(3) * (1.0 / h_n**2)
-            continue
-        # 접면에 수직인 기본 basis 구성 (Gram-Schmidt).
-        helper = np.array([1.0, 0.0, 0.0]) if abs(nv[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
-        t1 = helper - np.dot(helper, nv) * nv
-        t1 /= np.linalg.norm(t1) + 1e-30
-        t2 = np.cross(nv, t1)
+    # C-PERF-79 / beta2530 — 완전 벡터화: per-vertex Gram-Schmidt + basis build.
+    M = np.zeros((n, 3, 3), dtype=np.float64)
+    iso = 1.0 / h_n**2
+    # default isotropic (overwritten for safe verts below).
+    M[:, 0, 0] = iso; M[:, 1, 1] = iso; M[:, 2, 2] = iso
 
-        basis = np.stack([nv, t1, t2], axis=1)   # 3x3
-        eig = np.diag([1.0 / h_n**2, 1.0 / h_t**2, 1.0 / h_t**2])
-        M[i] = basis @ eig @ basis.T
+    norms_n = np.linalg.norm(unit, axis=1)
+    safe = norms_n >= 0.5
+    if safe.any():
+        nvs = unit[safe]
+        # helper: x-axis if |nv[0]| < 0.9, else y-axis
+        use_x = np.abs(nvs[:, 0]) < 0.9
+        helpers = np.zeros_like(nvs)
+        helpers[use_x, 0] = 1.0
+        helpers[~use_x, 1] = 1.0
+        dot_hn = np.einsum("ij,ij->i", helpers, nvs)
+        t1 = helpers - dot_hn[:, None] * nvs
+        t1 = t1 / (np.linalg.norm(t1, axis=1, keepdims=True) + 1e-30)
+        t2 = np.cross(nvs, t1)
+        # basis columns [nv, t1, t2]: shape (n_safe, 3, 3).
+        basis = np.stack([nvs, t1, t2], axis=2)
+        eig_diag = np.array([iso, 1.0 / h_t**2, 1.0 / h_t**2])
+        # M = basis @ diag(eig) @ basis.T = (basis * eig_diag) @ basis.T
+        basis_scaled = basis * eig_diag[None, None, :]
+        M[safe] = np.matmul(basis_scaled, basis.transpose(0, 2, 1))
 
     return M
 
