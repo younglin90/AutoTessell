@@ -1473,7 +1473,15 @@ def generate_native_bl(
     bbox_diag = float(np.linalg.norm(points.max(0) - points.min(0)))
 
     # beta2272 — fluid preset → kinematic viscosity 자동 override.
+    # beta2331 — yplus.py FLUID_PROPERTIES + GUI yplus_panel 의 11 옵션과
+    # 일관성 위해 simple presets ("air", "water", "oil") 추가. 이전엔
+    # cfg.flow_fluid_preset="air" 시 native_bl_fluid_preset_unknown warning.
     _FLUID_PRESETS = {
+        # simple aliases (yplus.py 와 동일).
+        "air": 1.516e-5,            # = air_20C (default standard).
+        "water": 1.004e-6,          # = water_20C.
+        "oil": 1.0e-4,              # = oil_SAE10W30.
+        # advanced (정확한 온도/조건 명시).
         "air_sea_level": 1.5e-5,    # air at 15°C, 1 atm (standard)
         "air_20C": 1.516e-5,        # air at 20°C
         "air_0C": 1.336e-5,         # air at 0°C

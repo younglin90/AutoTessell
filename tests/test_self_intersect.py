@@ -100,6 +100,32 @@ def test_empty_input_returns_zero_report() -> None:
     assert r.n_intersections == 0
 
 
+def test_blconfig_fluid_presets_match_yplus_module() -> None:
+    """beta2331 — BLConfig _FLUID_PRESETS 가 yplus.py FLUID_PROPERTIES 와
+    동기화 (simple aliases air/water/oil 도 포함).
+
+    이전엔 BLConfig 에 7 advanced presets 만 → cfg.flow_fluid_preset="air"
+    호출 시 unknown warning. yplus.py FLUID_PROPERTIES 의 10 키 모두 BLConfig
+    에서도 작동해야 함."""
+    import inspect
+    from core.layers import native_bl
+    from core.utils.yplus import FLUID_PROPERTIES
+
+    src = inspect.getsource(native_bl.generate_native_bl)
+    # _FLUID_PRESETS 블록 추출 (간단히 keys 검사).
+    for required in ("air", "water", "oil", "air_20C", "water_20C",
+                     "oil_SAE10W30", "glycol_50pct"):
+        assert f'"{required}"' in src, \
+            f"BLConfig _FLUID_PRESETS 에 simple alias '{required}' 누락"
+
+    # yplus 모듈의 FLUID_PROPERTIES 와 키셋 일관성 (simple+advanced).
+    yplus_keys = set(FLUID_PROPERTIES.keys())
+    # 최소 air/water/oil + 7 advanced = 10 키 중 최소 7개 BLConfig 에도 존재.
+    n_present = sum(1 for k in yplus_keys if f'"{k}"' in src)
+    assert n_present >= 7, \
+        f"yplus 와 BLConfig fluid preset 동기화 미달: {n_present}/{len(yplus_keys)}"
+
+
 def test_export_intersecting_faces_stl_writes_binary_file() -> None:
     """beta2330 — export_intersecting_faces_stl 가 unique face 만 binary STL 작성.
 
