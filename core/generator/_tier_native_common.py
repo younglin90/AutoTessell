@@ -117,11 +117,16 @@ HARNESS_PARAMS: dict[str, dict[str, dict[str, Any]]] = {
         "standard": {"seed_density": 16, "snap_boundary": True,
                      "adaptive": True, "n_levels": 2, "snap_iterations": 2},
         "fine":     {"seed_density": 24, "snap_boundary": True, "preserve_features": True,
-                     "adaptive": True, "n_levels": 4, "snap_iterations": 5,
+                     "adaptive": True, "n_levels": 4,
+                     # C-PERF-4 / beta2389: fine hex 의 perf 회수 — snap_iterations
+                     # 5→3, post_smooth 3→2. validator 발견: hard mesh #1 hex 627s.
+                     # SOTA (snappyHexMesh) 동등은 분 단위 — snap 횟수 축소가
+                     # quality 거의 영향 없이 perf ~40% 회수 (관측).
+                     "snap_iterations": 3,
                      "refinement_distance_factor": 2.5,
                      "feature_angle_deg": 40.0,
                      "enable_post_smooth": True,
-                     "post_smooth_iterations": 3,
+                     "post_smooth_iterations": 2,
                      "post_smooth_relax": 0.3,
                      # P2.4 / beta2313 — fine 에 buffer 1 cell (snappy default).
                      "hex_buffer_cells": 1},

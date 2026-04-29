@@ -486,3 +486,13 @@ def test_native_hex_wall_clock_log_wired() -> None:
     src = inspect.getsource(mesher)
     assert "native_hex_wall_clock_high" in src, "log 키 누락"
     assert "AUTO_TESSELL_HEX_BUDGET_LOG_S" in src, "env 누락"
+
+
+def test_harness_params_fine_hex_snap_iterations_3() -> None:
+    """C-PERF-4 / beta2389 — fine hex snap_iterations 5→3 (perf)."""
+    from core.generator._tier_native_common import HARNESS_PARAMS
+    p = HARNESS_PARAMS["tier_native_hex"]["fine"]
+    assert p.get("snap_iterations") == 3, \
+        f"snap_iterations=3 expected, got {p.get('snap_iterations')}"
+    assert p.get("post_smooth_iterations") == 2, \
+        f"post_smooth_iterations=2 expected, got {p.get('post_smooth_iterations')}"
