@@ -3861,20 +3861,22 @@ def generate_native_tet(
         elapsed=round(elapsed, 3),
     )
 
-    # C-QUAL-1 / beta2382 — mesh integrity suspect 자동 감지.
-    # n_cells < n_surface_v / 8 → 비정상 collapse 의심 (validator 발견:
-    # V=3116 mesh 가 tet=2 cells 로 무너지는 케이스).
+    # C-QUAL-1 / beta2382 (revised beta2383): mesh integrity suspect 자동 감지.
+    # validator finding: V/8 threshold 가 hard non-manifold mesh 의 정상 결과
+    # (V=12k → 1060 cells = ratio 0.088) 도 false-positive flag.
+    # 따라서 V/32 (ratio < 0.031) 로 tighten — 진짜 catastrophic collapse 만
+    # 잡는다 (V=3116 → 2 cells = 0.0006 < 1/32).
     _mesh_suspect = bool(
-        V.shape[0] >= 100 and n_cells > 0 and n_cells < V.shape[0] // 8
+        V.shape[0] >= 100 and n_cells > 0 and n_cells < V.shape[0] // 32
     )
     if _mesh_suspect:
         log.warning(
             "native_tet_mesh_integrity_suspect",
-            component="native_tet", phase="beta2382",
+            component="native_tet", phase="beta2383",
             n_cells=int(n_cells),
             n_surface_v=int(V.shape[0]),
             ratio=round(n_cells / max(1, V.shape[0]), 4),
-            message="cells/V_surf ratio < 1/8 — likely heavy collapse",
+            message="cells/V_surf ratio < 1/32 — catastrophic collapse",
         )
 
     return NativeTetResult(

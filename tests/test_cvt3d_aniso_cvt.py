@@ -455,9 +455,12 @@ def test_native_tet_result_has_mesh_integrity_suspect_field() -> None:
 
 
 def test_native_tet_mesh_integrity_log_wired() -> None:
-    """C-QUAL-1 — mesh_integrity_suspect 로그 wiring 검증."""
+    """C-QUAL-1 — mesh_integrity_suspect 로그 wiring 검증.
+
+    beta2383: V/8 → V/32 tighten (validator-driven false-positive 회피).
+    """
     import inspect
     from core.generator.native_tet import mesher
     src = inspect.getsource(mesher)
     assert "native_tet_mesh_integrity_suspect" in src, "log 키 누락"
-    assert "V.shape[0] // 8" in src, "ratio threshold 누락"
+    assert "V.shape[0] // 32" in src, "ratio threshold 누락 (V/32)"
