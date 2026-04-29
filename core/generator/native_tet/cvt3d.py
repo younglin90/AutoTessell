@@ -47,18 +47,6 @@ class CVT3DResult:
     elapsed_s: float
 
 
-def _build_vertex_to_tets(
-    n_vertices: int,
-    tets: NDArray[np.int64],
-) -> list[list[int]]:
-    """vertex i 가 포함된 tet idx list. O(T·4)."""
-    out: list[list[int]] = [[] for _ in range(n_vertices)]
-    for ti in range(tets.shape[0]):
-        for vk in tets[ti]:
-            out[int(vk)].append(ti)
-    return out
-
-
 def _tet_centroids(
     pts: NDArray[np.float64],
     tets: NDArray[np.int64],
@@ -150,7 +138,6 @@ def lloyd_cvt_3d(
     cur_pts = pts.copy()
     n_moved_total = 0
     last_iter = 0
-    interior_count = int(interior_idx.size)
     relax_f = float(relax)
     for it in range(int(n_iter)):
         # Lloyd target = 인접 tet centroid 평균 (scatter-sum vectorized).
@@ -177,7 +164,6 @@ def lloyd_cvt_3d(
         cur_pts = new_pts
         n_moved_total += int(movable_idx.size)
         last_iter = it + 1
-    _ = interior_count  # kept for reference; legacy v2t no longer needed.
 
     # Final monotone guard — pre vs post (cumulative).
     post_q = _tsq(cur_pts, tets)
