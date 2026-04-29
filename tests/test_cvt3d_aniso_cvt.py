@@ -123,3 +123,56 @@ def test_voronoi_aniso_cvt_diag_wired() -> None:
     assert "aniso_cvt_seeds" in src, "aniso_cvt_seeds import 누락"
     assert "native_poly_aniso_cvt_seeds_generated" in src, "log 키 누락"
     assert "AUTO_TESSELL_ANISO_CVT_OFF" in src, "env-gate 누락"
+
+
+def test_per_vertex_lcr_empty() -> None:
+    """C2 / beta2367 — empty wall vertex 집합 처리."""
+    from core.layers.native_bl_lcr import per_vertex_lcr
+    lyr, r = per_vertex_lcr(
+        np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.float64),
+        num_layers=5, first_thickness=0.01, growth_ratio=1.2,
+    )
+    assert lyr.shape == (0,)
+    assert r.n_wall_verts == 0
+    assert r.n_reduced_verts == 0
+
+
+def test_per_vertex_lcr_no_collision_full_layers() -> None:
+    """C2 — collision 없으면 full layers 유지."""
+    from core.layers.native_bl_lcr import per_vertex_lcr
+    wall = np.array([0, 1, 2], dtype=np.int64)
+    cd = np.array([-1.0, np.inf, -1.0], dtype=np.float64)
+    lyr, r = per_vertex_lcr(
+        wall, cd, num_layers=5, first_thickness=0.01, growth_ratio=1.2,
+    )
+    assert (lyr == 5).all()
+    assert r.n_reduced_verts == 0
+    assert r.n_safe_full_layers == 3
+
+
+def test_per_vertex_lcr_narrow_gap_reduces_layers() -> None:
+    """C2 — 좁은 gap vertex 의 layer 수가 감소."""
+    from core.layers.native_bl_lcr import per_vertex_lcr
+    wall = np.array([0, 1, 2], dtype=np.int64)
+    # 0.001 → very tight (≤ 1 layer), 0.05 → 2 layers, 0.5 → full 5.
+    cd = np.array([0.001, 0.05, 0.5], dtype=np.float64)
+    lyr, r = per_vertex_lcr(
+        wall, cd, num_layers=5, first_thickness=0.01, growth_ratio=1.2,
+    )
+    assert lyr[0] <= 2  # tight
+    assert lyr[2] == 5  # safe
+    assert r.n_reduced_verts >= 1
+    assert r.min_layers_used <= 2
+
+
+def test_per_vertex_lcr_min_layers_floor() -> None:
+    """C2 — min_layers ≥ 1 floor 적용."""
+    from core.layers.native_bl_lcr import per_vertex_lcr
+    wall = np.array([0], dtype=np.int64)
+    cd = np.array([1e-9], dtype=np.float64)  # 거의 0.
+    lyr, r = per_vertex_lcr(
+        wall, cd, num_layers=5, first_thickness=0.01, growth_ratio=1.2,
+        min_layers=2,
+    )
+    assert lyr[0] == 2  # floor.
+    assert r.min_layers_used == 2
