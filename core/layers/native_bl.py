@@ -1717,21 +1717,38 @@ def generate_native_bl(
     #     이렇게 해야 극점 근처 sliver 가 줄어듦.
     wall_idx_arr_tmp = np.array(sorted(vnorm.keys()), dtype=np.int64)
     # vertex 별 인접 cell 중 "내부 tet" 까지의 거리
-    vert_to_cells: dict[int, list[int]] = {v: [] for v in wall_vert_indices}
-    for fi in wall_face_indices:
-        own = int(owner[fi])
-        for v in faces[fi]:
-            if int(v) in vert_to_cells:
-                vert_to_cells[int(v)].append(own)
-    # BL_REMAIN_VEC: vectorize vert→cell distance min
-    vert_min_cell_dist: dict[int, float] = {}
-    for v, clist in vert_to_cells.items():
-        if not clist:
-            continue
-        dists_arr = np.linalg.norm(cell_centres[list(set(clist))] - points[v], axis=1)
-        vert_min_cell_dist[v] = float(dists_arr.min())
-    if vert_min_cell_dist:
-        min_local = float(min(vert_min_cell_dist.values()))
+    # C-PERF-69 / beta2520 — triangle fast path: scatter min via numpy.
+    # 변형: vert_to_cells dict 빌드 + per-vert min 의 global min 만 필요.
+    # → flat (v, own) 의 모든 distance 의 global min 으로 대체 가능 (min idempotent).
+    tri_fis = [fi for fi in wall_face_indices if len(faces[fi]) == 3]
+    other_fis = [fi for fi in wall_face_indices if len(faces[fi]) != 3]
+    min_local: float | None = None
+    if tri_fis:
+        F_tri = np.asarray([faces[fi] for fi in tri_fis], dtype=np.int64)
+        own_tri = np.asarray([int(owner[fi]) for fi in tri_fis], dtype=np.int64)
+        wall_arr_local = np.asarray(sorted(set(wall_vert_indices)), dtype=np.int64)
+        flat_v_all = F_tri.reshape(-1)
+        flat_own_all = np.repeat(own_tri, 3)
+        mask_w = np.isin(flat_v_all, wall_arr_local)
+        if mask_w.any():
+            flat_v = flat_v_all[mask_w]
+            flat_own = flat_own_all[mask_w]
+            v_pos = points[flat_v]
+            own_pos = cell_centres[flat_own]
+            dist_arr = np.linalg.norm(own_pos - v_pos, axis=1)
+            if dist_arr.size > 0:
+                min_local = float(dist_arr.min())
+    # Polygon fallback for non-triangle wall faces.
+    if other_fis:
+        for fi_p in other_fis:
+            own_p = int(owner[fi_p])
+            for v_p in faces[fi_p]:
+                v_int = int(v_p)
+                if v_int in vnorm:  # wall vert membership proxy
+                    d = float(np.linalg.norm(cell_centres[own_p] - points[v_int]))
+                    if min_local is None or d < min_local:
+                        min_local = d
+    if min_local is not None:
         # C-BL-21 / beta2456 — local_cap floor 를 effective_first_thickness 사용.
         # 이전: cfg.first_thickness (raw) — auto-bump 시 (예: 1e-3 → bbox*1e-3)
         # local_cap floor 가 너무 낮아 BL total 이 effective 미달까지 축소됨.
