@@ -79,6 +79,8 @@ def _gen_tet(V, F, td: Path) -> dict:
         # C-VAL-1 / beta2386 — integrity flag 노출 (tet 만 지원).
         "integrity_suspect": bool(getattr(r, "mesh_integrity_suspect", False)),
         "n_surface_v": int(V.shape[0]),
+        # C-VAL-3 / beta2396 — input SI pre-mesh count (UUU2 결과).
+        "n_self_intersect_pre": getattr(r, "n_self_intersect_pre", None),
     }
 
 
@@ -166,10 +168,12 @@ def main(argv: list[str]) -> int:
             grade = r.get("grade", "")
             integrity = "[INTEGRITY?]" if r.get("integrity_suspect") else ""
             extra = f" grade={grade}" if grade else ""
+            si_pre = r.get("n_self_intersect_pre")
+            si_s = f" si={si_pre}" if isinstance(si_pre, int) and si_pre > 0 else ""
             err = r.get("exc") or r.get("load_error") or r.get("message")
             err_s = f" err={str(err)[:80]}" if err and not r.get("success") else ""
             print(
-                f"  {engine_name}: {ok} cells={n_cells} t={elapsed}s{extra} {integrity}{err_s}"
+                f"  {engine_name}: {ok} cells={n_cells} t={elapsed}s{extra}{si_s} {integrity}{err_s}"
                 .rstrip(),
             )
 
