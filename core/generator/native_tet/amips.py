@@ -193,18 +193,21 @@ def smooth_amips_analytic(
     if locked_vertex_ids is not None and len(locked_vertex_ids) > 0:
         locked_mask[np.asarray(locked_vertex_ids, dtype=np.int64)] = True
 
-    # CSR 1-ring.
-    counts = np.zeros(n, dtype=np.int64)
-    for k in range(4):
-        np.add.at(counts, tets[:, k], 1)
-    offsets = np.concatenate([[0], np.cumsum(counts)])
-    flat = np.empty(int(counts.sum()), dtype=np.int64)
-    cursor = offsets[:-1].copy()
-    for ti in range(tets.shape[0]):
-        for k in range(4):
-            v = int(tets[ti, k])
-            flat[cursor[v]] = ti
-            cursor[v] += 1
+    # CSR 1-ring.  C-PERF-38 / beta2489 — flat sort + bincount-offset.
+    if tets.shape[0] == 0:
+        counts = np.zeros(n, dtype=np.int64)
+        offsets = np.zeros(n + 1, dtype=np.int64)
+        flat = np.zeros(0, dtype=np.int64)
+    else:
+        flat_v_csr = tets.reshape(-1).astype(np.int64)
+        flat_t_csr = np.repeat(
+            np.arange(tets.shape[0], dtype=np.int64), 4,
+        )
+        order_csr = np.argsort(flat_v_csr, kind="stable")
+        sorted_v_csr = flat_v_csr[order_csr]
+        flat = flat_t_csr[order_csr]
+        counts = np.bincount(sorted_v_csr, minlength=n)
+        offsets = np.concatenate([[0], np.cumsum(counts)])
 
     def _energy_local(vi):
         inc = flat[offsets[vi]:offsets[vi + 1]]
