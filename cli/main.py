@@ -697,6 +697,12 @@ def evaluate(
          "환경변수 AUTO_TESSELL_LLOYD_PLATEAU_THRESH 동등.",
 )
 @click.option(
+    "--patch-cap", type=int, default=None,
+    help="beta2459 — polyMesh patch count 상한 (이상은 wall_misc 로 병합). "
+         "기본 64. 늘리면 patch 별 BC 세분화 가능하나 boundary 파일 증가. "
+         "환경변수 AUTO_TESSELL_PATCH_CAP 동등.",
+)
+@click.option(
     "--flow-velocity", type=float, default=1.0, show_default=True,
     help="v0.4.0-beta78+ 유입 속도 [m/s]. 0/U 자동 생성 기준값. "
          "turbulence 필드 (k, epsilon/omega) 에 반영.",
@@ -782,6 +788,7 @@ def run(
     bl_floor_ratio: float | None,
     hex_snap_budget_s: float | None,
     lloyd_plateau_thresh: float | None,
+    patch_cap: int | None,
     flow_velocity: float,
     turbulence_model: str,
     auto_retry: str,
@@ -853,6 +860,9 @@ def run(
     # C-CLI-4 / beta2458 — Lloyd plateau threshold CLI exposure.
     if lloyd_plateau_thresh is not None:
         _os_v9.environ["AUTO_TESSELL_LLOYD_PLATEAU_THRESH"] = str(float(lloyd_plateau_thresh))
+    # C-CLI-5 / beta2459 — polyMesh patch count cap CLI exposure.
+    if patch_cap is not None:
+        _os_v9.environ["AUTO_TESSELL_PATCH_CAP"] = str(int(patch_cap))
 
     console.print(f"[bold magenta]Auto-Tessell[/bold magenta] {input_file} → {output}")
     console.print(

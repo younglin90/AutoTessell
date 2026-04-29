@@ -746,6 +746,16 @@ def test_cli_lloyd_plateau_thresh_flag_wired() -> None:
     assert "lloyd_plateau_thresh" in src, "lloyd_plateau_thresh param 누락"
 
 
+def test_cli_patch_cap_flag_wired() -> None:
+    """C-CLI-5 / beta2459 — --patch-cap CLI flag 가 env wiring."""
+    import inspect
+    from cli import main as cli_main
+    src = inspect.getsource(cli_main)
+    assert "--patch-cap" in src, "--patch-cap flag 누락"
+    assert "AUTO_TESSELL_PATCH_CAP" in src, "AUTO_TESSELL_PATCH_CAP env wiring 누락"
+    assert "patch_cap" in src, "patch_cap param 누락"
+
+
 def test_validator_filter_to_sig_drops_invalid_kwargs() -> None:
     """C-VAL-9 / beta2453 — _filter_to_sig 가 invalid kwargs drop."""
     from tests.stl.validate_30_hard_meshes import _filter_to_sig
