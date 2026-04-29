@@ -1680,7 +1680,10 @@ def generate_native_bl(
         vert_min_cell_dist[v] = float(dists_arr.min())
     if vert_min_cell_dist:
         min_local = float(min(vert_min_cell_dist.values()))
-        local_cap = max(min_local * 0.8, cfg.first_thickness)
+        # C-BL-21 / beta2456 — local_cap floor 를 effective_first_thickness 사용.
+        # 이전: cfg.first_thickness (raw) — auto-bump 시 (예: 1e-3 → bbox*1e-3)
+        # local_cap floor 가 너무 낮아 BL total 이 effective 미달까지 축소됨.
+        local_cap = max(min_local * 0.8, effective_first_thickness)
         if total > local_cap:
             scale = local_cap / total
             thicknesses *= scale

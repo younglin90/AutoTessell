@@ -715,6 +715,15 @@ def test_curvature_adaptive_thickness_sharp_respects_floor() -> None:
         "sharp halving 후 floor 재적용 누락"
 
 
+def test_local_cap_floor_uses_effective_first_thickness() -> None:
+    """C-BL-21 / beta2456 — local_cap floor 가 effective_first_thickness 사용."""
+    import inspect
+    from core.layers import native_bl
+    src = inspect.getsource(native_bl)
+    assert "local_cap = max(min_local * 0.8, effective_first_thickness)" in src, \
+        "local_cap floor 가 effective_first_thickness 사용 안 함"
+
+
 def test_validator_filter_to_sig_drops_invalid_kwargs() -> None:
     """C-VAL-9 / beta2453 — _filter_to_sig 가 invalid kwargs drop."""
     from tests.stl.validate_30_hard_meshes import _filter_to_sig
