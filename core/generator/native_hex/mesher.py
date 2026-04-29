@@ -815,6 +815,8 @@ def generate_native_hex(
     # HEX_QUALITY1 (beta2137) — non-ortho local post-pass (snappyHexMesh postSnap analog).
     # env AUTO_TESSELL_HEX_QUALITY1_OFF disables. Default ON.
     import os as _os  # noqa: PLC0415
+    # C-PERF-11 / beta2430 — HEX_QUALITY1 pass timing (perf attribution).
+    _t_hq1 = __import__("time").perf_counter()
     if (
         final_hexes.shape[0] >= 50
         and not _os.environ.get("AUTO_TESSELL_HEX_QUALITY1_OFF")
@@ -827,6 +829,10 @@ def generate_native_hex(
     _val3_n = _count_neg_vol_hex(final_pts, final_hexes)
     log.info("native_hex_neg_vol_track", pass_name="HEX_QUALITY1", n_neg=_val3_n, delta=_val3_n - _val3_prev)
     _val3_prev = _val3_n
+    log.info(
+        "native_hex_pass_timing",
+        pass_name="HEX_QUALITY1", dt_ms=int((__import__("time").perf_counter() - _t_hq1) * 1000),
+    )
 
     # VAL2 (beta2148) — negative-volume hex validation (default ON).
     try:
