@@ -691,14 +691,14 @@ def test_native_bl_patch_face_index_guard() -> None:
         "patch face index guard 누락"
 
 
-def test_curvature_adaptive_thickness_floor_70pct() -> None:
-    """C-BL-12 / beta2443 — _curvature_adaptive_thickness floor 70% (cfMesh parity)."""
+def test_curvature_adaptive_thickness_floor_80pct() -> None:
+    """C-BL-12 / beta2443 → beta2445 — _curvature_adaptive_thickness floor 80%."""
     import inspect
     from core.layers import native_bl
     src = inspect.getsource(native_bl)
-    # 0.7 floor 코드 존재.
-    assert "base_thickness) * 0.7" in src, \
-        "70% floor 누락"
+    # 0.8 floor 코드 존재.
+    assert "base_thickness) * 0.8" in src, \
+        "80% floor 누락"
     # max(_absolute_floor, ...) 사용.
     assert "max(_absolute_floor" in src, \
         "absolute floor max() 누락"
