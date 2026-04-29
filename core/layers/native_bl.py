@@ -1125,40 +1125,47 @@ def _detect_feature_vertices(
     """
     if feature_angle_deg <= 0 or not wall_face_indices:
         return set()
-    # 먼저 wall triangle 의 unit normal 배열
-    face_normal: dict[int, np.ndarray] = {}
-    for fi in wall_face_indices:
-        f = faces[fi]
-        if len(f) != 3:
-            continue
-        n, a = _face_normal_area(points, f)
-        if a > 1e-30:
-            face_normal[fi] = n
+    # C-PERF-63 / beta2514 — triangle-only fast path with lexsort + group classify.
+    tri_faces = [faces[fi] for fi in wall_face_indices if len(faces[fi]) == 3]
+    if not tri_faces:
+        return set()
+    F_arr = np.asarray(tri_faces, dtype=np.int64)        # (T, 3)
+    v0 = points[F_arr[:, 0]]; v1 = points[F_arr[:, 1]]; v2 = points[F_arr[:, 2]]
+    nrm = np.cross(v1 - v0, v2 - v0)
+    nlen = np.linalg.norm(nrm, axis=1, keepdims=True)
+    valid = (nlen[:, 0] > 1e-30)
+    n_unit = np.zeros_like(nrm)
+    n_unit[valid] = nrm[valid] / nlen[valid]
 
-    # edge → 공유 face pair
-    edge_to_face: dict[tuple[int, int], list[int]] = {}
-    for fi in wall_face_indices:
-        f = faces[fi]
-        if len(f) != 3:
-            continue
-        for a, b in ((f[0], f[1]), (f[1], f[2]), (f[2], f[0])):
-            key = (a, b) if a < b else (b, a)
-            edge_to_face.setdefault(key, []).append(fi)
+    # edge → face index group (lexsort).
+    src = F_arr[:, [0, 1, 2]].reshape(-1).astype(np.int64)
+    dst = F_arr[:, [1, 2, 0]].reshape(-1).astype(np.int64)
+    fi_local = np.repeat(np.arange(F_arr.shape[0], dtype=np.int64), 3)
+    u = np.minimum(src, dst); v = np.maximum(src, dst)
+    order = np.lexsort((v, u))
+    u_s = u[order]; v_s = v[order]; f_s = fi_local[order]
+    diff = np.r_[True, (u_s[1:] != u_s[:-1]) | (v_s[1:] != v_s[:-1])]
+    starts = np.where(diff)[0]
+    sizes = np.diff(np.r_[starts, len(u_s)])
 
     cos_thresh = float(np.cos(np.deg2rad(feature_angle_deg)))
     feature_verts: set[int] = set()
-    for (a, b), fl in edge_to_face.items():
-        if len(fl) != 2:
-            continue
-        n1 = face_normal.get(fl[0])
-        n2 = face_normal.get(fl[1])
-        if n1 is None or n2 is None:
-            continue
-        cos_a = float(np.clip(np.dot(n1, n2), -1.0, 1.0))
-        # feature = bending > threshold → cos < cos_thresh
-        if cos_a < cos_thresh:
-            feature_verts.add(int(a))
-            feature_verts.add(int(b))
+    # dihedral edges (size==2): face pair angle 검사 + valid-normal 검사.
+    dih = sizes == 2
+    if dih.any():
+        dih_starts = starts[dih]
+        f1 = f_s[dih_starts]
+        f2 = f_s[dih_starts + 1]
+        both_valid = valid[f1] & valid[f2]
+        if both_valid.any():
+            f1_v = f1[both_valid]
+            f2_v = f2[both_valid]
+            cos_a = np.clip((n_unit[f1_v] * n_unit[f2_v]).sum(axis=1), -1.0, 1.0)
+            sharp = cos_a < cos_thresh
+            if sharp.any():
+                sharp_starts = dih_starts[both_valid][sharp]
+                feature_verts.update(u_s[sharp_starts].tolist())
+                feature_verts.update(v_s[sharp_starts].tolist())
     return feature_verts
 
 
