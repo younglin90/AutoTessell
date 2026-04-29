@@ -2093,6 +2093,11 @@ def generate_native_bl(
                 fi_p = start_p + k_p
                 if fi_p in wall_set:
                     continue
+                # C-BL-4 / beta2432 — patch-level face index 안전 가드.
+                # validator: hard mesh 의 patch 가 stale startFace+nFaces 로
+                # faces / owner 범위 벗어남. 직접 IndexError 의 두 번째 site.
+                if fi_p < 0 or fi_p >= len(faces) or fi_p >= len(owner):
+                    continue
                 p_bnd_faces_by_patch[pi_p].append(list(faces[fi_p]))
                 p_bnd_owner_by_patch[pi_p].append(int(owner[fi_p]))
 
