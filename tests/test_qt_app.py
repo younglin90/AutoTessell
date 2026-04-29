@@ -4156,6 +4156,31 @@ def test_gui_max_cells_widget_wired() -> None:
     assert "max_cells=max_cells" in src or "max_cells = " in src
 
 
+def test_gui_vvv9h_and_offplane_checkboxes_wired() -> None:
+    """beta2345 — VVV9H Klingner / off-plane Steiner real-apply GUI 체크박스.
+
+    CLI --enable-vvv9h-apply / --enable-offplane-steiner 동등 (beta2344)."""
+    import os
+    os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    import sys
+    from PySide6.QtWidgets import QApplication, QCheckBox
+    app = QApplication.instance() or QApplication(sys.argv)
+    from desktop.qt_app.main_window import AutoTessellWindow
+
+    win = AutoTessellWindow()
+    win._build()
+    assert isinstance(getattr(win, "_enable_vvv9h_apply_check", None), QCheckBox), \
+        "_enable_vvv9h_apply_check 미생성"
+    assert isinstance(getattr(win, "_enable_offplane_steiner_check", None), QCheckBox), \
+        "_enable_offplane_steiner_check 미생성"
+
+    # _on_run_clicked src 에 env var 설정 wiring.
+    import inspect
+    src = inspect.getsource(AutoTessellWindow._on_run_clicked)
+    assert "AUTO_TESSELL_VVV9H_APPLY" in src
+    assert "AUTO_TESSELL_OFFPLANE_STEINER" in src
+
+
 def test_gui_cross_engine_fallback_checkbox_wired() -> None:
     """beta2299 — GUI cross_engine_fallback 체크박스 → PipelineWorker 전달.
 

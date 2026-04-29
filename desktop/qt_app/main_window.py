@@ -2256,6 +2256,21 @@ class AutoTessellWindow:  # type: ignore[misc]
             "자동 재시도 (beta68 도입, CLI --cross-engine-fallback 동등).\n"
             "extreme tier 의 self-intersect 형상에서 회복률 향상."
         )
+        # beta2345 — CLI --enable-vvv9h-apply / --enable-offplane-steiner 동등.
+        self._enable_vvv9h_apply_check = QCheckBox(
+            "VVV9H Klingner edge-contract real apply (실험적)"
+        )
+        self._enable_vvv9h_apply_check.setToolTip(
+            "체크 시 Klingner 2008 §3.5 edge-contract 가 sliver 격감 위해 실 apply.\n"
+            "AUTO_TESSELL_VVV9H_APPLY=1 동등. monotone guard 로 안전성 보장."
+        )
+        self._enable_offplane_steiner_check = QCheckBox(
+            "Off-plane Steiner exudation (실험적)"
+        )
+        self._enable_offplane_steiner_check.setToolTip(
+            "체크 시 Klingner-Shewchuk 2008 §4.1 off-plane Steiner 가 실 apply.\n"
+            "AUTO_TESSELL_OFFPLANE_STEINER=1 동등. flat sliver tet 격감용."
+        )
         # 기본값: native L1 은 기본 On (beta26 철학), native tier 는 opt-in
         self._no_repair_check.setChecked(False)
         self._surface_remesh_check.setChecked(False)
@@ -2263,10 +2278,13 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._prefer_native_check.setChecked(True)  # beta26 default
         self._prefer_native_tier_check.setChecked(False)
         self._cross_engine_fallback_check.setChecked(False)
+        self._enable_vvv9h_apply_check.setChecked(False)
+        self._enable_offplane_steiner_check.setChecked(False)
         for chk in (
             self._no_repair_check, self._surface_remesh_check,
             self._allow_ai_fallback_check, self._prefer_native_check,
             self._prefer_native_tier_check, self._cross_engine_fallback_check,
+            self._enable_vvv9h_apply_check, self._enable_offplane_steiner_check,
         ):
             v.addWidget(chk)
             try:
@@ -2892,6 +2910,26 @@ class AutoTessellWindow:  # type: ignore[misc]
                     )
                 except Exception:
                     _prefer_native_tier_flag = False
+            # beta2345 — V-series 실험적 플래그를 환경변수로 worker 에 전달.
+            # CLI --enable-vvv9h-apply / --enable-offplane-steiner 동등.
+            try:
+                import os as _os_v9
+                _vvv9h_on = bool(
+                    self._enable_vvv9h_apply_check.isChecked()
+                    if getattr(self, "_enable_vvv9h_apply_check", None)
+                    else False
+                )
+                _offplane_on = bool(
+                    self._enable_offplane_steiner_check.isChecked()
+                    if getattr(self, "_enable_offplane_steiner_check", None)
+                    else False
+                )
+                if _vvv9h_on:
+                    _os_v9.environ["AUTO_TESSELL_VVV9H_APPLY"] = "1"
+                if _offplane_on:
+                    _os_v9.environ["AUTO_TESSELL_OFFPLANE_STEINER"] = "1"
+            except Exception:
+                pass
             worker = PipelineWorker(
                 self._input_path, self._quality_level,
                 output_dir=self._output_dir,
