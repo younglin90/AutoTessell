@@ -1,6 +1,6 @@
 # AutoTessell — Environment Variables Reference
 
-이 문서는 AutoTessell 의 모든 환경변수를 정리합니다 (beta2462 기준).
+이 문서는 AutoTessell 의 모든 환경변수를 정리합니다 (beta2473 기준).
 
 ## 사용자 권장 환경변수
 
@@ -57,6 +57,9 @@ CLI 의 명시 flag 가 env 값을 override 합니다:
 | `--hex-snap-budget-s N` | `AUTO_TESSELL_HEX_WWW7_BUDGET_S=N` | float (beta2457) |
 | `--lloyd-plateau-thresh N` | `AUTO_TESSELL_LLOYD_PLATEAU_THRESH=N` | float (beta2458) |
 | `--patch-cap N` | `AUTO_TESSELL_PATCH_CAP=N` | int (beta2459) |
+| `--no-cvt3d` | `AUTO_TESSELL_CVT3D_OFF=1` | flag (beta2464, debug) |
+| `--no-aniso-cvt` | `AUTO_TESSELL_ANISO_CVT_OFF=1` | flag (beta2464, debug) |
+| `--no-lcr` | `AUTO_TESSELL_LCR_OFF=1` | flag (beta2464, debug) |
 
 ## 권장 조합 (use case 별)
 
