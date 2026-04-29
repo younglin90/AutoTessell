@@ -1,6 +1,6 @@
 # AutoTessell — Environment Variables Reference
 
-이 문서는 AutoTessell 의 모든 환경변수를 정리합니다 (beta2452 기준).
+이 문서는 AutoTessell 의 모든 환경변수를 정리합니다 (beta2462 기준).
 
 ## 사용자 권장 환경변수
 
@@ -54,6 +54,9 @@ CLI 의 명시 flag 가 env 값을 override 합니다:
 | `--parallel-delaunay` | `AUTO_TESSELL_PARALLEL_DELAUNAY=1` | flag |
 | `--poly-budget-s N` | `AUTO_TESSELL_POLY_BUDGET_S=N` | float |
 | `--bl-floor-ratio N` | `AUTO_TESSELL_BL_FLOOR_RATIO=N` | float |
+| `--hex-snap-budget-s N` | `AUTO_TESSELL_HEX_WWW7_BUDGET_S=N` | float (beta2457) |
+| `--lloyd-plateau-thresh N` | `AUTO_TESSELL_LLOYD_PLATEAU_THRESH=N` | float (beta2458) |
+| `--patch-cap N` | `AUTO_TESSELL_PATCH_CAP=N` | int (beta2459) |
 
 ## 권장 조합 (use case 별)
 
