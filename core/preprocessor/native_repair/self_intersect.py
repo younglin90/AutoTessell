@@ -133,19 +133,71 @@ def _tri_tri_intersect(
     return True
 
 
+def _kdtree_overlap_pairs(
+    V: np.ndarray,
+    F: np.ndarray,
+    aabb_min: np.ndarray,
+    aabb_max: np.ndarray,
+    *,
+    k: int = 16,
+) -> list[tuple[int, int]]:
+    """KDTree-based AABB overlap candidates (beta2323 P2.6 scaling).
+
+    Centroid 의 k-nearest neighbor 를 한 query 에 가져온 뒤 AABB overlap
+    검사. K=16 정도면 일반 mesh 의 self-intersect 후보 대부분 포함.
+
+    O(M log M + M·k) — 100k face 에서 ≤ 0.5s 목표.
+    """
+    from core.utils.kdtree import NumpyKDTree  # noqa: PLC0415
+
+    n = int(F.shape[0])
+    if n < 2:
+        return []
+    centroids = (V[F[:, 0]] + V[F[:, 1]] + V[F[:, 2]]) / 3.0
+    tree = NumpyKDTree(centroids)
+    # Search radius: max AABB extent — diagonal length 충분.
+    search_k = min(k, n)
+    _, idx = tree.query(centroids, k=search_k)
+    if idx.ndim == 1:
+        idx = idx[:, None]
+
+    out: set[tuple[int, int]] = set()
+    for i in range(n):
+        a_min = aabb_min[i]
+        a_max = aabb_max[i]
+        for jcol in range(idx.shape[1]):
+            j = int(idx[i, jcol])
+            if j <= i or j >= n:
+                continue
+            if (
+                a_max[0] < aabb_min[j, 0]
+                or aabb_max[j, 0] < a_min[0]
+                or a_max[1] < aabb_min[j, 1]
+                or aabb_max[j, 1] < a_min[1]
+                or a_max[2] < aabb_min[j, 2]
+                or aabb_max[j, 2] < a_min[2]
+            ):
+                continue
+            out.add((i, j))
+    return list(out)
+
+
 def detect_self_intersections(
     V: np.ndarray,
     F: np.ndarray,
     *,
     max_pairs_for_o_n_squared: int = 5000,
+    kdtree_k: int = 16,
 ) -> SelfIntersectReport:
     """입력 mesh 의 self-intersection 페어를 검출.
 
     Args:
         V: (N, 3) vertex 좌표.
         F: (M, 3) triangle vertex indices.
-        max_pairs_for_o_n_squared: O(M^2) brute force 의 안전 cap. 초과 시
-            단순 short-circuit (다음 카드에서 KDTree-based 으로 확장).
+        max_pairs_for_o_n_squared: O(M^2) brute force 임계. 이하면 모든
+            페어 AABB 비교, 초과 시 KDTree O(M log M) 경로.
+        kdtree_k: KDTree query 의 k-nearest. 작으면 후보 ↓ (놓침 위험), 크면
+            정확하지만 느림. 기본 16.
 
     Returns:
         SelfIntersectReport.
@@ -160,18 +212,22 @@ def detect_self_intersections(
     if n_faces < 2:
         return SelfIntersectReport(n_faces=n_faces, elapsed_s=_t.perf_counter() - t0)
 
-    # AABB pre-filter (O(M^2) — only for small mesh).
-    if n_faces > max_pairs_for_o_n_squared:
-        # 대형 mesh: short-circuit. 다음 카드의 KDTree-based 경로에서 처리.
-        return SelfIntersectReport(
-            n_faces=n_faces, n_pairs_tested=0,
-            n_intersections=0,
-            intersecting_face_pairs=[],
-            elapsed_s=_t.perf_counter() - t0,
-        )
-
     aabb_min, aabb_max = _tri_aabbs(V, F)
-    cand = _aabb_overlap_pairs(aabb_min, aabb_max)
+
+    # beta2323 — KDTree path 추가 (대형 mesh).
+    if n_faces > max_pairs_for_o_n_squared:
+        try:
+            cand = _kdtree_overlap_pairs(V, F, aabb_min, aabb_max, k=kdtree_k)
+        except Exception:
+            # KDTree 미가용 등 fallback → short-circuit (이전 동작 보존).
+            return SelfIntersectReport(
+                n_faces=n_faces, n_pairs_tested=0,
+                n_intersections=0,
+                intersecting_face_pairs=[],
+                elapsed_s=_t.perf_counter() - t0,
+            )
+    else:
+        cand = _aabb_overlap_pairs(aabb_min, aabb_max)
 
     pairs: list[tuple[int, int]] = []
     n_tested = 0

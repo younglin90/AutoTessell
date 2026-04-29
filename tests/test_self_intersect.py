@@ -44,15 +44,52 @@ def test_shared_vertex_not_flagged_as_intersection() -> None:
     assert not r.has_self_intersection
 
 
-def test_large_mesh_short_circuits() -> None:
-    """beta2322 — n_faces > max_pairs_for_o_n_squared 일 때 short-circuit
-    (다음 카드의 KDTree-based 경로에서 처리)."""
-    V = np.random.RandomState(0).rand(200, 3).astype(np.float64)
-    F = np.random.RandomState(1).randint(0, 200, size=(6000, 3)).astype(np.int64)
-    r = detect_self_intersections(V, F, max_pairs_for_o_n_squared=5000)
-    assert r.n_faces == 6000
-    assert r.n_pairs_tested == 0  # short-circuit
-    assert r.n_intersections == 0
+def test_large_mesh_uses_kdtree_path() -> None:
+    """beta2323 — n_faces > max_pairs_for_o_n_squared 일 때 KDTree O(M log M).
+
+    이전 (beta2322) 엔 단순 short-circuit (n_pairs_tested=0). 이제 실 검사.
+    """
+    rng = np.random.RandomState(0)
+    V = (rng.rand(2000, 3) * 100.0).astype(np.float64)
+    # 1500 tri with random vertex indices — 일부는 자연스럽게 교차.
+    F = (rng.randint(0, 2000, size=(1500, 3))).astype(np.int64)
+    r = detect_self_intersections(V, F, max_pairs_for_o_n_squared=1000, kdtree_k=8)
+    assert r.n_faces == 1500
+    # KDTree path 활성 → n_pairs_tested > 0 (이전엔 0).
+    assert r.n_pairs_tested > 0, "KDTree 경로 미활성"
+
+
+def test_kdtree_path_finds_intersection_in_large_mesh() -> None:
+    """beta2323 — KDTree 가 진짜 교차 페어를 검출.
+
+    1500 의 well-separated tri + 2 의 명백 교차 tri → 검출 ≥ 1.
+    """
+    rng = np.random.RandomState(42)
+    # 멀리 떨어진 tri 1500 개 (각 100 단위 grid).
+    V_list = []
+    F_list = []
+    n_safe = 1500
+    for i in range(n_safe):
+        x = (i % 50) * 100.0
+        y = ((i // 50) % 50) * 100.0
+        z = (i // 2500) * 100.0
+        base = len(V_list)
+        V_list.extend([[x, y, z], [x + 1, y, z], [x, y + 1, z]])
+        F_list.append([base, base + 1, base + 2])
+    # 명백한 두 교차 tri (origin 근처).
+    V_list.extend([
+        [0.5, 0.5, -1], [0.5, 0.5, 1], [1.5, 0.5, 0.5],   # tri A 수직
+        [0.0, 0.5, 0.0], [1.0, 0.5, 0.0], [0.5, 0.5, 0.5],  # tri B 평면
+    ])
+    base = len(V_list) - 6
+    F_list.append([base, base + 1, base + 2])
+    F_list.append([base + 3, base + 4, base + 5])
+
+    V = np.array(V_list, dtype=np.float64)
+    F = np.array(F_list, dtype=np.int64)
+    r = detect_self_intersections(V, F, max_pairs_for_o_n_squared=100, kdtree_k=16)
+    # 최소 한 페어는 검출 (마지막 두 tri).
+    assert r.has_self_intersection, "KDTree 가 명백한 교차 검출 실패"
 
 
 def test_empty_input_returns_zero_report() -> None:
