@@ -444,3 +444,20 @@ def test_native_poly_wall_clock_budget_wired() -> None:
     assert "AUTO_TESSELL_POLY_BUDGET_S" in src, "budget env 누락"
     assert "native_poly_budget_exhausted" in src, "log 키 누락"
     assert "_budget_s" in src, "budget 변수 누락"
+
+
+def test_native_tet_result_has_mesh_integrity_suspect_field() -> None:
+    """C-QUAL-1 / beta2382 — NativeTetResult 의 mesh_integrity_suspect 필드."""
+    from core.generator.native_tet.mesher import NativeTetResult
+    r = NativeTetResult(success=True, elapsed=0.0)
+    assert hasattr(r, "mesh_integrity_suspect")
+    assert r.mesh_integrity_suspect is False  # default
+
+
+def test_native_tet_mesh_integrity_log_wired() -> None:
+    """C-QUAL-1 — mesh_integrity_suspect 로그 wiring 검증."""
+    import inspect
+    from core.generator.native_tet import mesher
+    src = inspect.getsource(mesher)
+    assert "native_tet_mesh_integrity_suspect" in src, "log 키 누락"
+    assert "V.shape[0] // 8" in src, "ratio threshold 누락"

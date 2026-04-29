@@ -39,6 +39,11 @@ class NativeTetResult:
     # beta2336 — pre-mesh self-intersect (P2.6 chain). None = 측정 안 됨
     # (>5000 face), 0 = clean, >0 = 입력 SI 존재.
     n_self_intersect_pre: int | None = None
+    # C-QUAL-1 / beta2382 — mesh integrity 의심 플래그.
+    # n_cells < n_surface_v / 8 면 True. validator 가 hard mesh 에서
+    # 2-cell collapse 케이스 발견 (V=3116, F=6272 → tet=2). 이 플래그가
+    # downstream (BL / Hausdorff / GUI) 에서 의심 사례 자동 표시.
+    mesh_integrity_suspect: bool = False
 
     @property
     def ok(self) -> bool:
@@ -3856,6 +3861,22 @@ def generate_native_tet(
         elapsed=round(elapsed, 3),
     )
 
+    # C-QUAL-1 / beta2382 — mesh integrity suspect 자동 감지.
+    # n_cells < n_surface_v / 8 → 비정상 collapse 의심 (validator 발견:
+    # V=3116 mesh 가 tet=2 cells 로 무너지는 케이스).
+    _mesh_suspect = bool(
+        V.shape[0] >= 100 and n_cells > 0 and n_cells < V.shape[0] // 8
+    )
+    if _mesh_suspect:
+        log.warning(
+            "native_tet_mesh_integrity_suspect",
+            component="native_tet", phase="beta2382",
+            n_cells=int(n_cells),
+            n_surface_v=int(V.shape[0]),
+            ratio=round(n_cells / max(1, V.shape[0]), 4),
+            message="cells/V_surf ratio < 1/8 — likely heavy collapse",
+        )
+
     return NativeTetResult(
         success=True, elapsed=elapsed,
         n_cells=n_cells, n_points=n_points,
@@ -3875,4 +3896,5 @@ def generate_native_tet(
         hausdorff_relative=float(haus_rel),
         # beta2336 — pre-mesh SI count (UUU2 에서 capture).
         n_self_intersect_pre=_pre_mesh_si_count,
+        mesh_integrity_suspect=_mesh_suspect,
     )
