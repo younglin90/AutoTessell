@@ -76,6 +76,9 @@ def _gen_tet(V, F, td: Path) -> dict:
         "n_cells": int(r.n_cells),
         "grade": r.quality_grade,
         "mean_q": float(getattr(r.quality, "mean_q", 0.0)) if r.quality else 0.0,
+        # C-VAL-1 / beta2386 — integrity flag 노출 (tet 만 지원).
+        "integrity_suspect": bool(getattr(r, "mesh_integrity_suspect", False)),
+        "n_surface_v": int(V.shape[0]),
     }
 
 
@@ -160,14 +163,24 @@ def main(argv: list[str]) -> int:
             ok = "OK" if r.get("success") else "FAIL"
             elapsed = r.get("elapsed", 0)
             n_cells = r.get("n_cells", 0)
-            print(f"  {engine_name}: {ok} cells={n_cells} t={elapsed}s")
+            grade = r.get("grade", "")
+            integrity = "[INTEGRITY?]" if r.get("integrity_suspect") else ""
+            extra = f" grade={grade}" if grade else ""
+            print(f"  {engine_name}: {ok} cells={n_cells} t={elapsed}s{extra} {integrity}".rstrip())
 
     n_pass = sum(1 for r in out_rows if r.get("success"))
+    n_integrity_suspect = sum(1 for r in out_rows if r.get("integrity_suspect"))
+    grade_counts: dict[str, int] = {}
+    for r in out_rows:
+        if r.get("grade"):
+            grade_counts[r["grade"]] = grade_counts.get(r["grade"], 0) + 1
     summary = {
         "seed": seed,
         "n_meshes": n_meshes,
         "n_runs": len(out_rows),
         "n_pass": n_pass,
+        "n_integrity_suspect": n_integrity_suspect,
+        "grade_counts": grade_counts,
         "pass_rate": round(n_pass / max(1, len(out_rows)), 3),
         "rows": out_rows,
     }
@@ -178,6 +191,10 @@ def main(argv: list[str]) -> int:
     out_path.write_text(json.dumps(summary, indent=2))
     print(f"\n=== 결과 ===")
     print(f"PASS: {n_pass}/{len(out_rows)} ({summary['pass_rate']*100:.1f}%)")
+    if n_integrity_suspect > 0:
+        print(f"INTEGRITY_SUSPECT (tet): {n_integrity_suspect}/{len(out_rows)}")
+    if grade_counts:
+        print(f"GRADES: {grade_counts}")
     print(f"saved: {out_path}")
     return 0
 
