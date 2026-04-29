@@ -32,6 +32,9 @@ class HistoryEntry:
     # 의 "Surface Deviation" 동등 지표. 이전엔 평가는 했지만 history/PDF 미기록.
     hausdorff_distance: float | None = None
     hausdorff_relative: float | None = None
+    # beta2352: pre-BL self-intersect (P2.6 chain). 입력 mesh 의 self-intersect
+    # 면 페어 수. None = 미측정 (>5000 face), 0 = clean, >0 = 입력 SI 존재.
+    n_self_intersect_pre: int | None = None
     error: str | None = None
 
 
@@ -118,5 +121,7 @@ def make_entry_from_result(
         # beta2302 — Hausdorff geometry fidelity 기록 (Pointwise/Star-CCM+ 동등).
         hausdorff_distance=getattr(fidelity, "hausdorff_distance", None),
         hausdorff_relative=getattr(fidelity, "hausdorff_relative", None),
+        # beta2352 — pre-BL self-intersect (beta2334 evaluator populate 후 schema).
+        n_self_intersect_pre=getattr(fidelity, "n_self_intersect_pre", None),
         error=getattr(result, "error", None),
     )

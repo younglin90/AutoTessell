@@ -67,10 +67,11 @@ class HistoryDialog(EscDismissMixin, QDialog):
 
         # ── 테이블 ─────────────────────────────────────────────
         # beta2303 — Hausdorff (rel) 컬럼 추가 (상용 툴 'Surface Deviation' 동등).
-        self.table = QTableWidget(0, 9)
+        # beta2352 — pre-BL Self-Intersect 컬럼 추가 (P2.6 chain).
+        self.table = QTableWidget(0, 10)
         self.table.setHorizontalHeaderLabels([
             "시각", "입력", "Tier", "품질", "결과",
-            "시간(s)", "셀수", "Non-ortho", "Hausdorff(rel)",
+            "시간(s)", "셀수", "Non-ortho", "Hausdorff(rel)", "pre-BL SI",
         ])
         self.table.setStyleSheet(get_table_qss())
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -135,6 +136,15 @@ class HistoryDialog(EscDismissMixin, QDialog):
                 _hr_item.setForeground(QColor("#ef4444"))
             elif _hr is not None and _hr > 0.0:
                 _hr_item.setForeground(QColor("#22c55e"))
+            # beta2352 — pre-BL SI count 표시. >0 빨강, 0 초록, None 회색.
+            _si = getattr(e, "n_self_intersect_pre", None)
+            _si_text = str(int(_si)) if _si is not None else ""
+            _si_item = QTableWidgetItem(_si_text)
+            if _si is not None:
+                if int(_si) > 0:
+                    _si_item.setForeground(QColor("#ef4444"))
+                else:
+                    _si_item.setForeground(QColor("#22c55e"))
             items = [
                 QTableWidgetItem(e.timestamp.replace("T", " ")),
                 QTableWidgetItem(Path(e.input_file).name),
@@ -147,6 +157,7 @@ class HistoryDialog(EscDismissMixin, QDialog):
                     f"{e.max_non_orthogonality:.1f}" if e.max_non_orthogonality else ""
                 ),
                 _hr_item,
+                _si_item,
             ]
             # 결과 컬러
             if e.success:
