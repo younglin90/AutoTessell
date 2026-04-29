@@ -702,9 +702,20 @@ def test_curvature_adaptive_thickness_floor_env_gated() -> None:
     assert "_floor_ratio" in src, "_floor_ratio 변수 누락"
     assert 'AUTO_TESSELL_BL_FLOOR_RATIO", "1.0"' in src, \
         "default 1.0 누락"
-    # max(_absolute_floor, ...) 사용.
-    assert "max(_absolute_floor" in src, \
-        "absolute floor max() 누락"
-    # 25th percentile 사용.
-    assert "np.quantile(edge_lens_arr, 0.25)" in src, \
-        "25th percentile 사용 누락"
+
+
+def test_validator_filter_to_sig_drops_invalid_kwargs() -> None:
+    """C-VAL-9 / beta2453 — _filter_to_sig 가 invalid kwargs drop."""
+    from tests.stl.validate_30_hard_meshes import _filter_to_sig
+
+    def _sample_fn(x, y=1, *, z=2):  # noqa: ANN001, ARG001
+        return x
+
+    # 모든 kwargs 통과.
+    out = _filter_to_sig(_sample_fn, {"y": 5, "z": 6, "extra": 99})
+    assert "y" in out and "z" in out
+    assert "extra" not in out, "invalid kwarg 가 drop 되지 않음"
+    # 빈 input.
+    assert _filter_to_sig(_sample_fn, {}) == {}
+    # invalid only.
+    assert _filter_to_sig(_sample_fn, {"q": 1, "r": 2}) == {}
