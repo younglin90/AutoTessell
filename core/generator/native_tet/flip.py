@@ -226,6 +226,7 @@ def _edge_to_tets_map(T: np.ndarray) -> dict[tuple[int, int], list[int]]:
             return m
 
     # --- Python/numpy 경로 (fallback) ---
+    # C-PERF-65 / beta2516 — vectorize via lexsort + group-boundary.
     pair_idx = np.array(
         [[0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3]], dtype=np.int64,
     )
@@ -233,11 +234,17 @@ def _edge_to_tets_map(T: np.ndarray) -> dict[tuple[int, int], list[int]]:
         [T[:, pair_idx[:, 0]], T[:, pair_idx[:, 1]]], axis=2,
     ).reshape(-1, 2)
     edges.sort(axis=1)
+    ti_arr = np.repeat(np.arange(T.shape[0], dtype=np.int64), 6)
+    order = np.lexsort((edges[:, 1], edges[:, 0]))
+    e_s = edges[order]
+    ti_s = ti_arr[order]
+    diff = np.r_[True, np.any(e_s[1:] != e_s[:-1], axis=1)]
+    starts = np.where(diff)[0]
+    ends = np.r_[starts[1:], len(e_s)]
     m2: dict[tuple[int, int], list[int]] = {}
-    for idx in range(edges.shape[0]):
-        ti = idx // 6
-        k = (int(edges[idx, 0]), int(edges[idx, 1]))
-        m2.setdefault(k, []).append(ti)
+    for s, e in zip(starts.tolist(), ends.tolist()):
+        k = (int(e_s[s, 0]), int(e_s[s, 1]))
+        m2[k] = ti_s[s:e].tolist()
     return m2
 
 
