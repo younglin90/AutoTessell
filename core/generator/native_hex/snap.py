@@ -91,24 +91,56 @@ def _detect_surface_feature_vertices(
     norms = np.linalg.norm(n, axis=1, keepdims=True)
     n = np.where(norms > 1e-30, n / np.where(norms > 1e-30, norms, 1.0), 0.0)
 
-    # edge → face pair
-    edge_map: dict[tuple[int, int], list[int]] = {}
-    for fi in range(surface_F.shape[0]):
-        a, b, c = int(surface_F[fi, 0]), int(surface_F[fi, 1]), int(surface_F[fi, 2])
-        for x, y in ((a, b), (b, c), (c, a)):
-            key = (x, y) if x < y else (y, x)
-            edge_map.setdefault(key, []).append(fi)
+    # C-PERF-25 / beta2476 — edge_map 빌드 + 분류를 numpy lexsort 로 벡터화.
+    # 3 edges per face, 6 directed edges flattened.
+    src = surface_F[:, [0, 1, 2]].reshape(-1).astype(np.int64)
+    dst = surface_F[:, [1, 2, 0]].reshape(-1).astype(np.int64)
+    fi_flat = np.repeat(
+        np.arange(surface_F.shape[0], dtype=np.int64), 3,
+    )
+    u = np.minimum(src, dst); v = np.maximum(src, dst)
+    order = np.lexsort((v, u))
+    u_s = u[order]; v_s = v[order]; f_s = fi_flat[order]
+    n_v = int(surface_V.shape[0])
+    n_max = max(int(u_s.max()) if u_s.size > 0 else 0,
+                int(v_s.max()) if v_s.size > 0 else 0,
+                n_v) + 1
+    key = u_s * n_max + v_s
+    # group boundaries: 새 edge group 이 시작되는 index
+    diff = np.r_[True, key[1:] != key[:-1]]
+    starts = np.where(diff)[0]
+    sizes = np.diff(np.r_[starts, len(key)])
 
     cos_thresh = float(np.cos(np.deg2rad(feature_angle_deg)))
     feature_set: set[int] = set()
-    for (a, b), fl in edge_map.items():
-        if len(fl) != 2:
-            # boundary edge 도 feature 로 간주 (open mesh 에서 유용)
-            feature_set.add(a); feature_set.add(b)
-            continue
-        cos_a = float(np.clip(np.dot(n[fl[0]], n[fl[1]]), -1.0, 1.0))
-        if cos_a < cos_thresh:
-            feature_set.add(a); feature_set.add(b)
+
+    # boundary (size==1) edges — 두 vertex 모두 feature.
+    bnd = sizes == 1
+    if bnd.any():
+        bnd_starts = starts[bnd]
+        feature_set.update(u_s[bnd_starts].tolist())
+        feature_set.update(v_s[bnd_starts].tolist())
+
+    # dihedral (size==2) edges — face pair angle 검사.
+    dih = sizes == 2
+    if dih.any():
+        dih_starts = starts[dih]
+        f1 = f_s[dih_starts]
+        f2 = f_s[dih_starts + 1]
+        cos_a = np.clip((n[f1] * n[f2]).sum(axis=1), -1.0, 1.0)
+        sharp = cos_a < cos_thresh
+        if sharp.any():
+            sharp_starts = dih_starts[sharp]
+            feature_set.update(u_s[sharp_starts].tolist())
+            feature_set.update(v_s[sharp_starts].tolist())
+
+    # size > 2 (non-manifold) — 모든 vertex 를 feature 로 (기존 동작 보존).
+    nm = sizes > 2
+    if nm.any():
+        nm_starts = starts[nm]
+        feature_set.update(u_s[nm_starts].tolist())
+        feature_set.update(v_s[nm_starts].tolist())
+
     return np.array(sorted(feature_set), dtype=np.int64)
 
 
