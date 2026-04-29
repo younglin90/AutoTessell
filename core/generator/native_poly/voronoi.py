@@ -769,13 +769,22 @@ def _inject_feature_seeds(
     if V.size == 0 or F.size == 0 or max_seeds <= 0:
         return np.empty((0, 3), dtype=np.float64)
 
-    # build edge → face adjacency
+    # build edge → face adjacency.
+    # C-PERF-73 / beta2524 — vectorize via lexsort + group-boundary.
+    F_arr = np.asarray(F, dtype=np.int64)
     edge_to_faces: dict[tuple[int, int], list[int]] = {}
-    for fi, tri in enumerate(F):
-        for k in range(3):
-            a, b = int(tri[k]), int(tri[(k + 1) % 3])
-            key = (min(a, b), max(a, b))
-            edge_to_faces.setdefault(key, []).append(fi)
+    if F_arr.size > 0:
+        src = F_arr[:, [0, 1, 2]].reshape(-1)
+        dst = F_arr[:, [1, 2, 0]].reshape(-1)
+        fi_arr = np.repeat(np.arange(F_arr.shape[0], dtype=np.int64), 3)
+        u = np.minimum(src, dst); v = np.maximum(src, dst)
+        order = np.lexsort((v, u))
+        u_s = u[order]; v_s = v[order]; fi_s = fi_arr[order]
+        diff = np.r_[True, (u_s[1:] != u_s[:-1]) | (v_s[1:] != v_s[:-1])]
+        starts = np.where(diff)[0]
+        ends = np.r_[starts[1:], len(u_s)]
+        for s, e in zip(starts.tolist(), ends.tolist()):
+            edge_to_faces[(int(u_s[s]), int(v_s[s]))] = fi_s[s:e].tolist()
 
     # compute face normals
     e1 = V[F[:, 1]] - V[F[:, 0]]
