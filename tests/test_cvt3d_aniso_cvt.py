@@ -458,12 +458,14 @@ def test_native_tet_mesh_integrity_log_wired() -> None:
     """C-QUAL-1 — mesh_integrity_suspect 로그 wiring 검증.
 
     beta2383: V/8 → V/32 tighten (validator-driven false-positive 회피).
+    beta2405: 추가 절대 floor — n_cells < 50 시 always flag.
     """
     import inspect
     from core.generator.native_tet import mesher
     src = inspect.getsource(mesher)
     assert "native_tet_mesh_integrity_suspect" in src, "log 키 누락"
     assert "V.shape[0] // 32" in src, "ratio threshold 누락 (V/32)"
+    assert "n_cells < 50" in src, "absolute floor 누락 (50 cells)"
 
 
 def test_harness_params_fine_recovery_iterations_3() -> None:

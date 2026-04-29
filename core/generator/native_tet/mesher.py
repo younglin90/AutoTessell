@@ -3939,13 +3939,19 @@ def generate_native_tet(
         elapsed=round(elapsed, 3),
     )
 
-    # C-QUAL-1 / beta2382 (revised beta2383): mesh integrity suspect 자동 감지.
+    # C-QUAL-1 / beta2382 (revised beta2383, beta2405): mesh integrity suspect 감지.
     # validator finding: V/8 threshold 가 hard non-manifold mesh 의 정상 결과
     # (V=12k → 1060 cells = ratio 0.088) 도 false-positive flag.
     # 따라서 V/32 (ratio < 0.031) 로 tighten — 진짜 catastrophic collapse 만
     # 잡는다 (V=3116 → 2 cells = 0.0006 < 1/32).
+    # beta2405: 추가 absolute floor — n_cells < 50 시 size 무관 always flag
+    # (V 가 작아도 50 cells 이하는 mesh 로 의미 없음).
     _mesh_suspect = bool(
-        V.shape[0] >= 100 and n_cells > 0 and n_cells < V.shape[0] // 32
+        n_cells > 0
+        and (
+            (V.shape[0] >= 100 and n_cells < V.shape[0] // 32)
+            or n_cells < 50
+        )
     )
     if _mesh_suspect:
         log.warning(
