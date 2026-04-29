@@ -157,6 +157,22 @@ def test_native_hex_and_poly_results_have_si_field() -> None:
         f"NativePolyResult.n_self_intersect_pre 누락"
 
 
+def test_uuu6_face_split_has_si_monotone_guard() -> None:
+    """beta2350 — UUU6 face split 후 SI 재검출 → 늘어나면 revert.
+
+    이전엔 split 후 무조건 결과 채택 — split 이 의도와 반대로 SI 더
+    늘리는 경우 (drei tri 가 새 vertex 로 splitt 되며 인접 cross) 보호 없음."""
+    import inspect
+    from core.generator.native_tet import mesher
+    src = inspect.getsource(mesher.generate_native_tet)
+    # 새 가드 패턴.
+    assert "native_tet_uuu6_face_split_reverted" in src, \
+        "UUU6 reverted 분기 누락"
+    assert "si_post" in src, "post-split SI 측정 누락"
+    assert "len(si_post)) <= int(len(si_pairs))" in src, \
+        "SI 비교 가드 누락"
+
+
 def test_native_tet_result_exposes_n_self_intersect_pre() -> None:
     """beta2336 + beta2343 — NativeTetResult.n_self_intersect_pre 필드 +
     success path + 4 fail path 모두 SI populate.

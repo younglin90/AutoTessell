@@ -242,12 +242,33 @@ def generate_native_tet(
                 log.info("native_tet_uuu4_candidates",
                          n_candidates=len(cands), n_split=n_split, n_merge=n_merge)
                 # UUU6 (beta2107) — face split 실제 적용 (단조 가드 try/except).
+                # beta2350 — split 후 SI 재검출 → 늘어났으면 revert (SI 악화 방지).
                 if _UUU5_FACE_SPLIT and len(cands) > 0:
                     try:
                         V_cand, F_cand, n_split = _apply_face_split(V, F, cands, max_split=20)
                         if n_split > 0:
-                            V, F = V_cand, F_cand
-                            log.info("native_tet_uuu6_face_split_applied", n_split=int(n_split))
+                            # beta2350: post-split SI count 검증.
+                            try:
+                                si_post = _detect_self_intersections(V_cand, F_cand)
+                                _accept = int(len(si_post)) <= int(len(si_pairs))
+                            except Exception:
+                                _accept = True   # detect 실패 시 split 결과 그대로 채택 (이전 동작).
+                            if _accept:
+                                V, F = V_cand, F_cand
+                                log.info(
+                                    "native_tet_uuu6_face_split_applied",
+                                    n_split=int(n_split),
+                                    si_pre=int(len(si_pairs)),
+                                    si_post=int(len(si_post)) if "si_post" in dir() else None,
+                                )
+                            else:
+                                log.info(
+                                    "native_tet_uuu6_face_split_reverted",
+                                    n_split=int(n_split),
+                                    si_pre=int(len(si_pairs)),
+                                    si_post=int(len(si_post)),
+                                    reason="SI_increased",
+                                )
                     except Exception as exc:
                         log.debug("native_tet_uuu6_face_split_skipped", reason=str(exc))
     except Exception as exc:
