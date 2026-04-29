@@ -587,6 +587,25 @@ ENGINE_PARAM_REGISTRY: dict[str, list[EngineParamSpec]] = {
                 "일반 3D mesh 에선 끔."
             ),
         ),
+        # beta2317 — BL 직전 polyMesh backup 후 BL 적용 (실패 시 rollback 가능).
+        EngineParamSpec(
+            "post_layers_backup_original",
+            "backup_original", "bool", True,
+            doc=(
+                "BL 적용 전 case_dir/constant/pre_bl 에 polyMesh 사본 저장.\n"
+                "True (default) — 실패 시 사용자 rollback 가능.\n"
+                "False — 디스크 절약, BL 시도 후 즉시 결과 적용."
+            ),
+        ),
+        # beta2317 — extrude_mesh 등 단일 wall patch 지정 (kwarg 단일 string).
+        EngineParamSpec(
+            "post_layers_wall_patch",
+            "wall_patch (extrude_mesh)", "str", "",
+            doc=(
+                "extrude_mesh 엔진 전용: extrude 대상 wall patch 이름.\n"
+                "빈값 = 자동 검출 (boundary classify). 명시 시 single patch."
+            ),
+        ),
         # ─── beta2289 — native_bl Phase 2 collision/feature/quality (cfMesh/T-Rex 동등) ─
         EngineParamSpec(
             "bl_collision_safety",

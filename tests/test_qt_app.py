@@ -3875,6 +3875,16 @@ def test_gui_engine_spec_layers_post_exposes_phase2_keys() -> None:
     assert not missing, f"layers_post spec 에 누락된 Phase 2 필드: {missing}"
 
 
+def test_gui_engine_spec_layers_post_exposes_backup_and_wall_patch() -> None:
+    """beta2317 — layers_post spec 에 backup_original + wall_patch 노출.
+
+    이전엔 tier_layers_post.py 가 params.get 으로 read 만 — GUI spec 미정의."""
+    from desktop.qt_app.widgets.engine_params_spec import ENGINE_PARAM_REGISTRY
+    keys = {s.key for s in ENGINE_PARAM_REGISTRY.get("layers_post", [])}
+    assert "post_layers_backup_original" in keys
+    assert "post_layers_wall_patch" in keys
+
+
 def test_gui_engine_spec_layers_post_exposes_max_total_ratio() -> None:
     """beta2316 — layers_post spec 에 post_layers_max_total_ratio 노출.
 
