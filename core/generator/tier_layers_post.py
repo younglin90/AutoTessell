@@ -155,6 +155,14 @@ def _extract_bl_phase2_stats(res) -> "Any | None":
         feature_lock_triggered="feature_lock" in (
             getattr(res, "message", "") or ""
         ),
+        # C-GUI-4 / beta2414 — LCR + aniso_split 통계 propagate (Pointwise T-Rex / cfMesh 동등).
+        lcr_n_reduced_verts=int(getattr(res, "lcr_n_reduced_verts", 0) or 0),
+        lcr_max_reduction=int(getattr(res, "lcr_max_reduction", 0) or 0),
+        lcr_min_layers_used=int(getattr(res, "lcr_min_layers_used", 0) or 0),
+        lcr_n_safe_full_layers=int(getattr(res, "lcr_n_safe_full_layers", 0) or 0),
+        aniso_split_n_examined=int(getattr(res, "aniso_split_n_examined", 0) or 0),
+        aniso_split_n_would_split=int(getattr(res, "aniso_split_n_would_split", 0) or 0),
+        aniso_split_max_aspect_in=float(getattr(res, "aniso_split_max_aspect_in", 0.0) or 0.0),
     )
 
 

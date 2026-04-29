@@ -384,6 +384,15 @@ class NativeBLPhase2Stats(BaseModel):
     collision_scale_factor: float = 1.0
     feature_lock_triggered: bool = False
     n_feature_verts_locked: int = 0
+    # C2.3 / C-GUI-4 / beta2414 — Pointwise T-Rex 동등 LCR 통계 (NativeBLResult 와 동일).
+    lcr_n_reduced_verts: int = 0
+    lcr_max_reduction: int = 0
+    lcr_min_layers_used: int = 0
+    lcr_n_safe_full_layers: int = 0
+    # C3.3 / beta2377 — cfMesh splitInternalLayers diagnostic.
+    aniso_split_n_examined: int = 0
+    aniso_split_n_would_split: int = 0
+    aniso_split_max_aspect_in: float = 0.0
 
 
 class AdditionalMetrics(BaseModel):
