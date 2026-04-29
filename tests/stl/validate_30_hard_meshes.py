@@ -168,7 +168,8 @@ def _try_bl_after_volume(td: Path) -> dict:
         return {"bl_success": False, "bl_skipped": "no_polymesh"}
     t0 = _t.perf_counter()
     try:
-        cfg = BLConfig(num_layers=3, first_thickness=0.0, growth_ratio=1.2)
+        # C-VAL-6 fix: first_thickness > 0 (BL 필수). bbox_diag * 0.005 = 적절한 default.
+        cfg = BLConfig(num_layers=3, first_thickness=1e-3, growth_ratio=1.2)
         r = generate_native_bl(case_dir, config=cfg, engine_tag="validator")
         return {
             "bl_success": bool(r.success),
