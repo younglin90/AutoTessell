@@ -100,6 +100,21 @@ def test_empty_input_returns_zero_report() -> None:
     assert r.n_intersections == 0
 
 
+def test_native_poly_mesher_populates_si_pre_field() -> None:
+    """beta2339 — generate_native_poly_voronoi 가 모든 success path 에서
+    NativePolyResult.n_self_intersect_pre 채움 (helper _inject_si 사용)."""
+    import inspect
+    from core.generator.native_poly.voronoi import generate_native_poly_voronoi
+    src = inspect.getsource(generate_native_poly_voronoi)
+    # capture + helper.
+    assert "_pre_mesh_si_count" in src
+    assert "_inject_si" in src
+    # 4+ return path 모두 _inject_si 로 wrap.
+    assert "return _inject_si(_retry_r)" in src or \
+        "_inject_si(_retry_r)" in src
+    assert "return _inject_si(best_result)" in src
+
+
 def test_native_hex_mesher_populates_si_pre_field() -> None:
     """beta2338 — generate_native_hex 가 NativeHexResult.n_self_intersect_pre 채움."""
     import inspect

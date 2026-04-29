@@ -1026,6 +1026,39 @@ def generate_native_poly_voronoi(
     _V = np.asarray(vertices, dtype=np.float64)
     _F = np.asarray(faces, dtype=np.int64)
 
+    # beta2339 — pre-mesh self-intersect capture (P2.6 chain). NativePolyResult
+    # 의 n_self_intersect_pre 에 저장 → harness / GUI 활용. ≤5000 face 만 측정.
+    _pre_mesh_si_count: int | None = None
+    try:
+        if int(_F.shape[0]) <= 5000:
+            from core.preprocessor.native_repair.self_intersect import (
+                detect_self_intersections as _det_si_poly,
+            )
+            _r_si = _det_si_poly(_V, _F)
+            _pre_mesh_si_count = int(_r_si.n_intersections)
+            if _r_si.has_self_intersection:
+                log.warning(
+                    "native_poly_pre_mesh_self_intersect",
+                    n_intersections=_pre_mesh_si_count,
+                    n_faces=int(_F.shape[0]),
+                )
+    except Exception as _exc_si:
+        log.debug("native_poly_pre_mesh_si_skipped", reason=str(_exc_si)[:120])
+
+    def _inject_si(r: NativePolyResult) -> NativePolyResult:
+        """beta2339 — return 직전 SI count 주입 helper.
+
+        NativePolyResult 는 dataclass (mutable) — 그대로 set 후 동일 객체
+        반환. 이전엔 multi-return path (auto_escalate / repair_retry /
+        last_resort_hex / inner) 모두 SI 정보 누락.
+        """
+        try:
+            if r is not None and getattr(r, "n_self_intersect_pre", None) is None:
+                r.n_self_intersect_pre = _pre_mesh_si_count
+        except Exception:
+            pass
+        return r
+
     # P1.4 / beta2314 — quadric error decimation (G&H 1997) wiring for poly.
     # native_tet (beta2308) 와 동일 패턴 — 50k+ face 입력 자동 단순화 →
     # voronoi seed/CVT 시간 ↓ + boundary snap 안정도 ↑.
@@ -1273,7 +1306,7 @@ def generate_native_poly_voronoi(
                                 cells=_retry_r.n_cells,
                                 grade=_retry_r.quality_grade,
                             )
-                            return _retry_r
+                            return _inject_si(_retry_r)
             except Exception as exc:
                 log.warning("native_poly_p2_repair_skipped", reason=str(exc)[:120])
             # KK4 (beta1870) — last-resort: 직접 native_hex (poly 변환).
@@ -1287,7 +1320,7 @@ def generate_native_poly_voronoi(
                         "native_poly_last_resort_hex",
                         cells=final_r.n_cells, grade=final_r.quality_grade,
                     )
-                    return final_r
+                    return _inject_si(final_r)
             except Exception as exc:
                 log.warning("native_poly_ppp3_skipped", reason=str(exc)[:120])
             return NativePolyResult(
@@ -1360,7 +1393,7 @@ def generate_native_poly_voronoi(
                             new_grade=_retry_r2.quality_grade,
                             new_cells=_retry_r2.n_cells,
                         )
-                        return _retry_r2
+                        return _inject_si(_retry_r2)
             except Exception as exc:
                 log.debug("native_poly_p2_grade_retry_skipped", reason=str(exc)[:120])
         # voronoi 가 chosen 이면 case_dir 가 이미 그 결과로 채워짐.
@@ -1386,12 +1419,13 @@ def generate_native_poly_voronoi(
                 _sh.rmtree(tmp_case, ignore_errors=True)
             except Exception:
                 pass
-        return best_result
-    return _generate_native_poly_voronoi_inner(
+        return _inject_si(best_result)
+    _inner_r = _generate_native_poly_voronoi_inner(
         vertices, faces, case_dir,
         target_edge_length=target_edge_length,
         seed_density=seed_density, n_lloyd=n_lloyd,
     )
+    return _inject_si(_inner_r)
 
 
 def _hex_to_poly_fallback(
