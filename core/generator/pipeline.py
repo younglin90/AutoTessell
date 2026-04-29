@@ -400,6 +400,16 @@ class MeshGenerator:
                 output_dir=output_dir,
             )
 
+        # C-GUI-3 / beta2413 — selected tier 의 mesh_integrity_suspect 추출.
+        _selected_attempt = next(
+            (a for a in tiers_attempted
+             if a.tier == strategy.selected_tier and a.status == "success"),
+            None,
+        )
+        _integrity_suspect = bool(
+            getattr(_selected_attempt, "mesh_integrity_suspect", False)
+            if _selected_attempt else False,
+        )
         return GeneratorLog(
             execution_summary=ExecutionSummary(
                 selected_tier=strategy.selected_tier,
@@ -407,5 +417,6 @@ class MeshGenerator:
                 output_dir=output_dir,
                 total_time_seconds=total_elapsed,
                 quality_level=quality_level,
+                mesh_integrity_suspect=_integrity_suspect,
             )
         )

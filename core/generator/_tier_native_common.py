@@ -351,4 +351,6 @@ def run_native_tier(
     return TierAttempt(
         tier=tier_name, status="success",
         time_seconds=elapsed, mesh_stats=stats,
+        # C-GUI-3 / beta2413 — propagate integrity flag from native result.
+        mesh_integrity_suspect=bool(getattr(res, "mesh_integrity_suspect", False)),
     )

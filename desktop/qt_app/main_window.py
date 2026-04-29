@@ -4137,6 +4137,15 @@ class AutoTessellWindow:  # type: ignore[misc]
             hausdorff_distance=getattr(fidelity, "hausdorff_distance", None),
             hausdorff_relative=getattr(fidelity, "hausdorff_relative", None),
             n_self_intersect_pre=getattr(fidelity, "n_self_intersect_pre", None),
+            # C-GUI-2 / beta2413 — mesh_integrity_suspect (ExecutionSummary 경유).
+            mesh_integrity_suspect=bool(
+                getattr(
+                    getattr(getattr(result, "generator_log", None),
+                            "execution_summary", None),
+                    "mesh_integrity_suspect", False,
+                )
+                or False,
+            ),
             hist_aspect=hist_data.get("aspect_ratio", []) or [],
             hist_skew=hist_data.get("skewness", []) or [],
             hist_non_ortho=hist_data.get("non_orthogonality", []) or [],

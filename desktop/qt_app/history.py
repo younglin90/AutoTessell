@@ -130,13 +130,10 @@ def make_entry_from_result(
         hausdorff_relative=getattr(fidelity, "hausdorff_relative", None),
         # beta2352 — pre-BL self-intersect (beta2334 evaluator populate 후 schema).
         n_self_intersect_pre=getattr(fidelity, "n_self_intersect_pre", None),
-        # C-GUI-1 / beta2410 — mesh_integrity_suspect 추출.
-        # generator result (NativeTetResult / NativeHexResult / NativePolyResult)
-        # 에서 직접 lookup. fallback Tier (snappy/cfMesh/etc) 는 False.
+        # C-GUI-1 / beta2410 (revised beta2413) — mesh_integrity_suspect.
+        # ExecutionSummary 경유 (selected tier 의 native result 에서 propagate).
         mesh_integrity_suspect=bool(
-            getattr(getattr(result, "generator_result", None),
-                    "mesh_integrity_suspect", False)
-            or False,
+            getattr(summary, "mesh_integrity_suspect", False) or False,
         ),
         error=getattr(result, "error", None),
     )

@@ -315,6 +315,8 @@ class TierAttempt(BaseModel):
     mesh_stats: MeshStats | None = None
     error_message: str | None = None
     native_bl_phase2: "NativeBLPhase2Stats | None" = None  # beta76
+    # C-GUI-3 / beta2413 — mesh_integrity_suspect (3-engine catastrophic flag).
+    mesh_integrity_suspect: bool = False
 
 
 class ExecutionSummary(BaseModel):
@@ -323,6 +325,10 @@ class ExecutionSummary(BaseModel):
     output_dir: str
     total_time_seconds: float
     quality_level: str | None = None
+    # C-GUI-3 / beta2413 — mesh_integrity_suspect (3-engine catastrophic flag).
+    # native engine 의 NativeTetResult / NativeHexResult / NativePolyResult 의
+    # mesh_integrity_suspect 를 pipeline result 까지 propagate.
+    mesh_integrity_suspect: bool = False
 
 
 class GeneratorLog(BaseModel):
