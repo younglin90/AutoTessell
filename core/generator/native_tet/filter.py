@@ -108,11 +108,13 @@ def filter_slivers(
         # 제거 후 각 surface vertex 가 최소 1 개 tet 에 포함되는지 확인.
         # 그렇지 않으면 해당 vertex 에 인접했던 가장 quality 높은 dropped tet 을
         # 되살려 hole 방지.
+        # C-PERF-82 / beta2533 — vectorize: kept tets × 4 verts → mask 일괄.
         covered = np.zeros(n_surface_vertices, dtype=bool)
-        for t_idx in np.where(keep)[0]:
-            for v_idx in tets[t_idx]:
-                if v_idx < n_surface_vertices:
-                    covered[v_idx] = True
+        if keep.any():
+            kept_verts = tets[keep].ravel()
+            surf_kept = kept_verts[kept_verts < n_surface_vertices]
+            if surf_kept.size > 0:
+                covered[surf_kept] = True
         missing = np.where(~covered)[0]
         if missing.size > 0:
             dropped_idx = np.where(inside_mask & ~keep)[0]
