@@ -381,3 +381,14 @@ def test_parallel_delaunay_auto_dispatch_wired() -> None:
     assert 'AUTO_TESSELL_PARALLEL_DELAUNAY", "auto"' in src, "auto 모드 분기 누락"
     # cpu_count() 분기.
     assert "os.cpu_count()" in src, "cpu_count auto-detect 누락"
+
+
+def test_native_bl_aniso_split_diagnostic_wired() -> None:
+    """C3.2 / beta2376 — native_bl 가 split_thick_prisms diagnostic env-gated 호출."""
+    import inspect
+    from core.layers import native_bl
+    src = inspect.getsource(native_bl)
+    assert "AUTO_TESSELL_BL_ANISO_SPLIT_DIAG" in src, "env-gate 누락"
+    assert "from core.layers.native_bl_split import split_thick_prisms" in src, \
+        "split_thick_prisms import 누락"
+    assert "native_bl_aniso_split_diagnostic" in src, "log 키 누락"

@@ -2447,6 +2447,52 @@ def generate_native_bl(
                 threshold=cfg.aspect_ratio_threshold,
             )
 
+    # C3.2 / beta2376 — anisotropic prism split diagnostic (cfMesh
+    # splitInternalLayers 동등). env-gated: AUTO_TESSELL_BL_ANISO_SPLIT_DIAG=1.
+    # mesh 변경 없이 split 가능한 prism 수만 측정 (실 split 은 후속 카드).
+    if (
+        os.environ.get("AUTO_TESSELL_BL_ANISO_SPLIT_DIAG", "0") == "1"
+        and n_prism_total > 0
+        and cfg.num_layers >= 1
+    ):
+        try:
+            from core.layers.native_bl_split import split_thick_prisms
+            # Build (N, 6) wedge connectivity from layer_point_ids.
+            _diag_prisms: list[list[int]] = []
+            for fi in wall_face_indices:
+                if fi not in wall_tri_verts:
+                    continue
+                v0, v1, v2 = wall_tri_verts[fi]
+                for k in range(cfg.num_layers):
+                    if k >= len(layer_point_ids) - 1:
+                        break
+                    lk = layer_point_ids[k]
+                    lkp1 = layer_point_ids[k + 1]
+                    if not all(v in lk and v in lkp1 for v in (v0, v1, v2)):
+                        continue
+                    _diag_prisms.append([
+                        lk[v0], lk[v1], lk[v2],
+                        lkp1[v0], lkp1[v1], lkp1[v2],
+                    ])
+            if _diag_prisms:
+                _arr = np.array(_diag_prisms, dtype=np.int64)
+                _, _, _spr = split_thick_prisms(
+                    final_points, _arr, threshold=4.0,
+                )
+                log.info(
+                    "native_bl_aniso_split_diagnostic",
+                    component="native_bl", phase="beta2376",
+                    n_prisms_examined=int(_spr.n_input_prisms),
+                    n_would_split=int(_spr.n_split_prisms),
+                    max_aspect_in=float(_spr.max_aspect_in),
+                    threshold=4.0,
+                )
+        except Exception as _split_exc:
+            log.debug(
+                "native_bl_aniso_split_diag_skipped",
+                reason=str(_split_exc)[:120],
+            )
+
     # beta2247 — cfMesh/T-Rex 동급 wall preservation 검증.
     # lp_ids[0] (outer-most BL layer = boundary patch face) 가 원본 wall 좌표와
     # ε 이내 일치하는지 검증. ε = bbox_diag * 1e-6 (수치 노이즈 허용).
