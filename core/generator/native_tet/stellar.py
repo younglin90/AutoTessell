@@ -1060,11 +1060,12 @@ def insert_face_centroid_steiner(
             continue
         d2_vert = opp2_list[0]
 
-        # q_old_min over both tets.
-        q_old = min(
-            _tet_quality(pts_arr, np.array(tets_list[ti])),
-            _tet_quality(pts_arr, np.array(tets_list[ti2])),
-        )
+        # q_old_min over both tets — batched.
+        # C-PERF-90 / beta2542 — _tet_quality_batch.
+        q_old = float(_tet_quality_batch(
+            pts_arr,
+            np.array([tets_list[ti], tets_list[ti2]], dtype=tets.dtype),
+        ).min())
 
         # Steiner point = centroid of face f_worst.
         m = (pts_arr[fa] + pts_arr[fb] + pts_arr[fc]) / 3.0
@@ -1085,7 +1086,10 @@ def insert_face_centroid_steiner(
         ]
 
         all_new = sub_T + sub_T2
-        q_new_min = min(_tet_quality(pts_arr_new, nt) for nt in all_new)
+        # batched.
+        q_new_min = float(_tet_quality_batch(
+            pts_arr_new, np.array(all_new, dtype=tets.dtype),
+        ).min())
 
         if q_new_min >= q_old + min_quality_improvement:
             # Accept: replace both tets.
@@ -1368,7 +1372,7 @@ def _evaluate_weighted_quality_proxy(
     assert (weights >= 0).all(), "weights must be non-negative"
     if tets.shape[0] == 0:
         return 1.0
-    return float(min(_tet_quality(pts, t) for t in tets))
+    return float(_tet_quality_batch(pts, tets).min())
 
 
 # ---------------------------------------------------------------------------
@@ -2719,7 +2723,7 @@ def _evidence_compare_lines(
         """Return min per-tet quality (worst_mq) over all tets."""
         if len(t) == 0:
             return 0.0
-        return float(min(_tet_quality(p, t[i]) for i in range(len(t))))
+        return float(_tet_quality_batch(p, t).min())
 
     pre_worst = _worst_mq(pts, tets)
 
