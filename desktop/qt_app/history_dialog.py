@@ -69,11 +69,12 @@ class HistoryDialog(EscDismissMixin, QDialog):
         # beta2303 — Hausdorff (rel) 컬럼 추가 (상용 툴 'Surface Deviation' 동등).
         # beta2352 — pre-BL Self-Intersect 컬럼 추가 (P2.6 chain).
         # C-GUI-1 / beta2411 — mesh_integrity_suspect 컬럼 (3-engine catastrophic flag).
-        self.table = QTableWidget(0, 11)
+        # C-GUI-6 / beta2416 — BL prism 컬럼 (Pointwise T-Rex / cfMesh 동등).
+        self.table = QTableWidget(0, 12)
         self.table.setHorizontalHeaderLabels([
             "시각", "입력", "Tier", "품질", "결과",
             "시간(s)", "셀수", "Non-ortho", "Hausdorff(rel)", "pre-BL SI",
-            "Integrity",
+            "Integrity", "BL prism",
         ])
         self.table.setStyleSheet(get_table_qss())
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
@@ -171,6 +172,11 @@ class HistoryDialog(EscDismissMixin, QDialog):
                 _hr_item,
                 _si_item,
                 _int_item,
+                # C-GUI-6 / beta2416 — BL prism 셀 수 (Pointwise T-Rex 동등).
+                QTableWidgetItem(
+                    f"{getattr(e, 'bl_n_prism_cells', 0):,}"
+                    if getattr(e, "bl_n_prism_cells", 0) > 0 else ""
+                ),
             ]
             # 결과 컬러
             if e.success:
