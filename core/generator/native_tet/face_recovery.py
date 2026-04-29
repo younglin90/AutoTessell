@@ -61,8 +61,22 @@ def recover_input_faces(
         tets[:, [0, 2, 3]], tets[:, [1, 2, 3]],
     ], axis=1).reshape(-1, 3)
     sf = np.sort(faces, axis=1)
-    face_set = {(int(sf[i, 0]), int(sf[i, 1]), int(sf[i, 2]))
-                for i in range(sf.shape[0])}
+    # C-PERF-45 / beta2496 — vectorize face_set via packed-key.
+    if sf.size == 0:
+        face_set: set[tuple[int, int, int]] = set()
+    else:
+        n_max_fs = int(sf.max()) + 1
+        pack_fs = (
+            sf[:, 0].astype(np.int64) * (n_max_fs * n_max_fs)
+            + sf[:, 1].astype(np.int64) * n_max_fs
+            + sf[:, 2].astype(np.int64)
+        )
+        uniq_fs = np.unique(pack_fs)
+        face_set = set(zip(
+            (uniq_fs // (n_max_fs * n_max_fs)).tolist(),
+            ((uniq_fs // n_max_fs) % n_max_fs).tolist(),
+            (uniq_fs % n_max_fs).tolist(),
+        ))
 
     n_attempt = 0
     n_rec = 0
