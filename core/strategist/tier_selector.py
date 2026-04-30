@@ -335,6 +335,53 @@ class TierSelector:
         else:
             mt = str(mesh_type or "auto").lower()
 
+        # I6 / beta2624 — bench history-based soft hint.
+        #   env AUTO_TESSELL_TIER_HISTORY_JSON 설정 시 해당 JSON 의 success rate
+        #   상위 3 tier 를 우선 fallback. tier_hint='auto' 일 때만 적용.
+        _history_pref: list[str] = []
+        try:
+            import json as _json_i6
+            import os as _os_i6
+            _hist_path = _os_i6.environ.get("AUTO_TESSELL_TIER_HISTORY_JSON", "")
+            if _hist_path and tier_hint == "auto":
+                _hist_data = json.loads(  # type: ignore[name-defined]
+                    Path(_hist_path).read_text(encoding="utf-8")
+                ) if False else None
+                # safer: subprocess-free read.
+                from pathlib import Path as _P
+                _p = _P(_hist_path)
+                if _p.exists():
+                    _hist_rows = _json_i6.loads(_p.read_text(encoding="utf-8"))
+                    # rows: list[{engine, success, grade, ...}]
+                    _ok_count: dict[str, int] = {}
+                    _total_count: dict[str, int] = {}
+                    for _r in _hist_rows:
+                        _eng = _r.get("engine", "")
+                        if not _eng:
+                            continue
+                        _total_count[_eng] = _total_count.get(_eng, 0) + 1
+                        if _r.get("success") and _r.get("grade") in ("A", "B"):
+                            _ok_count[_eng] = _ok_count.get(_eng, 0) + 1
+                    # sort by success rate (>= 5 samples).
+                    _ranked = sorted(
+                        [
+                            (_eng, _ok_count.get(_eng, 0) / max(_total_count[_eng], 1))
+                            for _eng in _total_count
+                            if _total_count[_eng] >= 5
+                        ],
+                        key=lambda x: x[1],
+                        reverse=True,
+                    )
+                    _history_pref = [_e for _e, _r in _ranked[:3]]
+                    if _history_pref:
+                        log.info(
+                            "tier_history_soft_hint",
+                            history_path=_hist_path,
+                            preferred=_history_pref,
+                        )
+        except Exception as _hist_exc:
+            log.debug("tier_history_skipped", reason=str(_hist_exc)[:120])
+
         # tier_hint override (최우선)
         canonical = _HINT_MAP.get(tier_hint, tier_hint)
         if canonical != "auto":
