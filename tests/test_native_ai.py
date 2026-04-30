@@ -524,6 +524,77 @@ def test_starccm_binary_skeleton():
         assert r.fmt == "binary"
 
 
+def test_starccm_ccmio_hdf5_round_trip(monkeypatch):
+    """F4 / beta2601 — Siemens CCMIO HDF5 writer + reader round-trip 검증.
+
+    polyMesh dict → ccmio HDF5 file → read back → 좌표/면/owner/boundary 보존.
+    """
+    try:
+        import h5py  # noqa: F401
+    except ImportError:
+        pytest.skip("h5py not installed")
+
+    import sys, types
+    fake_pm = {
+        "points": [
+            [0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0], [0.0, 1.0, 0.0],
+            [0.0, 0.0, 1.0], [1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0], [0.0, 1.0, 1.0],
+        ],
+        "faces": [
+            [0, 1, 2, 3],  # bottom (boundary, will appear after internal)
+            [4, 5, 6, 7],  # top
+            [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7],
+        ],
+        "owner": [0, 0, 0, 0, 0, 0],  # 1 cube cell.
+        "neighbour": [],
+        "boundary": [
+            {"name": "walls", "type": "wall", "nFaces": 6, "startFace": 0},
+        ],
+    }
+    fake_mod = types.ModuleType("core.utils.poly_mesh_reader")
+    fake_mod.read_poly_mesh = lambda _p: fake_pm  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "core.utils.poly_mesh_reader", fake_mod)
+
+    from core.utils.ccmio_writer import write_ccmio, read_ccmio
+
+    with tempfile.TemporaryDirectory() as td:
+        pm = Path(td) / "pm"
+        pm.mkdir()
+        out = Path(td) / "cube.ccm"
+        r = write_ccmio(str(pm), str(out))
+        assert r.success, f"write failed: {r.message}"
+        assert r.n_vertices == 8
+        assert r.n_cells == 1
+        assert r.n_boundary_patches == 1
+
+        # round-trip read.
+        round = read_ccmio(str(out))
+        assert round is not None, "read_ccmio returned None"
+        rd_pts = np.asarray(round["points"])
+        assert rd_pts.shape == (8, 3)
+        np.testing.assert_allclose(
+            rd_pts, np.asarray(fake_pm["points"], dtype=np.float64),
+            rtol=1e-9,
+        )
+        # boundary patch 보존.
+        assert len(round["boundary"]) == 1
+        assert round["boundary"][0]["name"] == "walls"
+        assert round["boundary"][0]["type"] == "wall"
+
+    # write_starccm fmt='ccmio' 진입점도 검증.
+    from core.utils.mesh_exporter_starccm import write_starccm
+    with tempfile.TemporaryDirectory() as td:
+        pm = Path(td) / "pm"
+        pm.mkdir()
+        out = Path(td) / "cube2.ccm"
+        r2 = write_starccm(str(pm), str(out), fmt="ccmio")
+        assert r2.success, f"write_starccm fmt=ccmio failed: {r2.message}"
+        assert r2.n_points == 8
+        assert r2.fmt == "ccmio"
+
+
 def test_starccm_binary_v2_full_blocks(monkeypatch):
     """C7-1.3 / beta2593 — 6-block binary writer 검증.
     구조: header(32B) + PTS + FAC + OWN + NBR + ZNE + END trailer.

@@ -62,11 +62,34 @@ def write_starccm(
             polyMesh_dir, output_path, t0,
         )
 
+    if fmt == "ccmio":
+        # F4 / beta2601 — Siemens CCMIO HDF5 reverse-engineered writer.
+        try:
+            from core.utils.ccmio_writer import write_ccmio
+            r = write_ccmio(polyMesh_dir, output_path)
+            return StarCCMExportResult(
+                success=r.success,
+                output_path=r.output_path,
+                fmt="ccmio",
+                n_points=r.n_vertices,
+                n_cells=r.n_cells,
+                n_faces=r.n_internal_faces + r.n_boundary_faces,
+                n_zones=r.n_boundary_patches,
+                elapsed=r.elapsed,
+                message=r.message,
+            )
+        except Exception as exc:
+            return StarCCMExportResult(
+                success=False, fmt="ccmio",
+                elapsed=time.perf_counter() - t0,
+                message=f"ccmio writer error: {exc!s:.80}",
+            )
+
     if fmt != "txt":
         return StarCCMExportResult(
             success=False,
             fmt=fmt,
-            message=f"unknown fmt={fmt} (지원: txt | binary)",
+            message=f"unknown fmt={fmt} (지원: txt | binary | ccmio)",
             elapsed=time.perf_counter() - t0,
         )
 
