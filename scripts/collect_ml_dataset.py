@@ -29,6 +29,10 @@ def main() -> int:
         help="STL 파일 glob pattern (relative to repo root).",
     )
     ap.add_argument(
+        "--stl-dir", default=None,
+        help="대신 사용할 절대 STL 디렉터리 (override --stl-glob).",
+    )
+    ap.add_argument(
         "--output", default="models/ml_dataset.npz",
         help="output .npz 경로.",
     )
@@ -50,7 +54,10 @@ def main() -> int:
     out_path = repo / args.output
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
-    stl_files = sorted(repo.glob(args.stl_glob))[: args.max_meshes]
+    if args.stl_dir:
+        stl_files = sorted(Path(args.stl_dir).glob("*.stl"))[: args.max_meshes]
+    else:
+        stl_files = sorted(repo.glob(args.stl_glob))[: args.max_meshes]
     if not stl_files:
         print(f"[ERR] no STL files matched: {args.stl_glob}", file=sys.stderr)
         return 1
