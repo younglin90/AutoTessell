@@ -27,6 +27,11 @@ from .ml_tet_smoothing import (
     MLTetSmoothingResult,
     build_quality_predictor_skeleton,
 )
+from .ml_bl_collision import (
+    predict_bl_collision_distances,
+    BLCollisionPredictResult,
+    build_collision_predictor_skeleton,
+)
 
 __all__ = [
     "generate_native_ai_volume",
@@ -35,4 +40,7 @@ __all__ = [
     "ml_tet_smoothing_apply",
     "MLTetSmoothingResult",
     "build_quality_predictor_skeleton",
+    "predict_bl_collision_distances",
+    "BLCollisionPredictResult",
+    "build_collision_predictor_skeleton",
 ]
