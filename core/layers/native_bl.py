@@ -2005,9 +2005,16 @@ def generate_native_bl(
                 max_aspect=cfg.aspect_ratio_threshold,
             )
             # BL3: relative first thickness (ratio × local mean edge length)
+            # C-BL-7 / beta2553 — env-gated ratio for 3a.1 (per-vertex ft tuning).
+            # AUTO_TESSELL_BL_REL_RATIO=0.5 (or 0.7) → larger ft on coarse wall
+            # → max_aspect 감소. default 0.3 = cfMesh standard.
+            import os as _os_bl3
+            _bl_rel_ratio = float(
+                _os_bl3.environ.get("AUTO_TESSELL_BL_REL_RATIO", "0.3")
+            )
             rel_thick = _relative_first_thickness(
                 points, wall_surface_faces, wall_vert_indices,
-                ratio=0.3,
+                ratio=_bl_rel_ratio,
             )
             # Guard: if rel_thick is all-zero (degenerate mesh) skip BL3 combination
             rel_valid = rel_thick.max() > 1e-30 if len(rel_thick) > 0 else False
