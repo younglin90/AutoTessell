@@ -137,6 +137,31 @@ def generate_native_ai_volume(
             n_cells = int(getattr(r, "n_cells", 0) or getattr(r, "n_tets", 0))
             grade = str(getattr(r, "quality_grade", "?"))
             backend = "native_tet"
+            # AI-V1 wire: ML-tet smoothing 시도. 현재 (skeleton) graceful skip.
+            if cfg.ai_smoothing and getattr(r, "tets", None) is not None:
+                try:
+                    from .ml_tet_smoothing import ml_tet_smoothing_apply
+                    _pts_ml = np.asarray(getattr(r, "pts", V), dtype=np.float64)
+                    _tets_ml = np.asarray(r.tets, dtype=np.int64)
+                    _, _, _ml_res = ml_tet_smoothing_apply(_pts_ml, _tets_ml)
+                    if _ml_res.success:
+                        ai_applied["smoothing"] = True
+                        log.info(
+                            "native_ai_smoothing_applied",
+                            backend=_ml_res.backend,
+                            n_smoothed=_ml_res.n_smoothed,
+                            avg_q_before=round(_ml_res.avg_q_before, 4),
+                            avg_q_after=round(_ml_res.avg_q_after, 4),
+                        )
+                    else:
+                        log.info(
+                            "native_ai_smoothing_skipped",
+                            reason=_ml_res.message[:80],
+                        )
+                except Exception as _ml_exc:
+                    log.warning(
+                        "native_ai_smoothing_error", error=str(_ml_exc)[:120],
+                    )
         elif cfg.mesh_type == "hex":
             from core.generator.native_hex.mesher import generate_native_hex
             r = generate_native_hex(
