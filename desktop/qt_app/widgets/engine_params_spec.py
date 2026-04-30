@@ -975,6 +975,8 @@ ENGINE_KEY_ALIASES: dict[str, str] = {
     "tier_native_tet":  "native_tet",
     "tier_native_hex":  "native_hex",
     "tier_native_poly": "native_poly",
+    # beta2557 — native_ai (v0.5 skeleton)
+    "tier_native_ai":   "native_ai",
 }
 
 

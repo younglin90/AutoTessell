@@ -383,6 +383,9 @@ class AutoTessellWindow:  # type: ignore[misc]
             ("native_hex", "Native Hex · octree + snap + BL", "ok"),
             ("native_poly", "Native Poly · Voronoi + Lloyd CVT", "ok"),
         ]),
+        ("Native AI (v0.5 skeleton)", [
+            ("native_ai", "Native AI · mesh_type dispatch (현재 위임, AI-V1~V4 단계 통합)", "ok"),
+        ]),
         # 참고용 (외부 의존). 우리 엔진 고도화 완료 시 단계적 제거 예정.
         ("참고용 · Tetrahedral", [
             ("wildmesh", "WildMesh (fTetWild, 참고용)", "ok"),
@@ -1766,6 +1769,7 @@ class AutoTessellWindow:  # type: ignore[misc]
         ("native_tet", "Native Tet · scipy Delaunay"),
         ("native_hex", "Native Hex · octree+snap+BL"),
         ("native_poly", "Native Poly · Voronoi+CVT"),
+        ("native_ai", "Native AI · mesh_type dispatch (skeleton)"),
     )
     _TIER4_ENGINES: tuple[tuple[str, str], ...] = (
         ("native_bl", "Native BL (Phase 2)"),
@@ -1993,6 +1997,7 @@ class AutoTessellWindow:  # type: ignore[misc]
             "native_tet": "Native Tet",
             "native_hex": "Native Hex",
             "native_poly": "Native Poly",
+            "native_ai": "Native AI",
         }
         volume_engine = display_map.get(tier, tier)
 
