@@ -94,7 +94,6 @@ def _worker_run(payload: tuple) -> dict:
                     V, F, case, seed_density=8,
                     enable_phase_a=True, enable_phase_b=False,
                     enable_phase_c=True, enable_amips_smooth=True,
-                    enable_stellar_split=True,
                 )
                 out["success"] = bool(r.success)
                 out["n_cells"] = int(getattr(r, "n_cells", 0) or getattr(r, "n_tets", 0))
