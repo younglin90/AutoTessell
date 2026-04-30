@@ -1773,6 +1773,47 @@ def generate_native_bl(
             )
             cum = np.concatenate(([0.0], np.cumsum(thicknesses)))
 
+    # G1 / beta2602 — aspect-aware first_thickness cap (Pointwise T-Rex parity).
+    #   목표: BL prism 의 aspect ≤ AUTO_TESSELL_BL_ASPECT_TARGET (default 1000.0).
+    #   알고리즘: aspect = wall_normal_thickness / wall_edge_length.
+    #   thicknesses[0] (first layer) ≤ mean_wall_edge / target_aspect.
+    #   초과 시 전체 thicknesses 를 비례 축소.
+    #   env AUTO_TESSELL_BL_ASPECT_TARGET=1000 (default), =0 이면 비활성.
+    try:
+        _aspect_target = float(os.environ.get("AUTO_TESSELL_BL_ASPECT_TARGET", "1000.0"))
+        if _aspect_target > 0 and len(wall_face_indices) > 0:
+            # mean wall edge length 추산 (sample 100 face).
+            _sample = wall_face_indices[: min(100, len(wall_face_indices))]
+            _edge_lens: list[float] = []
+            for _fi in _sample:
+                _f = faces[_fi]
+                if len(_f) < 3:
+                    continue
+                for _ai, _bi in ((0, 1), (1, 2), (2, 0)):
+                    _ea = points[_f[_ai]]
+                    _eb = points[_f[_bi]]
+                    _edge_lens.append(float(np.linalg.norm(_eb - _ea)))
+            if _edge_lens:
+                _mean_edge = float(np.mean(_edge_lens))
+                _aspect_cap_first = _mean_edge / _aspect_target
+                if thicknesses[0] > _aspect_cap_first and thicknesses[0] > 0:
+                    _scale_aspect = _aspect_cap_first / float(thicknesses[0])
+                    thicknesses *= _scale_aspect
+                    total = float(thicknesses.sum())
+                    log.info(
+                        "native_bl_aspect_cap_applied",
+                        component="native_bl", phase="G1/beta2602",
+                        mean_edge=round(_mean_edge, 6),
+                        aspect_target=_aspect_target,
+                        first_thickness_pre=round(float(thicknesses[0] / _scale_aspect), 6),
+                        first_thickness_post=round(float(thicknesses[0]), 6),
+                        scale=round(_scale_aspect, 4),
+                        new_total=round(total, 6),
+                    )
+                    cum = np.concatenate(([0.0], np.cumsum(thicknesses)))
+    except Exception as _asp_exc:
+        log.debug("native_bl_aspect_cap_skipped", reason=str(_asp_exc)[:120])
+
     # 4d) beta64 feature lock — sharp edge vertex 는 layer thickness 를 축소.
     feature_verts: set[int] = set()
     if cfg.feature_lock:
