@@ -124,6 +124,21 @@ def test_write_plot3d_grid(fake_cube_polymesh):
         assert "1\n" in content
 
 
+def test_write_abaqus_inp(fake_cube_polymesh):
+    """L1 / beta2640 — Abaqus .inp writer."""
+    from core.utils.abaqus_writer import write_abaqus_inp
+    with tempfile.TemporaryDirectory() as td:
+        pm = Path(td) / "pm"; pm.mkdir()
+        out = Path(td) / "cube.inp"
+        r = write_abaqus_inp(str(pm), str(out))
+        assert r.success and r.n_nodes == 8 and r.n_elements == 1
+        content = out.read_text(encoding="ascii")
+        assert "*Heading" in content
+        assert "*Node" in content
+        assert "*Element" in content
+        assert "*Material" in content
+
+
 def test_write_nastran_bdf(fake_cube_polymesh):
     """K1 / beta2633 — Nastran .bdf writer."""
     from core.utils.nastran_writer import write_nastran_bdf
