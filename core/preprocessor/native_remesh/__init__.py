@@ -270,9 +270,53 @@ def _apply_face_split(
     return V_out, F_out, n_split
 
 
+def recommend_target_edge_from_features(
+    V: np.ndarray,
+    F: np.ndarray,
+    *,
+    feature_angle_deg: float = 30.0,
+    target_factor: float = 0.5,
+) -> float:
+    """N5 / beta2657 — feature-edge informed target_edge 추천.
+
+    feature edge 의 평균 길이 × target_factor 를 isotropic_remesh 의
+    target_edge 권장값으로 반환.
+
+    Args:
+        V: (N, 3) coords.
+        F: (M, 3) tri indices.
+        feature_angle_deg: dihedral threshold.
+        target_factor: feature 평균 × factor (0.5 = sharp 보존 + 충분한 cell).
+
+    Returns:
+        recommended target_edge (>0). feature 없으면 mean edge × target_factor.
+    """
+    try:
+        from core.analyzer.feature_edges import extract_feature_edges
+        r = extract_feature_edges(V, F, feature_angle_deg=feature_angle_deg, return_edges=True)
+        if r.edge_pairs:
+            lens = [
+                float(np.linalg.norm(V[a] - V[b]))
+                for (a, b) in r.edge_pairs
+                if 0 <= a < V.shape[0] and 0 <= b < V.shape[0]
+            ]
+            if lens:
+                return float(np.mean(lens)) * float(target_factor)
+    except Exception:
+        pass
+    # fallback: 모든 face edge 평균.
+    if F.shape[0] == 0:
+        return 0.1
+    e1 = np.linalg.norm(V[F[:, 1]] - V[F[:, 0]], axis=1)
+    e2 = np.linalg.norm(V[F[:, 2]] - V[F[:, 1]], axis=1)
+    e3 = np.linalg.norm(V[F[:, 0]] - V[F[:, 2]], axis=1)
+    return float(np.concatenate([e1, e2, e3]).mean()) * float(target_factor)
+
+
 __all__ = [
     "isotropic_remesh",
     "lloyd_cvt",
+    "recommend_target_edge_from_features",
     "_UUU1_SI_DETECT",
     "_detect_self_intersections",
     "_UUU3_REPAIR_CANDIDATES",
