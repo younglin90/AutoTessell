@@ -1,0 +1,30 @@
+"""native_ai — AI-driven volume mesh generation (tet/hex/poly/BL).
+
+native_tet / native_hex / native_poly 와 동일한 인터페이스로 AI 기반
+볼륨 mesh 생성 진입점. 현재 (2026-04) production-grade volume AI 라이브러리가
+없어 mock fallback (기존 native_* 호출) 으로 시작. ML-based smoothing /
+generative model 통합은 단계적 추가.
+
+Research direction:
+    - MeshGPT (Siddiqui 2024) / MeshAnything V2 (Chen 2024) — surface only.
+    - DeepCAD (CAD reconstruction) — CAD-to-mesh, not direct volume.
+    - ML-based tet smoothing (Nature Comp Sci 2023) — quality optim.
+    - Diffusion mesh generation (research, no production lib).
+
+API:
+    generate_native_ai_volume(V, F, work_dir, mesh_type, quality_level)
+        → AIVolumeResult
+"""
+from __future__ import annotations
+
+from .mesher import (
+    generate_native_ai_volume,
+    AIVolumeResult,
+    AIVolumeConfig,
+)
+
+__all__ = [
+    "generate_native_ai_volume",
+    "AIVolumeResult",
+    "AIVolumeConfig",
+]
