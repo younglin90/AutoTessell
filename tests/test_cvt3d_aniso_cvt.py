@@ -344,13 +344,19 @@ def test_harness_params_fine_qed_min_faces_10k() -> None:
         f"fine qed_min_faces=10000 expected, got {p.get('qed_min_faces')}"
 
 
-def test_stellar_split_env_gated_default_off() -> None:
-    """C1.6 / beta2374 — Stellar 의 split-pass 가 env-gate 로 default OFF."""
+def test_stellar_split_env_gated_default_on() -> None:
+    """P2.1 / beta2582 — Stellar 의 split-pass 가 env-gate 로 default ON.
+    이전 (C1.6/beta2374): default OFF (Klingner monotone proof 보수적).
+    P2.1: monotone guard (line 352: _wmin_out >= _wmin_in - 1e-6) 가 보호하므로
+    default ON. AUTO_TESSELL_STELLAR_SPLIT=0 으로 disable.
+    """
     import inspect
     from core.generator.native_tet import stellar
     src = inspect.getsource(stellar)
     assert "AUTO_TESSELL_STELLAR_SPLIT" in src, "Stellar split env-gate 누락"
     assert "split_sliver_longest_edge(" in src, "split_sliver_longest_edge 호출 누락"
+    # default value 가 "1" 로 명시됨.
+    assert 'AUTO_TESSELL_STELLAR_SPLIT", "1"' in src, "default ON (= '1') 명시 누락"
 
 
 def test_stellar_apply_op_queue_default_no_split() -> None:

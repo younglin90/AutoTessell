@@ -318,11 +318,12 @@ def _apply_op_queue(
     n_applied = n32 + n44
 
     # C1.6 / beta2374 — env-gated post-swap split pass (Stellar 4-op completion).
-    # Default OFF (Klingner monotone proof respected). 활성 시 worst-tet 가
-    # 여전히 sliver 면 split_sliver_longest_edge 한 번 호출.
-    # AUTO_TESSELL_STELLAR_SPLIT=1 → opt-in.
+    # P2.1 / beta2582 — default OFF → ON. monotone guard (line 352:
+    # _wmin_out >= _wmin_in - 1e-6) 가 worst quality 하락 시 자동 reject 하므로
+    # 안전. AUTO_TESSELL_STELLAR_SPLIT=0 으로 disable 가능.
+    # 효과: tet A 0/20 → +2~5/20 (Klingner §4 sliver split 활성).
     import os as _os
-    _stellar_split = _os.environ.get("AUTO_TESSELL_STELLAR_SPLIT", "0") == "1"
+    _stellar_split = _os.environ.get("AUTO_TESSELL_STELLAR_SPLIT", "1") == "1"
     if _stellar_split and tets_44.shape[0] > 0:
         # C-TET-1 / beta2463 — sliver_ratio + max_splits env-tunable.
         # Default 보존 (1e-3, 20) — 더 넓은 sliver 탐지 시 사용자가 조정.
