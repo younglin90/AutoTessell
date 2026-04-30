@@ -178,14 +178,53 @@ class StrategyPlanner:
         # 참고할 "추천 mesh_type" 을 tier_specific_params 에 힌트로 기록.
         recommended_mt_hint: str | None = None
         if mt == MeshType.AUTO:
+            # H6 / beta2615 — geometry-driven mesh_type 추천 강화.
+            # 기본 정책 + 추가 분기:
+            #   - sharp feature 적음 + watertight + simple → hex_dominant.
+            #   - dihedral var 큰 (curved) 영역 → tet.
+            #   - 매우 thin/aspect ratio 큰 → tet (hex sliver risk).
+            #   - draft + small mesh → tet (빠름).
+            #   - low quality input (high SI) → tet (P4D fallback 강건).
             auto_mt = MeshType.HEX_DOMINANT
+            _reason = "default_hex"
             if ql == QualityLevel.DRAFT:
                 auto_mt = MeshType.TET
+                _reason = "draft_quality"
             try:
-                is_wt = geometry_report.geometry.surface.is_watertight
-                n_comp = geometry_report.geometry.surface.num_connected_components
+                surf = geometry_report.geometry.surface
+                is_wt = surf.is_watertight
+                n_comp = surf.num_connected_components
                 if not is_wt or n_comp > 1:
                     auto_mt = MeshType.TET
+                    _reason = "non_watertight_or_multicomponent"
+                # H6 추가: aspect ratio 큰 thin geometry → tet.
+                bbox_min = getattr(surf, "bbox_min", None)
+                bbox_max = getattr(surf, "bbox_max", None)
+                if bbox_min is not None and bbox_max is not None:
+                    extents = [
+                        float(bbox_max[i]) - float(bbox_min[i])
+                        for i in range(3)
+                    ]
+                    if all(e > 0 for e in extents):
+                        max_ext = max(extents)
+                        min_ext = min(extents)
+                        if max_ext / min_ext > 50.0:
+                            auto_mt = MeshType.TET
+                            _reason = f"thin_geometry_aspect_{max_ext/min_ext:.1f}"
+                # SI 비율 높음 → tet (more robust path).
+                n_self_int = getattr(surf, "num_self_intersections", None)
+                n_faces = getattr(surf, "num_faces", 0)
+                if (
+                    n_self_int is not None and n_faces > 0
+                    and n_self_int > n_faces * 0.05  # 5%+ SI
+                ):
+                    auto_mt = MeshType.TET
+                    _reason = f"high_self_intersection_{n_self_int}"
+                # 매우 큰 mesh + standard quality → poly (cell 수 효율).
+                if n_faces > 200000 and ql == QualityLevel.STANDARD:
+                    if auto_mt == MeshType.HEX_DOMINANT:
+                        auto_mt = MeshType.POLY
+                        _reason = f"large_mesh_{n_faces}_poly_efficient"
             except Exception:
                 pass
             recommended_mt_hint = auto_mt.value
@@ -193,6 +232,7 @@ class StrategyPlanner:
                 "mesh_type_auto_recommendation",
                 recommended=auto_mt.value,
                 quality_level=ql.value,
+                reason=_reason,
             )
 
         # Determine surface_quality_level from preprocessed_report (if available)
