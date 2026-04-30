@@ -62,11 +62,60 @@ def extract_tet_features(
     centroid = (p_a + p_b + p_c + p_d) / 4.0
     coords_12 = np.concatenate([p_a, p_b, p_c, p_d]) - np.tile(centroid, 4)
 
-    # 8-dim context (1-ring stats — placeholder here)
+    # 8-dim context (1-ring stats — AI-V1.1.1 real impl).
     if include_context:
-        # Real implementation: count incident tets, mean neighbor quality, etc.
-        # Skeleton: 8 zeros.
-        context_8 = np.zeros(8, dtype=np.float64)
+        # 1: incident tet count for vertex a
+        # 2: incident tet count for vertex b
+        # 3: incident tet count for vertex c
+        # 4: incident tet count for vertex d
+        # 5: 4 face area mean
+        # 6: 4 face area std
+        # 7: 4 dihedral angle min (cosine)
+        # 8: 4 dihedral angle max (cosine)
+        verts_in_tet = (
+            (tets == a).any(axis=1)
+            | (tets == b).any(axis=1)
+            | (tets == c).any(axis=1)
+            | (tets == d).any(axis=1)
+        )
+        n_incident_a = int((tets == a).any(axis=1).sum())
+        n_incident_b = int((tets == b).any(axis=1).sum())
+        n_incident_c = int((tets == c).any(axis=1).sum())
+        n_incident_d = int((tets == d).any(axis=1).sum())
+
+        # 4 face areas
+        f1 = 0.5 * float(np.linalg.norm(np.cross(p_b - p_a, p_c - p_a)))
+        f2 = 0.5 * float(np.linalg.norm(np.cross(p_b - p_a, p_d - p_a)))
+        f3 = 0.5 * float(np.linalg.norm(np.cross(p_c - p_a, p_d - p_a)))
+        f4 = 0.5 * float(np.linalg.norm(np.cross(p_c - p_b, p_d - p_b)))
+        face_areas = np.array([f1, f2, f3, f4])
+
+        # 4 dihedral angles (cosines along edges 0-1, 0-2, 0-3, 1-2)
+        # via face normals.
+        n1 = np.cross(p_b - p_a, p_c - p_a)
+        n2 = np.cross(p_b - p_a, p_d - p_a)
+        n3 = np.cross(p_c - p_a, p_d - p_a)
+        n4 = np.cross(p_c - p_b, p_d - p_b)
+        n1_norm = float(np.linalg.norm(n1)) + 1e-30
+        n2_norm = float(np.linalg.norm(n2)) + 1e-30
+        n3_norm = float(np.linalg.norm(n3)) + 1e-30
+        n4_norm = float(np.linalg.norm(n4)) + 1e-30
+        cos_d1 = float(np.dot(n1, n2)) / (n1_norm * n2_norm)
+        cos_d2 = float(np.dot(n1, n3)) / (n1_norm * n3_norm)
+        cos_d3 = float(np.dot(n2, n3)) / (n2_norm * n3_norm)
+        cos_d4 = float(np.dot(n1, n4)) / (n1_norm * n4_norm)
+        dihedrals = np.array([cos_d1, cos_d2, cos_d3, cos_d4])
+
+        context_8 = np.array([
+            float(n_incident_a),
+            float(n_incident_b),
+            float(n_incident_c),
+            float(n_incident_d),
+            float(face_areas.mean()),
+            float(face_areas.std()),
+            float(dihedrals.min()),
+            float(dihedrals.max()),
+        ], dtype=np.float64)
     else:
         context_8 = np.zeros(8, dtype=np.float64)
 
