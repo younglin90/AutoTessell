@@ -575,22 +575,51 @@ def _extract_feature_edge_segments(
 
     cos_thresh = float(np.cos(np.deg2rad(feature_angle_deg)))
     segs: list[tuple[np.ndarray, np.ndarray]] = []
+    # P2.5 / beta2583 — per-segment sharpness weight.
+    #   boundary edge → weight 1.5 (강제 보존).
+    #   dihedral edge → 1.0 + (1.0 - cos_a) — cos_a 낮을수록 (sharp 할수록) 가중.
+    #   sharpness=2.0 → 90° dihedral, sharpness=3.0 → 180° (peak).
+    seg_weights: list[float] = []
     for (a, b), fl in edge_map.items():
         is_feature = False
+        sharpness = 1.0
         if len(fl) == 1:
             is_feature = True  # boundary edge
+            sharpness = 1.5
         elif len(fl) == 2:
             cos_a = float(np.clip(np.dot(nrm[fl[0]], nrm[fl[1]]), -1.0, 1.0))
             if cos_a < cos_thresh:
                 is_feature = True
+                sharpness = 1.0 + (1.0 - cos_a)
         if is_feature:
             segs.append((sV[a], sV[b]))
+            seg_weights.append(sharpness)
 
     if not segs:
         return np.zeros((0, 2, 3), dtype=np.float64)
 
     seg_arr = np.array([[s[0], s[1]] for s in segs], dtype=np.float64)
-    return seg_arr  # (M, 2, 3)
+    # Stash weights as attribute on returned array. snap_to_feature_edges
+    # 가 _seg_weight 속성으로 access. ndarray 자체에 attr 부여 불가 →
+    # contiguous structured ndarray 대신 flag 처럼 설정 시도.
+    try:
+        seg_arr_view = seg_arr.view()
+        seg_arr_view.setflags(write=False)
+    except Exception:
+        pass
+    # Carry weights via attribute on segs object using a subclass.
+    class _SegArrWithWeights(np.ndarray):
+        def __new__(cls, src: np.ndarray, weights: np.ndarray) -> "_SegArrWithWeights":
+            obj = np.asarray(src).view(cls)
+            obj._seg_weight = weights  # type: ignore[attr-defined]
+            return obj
+
+        def __array_finalize__(self, obj: object | None) -> None:
+            if obj is None:
+                return
+            self._seg_weight = getattr(obj, "_seg_weight", None)  # type: ignore[attr-defined]
+
+    return _SegArrWithWeights(seg_arr, np.asarray(seg_weights, dtype=np.float64))
 
 
 def _closest_point_on_segment(
@@ -691,6 +720,8 @@ def snap_to_feature_edges(
     n_verts = work.shape[0]
     best_dist = np.full(n_verts, np.inf)
     best_snap = np.empty((n_verts, 3), dtype=np.float64)
+    # P2.5 / beta2583 — per-vert chosen seg index 추적해 weight 회수.
+    best_seg_idx = np.full(n_verts, -1, dtype=np.int64)
 
     for i in range(n_verts):
         cand_segs = nn_idx[i]
@@ -700,23 +731,35 @@ def snap_to_feature_edges(
         P = work[i]
         bd2 = np.inf
         bp = None
+        bsi = -1
         for si in cand_segs:
             pt, d = _closest_point_on_segment(P, seg_A[si], seg_B[si])
             if d < bd2:
                 bd2 = d
                 bp = pt
+                bsi = int(si)
         if bp is not None and bd2 <= max_dist:
             best_dist[i] = bd2
             best_snap[i] = bp
+            best_seg_idx[i] = bsi
 
-    # Step 3 — select top_k candidates (smallest dist, dist < max_dist)
+    # Step 3 — select top_k candidates (smallest dist, dist < max_dist).
+    # P2.5 / beta2583 — sharpness-weighted score: score = dist / weight.
+    #   sharper edge → higher weight → 작은 score → 우선 채택.
     eligible = np.where(best_dist < max_dist)[0]
     if eligible.size == 0:
         stats["n_no_feature"] = n_verts
         return work, stats
 
+    seg_weights_attr = getattr(segs, "_seg_weight", None)
+    if seg_weights_attr is not None and len(seg_weights_attr) == segs.shape[0]:
+        _w = np.asarray(seg_weights_attr, dtype=np.float64)
+        score_eligible = best_dist[eligible] / np.maximum(_w[best_seg_idx[eligible]], 1e-30)
+    else:
+        score_eligible = best_dist[eligible]
+
     if eligible.size > top_k:
-        order = np.argsort(best_dist[eligible])
+        order = np.argsort(score_eligible)
         eligible = eligible[order[:top_k]]
 
     # Step 4 — build vert → incident cells map for quality guard.
