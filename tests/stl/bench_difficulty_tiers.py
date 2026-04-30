@@ -91,7 +91,7 @@ def _worker_run(payload: tuple) -> dict:
             if engine == "tet":
                 from core.generator.native_tet.mesher import generate_native_tet
                 r = generate_native_tet(
-                    V, F, case, seed_density=8,
+                    V, F, case, seed_density=16,
                     enable_phase_a=True, enable_phase_b=False,
                     enable_phase_c=True, enable_amips_smooth=True,
                 )
