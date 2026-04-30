@@ -524,6 +524,70 @@ def test_starccm_binary_skeleton():
         assert r.fmt == "binary"
 
 
+def test_fluent_msh_writer_basic(monkeypatch):
+    """H1 / beta2610 — Fluent .msh ASCII writer 검증."""
+    import sys, types
+    fake_pm = {
+        "points": [[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]],
+        "faces": [[0,1,2,3],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]],
+        "owner": [0,0,0,0,0,0],
+        "neighbour": [],
+        "boundary": [{"name":"walls","type":"wall","nFaces":6,"startFace":0}],
+    }
+    fake_mod = types.ModuleType("core.utils.poly_mesh_reader")
+    fake_mod.read_poly_mesh = lambda _p: fake_pm
+    monkeypatch.setitem(sys.modules, "core.utils.poly_mesh_reader", fake_mod)
+
+    from core.utils.fluent_writer import write_fluent_msh
+    with tempfile.TemporaryDirectory() as td:
+        pm = Path(td) / "pm"
+        pm.mkdir()
+        out = Path(td) / "cube.msh"
+        r = write_fluent_msh(str(pm), str(out))
+        assert r.success, f"write failed: {r.message}"
+        assert r.n_nodes == 8
+        assert r.n_cells == 1
+        # ASCII content sanity check.
+        content = out.read_text(encoding="ascii")
+        assert "(2 3)" in content  # 3D dimension.
+        assert "(10 (0 1" in content  # node header.
+        assert "(12 (0 1" in content  # cell header.
+        assert "(13 (0 1" in content  # face header.
+        # boundary zone name.
+        assert "walls" in content
+
+
+def test_vtu_writer_basic(monkeypatch):
+    """H2 / beta2611 — VTK .vtu polyhedral writer 검증."""
+    import sys, types
+    fake_pm = {
+        "points": [[0,0,0],[1,0,0],[1,1,0],[0,1,0],[0,0,1],[1,0,1],[1,1,1],[0,1,1]],
+        "faces": [[0,1,2,3],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]],
+        "owner": [0,0,0,0,0,0],
+        "neighbour": [],
+        "boundary": [{"name":"walls","type":"wall","nFaces":6,"startFace":0}],
+    }
+    fake_mod = types.ModuleType("core.utils.poly_mesh_reader")
+    fake_mod.read_poly_mesh = lambda _p: fake_pm
+    monkeypatch.setitem(sys.modules, "core.utils.poly_mesh_reader", fake_mod)
+
+    from core.utils.vtk_writer import write_vtu
+    with tempfile.TemporaryDirectory() as td:
+        pm = Path(td) / "pm"
+        pm.mkdir()
+        out = Path(td) / "cube.vtu"
+        r = write_vtu(str(pm), str(out))
+        assert r.success, f"write failed: {r.message}"
+        assert r.n_points == 8
+        assert r.n_cells == 1
+        content = out.read_text(encoding="utf-8")
+        assert "<VTKFile type=\"UnstructuredGrid\"" in content
+        # cell type 12 (HEXAHEDRON) 이거나 42 (POLYHEDRON) 일 수 있음.
+        assert ('Name="types"' in content)
+        assert ('NumberOfPoints="8"' in content)
+        assert ('NumberOfCells="1"' in content)
+
+
 def test_cgns_hdf5_writer_basic(monkeypatch):
     """G5 / beta2605 — CGNS HDF5 writer 검증.
 
