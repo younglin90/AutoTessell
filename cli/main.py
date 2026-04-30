@@ -1460,6 +1460,77 @@ def export_cmd(case_dir: Path, fmt: str | None, output: Path | None) -> None:
         sys.exit(1)
 
 
+@cli.command("tier-test")
+@click.argument("input_file", type=click.Path(exists=True, path_type=Path))
+@click.option("--tier", required=True, help="canonical 또는 alias")
+@click.option("--seed-density", type=int, default=8)
+@click.option("-o", "--output", type=click.Path(path_type=Path), default=None)
+def tier_test_cmd(input_file: Path, tier: str, seed_density: int, output: Path | None) -> None:
+    """Q3 / beta2676 — 단일 Tier smoke test (smoketest 의 fast variant).
+
+    예시: auto-tessell tier-test cube.stl --tier native_tet
+    """
+    from core.strategist.tier_selector import resolve_either
+    from core.analyzer.readers.stl import read_stl
+    import numpy as np
+    import time
+
+    canon, aliases = resolve_either(tier)
+    console.print(f"[cyan]Tier resolved:[/cyan] {tier} → {canon}")
+    console.print(f"  aliases: {aliases}\n")
+
+    try:
+        m = read_stl(str(input_file))
+        V = np.asarray(m.vertices, dtype=np.float64)
+        F = np.asarray(m.faces, dtype=np.int64)
+    except Exception as exc:
+        console.print(f"[red]read failed: {exc}[/red]")
+        sys.exit(1)
+    console.print(f"  V={V.shape[0]}, F={F.shape[0]}")
+
+    out_dir = output or Path(f"./_tier_test_{canon}")
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    t0 = time.perf_counter()
+    success = False
+    n_cells = 0
+    grade = "?"
+    try:
+        if canon == "tier_native_tet":
+            from core.generator.native_tet.mesher import generate_native_tet
+            r = generate_native_tet(V, F, out_dir / "case", seed_density=seed_density)
+            success = bool(r.success)
+            n_cells = int(r.tets.shape[0]) if r.tets is not None else 0
+            grade = str(getattr(r, "quality_grade", "?"))
+        elif canon == "tier_native_hex":
+            from core.generator.native_hex.mesher import generate_native_hex
+            r = generate_native_hex(V, F, out_dir / "case", seed_density=seed_density)
+            success = bool(r.success)
+            n_cells = int(getattr(r, "n_cells", 0))
+            grade = str(getattr(r, "quality_grade", "?"))
+        elif canon == "tier_native_poly":
+            from core.generator.native_poly.voronoi import generate_native_poly_voronoi
+            r = generate_native_poly_voronoi(V, F, out_dir / "case", seed_density=seed_density)
+            success = bool(r.success)
+            n_cells = int(getattr(r, "n_cells", 0))
+            grade = str(getattr(r, "quality_grade", "?"))
+        else:
+            console.print(f"[yellow]Tier {canon} 미구현 — native_tet/hex/poly 만 지원.[/yellow]")
+            sys.exit(2)
+    except Exception as exc:
+        console.print(f"[red]✗ exception: {exc}[/red]")
+        sys.exit(3)
+
+    elapsed = time.perf_counter() - t0
+    if success:
+        console.print(
+            f"[green]✓[/green] success n_cells={n_cells:,} grade={grade} t={elapsed:.2f}s"
+        )
+    else:
+        console.print(f"[red]✗ failed t={elapsed:.2f}s[/red]")
+        sys.exit(4)
+
+
 @cli.command("cleanup")
 @click.argument("case_dir", type=click.Path(exists=True, path_type=Path))
 @click.option("--dry-run", is_flag=True, help="삭제 안 하고 표시만")
