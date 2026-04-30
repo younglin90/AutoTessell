@@ -124,6 +124,35 @@ def test_write_plot3d_grid(fake_cube_polymesh):
         assert "1\n" in content
 
 
+def test_write_avs_ucd(fake_cube_polymesh):
+    """J1 / beta2626 — AVS UCD writer."""
+    from core.utils.avs_ucd_writer import write_avs_ucd
+    with tempfile.TemporaryDirectory() as td:
+        pm = Path(td) / "pm"; pm.mkdir()
+        out = Path(td) / "cube.ucd"
+        r = write_avs_ucd(str(pm), str(out))
+        assert r.success and r.n_nodes == 8 and r.n_cells == 1
+        content = out.read_text(encoding="ascii")
+        # 첫 줄 = header (n_nodes n_cells ...).
+        first_line = content.splitlines()[0].strip()
+        assert first_line.startswith("8 1")
+
+
+def test_write_gambit_neu(fake_cube_polymesh):
+    """J2 / beta2627 — Gambit .neu writer."""
+    from core.utils.gambit_neu_writer import write_gambit_neu
+    with tempfile.TemporaryDirectory() as td:
+        pm = Path(td) / "pm"; pm.mkdir()
+        out = Path(td) / "cube.neu"
+        r = write_gambit_neu(str(pm), str(out))
+        assert r.success and r.n_nodes == 8
+        content = out.read_text(encoding="ascii")
+        assert "CONTROL INFO" in content
+        assert "NODAL COORDINATES" in content
+        assert "ELEMENTS/CELLS" in content
+        assert "ELEMENT GROUP" in content
+
+
 def test_starccm_unified_dispatch(fake_cube_polymesh):
     """write_starccm 의 fmt 분기 통합."""
     from core.utils.mesh_exporter_starccm import write_starccm
