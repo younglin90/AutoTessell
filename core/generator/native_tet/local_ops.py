@@ -272,6 +272,7 @@ def _collapse_vectorized_single_pass(
     metric: np.ndarray | None = None,
     protected_edges: set[tuple[int, int]] | None = None,
     allow_surface_keeper: bool = False,
+    envelope: object | None = None,
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """단일 pass bulk collapse. 각 tet 의 "가장 짧은 edge" 만 후보.
 
@@ -341,10 +342,31 @@ def _collapse_vectorized_single_pass(
         return pts, tets, 0
 
     # bulk apply: tets 내 victim → keeper 치환. degenerate (같은 vertex 2 번) 제거.
+    # P2.2 / beta2584 — envelope-aware midpoint guard.
+    #   midpoint 계산 후 envelope 외부면 collapse 자체 reject (keeper_of 에서 제외).
+    #   surface keeper (locked) 는 위치 불변이므로 envelope check 없음.
     pts_new = pts.copy()
+    rejected_envelope: list[tuple[int, int]] = []
     for keeper, victim in keeper_of:
         if keeper not in locked_set and victim not in locked_set:
-            pts_new[keeper] = 0.5 * (pts[keeper] + pts[victim])
+            mid = 0.5 * (pts[keeper] + pts[victim])
+            if envelope is not None:
+                try:
+                    is_in = bool(envelope.is_inside(mid[None, :])[0])
+                except Exception:
+                    is_in = True  # envelope check 실패 → conservatively allow.
+                if not is_in:
+                    rejected_envelope.append((keeper, victim))
+                    continue
+            pts_new[keeper] = mid
+
+    if rejected_envelope:
+        rej_set = set(rejected_envelope)
+        keeper_of = [kv for kv in keeper_of if kv not in rej_set]
+        victim_of = {v: k for (k, v) in keeper_of}
+
+    if not keeper_of:
+        return pts, tets, 0
 
     tets_new = tets.copy()
     for victim, keeper in victim_of.items():
@@ -392,6 +414,7 @@ def collapse_short_edges(
     metric: np.ndarray | None = None,
     protected_edges: set[tuple[int, int]] | None = None,
     allow_surface_keeper: bool = False,
+    envelope: object | None = None,
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """edge length < ratio × target_edge 인 edge 양 끝을 merge.
 
@@ -422,6 +445,7 @@ def collapse_short_edges(
         metric=metric,
         protected_edges=protected_edges,
         allow_surface_keeper=bool(allow_surface_keeper),
+        envelope=envelope,
     )
     return new_pts, new_tets, n_c
 
