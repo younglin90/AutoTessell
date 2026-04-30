@@ -1887,6 +1887,28 @@ def generate_native_bl(
                     n_safe_full=lcr_n_safe_full,
                     elapsed_ms=float(_lcr_r.elapsed_s) * 1e3,
                 )
+            # P3.3 / beta2587 — global num_layers auto-reduction.
+            # 50%+ wall verts 가 layer 수 감소가 필요한 경우, cfg.num_layers
+            # 를 wall verts 의 median 로 globally 감소. opt-in env
+            # AUTO_TESSELL_LCR_AUTO_REDUCE=1.
+            # 효과: 좁은 gap mesh 에서 collision_safety thickness 단축이
+            # 아닌 layer 자체 감소 → BL aspect ratio ↓.
+            if (
+                os.environ.get("AUTO_TESSELL_LCR_AUTO_REDUCE", "0") == "1"
+                and _per_v_layers.size > 0
+                and lcr_n_reduced * 2 >= _per_v_layers.size
+            ):
+                _new_layers = int(np.median(_per_v_layers))
+                _new_layers = max(1, min(int(cfg.num_layers), _new_layers))
+                if _new_layers < int(cfg.num_layers):
+                    log.info(
+                        "native_bl_lcr_global_reduce",
+                        from_layers=int(cfg.num_layers),
+                        to_layers=_new_layers,
+                        n_reduced_majority=lcr_n_reduced,
+                        n_wall=int(_per_v_layers.size),
+                    )
+                    object.__setattr__(cfg, "num_layers", _new_layers)
         except Exception as _lcr_exc:
             log.debug("native_bl_lcr_skipped", reason=str(_lcr_exc)[:120])
 
