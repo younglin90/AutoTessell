@@ -124,6 +124,22 @@ def test_write_plot3d_grid(fake_cube_polymesh):
         assert "1\n" in content
 
 
+def test_write_nastran_bdf(fake_cube_polymesh):
+    """K1 / beta2633 — Nastran .bdf writer."""
+    from core.utils.nastran_writer import write_nastran_bdf
+    with tempfile.TemporaryDirectory() as td:
+        pm = Path(td) / "pm"; pm.mkdir()
+        out = Path(td) / "cube.bdf"
+        r = write_nastran_bdf(str(pm), str(out))
+        assert r.success
+        assert r.n_grids == 8
+        assert r.n_elements == 1
+        content = out.read_text(encoding="ascii")
+        assert "BEGIN BULK" in content
+        assert "GRID" in content
+        assert "ENDDATA" in content
+
+
 def test_write_avs_ucd(fake_cube_polymesh):
     """J1 / beta2626 — AVS UCD writer."""
     from core.utils.avs_ucd_writer import write_avs_ucd
