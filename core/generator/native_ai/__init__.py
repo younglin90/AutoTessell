@@ -32,6 +32,10 @@ from .ml_bl_collision import (
     BLCollisionPredictResult,
     build_collision_predictor_skeleton,
 )
+from .gpu_envelope import (
+    gpu_envelope_check,
+    GPUEnvelopeResult,
+)
 
 __all__ = [
     "generate_native_ai_volume",
@@ -43,4 +47,6 @@ __all__ = [
     "predict_bl_collision_distances",
     "BLCollisionPredictResult",
     "build_collision_predictor_skeleton",
+    "gpu_envelope_check",
+    "GPUEnvelopeResult",
 ]
