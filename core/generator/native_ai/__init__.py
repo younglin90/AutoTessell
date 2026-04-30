@@ -49,6 +49,10 @@ from .training_data import (
     TetSample,
     DatasetGenResult,
 )
+from .train_predictor import (
+    train_quality_predictor,
+    TrainResult,
+)
 
 __all__ = [
     "generate_native_ai_volume",
@@ -71,4 +75,6 @@ __all__ = [
     "generate_dataset_from_meshes",
     "TetSample",
     "DatasetGenResult",
+    "train_quality_predictor",
+    "TrainResult",
 ]
