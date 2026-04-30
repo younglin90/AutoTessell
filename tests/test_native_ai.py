@@ -524,6 +524,66 @@ def test_starccm_binary_skeleton():
         assert r.fmt == "binary"
 
 
+def test_cgns_hdf5_writer_basic(monkeypatch):
+    """G5 / beta2605 — CGNS HDF5 writer 검증.
+
+    cube polyMesh → CGNS file → 구조 확인 (Base/Zone/GridCoordinates/NGon/NFace/ZoneBC).
+    """
+    try:
+        import h5py
+    except ImportError:
+        pytest.skip("h5py not installed")
+
+    import sys, types
+    fake_pm = {
+        "points": [
+            [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+            [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+        ],
+        "faces": [
+            [0, 1, 2, 3], [4, 5, 6, 7],
+            [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7],
+        ],
+        "owner": [0, 0, 0, 0, 0, 0],
+        "neighbour": [],
+        "boundary": [
+            {"name": "walls", "type": "wall", "nFaces": 6, "startFace": 0},
+        ],
+    }
+    fake_mod = types.ModuleType("core.utils.poly_mesh_reader")
+    fake_mod.read_poly_mesh = lambda _p: fake_pm
+    monkeypatch.setitem(sys.modules, "core.utils.poly_mesh_reader", fake_mod)
+
+    from core.utils.cgns_writer import write_cgns
+
+    with tempfile.TemporaryDirectory() as td:
+        pm = Path(td) / "pm"
+        pm.mkdir()
+        out = Path(td) / "cube.cgns"
+        r = write_cgns(str(pm), str(out))
+        assert r.success, f"write failed: {r.message}"
+        assert r.n_nodes == 8
+        assert r.n_cells == 1
+        assert r.n_zones == 1
+        assert r.n_bc == 1
+
+        # HDF5 구조 검증.
+        with h5py.File(str(out), "r") as f:
+            assert "CGNSLibraryVersion" in f
+            assert "Base" in f
+            assert "Base/Zone-1" in f
+            assert "Base/Zone-1/GridCoordinates/CoordinateX" in f
+            assert "Base/Zone-1/GridCoordinates/CoordinateY" in f
+            assert "Base/Zone-1/GridCoordinates/CoordinateZ" in f
+            assert "Base/Zone-1/NGonElements" in f
+            assert "Base/Zone-1/NFaceElements" in f
+            assert "Base/Zone-1/ZoneBC/walls" in f
+            # Coordinate values 보존.
+            x = f["Base/Zone-1/GridCoordinates/CoordinateX/ data"][...]
+            assert x.shape == (8,)
+            np.testing.assert_allclose(x, [0, 1, 1, 0, 0, 1, 1, 0])
+
+
 def test_starccm_ccmio_hdf5_round_trip(monkeypatch):
     """F4 / beta2601 — Siemens CCMIO HDF5 writer + reader round-trip 검증.
 
