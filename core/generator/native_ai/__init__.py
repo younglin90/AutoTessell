@@ -74,6 +74,10 @@ from .gpu_point_to_tri import (
     gpu_point_to_tri_distance,
     GPUPointToTriResult,
 )
+from .train_bl_predictor import (
+    train_bl_collision_predictor,
+    BLTrainResult,
+)
 
 __all__ = [
     "generate_native_ai_volume",
@@ -111,4 +115,6 @@ __all__ = [
     "BLCollisionDatasetResult",
     "gpu_point_to_tri_distance",
     "GPUPointToTriResult",
+    "train_bl_collision_predictor",
+    "BLTrainResult",
 ]

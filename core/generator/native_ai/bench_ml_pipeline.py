@@ -57,22 +57,44 @@ def run_ml_pipeline_bench(
             elapsed=time.perf_counter() - t0,
         )
 
-    # 합성 mesh (skeleton). production 에서는 thingi10k.iterate() 로 대체.
-    rng = np.random.default_rng(42)
+    # H production: 실제 mesh 사용. tests/stl/*.stl 에서 native_tet 로 tet 추출.
     mesh_pts: list[np.ndarray] = []
     mesh_tets: list[np.ndarray] = []
-    for _ in range(n_meshes):
-        pts = rng.random((10, 3))
-        # 연결된 random tet
-        tets = np.array([
-            [0, 1, 2, 3],
-            [1, 2, 3, 4],
-            [2, 3, 4, 5],
-            [3, 4, 5, 6],
-            [4, 5, 6, 7],
-        ], dtype=np.int64)
-        mesh_pts.append(pts)
-        mesh_tets.append(tets)
+    try:
+        from core.analyzer.readers.stl import read_stl
+        from core.generator.native_tet.mesher import generate_native_tet
+        import tempfile
+        from pathlib import Path as _P
+        stl_dir = _P(__file__).resolve().parents[3] / "tests" / "stl"
+        stl_files = sorted(stl_dir.glob("*.stl"))[:n_meshes]
+        for stl in stl_files:
+            try:
+                V, F = read_stl(str(stl))
+                with tempfile.TemporaryDirectory() as td:
+                    r = generate_native_tet(
+                        V, F, _P(td) / "c", seed_density=4,
+                        enable_phase_a=True, enable_phase_c=True,
+                        enable_amips_smooth=True,
+                    )
+                    if r.success and getattr(r, "tets", None) is not None and r.tets.shape[0] > 0:
+                        mesh_pts.append(np.asarray(r.pts, dtype=np.float64))
+                        mesh_tets.append(np.asarray(r.tets, dtype=np.int64))
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    # Fallback: 합성 mesh (real STL 읽기 실패 시).
+    if not mesh_pts:
+        rng = np.random.default_rng(42)
+        for _ in range(n_meshes):
+            pts = rng.random((10, 3))
+            tets = np.array([
+                [0, 1, 2, 3], [1, 2, 3, 4], [2, 3, 4, 5],
+                [3, 4, 5, 6], [4, 5, 6, 7],
+            ], dtype=np.int64)
+            mesh_pts.append(pts)
+            mesh_tets.append(tets)
 
     npz = output_dir / "ml_bench_dataset.npz"
     pt = output_dir / "ml_bench_model.pt"
