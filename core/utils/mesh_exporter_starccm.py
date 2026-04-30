@@ -57,11 +57,9 @@ def write_starccm(
     output_path = Path(output_path)
 
     if fmt == "binary":
-        return StarCCMExportResult(
-            success=False,
-            fmt=fmt,
-            message="binary .ccm writer 미구현 (C7-1.3 카드).",
-            elapsed=time.perf_counter() - t0,
+        # C7-1.3 — binary .ccm header 시도 (research-level skeleton).
+        return _write_binary_ccm_skeleton(
+            polyMesh_dir, output_path, t0,
         )
 
     if fmt != "txt":
@@ -141,4 +139,78 @@ def write_starccm(
         fmt=fmt,
         elapsed=time.perf_counter() - t0,
         message=f"wrote ASCII zone dump to {output_path}",
+    )
+
+
+def _write_binary_ccm_skeleton(
+    polyMesh_dir: Path,
+    output_path: Path,
+    t0: float,
+) -> "StarCCMExportResult":
+    """C7-1.3 — binary .ccm header skeleton.
+
+    StarCCM+ .ccm 포맷은 비공개. 알려진 일부 구조 (PROSTAR / pro-STAR 호환):
+        - magic bytes (4): "CCM " (4 chars)
+        - version (4 bytes uint32 little-endian)
+        - n_points (4 bytes uint32)
+        - n_cells (4 bytes uint32)
+        - n_faces (4 bytes uint32)
+        - n_zones (2 bytes uint16)
+        - reserved (2 bytes)
+        - point block: n_points × 3 × float64
+        - face block: variable-length records per face
+        - zone block: zone metadata + face-range mappings
+
+    실제 binary writer 는 Siemens 비공개 포맷이라 reverse-engineering 필요.
+    여기서는 magic header + size header 만 작성 (real .ccm 으로 인식 안 됨).
+    """
+    import struct
+    import time
+    try:
+        from core.utils.poly_mesh_reader import read_poly_mesh
+        pm = read_poly_mesh(polyMesh_dir)
+        points = np.asarray(pm.get("points", []), dtype=np.float64)
+        faces = list(pm.get("faces", []))
+        owner = np.asarray(pm.get("owner", []), dtype=np.int64)
+        boundary = list(pm.get("boundary", []))
+    except Exception as exc:
+        return StarCCMExportResult(
+            success=False,
+            output_path=str(output_path),
+            fmt="binary",
+            elapsed=time.perf_counter() - t0,
+            message=f"binary skeleton: polyMesh read failed: {exc!s:.80}",
+        )
+
+    n_cells = int(owner.max() + 1) if owner.size else 0
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with output_path.open("wb") as fp:
+        fp.write(b"CCM ")  # magic
+        fp.write(struct.pack("<I", 1))  # version
+        fp.write(struct.pack("<I", len(points)))
+        fp.write(struct.pack("<I", n_cells))
+        fp.write(struct.pack("<I", len(faces)))
+        fp.write(struct.pack("<H", len(boundary)))
+        fp.write(b"\x00\x00")  # reserved
+        # point block
+        fp.write(points.astype(np.float64).tobytes())
+        # face block (length + indices per face) — placeholder
+        for face in faces:
+            fp.write(struct.pack("<I", len(face)))
+            fp.write(np.asarray(face, dtype=np.int32).tobytes())
+
+    return StarCCMExportResult(
+        success=True,
+        output_path=str(output_path),
+        n_points=len(points),
+        n_cells=n_cells,
+        n_faces=len(faces),
+        n_zones=len(boundary),
+        fmt="binary",
+        elapsed=time.perf_counter() - t0,
+        message=(
+            f"binary .ccm skeleton written ({output_path}). "
+            f"NOTE: header speculative — Siemens 비공개 포맷. "
+            f"StarCCM+ 으로 import 안 될 수 있음."
+        ),
     )

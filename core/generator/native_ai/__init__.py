@@ -61,6 +61,19 @@ from .swap_score import (
     SwapCandidate,
     SwapScoreResult,
 )
+from .bench_ml_pipeline import (
+    run_ml_pipeline_bench,
+    BenchMLResult,
+)
+from .bl_collision_data import (
+    extract_bl_collision_features,
+    generate_bl_collision_dataset,
+    BLCollisionDatasetResult,
+)
+from .gpu_point_to_tri import (
+    gpu_point_to_tri_distance,
+    GPUPointToTriResult,
+)
 
 __all__ = [
     "generate_native_ai_volume",
@@ -91,4 +104,11 @@ __all__ = [
     "select_top_k_swaps",
     "SwapCandidate",
     "SwapScoreResult",
+    "run_ml_pipeline_bench",
+    "BenchMLResult",
+    "extract_bl_collision_features",
+    "generate_bl_collision_dataset",
+    "BLCollisionDatasetResult",
+    "gpu_point_to_tri_distance",
+    "GPUPointToTriResult",
 ]
