@@ -191,22 +191,26 @@ def test_run_native_repair_on_broken_does_not_crash() -> None:
     m = read_stl(BROKEN_SPHERE)
     r = run_native_repair(m.vertices, m.faces)
     assert r.faces.shape[0] > 0
-    # hole_fill 이 최소 한 번 실행되어 face 가 증가했을 것
-    steps_by = {s["step"]: s for s in r.steps}
-    assert "fill_small_holes" in steps_by
+    # aggressive=N 시 step 이름은 "_p{idx}" 접미사를 가진다 (P2.6 / beta2585 노출).
+    step_names = {s["step"] for s in r.steps}
+    assert any(name.startswith("fill_small_holes") for name in step_names)
 
 
 def test_run_native_repair_steps_recorded() -> None:
-    """5 단계가 steps 배열에 기록된다."""
+    """5 단계가 steps 배열에 기록된다 (각 pass 별 _p{idx} 접미사 포함)."""
     if not SPHERE_STL.exists():
         pytest.skip()
     m = read_stl(SPHERE_STL)
     r = run_native_repair(m.vertices, m.faces)
     step_names = {s["step"] for s in r.steps}
-    assert step_names == {
+    # 5 표준 step prefix 가 모두 등장 (pass index 접미사 무관).
+    expected_prefixes = {
         "dedup_vertices",
         "remove_degenerate_faces",
         "remove_non_manifold_faces",
         "fill_small_holes",
         "fix_face_winding",
     }
+    for prefix in expected_prefixes:
+        assert any(n.startswith(prefix) for n in step_names), \
+            f"{prefix} step 누락: {step_names}"

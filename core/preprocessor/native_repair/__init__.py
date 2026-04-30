@@ -61,6 +61,7 @@ def run_native_repair(
     fill_hole_max_boundary: int = 64,
     fix_normals: bool = True,
     aggressive: int = 1,
+    resolve_self_intersect: bool = False,
 ) -> NativeRepairResult:
     """L1 표면 수리 파이프라인 — 모든 단계 자체 구현.
 
@@ -88,6 +89,22 @@ def run_native_repair(
     bbox_diag = float(np.linalg.norm(V.max(axis=0) - V.min(axis=0))) if V.size > 0 else 1.0
 
     V_cur, F_cur = V, F
+
+    # P2.6 / beta2585 — pre-pass: lossy SI resolve via face drop.
+    # 후속 fill_small_holes 가 빈 영역 보강. extreme tier 입력의 voronoi
+    # 진입 가능성 회복용. opt-in (default OFF) — backward 호환.
+    if resolve_self_intersect and F_cur.shape[0] >= 4:
+        try:
+            from core.preprocessor.native_repair.self_intersect import (
+                resolve_self_intersections as _resolve_si,
+            )
+            V_si, F_si, n_dropped = _resolve_si(V_cur, F_cur)
+            if n_dropped > 0 and F_si.shape[0] >= 4:
+                steps.append({"step": "resolve_self_intersect", "dropped_faces": int(n_dropped)})
+                V_cur, F_cur = V_si, F_si
+        except Exception as _exc:
+            steps.append({"step": "resolve_self_intersect_skipped", "reason": str(_exc)[:80]})
+
     for pass_idx in range(n_passes):
         # aggressive 시 dedup tol 을 bbox 기준 점진 완화 (1e-9 → 1e-6 × diag).
         cur_dedup = dedup_tol if pass_idx == 0 else max(dedup_tol, bbox_diag * (10 ** (pass_idx - 6)))

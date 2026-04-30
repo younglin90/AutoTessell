@@ -319,3 +319,40 @@ def detect_self_intersections(
         intersecting_face_pairs=pairs,
         elapsed_s=_t.perf_counter() - t0,
     )
+
+
+def resolve_self_intersections(
+    V: np.ndarray,
+    F: np.ndarray,
+    *,
+    max_pairs_for_o_n_squared: int = 5000,
+    kdtree_k: int = 16,
+) -> tuple[np.ndarray, np.ndarray, int]:
+    """P2.6 / beta2585 — minimal Boolean-resolve via face drop + hole-fill chain.
+
+    상용 (CGAL co-refinement / Cork) 대신 lossy Boolean: 교차 face 양쪽을
+    drop → 구멍 → 후속 hole_fill 이 보강. 100% 정확하지 않지만 extreme tier
+    self-intersect 입력의 voronoi/tet 진입 가능성 회복용.
+
+    Returns:
+        (V_unchanged, F_dropped, n_dropped)
+    """
+    rep = detect_self_intersections(
+        V, F,
+        max_pairs_for_o_n_squared=max_pairs_for_o_n_squared,
+        kdtree_k=kdtree_k,
+    )
+    if not rep.has_self_intersection:
+        return V, F, 0
+
+    bad: set[int] = set()
+    for (i, j) in rep.intersecting_face_pairs:
+        bad.add(int(i))
+        bad.add(int(j))
+
+    if not bad:
+        return V, F, 0
+
+    keep = np.ones(F.shape[0], dtype=bool)
+    keep[list(bad)] = False
+    return V, F[keep], len(bad)
