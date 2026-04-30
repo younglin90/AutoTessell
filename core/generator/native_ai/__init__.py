@@ -36,6 +36,11 @@ from .gpu_envelope import (
     gpu_envelope_check,
     GPUEnvelopeResult,
 )
+from .diffusion_volume import (
+    diffusion_generate_volume,
+    DiffusionVolumeResult,
+    architecture_sketch as diffusion_architecture_sketch,
+)
 
 __all__ = [
     "generate_native_ai_volume",
@@ -49,4 +54,7 @@ __all__ = [
     "build_collision_predictor_skeleton",
     "gpu_envelope_check",
     "GPUEnvelopeResult",
+    "diffusion_generate_volume",
+    "DiffusionVolumeResult",
+    "diffusion_architecture_sketch",
 ]
