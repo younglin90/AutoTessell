@@ -139,18 +139,39 @@ def lloyd_cvt_3d(
     n_moved_total = 0
     last_iter = 0
     relax_f = float(relax)
+    # P3.1 / beta2586 — quality-weighted Lloyd opt-in. env=1 시 worst tet 의
+    # centroid 가 (1/q) 가중되어 sliver 영역으로 강하게 pull. monotone guard
+    # 가 final accept/reject 하므로 안전.
+    import os as _os_p31
+    _qw = _os_p31.environ.get("AUTO_TESSELL_CVT3D_QUALITY_WEIGHT", "0") == "1"
     for it in range(int(n_iter)):
         # Lloyd target = 인접 tet centroid 평균 (scatter-sum vectorized).
         centroids = _tet_centroids(cur_pts, tets)              # (T, 3)
         flat_v = tets.reshape(-1)                              # (T*4,)
-        flat_c = np.repeat(centroids, 4, axis=0)               # (T*4, 3)
-        sums = np.zeros((n_v, 3), dtype=np.float64)
-        counts = np.zeros(n_v, dtype=np.int64)
-        np.add.at(sums, flat_v, flat_c)
-        np.add.at(counts, flat_v, 1)
-        nz = counts > 0
-        targets = np.zeros_like(sums)
-        targets[nz] = sums[nz] / counts[nz, None]
+        if _qw:
+            # P3.1 — quality-weighted: poor tet (q < 0.3) → weight = 1/(q+0.05).
+            #   high-q tet → weight ≈ 1.0. clamp to [0.95, 20] for stability.
+            tet_q = _tsq(cur_pts, tets)
+            tet_w = np.clip(1.0 / (tet_q + 0.05), 0.95, 20.0)  # (T,)
+            flat_w = np.repeat(tet_w, 4)                        # (T*4,)
+            flat_c = np.repeat(centroids * tet_w[:, None], 4, axis=0)  # (T*4, 3)
+            sums = np.zeros((n_v, 3), dtype=np.float64)
+            wts = np.zeros(n_v, dtype=np.float64)
+            np.add.at(sums, flat_v, flat_c)
+            np.add.at(wts, flat_v, flat_w)
+            nz = wts > 0
+            targets = np.zeros_like(sums)
+            targets[nz] = sums[nz] / wts[nz, None]
+            counts = (wts > 0).astype(np.int64)  # for movable mask compat.
+        else:
+            flat_c = np.repeat(centroids, 4, axis=0)               # (T*4, 3)
+            sums = np.zeros((n_v, 3), dtype=np.float64)
+            counts = np.zeros(n_v, dtype=np.int64)
+            np.add.at(sums, flat_v, flat_c)
+            np.add.at(counts, flat_v, 1)
+            nz = counts > 0
+            targets = np.zeros_like(sums)
+            targets[nz] = sums[nz] / counts[nz, None]
         # Update only interior vertices that actually have ≥ 1 incident tet.
         movable = interior_mask & nz
         movable_idx = np.where(movable)[0]
