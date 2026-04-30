@@ -61,12 +61,15 @@ class MLTetSmoothingResult:
 def load_trained_predictor(model_pt: str, device=None):
     """Trained quality predictor 로드 (AI-V1.2).
 
+    O6 / beta2665 — architecture metadata detection (v1 vs v3 residual).
+    checkpoint 의 'architecture' 필드 기반으로 적절한 model 빌드.
+
     Args:
         model_pt: trained .pt 파일 경로.
         device: torch device. None → auto.
 
     Returns:
-        torch.nn.Module 또는 None (실패 시).
+        torch.nn.Module 또는 None (실패 시 — 로깅으로 reason 노출).
     """
     if not _torch_available():
         return None
@@ -81,19 +84,39 @@ def load_trained_predictor(model_pt: str, device=None):
     except Exception:
         return None
 
+    # O6: architecture detection.
+    arch = "v1"
+    if isinstance(ckpt, dict):
+        arch = str(ckpt.get("architecture", "v1"))
+
     import torch.nn as nn
-    model = nn.Sequential(
-        nn.Linear(20, 64),
-        nn.ReLU(),
-        nn.Linear(64, 64),
-        nn.ReLU(),
-        nn.Linear(64, 1),
-        nn.Sigmoid(),
-    ).to(device)
-    if isinstance(ckpt, dict) and "state_dict" in ckpt:
-        model.load_state_dict(ckpt["state_dict"])
+    if arch in ("v3", "residual"):
+        try:
+            from .train_predictor import _build_predictor_v3_residual
+            model = _build_predictor_v3_residual(input_dim=20)
+            if model is None:
+                return None
+            model = model.to(device)
+        except Exception:
+            return None
     else:
-        model.load_state_dict(ckpt)
+        model = nn.Sequential(
+            nn.Linear(20, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1),
+            nn.Sigmoid(),
+        ).to(device)
+
+    try:
+        if isinstance(ckpt, dict) and "state_dict" in ckpt:
+            model.load_state_dict(ckpt["state_dict"])
+        else:
+            model.load_state_dict(ckpt)
+    except Exception:
+        # state_dict mismatch — likely architecture diff.
+        return None
     model.eval()
     return model
 
