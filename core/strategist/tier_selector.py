@@ -211,6 +211,7 @@ _TIER_ORDER = [
     "tier_native_tet",          # AutoTessell 자체 tet MVP (v0.4)
     "tier_native_hex",          # AutoTessell 자체 hex MVP (v0.4)
     "tier_native_poly",         # AutoTessell 자체 poly MVP (v0.4)
+    "tier_native_ai",           # AI-assisted volume mesh (v0.5 skeleton)
 ]
 
 def canonical_tier(tier_hint: str) -> str:
@@ -243,6 +244,9 @@ _HINT_MAP: dict[str, str] = {
     "tier_native_hex": "tier_native_hex",
     "native_poly": "tier_native_poly",
     "tier_native_poly": "tier_native_poly",
+    "native_ai": "tier_native_ai",
+    "tier_native_ai": "tier_native_ai",
+    "ai": "tier_native_ai",
     "tier_robust_hex": "tier_robust_hex",
     "algohex": "tier_algohex",
     "algo_hex": "tier_algohex",
