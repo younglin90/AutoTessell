@@ -181,7 +181,27 @@ Python 3.12+, C++23, OpenFOAM 2406, Node.js 24 (Phase 2)
 - 외부 라이브러리 신규 추가는 **반드시 "참고 → 자체 구현 계획"** 과 함께
 - CLI 파라미터 상세: `agents/specs/generator.md` 참조
 
-## 현재 구현 상태 (1328 tests, v0.4.0-beta "Native-First")
+## v0.5 "ML + Multi-format" (BETA2638, 2026-05-01)
+
+**누적 ~60 카드** (P+AI(D)+E+F+G+H+I+J+K). **603+ tests PASS**. v0.5 신규:
+
+- **출력 포맷 11종**: polyMesh / VTK .vtu / StarCCM+ ASCII+binary+CCMIO HDF5
+  / CGNS HDF5 / Fluent .msh / Tecplot .plt / Plot3D .x / AVS UCD / Gambit .neu / Nastran .bdf.
+- **ML pipeline**: v1 MLP (val_loss 0.005) + v3 residual MLP + BL collision predictor (val_loss 0.0023)
+  + rotation augmentation (K3) + curvature features (H5).
+- **GPU**: Eberly + torch.compile + fp16 (CUDA 50-100×).
+- **CLI 신규 7 flag**: `--ml-smooth-model`, `--bl-predict-model`, `--gpu-envelope`,
+  `--cvt3d-quality-weight`, `--lcr-auto-reduce`, `--bl-aniso-split`, `--config FILE`.
+- **GUI**: 5 advanced 위젯 + 3 keyboard shortcut (F5/Esc/Ctrl+R) + 실시간 KPI overlay.
+- **Mesh quality**: BL aspect cap (T-Rex parity), LCR auto-reduce, anisotropic prism real subdivide,
+  mixed-element pyramid interface, Stellar 4-op split (default ON), D-cell recovery,
+  quality-weighted Lloyd, y+ Schlichting auto-targeting, 26-neighbor 2:1 octree balance.
+- **Plugin**: tier plugin discovery (`AUTO_TESSELL_PLUGINS_DIR` — custom .py).
+- **사용성**: pre-flight STL validator, bench --quick + diff script, 중앙 error catalog (20 codes),
+  progress callback API, surface diagnostic, quality histogram dump.
+- **문서**: RELEASE_NOTES, USAGE.md, algorithms/index.md, env_flags, ccmio_format_spec, plans/G-K-series.
+
+## 이전: v0.4.0-beta "Native-First" (1328 tests)
 
 ```bash
 auto-tessell run input.stl -o ./case --mesh-type tet --quality draft
