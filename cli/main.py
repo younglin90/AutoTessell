@@ -100,11 +100,38 @@ def doctor(as_json: bool) -> None:
 
     rows = collect_dependency_statuses()
 
+    # S5 / beta2692 — environment summary (python / platform / env vars).
+    import platform as _platform_s5
+    import os as _os_s5
+    _at_envs = {}
+    for _k in (
+        "AUTO_TESSELL_GPU_ENVELOPE",
+        "AUTO_TESSELL_BL_AUTO_YPLUS",
+        "AUTO_TESSELL_BL_ASPECT_TARGET",
+        "AUTO_TESSELL_BL_ANISO_SPLIT",
+        "AUTO_TESSELL_LCR_AUTO_REDUCE",
+        "AUTO_TESSELL_CVT3D_QUALITY_WEIGHT",
+        "AUTO_TESSELL_STELLAR_SPLIT",
+        "AUTO_TESSELL_ML_SMOOTH_MODEL",
+        "AUTO_TESSELL_BL_PREDICT_MODEL",
+        "AUTO_TESSELL_PLUGINS_DIR",
+    ):
+        if _os_s5.environ.get(_k):
+            _at_envs[_k] = _os_s5.environ[_k]
+    _env_info = {
+        "python_version": _platform_s5.python_version(),
+        "platform": _platform_s5.platform(),
+        "machine": _platform_s5.machine(),
+        "cpu_count": _os_s5.cpu_count() or 0,
+        "auto_tessell_envs": _at_envs,
+    }
+
     # R5 / beta2685 — JSON 출력 모드.
     if as_json:
         import json as _json_r5
         import os as _os_r5
         out = {
+            "environment": _env_info,
             "dependencies": [
                 {
                     "name": row.name, "category": row.category,
