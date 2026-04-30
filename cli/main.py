@@ -1460,6 +1460,78 @@ def export_cmd(case_dir: Path, fmt: str | None, output: Path | None) -> None:
         sys.exit(1)
 
 
+@cli.command("cleanup")
+@click.argument("case_dir", type=click.Path(exists=True, path_type=Path))
+@click.option("--dry-run", is_flag=True, help="삭제 안 하고 표시만")
+@click.option("--keep-polymesh", is_flag=True, help="constant/polyMesh 보존")
+def cleanup_cmd(case_dir: Path, dry_run: bool, keep_polymesh: bool) -> None:
+    """Q2 / beta2675 — case_dir 내 임시 파일 정리.
+
+    제거 대상:
+        - _work/*.npy (intermediate tet_points/tets dumps)
+        - *.tmp / *.bak
+        - 0/<patch>.bak
+        - Allrun.bak / log.* (OpenFOAM 로그)
+        - __cutting.stl / __tracked_surface.stl (디버그 dumps)
+    """
+    import shutil
+    targets: list[Path] = []
+    case = case_dir
+    work = case / "_work"
+    if work.exists():
+        for f in work.glob("*.npy"):
+            targets.append(f)
+        for f in work.glob("*.tmp"):
+            targets.append(f)
+    for f in case.rglob("*.bak"):
+        targets.append(f)
+    for f in case.rglob("*.tmp"):
+        targets.append(f)
+    for f in case.rglob("log.*"):
+        targets.append(f)
+    for fname in ("__cutting.stl", "__tracked_surface.stl"):
+        f = case / fname
+        if f.exists():
+            targets.append(f)
+        f2 = case / "_work" / fname
+        if f2.exists():
+            targets.append(f2)
+
+    if not keep_polymesh:
+        # 옵션: constant/polyMesh 자체 보존 (default).
+        pass
+
+    total_bytes = 0
+    for t in targets:
+        try:
+            total_bytes += t.stat().st_size
+        except Exception:
+            pass
+
+    if dry_run:
+        console.print(f"[bold yellow]DRY RUN[/bold yellow] — would delete:")
+        for t in targets:
+            try:
+                size = t.stat().st_size
+                console.print(f"  • {t} ({size:,} bytes)")
+            except Exception:
+                console.print(f"  • {t} (?)")
+        console.print(f"\nTotal: {len(targets)} files, {total_bytes:,} bytes")
+        return
+
+    n_deleted = 0
+    for t in targets:
+        try:
+            t.unlink()
+            n_deleted += 1
+        except Exception as exc:
+            console.print(f"[yellow]skip[/yellow] {t}: {exc}")
+    console.print(
+        f"[green]✓[/green] deleted {n_deleted}/{len(targets)} files "
+        f"({total_bytes:,} bytes)"
+    )
+
+
 @cli.command("bench-summary")
 @click.argument("bench_json", type=click.Path(exists=True, path_type=Path))
 @click.option("-o", "--output", type=click.Path(path_type=Path), default=None)
