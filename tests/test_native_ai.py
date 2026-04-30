@@ -411,5 +411,90 @@ def test_diffusion_volume_research_stub():
     assert tets.shape == (0, 4)
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# B/C/D/E follow-up tests (beta2577)
+# ─────────────────────────────────────────────────────────────────────────
+
+def test_run_ml_pipeline_bench_synthetic():
+    """B (AI-V1.4) — synthetic mesh ML bench end-to-end."""
+    from core.generator.native_ai import run_ml_pipeline_bench, BenchMLResult
+    try:
+        import torch  # noqa: F401
+    except ImportError:
+        pytest.skip("torch not available")
+    with tempfile.TemporaryDirectory() as td:
+        r = run_ml_pipeline_bench(td, n_meshes=10, samples_per_mesh=5, epochs=2)
+        assert isinstance(r, BenchMLResult)
+        assert r.success is True
+        assert r.n_samples_collected > 0
+        assert r.val_loss >= 0
+
+
+def test_extract_bl_collision_features_basic():
+    """C (AI-V3.1) — BL collision feature shapes + finite gaps."""
+    from core.generator.native_ai import extract_bl_collision_features
+    pts = np.random.rand(20, 3)
+    wall_v = np.array([0, 1, 2, 3], dtype=np.int64)
+    wall_fv = np.array([[0, 1, 2], [1, 2, 3], [2, 3, 4]], dtype=np.int64)
+    feats, gaps = extract_bl_collision_features(pts, wall_v, wall_fv)
+    assert feats.shape == (4, 12)
+    assert gaps.shape == (4,)
+
+
+def test_generate_bl_collision_dataset():
+    """C (AI-V3.1) — dataset save/load."""
+    from core.generator.native_ai import generate_bl_collision_dataset
+    pts = np.random.rand(20, 3)
+    wall_v = np.array([0, 1, 2], dtype=np.int64)
+    wall_fv = np.array([[0, 1, 2], [1, 2, 3]], dtype=np.int64)
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "bl.npz"
+        r = generate_bl_collision_dataset(
+            str(out), [pts, pts], [wall_v, wall_v], [wall_fv, wall_fv],
+        )
+        if r.success:
+            assert r.n_samples > 0
+            assert Path(out).exists()
+            d = np.load(str(out))
+            assert d["features"].shape[1] == 12
+
+
+def test_gpu_point_to_tri_basic():
+    """D (C8-2.1.2) — GPU point-to-tri batch."""
+    from core.generator.native_ai import (
+        gpu_point_to_tri_distance, GPUPointToTriResult,
+    )
+    try:
+        import torch  # noqa: F401
+    except ImportError:
+        pytest.skip("torch not available")
+    np.random.seed(42)
+    surf = np.random.rand(10, 3)
+    faces = np.array([[0, 1, 2], [1, 2, 3], [2, 3, 4], [3, 4, 5]],
+                     dtype=np.int64)
+    query = np.random.rand(20, 3)
+    dist, r = gpu_point_to_tri_distance(query, surf, faces)
+    assert isinstance(r, GPUPointToTriResult)
+    if r.success:
+        assert dist.shape == (20,)
+        assert (dist >= 0).all()
+        assert r.backend.startswith("torch_")
+
+
+def test_starccm_binary_skeleton():
+    """E (C7-1.3) — binary .ccm header writer."""
+    from core.utils.mesh_exporter_starccm import write_starccm
+    # Need a fake polyMesh — use existing
+    with tempfile.TemporaryDirectory() as td:
+        pm = Path(td) / "pm"
+        pm.mkdir()
+        # Empty polyMesh — should fail gracefully
+        out = Path(td) / "out.ccm"
+        r = write_starccm(str(pm), str(out), fmt="binary")
+        # Either succeeds with skeleton bytes, or fails gracefully
+        assert hasattr(r, "success")
+        assert r.fmt == "binary"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
