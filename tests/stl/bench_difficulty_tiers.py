@@ -218,8 +218,25 @@ def _select_meshes() -> dict[str, list[dict]]:
 
 
 def main():
-    print("=== Thingi10K 난이도별 4 tier × 5 mesh × 3 engine + BL ===\n", flush=True)
+    # G8 / beta2608 — quick mode: --quick 또는 env AUTO_TESSELL_BENCH_QUICK=1.
+    #   easy + medium tier 만, tet+BL 만, per-cell timeout 60s, 5 mesh max.
+    #   전체 ~2-3 min (full ~30 min).
+    import sys as _sys_g8
+    _quick = (
+        "--quick" in _sys_g8.argv
+        or os.environ.get("AUTO_TESSELL_BENCH_QUICK", "0") == "1"
+    )
+    if _quick:
+        print("=== QUICK mode — easy+medium × tet+BL ===\n", flush=True)
+    else:
+        print("=== Thingi10K 난이도별 4 tier × 5 mesh × 3 engine + BL ===\n", flush=True)
     tiers = _select_meshes()
+    if _quick:
+        # easy + medium 만, mesh 수 줄이기 (3 each).
+        tiers = {
+            k: v[:3] for k, v in tiers.items()
+            if k in ("easy", "medium")
+        }
     for tier_name, meshes in tiers.items():
         print(f"  [{tier_name}] {len(meshes)} mesh:", flush=True)
         for info in meshes:
@@ -244,11 +261,13 @@ def main():
 
     # jobs (BL on 만 — 시간 cap)
     jobs = []
+    # G8: quick 모드면 tet 만.
+    _engines = ("tet",) if _quick else ("tet", "hex", "poly")
     for info in all_meshes:
         V, F = loaded[info["file_id"]]
         V_bytes = V.tobytes(); V_shape = V.shape
         F_bytes = F.tobytes(); F_shape = F.shape
-        for engine in ("tet", "hex", "poly"):
+        for engine in _engines:
             jobs.append((info, engine, True,
                          (V_bytes, V_shape, F_bytes, F_shape, engine, True)))
 
@@ -257,7 +276,7 @@ def main():
     # beta2265: per-cell timeout 90 → 180s. extreme tier 의 self-impl + BL 가
     # 90s 초과 (1017017 의 경우 1000s+ 로 timeout). 180s 면 commercial-grade
     # mesh 도 처리 + bench 완주 가능 (전체 ~30 분).
-    per_cell_timeout = 180.0
+    per_cell_timeout = 60.0 if _quick else 180.0
     print(f"workers={n_workers} per_cell_timeout={per_cell_timeout}s "
           f"jobs={len(jobs)}\n", flush=True)
 
