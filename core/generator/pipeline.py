@@ -31,6 +31,7 @@ from core.generator.tier_su2_hexpress import TierSU2HexpressGenerator
 from core.generator.tier_native_hex import TierNativeHexGenerator
 from core.generator.tier_native_poly import TierNativePolyGenerator
 from core.generator.tier_native_tet import TierNativeTetGenerator
+from core.generator.tier_native_ai import TierNativeAIGenerator
 from core.generator.tier_salome_smesh import TierSalomeSmeshGenerator
 from core.schemas import ExecutionSummary, GeneratorLog, MeshStrategy, TierAttempt
 from core.utils.logging import get_logger
@@ -66,6 +67,7 @@ _TIER_REGISTRY: dict[str, type] = {
     "tier_native_tet": TierNativeTetGenerator,
     "tier_native_hex": TierNativeHexGenerator,
     "tier_native_poly": TierNativePolyGenerator,
+    "tier_native_ai": TierNativeAIGenerator,
 }
 
 # CLI --tier 별칭 → 정규 Tier 이름
@@ -120,6 +122,9 @@ _TIER_ALIASES: dict[str, str] = {
     "tier_native_hex": "tier_native_hex",
     "native_poly": "tier_native_poly",
     "tier_native_poly": "tier_native_poly",
+    "native_ai": "tier_native_ai",
+    "tier_native_ai": "tier_native_ai",
+    "ai": "tier_native_ai",
     "tier_robust_hex": "tier_robust_hex",
     "algohex": "tier_algohex",
     "algo_hex": "tier_algohex",
