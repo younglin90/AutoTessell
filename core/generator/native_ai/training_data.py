@@ -138,6 +138,85 @@ def extract_tet_features(
     return coords_12.astype(np.float64), context_8, quality
 
 
+def extract_tet_features_v2(
+    pts: np.ndarray,
+    tets: np.ndarray,
+    tet_idx: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
+    """H5 / beta2614 — V2 feature extractor with curvature 4-dim.
+
+    Returns (coords_12, context_8, curvature_4, quality).
+        curvature_4 = [
+            mean_radius_of_curvature_per_edge,
+            edge_length_ratio (max/min),
+            volume_to_inscribed_sphere_ratio,
+            dihedral_variance,
+        ]
+
+    이전 V1 (extract_tet_features) 와 backward-compatible — V1 호출 그대로
+    동작. V2 는 학습 시 24-dim 입력 (= 12+8+4) 의 새 model 용.
+    """
+    coords_12, context_8, quality = extract_tet_features(pts, tets, tet_idx)
+    a, b, c, d = tets[tet_idx]
+    p_a, p_b, p_c, p_d = pts[a], pts[b], pts[c], pts[d]
+
+    # edge 길이.
+    e01 = float(np.linalg.norm(p_b - p_a))
+    e02 = float(np.linalg.norm(p_c - p_a))
+    e03 = float(np.linalg.norm(p_d - p_a))
+    e12 = float(np.linalg.norm(p_c - p_b))
+    e13 = float(np.linalg.norm(p_d - p_b))
+    e23 = float(np.linalg.norm(p_d - p_c))
+    edges = np.array([e01, e02, e03, e12, e13, e23])
+    edge_min = float(edges.min()) + 1e-30
+    edge_max = float(edges.max())
+    edge_ratio = edge_max / edge_min
+
+    # tet volume.
+    vol6 = float(np.cross(p_b - p_a, p_c - p_a) @ (p_d - p_a))
+    vol = abs(vol6) / 6.0
+
+    # 4 face areas (재계산 — context_8 의 평균과 다른 raw 값 필요).
+    f1 = 0.5 * float(np.linalg.norm(np.cross(p_b - p_a, p_c - p_a)))
+    f2 = 0.5 * float(np.linalg.norm(np.cross(p_b - p_a, p_d - p_a)))
+    f3 = 0.5 * float(np.linalg.norm(np.cross(p_c - p_a, p_d - p_a)))
+    f4 = 0.5 * float(np.linalg.norm(np.cross(p_c - p_b, p_d - p_b)))
+    surf_total = f1 + f2 + f3 + f4
+
+    # inscribed sphere radius r = 3V / S_total.
+    r_in = 3.0 * vol / max(surf_total, 1e-30)
+    # volume-to-inscribed-sphere ratio (정사면체 = 3√3 ≈ 5.196).
+    sphere_vol = (4.0 / 3.0) * np.pi * (r_in ** 3)
+    vol_ratio = float(vol / max(sphere_vol, 1e-30))
+
+    # mean curvature 추정: surface area 의 sum / mean edge length.
+    # 정사면체 면 4개 → curvature ~ 1/r_in.
+    mean_curv = 1.0 / max(r_in, 1e-30) * float(np.mean(edges))
+
+    # dihedral variance (context_8 has min/max — variance 추가).
+    n1 = np.cross(p_b - p_a, p_c - p_a)
+    n2 = np.cross(p_b - p_a, p_d - p_a)
+    n3 = np.cross(p_c - p_a, p_d - p_a)
+    n4 = np.cross(p_c - p_b, p_d - p_b)
+    n1_n = float(np.linalg.norm(n1)) + 1e-30
+    n2_n = float(np.linalg.norm(n2)) + 1e-30
+    n3_n = float(np.linalg.norm(n3)) + 1e-30
+    n4_n = float(np.linalg.norm(n4)) + 1e-30
+    dihedrals = np.array([
+        float(np.dot(n1, n2)) / (n1_n * n2_n),
+        float(np.dot(n1, n3)) / (n1_n * n3_n),
+        float(np.dot(n2, n3)) / (n2_n * n3_n),
+        float(np.dot(n1, n4)) / (n1_n * n4_n),
+    ])
+    dihedral_var = float(dihedrals.var())
+
+    curvature_4 = np.array([
+        mean_curv, edge_ratio, vol_ratio, dihedral_var,
+    ], dtype=np.float64)
+
+    return coords_12, context_8, curvature_4, quality
+
+
 def generate_dataset_from_meshes(
     output_path: str,
     mesh_pts_list: list[np.ndarray],
