@@ -217,6 +217,63 @@ def extract_tet_features_v2(
     return coords_12, context_8, curvature_4, quality
 
 
+def augment_features_with_rotations(
+    coords_12: np.ndarray,
+    context_8: np.ndarray,
+    quality: np.ndarray,
+    *,
+    n_rotations: int = 4,
+    seed: int = 42,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """K3 / beta2635 — random rotation augmentation (rotation-invariance).
+
+    coords_12 = 4 vertex × 3 coord (centroid-centered). 임의 rotation 후 quality 보존.
+    각 sample 을 n_rotations 배로 증강. context_8 / quality 는 rotation-invariant
+    (incident counts / face areas / dihedral cosines) → 그대로 복제.
+
+    Args:
+        coords_12: (K, 12).
+        context_8: (K, 8).
+        quality: (K,).
+        n_rotations: 1 sample 당 추가 random rotation 수 (1=원본 유지, 4=4× 증강).
+        seed: RNG seed.
+
+    Returns:
+        (coords_aug, context_aug, quality_aug) — shapes (K*n_rot, 12 / 8 / 1).
+    """
+    K = int(coords_12.shape[0])
+    if K == 0 or n_rotations < 1:
+        return coords_12.copy(), context_8.copy(), quality.copy()
+
+    rng = np.random.default_rng(seed)
+
+    coords_list = [coords_12.copy()]
+    context_list = [context_8.copy()]
+    quality_list = [quality.copy()]
+
+    for r in range(n_rotations - 1):
+        # 임의 rotation matrix via QR decomposition (uniform on SO(3)).
+        rand = rng.standard_normal((3, 3))
+        q, _ = np.linalg.qr(rand)
+        if np.linalg.det(q) < 0:
+            q[:, 0] = -q[:, 0]  # 반사 방지 (proper rotation).
+
+        # coords_12 의 4 vertex × 3 → reshape, rotate, reshape back.
+        cv = coords_12.reshape(K, 4, 3)  # (K, 4, 3).
+        rotated = cv @ q.T  # (K, 4, 3) @ (3, 3).T → (K, 4, 3).
+        rot_flat = rotated.reshape(K, 12)
+        coords_list.append(rot_flat)
+        # context / quality 는 rotation-invariant.
+        context_list.append(context_8.copy())
+        quality_list.append(quality.copy())
+
+    return (
+        np.concatenate(coords_list, axis=0),
+        np.concatenate(context_list, axis=0),
+        np.concatenate(quality_list, axis=0),
+    )
+
+
 def generate_dataset_from_meshes(
     output_path: str,
     mesh_pts_list: list[np.ndarray],
@@ -224,6 +281,7 @@ def generate_dataset_from_meshes(
     *,
     samples_per_mesh: int = 100,
     seed: int = 42,
+    augment_rotations: int = 1,
 ) -> DatasetGenResult:
     """ML training dataset 실제 생성 (AI-V1.1.2).
 
@@ -286,6 +344,14 @@ def generate_dataset_from_meshes(
     coords_arr = np.concatenate(coords_all, axis=0)
     contexts_arr = np.concatenate(contexts_all, axis=0)
     quals_arr = np.concatenate(quals_all, axis=0)
+
+    # K3 / beta2635 — optional rotation augmentation.
+    if augment_rotations > 1:
+        coords_arr, contexts_arr, quals_arr = augment_features_with_rotations(
+            coords_arr, contexts_arr, quals_arr,
+            n_rotations=augment_rotations, seed=seed,
+        )
+        n_used = int(coords_arr.shape[0])
 
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
