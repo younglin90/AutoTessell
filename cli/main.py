@@ -1460,6 +1460,68 @@ def export_cmd(case_dir: Path, fmt: str | None, output: Path | None) -> None:
         sys.exit(1)
 
 
+@cli.command("bench-summary")
+@click.argument("bench_json", type=click.Path(exists=True, path_type=Path))
+@click.option("-o", "--output", type=click.Path(path_type=Path), default=None)
+def bench_summary_cmd(bench_json: Path, output: Path | None) -> None:
+    """P4 / beta2670 — bench_difficulty_tiers_result.json → markdown 요약.
+
+    예시: auto-tessell bench-summary tests/stl/bench_difficulty_tiers_result.json
+    """
+    import json
+    try:
+        rows = json.loads(bench_json.read_text(encoding="utf-8"))
+    except Exception as exc:
+        console.print(f"[red]parse 실패: {exc}[/red]")
+        sys.exit(1)
+
+    if not isinstance(rows, list):
+        console.print(f"[red]JSON 은 list 여야 함[/red]")
+        sys.exit(1)
+
+    # tier × engine 집계.
+    summary: dict[tuple[str, str], dict] = {}
+    for r in rows:
+        key = (r.get("tier", "?"), r.get("engine", "?"))
+        if key not in summary:
+            summary[key] = {"n_total": 0, "n_ok": 0, "n_grade_A": 0, "n_bl_ok": 0,
+                            "sum_mq": 0.0, "sum_elapsed": 0.0}
+        s = summary[key]
+        s["n_total"] += 1
+        if r.get("success"):
+            s["n_ok"] += 1
+            mq = r.get("mq")
+            if mq is not None and mq >= 0:
+                s["sum_mq"] += float(mq)
+            s["sum_elapsed"] += float(r.get("elapsed", 0))
+        if r.get("grade") == "A":
+            s["n_grade_A"] += 1
+        if r.get("bl_success"):
+            s["n_bl_ok"] += 1
+
+    lines = ["# Bench Summary\n"]
+    lines.append(f"Source: `{bench_json.name}`, total rows: {len(rows)}\n")
+    lines.append("| Tier | Engine | OK | Grade A | BL OK | Mean Q | Avg s |")
+    lines.append("|------|--------|-----|---------|-------|--------|-------|")
+    total_a = 0
+    for (tier, engine), s in sorted(summary.items()):
+        avg_mq = s["sum_mq"] / max(s["n_ok"], 1)
+        avg_t = s["sum_elapsed"] / max(s["n_ok"], 1)
+        lines.append(
+            f"| {tier} | {engine} | {s['n_ok']}/{s['n_total']} | {s['n_grade_A']} "
+            f"| {s['n_bl_ok']} | {avg_mq:.4f} | {avg_t:.2f} |"
+        )
+        total_a += s["n_grade_A"]
+    lines.append(f"\n**Total grade A: {total_a}**\n")
+
+    md = "\n".join(lines)
+    if output:
+        output.write_text(md, encoding="utf-8")
+        console.print(f"[green]✓[/green] saved → {output}")
+    else:
+        console.print(md)
+
+
 @cli.command("list-tiers")
 def list_tiers_cmd() -> None:
     """N6 / beta2658 — 등록된 모든 Tier + alias 표시.
