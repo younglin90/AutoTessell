@@ -55,6 +55,12 @@ from .train_predictor import (
     train_quality_predictor,
     TrainResult,
 )
+from .swap_score import (
+    score_swap_candidates,
+    select_top_k_swaps,
+    SwapCandidate,
+    SwapScoreResult,
+)
 
 __all__ = [
     "generate_native_ai_volume",
@@ -81,4 +87,8 @@ __all__ = [
     "DatasetGenResult",
     "train_quality_predictor",
     "TrainResult",
+    "score_swap_candidates",
+    "select_top_k_swaps",
+    "SwapCandidate",
+    "SwapScoreResult",
 ]
