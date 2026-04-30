@@ -22,9 +22,17 @@ from .mesher import (
     AIVolumeResult,
     AIVolumeConfig,
 )
+from .ml_tet_smoothing import (
+    ml_tet_smoothing_apply,
+    MLTetSmoothingResult,
+    build_quality_predictor_skeleton,
+)
 
 __all__ = [
     "generate_native_ai_volume",
     "AIVolumeResult",
     "AIVolumeConfig",
+    "ml_tet_smoothing_apply",
+    "MLTetSmoothingResult",
+    "build_quality_predictor_skeleton",
 ]
