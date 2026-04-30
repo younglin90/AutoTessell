@@ -45,6 +45,7 @@ from .training_data import (
     extract_tet_features,
     extract_features_batch,
     generate_dataset_skeleton,
+    generate_dataset_from_meshes,
     TetSample,
     DatasetGenResult,
 )
@@ -67,6 +68,7 @@ __all__ = [
     "extract_tet_features",
     "extract_features_batch",
     "generate_dataset_skeleton",
+    "generate_dataset_from_meshes",
     "TetSample",
     "DatasetGenResult",
 ]

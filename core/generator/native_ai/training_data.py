@@ -138,25 +138,100 @@ def extract_tet_features(
     return coords_12.astype(np.float64), context_8, quality
 
 
+def generate_dataset_from_meshes(
+    output_path: str,
+    mesh_pts_list: list[np.ndarray],
+    mesh_tets_list: list[np.ndarray],
+    *,
+    samples_per_mesh: int = 100,
+    seed: int = 42,
+) -> DatasetGenResult:
+    """ML training dataset 실제 생성 (AI-V1.1.2).
+
+    각 mesh 에서 random tet samples_per_mesh 개 추출 → features + quality.
+    .npz 로 저장: arrays coords (K, 12), context (K, 8), quality (K,).
+
+    Args:
+        output_path: .npz 경로.
+        mesh_pts_list: list of (N_i, 3) vertex arrays.
+        mesh_tets_list: list of (T_i, 4) tet arrays.
+        samples_per_mesh: per-mesh random sample count.
+        seed: random seed.
+
+    Returns:
+        DatasetGenResult.
+    """
+    import time
+    from pathlib import Path
+    t0 = time.perf_counter()
+
+    if len(mesh_pts_list) != len(mesh_tets_list):
+        return DatasetGenResult(
+            success=False,
+            output_path=output_path,
+            elapsed=time.perf_counter() - t0,
+            message="mesh_pts_list / mesh_tets_list length mismatch",
+        )
+
+    rng = np.random.default_rng(seed)
+    coords_all: list[np.ndarray] = []
+    contexts_all: list[np.ndarray] = []
+    quals_all: list[np.ndarray] = []
+    n_used = 0
+
+    for mi, (pts, tets) in enumerate(zip(mesh_pts_list, mesh_tets_list)):
+        T = int(tets.shape[0])
+        if T == 0:
+            continue
+        # Random select samples_per_mesh tet (with replacement OK for small T).
+        n_take = min(samples_per_mesh, T)
+        idx = rng.choice(T, size=n_take, replace=False)
+        try:
+            c12, c8, q = extract_features_batch(pts, tets, idx)
+            coords_all.append(c12)
+            contexts_all.append(c8)
+            quals_all.append(q)
+            n_used += int(n_take)
+        except Exception as exc:
+            # skip problematic mesh
+            continue
+
+    if not coords_all:
+        return DatasetGenResult(
+            success=False,
+            output_path=output_path,
+            elapsed=time.perf_counter() - t0,
+            message="0 samples extracted (all meshes failed)",
+        )
+
+    coords_arr = np.concatenate(coords_all, axis=0)
+    contexts_arr = np.concatenate(contexts_all, axis=0)
+    quals_arr = np.concatenate(quals_all, axis=0)
+
+    out = Path(output_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(
+        str(out),
+        coords=coords_arr,
+        context=contexts_arr,
+        quality=quals_arr,
+    )
+    return DatasetGenResult(
+        success=True,
+        n_samples=n_used,
+        output_path=str(out),
+        elapsed=time.perf_counter() - t0,
+        message=f"saved {n_used} samples to {out}",
+    )
+
+
 def generate_dataset_skeleton(
     output_path: str,
     *,
     n_samples: int = 10000,
     seed: int = 42,
 ) -> DatasetGenResult:
-    """ML training dataset generator (skeleton).
-
-    실제 구현 (AI-V1.1.2 카드): Thingi10K 100 mesh × 100 sample = 10k.
-    현재 stub: 미구현 → not_implemented 반환.
-
-    Args:
-        output_path: .npz 출력 경로.
-        n_samples: target sample count.
-        seed: random seed.
-
-    Returns:
-        DatasetGenResult.
-    """
+    """Legacy skeleton API. 실제 구현은 generate_dataset_from_meshes 사용."""
     import time
     t0 = time.perf_counter()
     return DatasetGenResult(
@@ -166,7 +241,8 @@ def generate_dataset_skeleton(
         elapsed=time.perf_counter() - t0,
         message=(
             f"AI-V1.1 dataset generator not yet implemented. "
-            f"Target: n_samples={n_samples} (placeholder)."
+            f"Target: n_samples={n_samples} (placeholder). "
+            f"Use generate_dataset_from_meshes() for real generation."
         ),
     )
 
