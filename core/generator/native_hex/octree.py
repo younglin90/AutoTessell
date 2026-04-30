@@ -747,7 +747,19 @@ def build_octree_hex_cells(
                 _lv_at.tolist(),
             ))
             _balanced = _balance_octree_2to1_nodes(_levels_dict)
-            _refined = _refine_surface_adjacent_nodes(_balanced, surface_V, surface_F, max_refine=20)
+            # E1 / beta2597 — max_refine auto-scale (snappy castellated 동등).
+            #   surface face 수가 많을수록 (복잡 형상) 더 많은 refinement 허용.
+            #   기본 20 → min(50, max(20, n_faces // 100)) 로 자동.
+            #   env AUTO_TESSELL_HEX_CASTELL_MAX 으로 override.
+            _max_refine_auto = min(50, max(20, int(surface_F.shape[0]) // 100))
+            try:
+                import os as _os_e1
+                _max_refine_env = int(_os_e1.environ.get("AUTO_TESSELL_HEX_CASTELL_MAX", "0"))
+                if _max_refine_env > 0:
+                    _max_refine_auto = _max_refine_env
+            except Exception:
+                pass
+            _refined = _refine_surface_adjacent_nodes(_balanced, surface_V, surface_F, max_refine=_max_refine_auto)
             _balanced = _balance_octree_2to1_nodes(_refined)
             # P2.4 / beta2312 — snappy nBufferCellsNoExtrude 동등 buffer.
             # AUTO_TESSELL_HEX_BUFFER_LAYER (default 1) 만큼 cell 두께 buffer
