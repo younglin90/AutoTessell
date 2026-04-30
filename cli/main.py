@@ -113,6 +113,98 @@ def doctor() -> None:
 
     console.print(table)
 
+    # L6 / beta2645 — model + GPU + plugin 추가 진단.
+    console.print()
+    extra = Table(title="ML / GPU / Plugin Diagnostic")
+    extra.add_column("Item", style="cyan")
+    extra.add_column("Status")
+    extra.add_column("Detail")
+
+    # CUDA.
+    try:
+        import torch
+        cuda_avail = torch.cuda.is_available()
+        cuda_status = "[green]available[/green]" if cuda_avail else "[yellow]CPU only[/yellow]"
+        cuda_detail = (
+            f"device 0: {torch.cuda.get_device_name(0)}"
+            if cuda_avail else "torch installed but no CUDA"
+        )
+        extra.add_row("CUDA", cuda_status, cuda_detail)
+    except Exception as exc:
+        extra.add_row("CUDA", "[red]error[/red]", f"{exc!s:.50}")
+
+    # ML smooth model.
+    import os as _os_l6
+    ml_path = _os_l6.environ.get("AUTO_TESSELL_ML_SMOOTH_MODEL", "")
+    if ml_path and Path(ml_path).exists():
+        size_kb = Path(ml_path).stat().st_size / 1024
+        extra.add_row(
+            "ML smooth model", "[green]found[/green]",
+            f"{ml_path} ({size_kb:.1f} KB)",
+        )
+    elif ml_path:
+        extra.add_row(
+            "ML smooth model", "[red]missing file[/red]",
+            f"{ml_path} not found",
+        )
+    else:
+        extra.add_row(
+            "ML smooth model", "[yellow]not set[/yellow]",
+            "AUTO_TESSELL_ML_SMOOTH_MODEL env unset",
+        )
+
+    # BL predict model.
+    bl_path = _os_l6.environ.get("AUTO_TESSELL_BL_PREDICT_MODEL", "")
+    if bl_path and Path(bl_path).exists():
+        size_kb = Path(bl_path).stat().st_size / 1024
+        extra.add_row(
+            "BL predict model", "[green]found[/green]",
+            f"{bl_path} ({size_kb:.1f} KB)",
+        )
+    elif bl_path:
+        extra.add_row(
+            "BL predict model", "[red]missing file[/red]", f"{bl_path}",
+        )
+    else:
+        extra.add_row(
+            "BL predict model", "[yellow]not set[/yellow]",
+            "AUTO_TESSELL_BL_PREDICT_MODEL env unset",
+        )
+
+    # Plugins.
+    try:
+        from core.generator.plugin_loader import discover_plugins, _default_plugin_dir
+        pdir = _default_plugin_dir()
+        plugins = discover_plugins(pdir)
+        n = len(plugins)
+        if n > 0:
+            names = ", ".join(p.name for p in plugins[:5])
+            if n > 5:
+                names += f", +{n - 5}"
+            extra.add_row(
+                "Plugins", f"[green]{n} discovered[/green]",
+                f"{pdir}: {names}",
+            )
+        else:
+            extra.add_row(
+                "Plugins", "[yellow]none[/yellow]",
+                f"dir: {pdir} (empty or missing)",
+            )
+    except Exception as exc:
+        extra.add_row("Plugins", "[red]error[/red]", f"{exc!s:.50}")
+
+    # h5py for HDF5 export.
+    try:
+        import h5py
+        extra.add_row("h5py (HDF5)", "[green]available[/green]", h5py.__version__)
+    except ImportError:
+        extra.add_row(
+            "h5py (HDF5)", "[yellow]missing[/yellow]",
+            "CCMIO/CGNS HDF5 export 비활성",
+        )
+
+    console.print(extra)
+
 
 # ---------------------------------------------------------------------------
 # analyze
