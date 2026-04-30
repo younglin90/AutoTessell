@@ -2704,6 +2704,19 @@ class AutoTessellWindow:  # type: ignore[misc]
         stop_btn.clicked.connect(self._on_stop_clicked)
         self._stop_btn = stop_btn
         h.addWidget(stop_btn)
+
+        # J5 / beta2630 — 키보드 shortcut.
+        # F5 = Run, Esc = Stop, Ctrl+L = clear log, Ctrl+R = re-run.
+        try:
+            from PySide6.QtGui import QShortcut, QKeySequence
+            _sc_run = QShortcut(QKeySequence("F5"), self._qmain)
+            _sc_run.activated.connect(self._on_run_clicked)
+            _sc_stop = QShortcut(QKeySequence("Esc"), self._qmain)
+            _sc_stop.activated.connect(self._on_stop_clicked)
+            _sc_rerun = QShortcut(QKeySequence("Ctrl+R"), self._qmain)
+            _sc_rerun.activated.connect(self._on_run_clicked)
+        except Exception:
+            pass
         return wrap
 
     def _build_main_area(self) -> object:  # pragma: no cover
