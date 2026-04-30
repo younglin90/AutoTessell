@@ -36,6 +36,7 @@ from .ml_bl_collision import (
 )
 from .gpu_envelope import (
     gpu_envelope_check,
+    gpu_envelope_check_accurate,
     GPUEnvelopeResult,
 )
 from .diffusion_volume import (
@@ -92,6 +93,7 @@ __all__ = [
     "BLCollisionPredictResult",
     "build_collision_predictor_skeleton",
     "gpu_envelope_check",
+    "gpu_envelope_check_accurate",
     "GPUEnvelopeResult",
     "diffusion_generate_volume",
     "DiffusionVolumeResult",

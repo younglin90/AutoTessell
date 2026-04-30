@@ -210,6 +210,28 @@ def test_gpu_envelope_empty_query():
     assert r.n_query == 0
 
 
+def test_gpu_envelope_check_accurate_eberly():
+    """C8-2.1.2 / beta2592 — Eberly + torch.compile fused kernel.
+    point (0,0,0) 와 z=1 평면 → 정확 거리 = 1.0.
+    eps=0.5 → 외부 (False), eps=1.5 → 내부 (True).
+    """
+    from core.generator.native_ai import gpu_envelope_check_accurate
+    surf = np.array([
+        [0, 0, 1], [1, 0, 1], [0, 1, 1],
+    ], dtype=np.float64)
+    faces = np.array([[0, 1, 2]], dtype=np.int64)
+    query = np.array([[0.0, 0.0, 0.0]], dtype=np.float64)
+    # eps=0.5 → 외부.
+    inside_out, r_out = gpu_envelope_check_accurate(query, surf, faces, eps=0.5)
+    if r_out.success:
+        assert inside_out[0] == False, f"expected outside, got {inside_out[0]}"
+    # eps=1.5 → 내부.
+    inside_in, r_in = gpu_envelope_check_accurate(query, surf, faces, eps=1.5)
+    if r_in.success:
+        assert inside_in[0] == True, f"expected inside, got {inside_in[0]}"
+        assert "eberly" in r_in.backend
+
+
 # ─────────────────────────────────────────────────────────────────────────
 # AI-V1.1 training data generator tests
 # ─────────────────────────────────────────────────────────────────────────
