@@ -1793,11 +1793,45 @@ def generate_native_bl(
     # 1.0 초과 시 클램프 (기존 total 이상 늘릴 수 없음).
 
     # 4c) beta63 collision detection — per-vertex 비균일 thickness (beta90 확장).
+    # AI-V3.C / beta2590 — ML fast-path opt-in.
+    #   AUTO_TESSELL_BL_PREDICT_MODEL=path 시 ML predict 시도. 결과 success
+    #   면 geometric raycast O(n²) 우회 (20-50× speedup target). 실패 / model
+    #   미제공 시 geometric path fallback.
     collision_dist: dict[int, float] = {}
     if cfg.collision_safety:
-        collision_dist = _compute_collision_distance(
-            points, faces, wall_face_indices, wall_vert_indices, vnorm,
-        )
+        _ml_used = False
+        if os.environ.get("AUTO_TESSELL_BL_PREDICT_MODEL", "").strip():
+            try:
+                from core.generator.native_ai.ml_bl_collision import (
+                    predict_bl_collision_distances,
+                )
+                _wv_arr = np.asarray(list(wall_vert_indices), dtype=np.int64)
+                _wf_verts = np.asarray(
+                    [faces[fi] for fi in wall_face_indices], dtype=np.int64,
+                ) if wall_face_indices else np.zeros((0, 3), dtype=np.int64)
+                _wf_arr = np.asarray(list(wall_face_indices), dtype=np.int64)
+                _gap, _ml_r = predict_bl_collision_distances(
+                    points, _wv_arr, _wf_arr, _wf_verts,
+                )
+                if _ml_r.success and _gap.shape[0] == _wv_arr.shape[0]:
+                    collision_dist = {
+                        int(_wv_arr[i]): float(_gap[i])
+                        for i in range(_wv_arr.shape[0])
+                        if np.isfinite(_gap[i])
+                    }
+                    _ml_used = True
+                    log.info(
+                        "native_bl_ml_collision_used",
+                        backend=_ml_r.backend,
+                        n_high_risk=_ml_r.n_high_risk,
+                        elapsed_ms=float(_ml_r.elapsed) * 1e3,
+                    )
+            except Exception as _ml_exc:
+                log.debug("native_bl_ml_predict_skipped", reason=str(_ml_exc)[:120])
+        if not _ml_used:
+            collision_dist = _compute_collision_distance(
+                points, faces, wall_face_indices, wall_vert_indices, vnorm,
+            )
         if collision_dist:
             safety = float(cfg.collision_safety_factor)
             # beta90: 전역 cap (기존) + per-vertex cap (신규).
