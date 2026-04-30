@@ -415,6 +415,42 @@ def main():
     out_path.write_text(json.dumps(rows, default=str, ensure_ascii=False, indent=1))
     print(f"\n결과 저장: {out_path}", flush=True)
 
+    # H7 / beta2616 — TSV auto-export (스프레드시트 직접 import 가능).
+    tsv_path = Path(__file__).parent / "bench_difficulty_tiers_result.tsv"
+    _cols = [
+        "tier", "engine", "fid", "success", "grade", "n_cells", "elapsed",
+        "mq", "min_q", "max_aspect", "n_self_intersect_pre",
+        "bl_success", "bl_n_prism", "bl_max_aspect",
+    ]
+    try:
+        with tsv_path.open("w", encoding="utf-8") as f:
+            f.write("\t".join(_cols) + "\n")
+            for r in rows:
+                f.write("\t".join(str(r.get(c, "")) for c in _cols) + "\n")
+        print(f"TSV 저장: {tsv_path}", flush=True)
+    except Exception as _tsv_exc:
+        print(f"TSV 저장 실패: {_tsv_exc}", flush=True)
+
+    # summary 표 TSV (tier × engine grade A 카운트).
+    summary_tsv_path = Path(__file__).parent / "bench_difficulty_tiers_summary.tsv"
+    try:
+        with summary_tsv_path.open("w", encoding="utf-8") as f:
+            f.write("tier\tengine\tn_ok\tn_total\tn_grade_A\tn_bl_ok\n")
+            for tier in tiers_order:
+                for engine in engines:
+                    tier_rows = [
+                        r for r in rows
+                        if r.get("tier") == tier and r.get("engine") == engine
+                    ]
+                    n_total = len(tier_rows)
+                    n_ok = sum(1 for r in tier_rows if r.get("success"))
+                    n_a = sum(1 for r in tier_rows if r.get("grade") == "A")
+                    n_bl = sum(1 for r in tier_rows if r.get("bl_success"))
+                    f.write(f"{tier}\t{engine}\t{n_ok}\t{n_total}\t{n_a}\t{n_bl}\n")
+        print(f"summary TSV: {summary_tsv_path}", flush=True)
+    except Exception as _sum_exc:
+        print(f"summary TSV 저장 실패: {_sum_exc}", flush=True)
+
 
 if __name__ == "__main__":
     main()
