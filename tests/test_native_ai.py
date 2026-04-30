@@ -249,7 +249,7 @@ def test_extract_features_batch():
 
 
 def test_generate_dataset_skeleton_skip():
-    """Dataset generator currently stub → not implemented."""
+    """Dataset generator skeleton (legacy) currently stub → not implemented."""
     from core.generator.native_ai import (
         generate_dataset_skeleton, DatasetGenResult,
     )
@@ -257,6 +257,55 @@ def test_generate_dataset_skeleton_skip():
     assert isinstance(r, DatasetGenResult)
     assert r.success is False
     assert "not yet implemented" in r.message
+
+
+def test_generate_dataset_from_meshes_real():
+    """Real dataset generator: multi-mesh → .npz save/load."""
+    from core.generator.native_ai import generate_dataset_from_meshes
+
+    pts1 = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1], [1, 1, 1]],
+                    dtype=np.float64)
+    tets1 = np.array([[0, 1, 2, 3], [1, 2, 3, 4]], dtype=np.int64)
+
+    pts2 = np.array([[0, 0, 0], [2, 0, 0], [0, 2, 0], [0, 0, 2]],
+                    dtype=np.float64)
+    tets2 = np.array([[0, 1, 2, 3]], dtype=np.int64)
+
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "dataset.npz"
+        r = generate_dataset_from_meshes(
+            str(out), [pts1, pts2], [tets1, tets2], samples_per_mesh=5,
+        )
+        assert r.success is True
+        assert r.n_samples == 3  # 2 + 1 = 3 total tets, capped by T<5
+        assert Path(out).exists()
+        d = np.load(str(out))
+        assert d["coords"].shape == (3, 12)
+        assert d["context"].shape == (3, 8)
+        assert d["quality"].shape == (3,)
+        assert (d["quality"] >= 0).all() and (d["quality"] <= 1).all()
+
+
+def test_generate_dataset_length_mismatch():
+    """Mesh list length mismatch → graceful error."""
+    from core.generator.native_ai import generate_dataset_from_meshes
+    pts = [np.zeros((4, 3))]
+    tets = []  # mismatch
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "x.npz"
+        r = generate_dataset_from_meshes(str(out), pts, tets)
+        assert r.success is False
+        assert "mismatch" in r.message
+
+
+def test_generate_dataset_empty():
+    """Empty mesh list → 0 samples graceful."""
+    from core.generator.native_ai import generate_dataset_from_meshes
+    with tempfile.TemporaryDirectory() as td:
+        out = Path(td) / "x.npz"
+        r = generate_dataset_from_meshes(str(out), [], [])
+        assert r.success is False
+        assert "0 samples" in r.message
 
 
 # ─────────────────────────────────────────────────────────────────────────
