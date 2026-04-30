@@ -158,3 +158,64 @@ class BatchInferenceRunner:
             samples_per_sec=K / max(elapsed, 1e-9),
             message=f"batched {K} samples across {len(mesh_pts_list)} meshes",
         )
+
+    def predict_with_confidence(
+        self,
+        pts: np.ndarray,
+        tets: np.ndarray,
+        *,
+        n_mc_samples: int = 10,
+        dropout_rate: float = 0.1,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """P5 / beta2671 — Monte Carlo dropout 으로 confidence interval.
+
+        Args:
+            pts: (N, 3).
+            tets: (T, 4).
+            n_mc_samples: dropout sample count (10 권장).
+            dropout_rate: ad-hoc dropout (현재 train 시 학습된 dropout 활용).
+
+        Returns:
+            (mean_pred (T,), std_pred (T,)).
+            std 가 큰 tet = 모델이 불확실 → 추가 샘플링 우선순위.
+
+        Note: 현재 v3 residual model 만 dropout layer 보유. v1 은 std=0.
+        """
+        if not self._ensure_loaded() or self._model is None:
+            return np.zeros(0, dtype=np.float32), np.zeros(0, dtype=np.float32)
+
+        try:
+            import torch
+            from .training_data import extract_features_batch
+            from .ml_tet_smoothing import predict_quality_batch
+        except Exception:
+            return np.zeros(0, dtype=np.float32), np.zeros(0, dtype=np.float32)
+
+        coords, ctx, _ = extract_features_batch(pts, tets)
+        K = int(coords.shape[0])
+        if K == 0:
+            return np.zeros(0, dtype=np.float32), np.zeros(0, dtype=np.float32)
+
+        # MC samples — model.train() 으로 dropout 활성화 (v3 만).
+        try:
+            self._model.train()
+        except Exception:
+            pass
+        all_preds = np.zeros((n_mc_samples, K), dtype=np.float32)
+        for s in range(n_mc_samples):
+            try:
+                p = predict_quality_batch(
+                    self._model, coords, ctx,
+                    use_cuda=(self._device_str == "cuda"),
+                )
+                all_preds[s] = p
+            except Exception:
+                pass
+        try:
+            self._model.eval()
+        except Exception:
+            pass
+
+        mean_pred = all_preds.mean(axis=0)
+        std_pred = all_preds.std(axis=0)
+        return mean_pred, std_pred
