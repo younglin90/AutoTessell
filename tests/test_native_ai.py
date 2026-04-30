@@ -312,6 +312,90 @@ def test_generate_dataset_empty():
 # AI-V4 diffusion stub tests
 # ─────────────────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────────────────
+# AI-V1.1.3 / V1.2 train + inference end-to-end tests
+# ─────────────────────────────────────────────────────────────────────────
+
+def test_train_predictor_end_to_end():
+    """Generate dataset → train → save → load → predict full pipeline."""
+    from core.generator.native_ai import (
+        generate_dataset_from_meshes,
+        train_quality_predictor,
+        load_trained_predictor,
+        predict_quality_batch,
+        extract_features_batch,
+    )
+    try:
+        import torch  # noqa: F401
+    except ImportError:
+        pytest.skip("torch not available")
+
+    # Build small synthetic dataset
+    np.random.seed(42)
+    mesh_pts = [np.random.rand(5, 3) for _ in range(15)]
+    mesh_tets = [np.array([[0, 1, 2, 3]], dtype=np.int64) for _ in range(15)]
+
+    with tempfile.TemporaryDirectory() as td:
+        npz = Path(td) / "d.npz"
+        pt = Path(td) / "m.pt"
+        r1 = generate_dataset_from_meshes(
+            str(npz), mesh_pts, mesh_tets, samples_per_mesh=2,
+        )
+        assert r1.success
+        assert r1.n_samples >= 10  # train_quality_predictor min
+
+        r2 = train_quality_predictor(
+            str(npz), str(pt),
+            epochs=3, batch_size=4, lr=1e-2,
+        )
+        assert r2.success
+        assert r2.n_train_samples > 0
+        assert r2.epochs == 3
+        assert pt.exists()
+
+        # Load + inference
+        model = load_trained_predictor(str(pt))
+        assert model is not None
+
+        c12, c8, _ = extract_features_batch(mesh_pts[0], mesh_tets[0])
+        pred = predict_quality_batch(model, c12, c8)
+        assert pred.shape == (1,)
+        assert 0.0 <= pred[0] <= 1.0
+
+
+def test_load_trained_predictor_missing_file():
+    """Missing .pt → None graceful."""
+    from core.generator.native_ai import load_trained_predictor
+    m = load_trained_predictor("/tmp/__nonexistent_model__.pt")
+    assert m is None
+
+
+def test_predict_quality_batch_no_model():
+    """None model → zero output graceful."""
+    from core.generator.native_ai import predict_quality_batch
+    coords = np.zeros((3, 12), dtype=np.float32)
+    context = np.zeros((3, 8), dtype=np.float32)
+    pred = predict_quality_batch(None, coords, context)
+    assert pred.shape == (3,)
+    assert (pred == 0.0).all()
+
+
+def test_train_predictor_missing_dataset():
+    """Missing dataset → graceful error."""
+    from core.generator.native_ai import train_quality_predictor
+    try:
+        import torch  # noqa: F401
+    except ImportError:
+        pytest.skip("torch not available")
+    with tempfile.TemporaryDirectory() as td:
+        r = train_quality_predictor(
+            str(Path(td) / "nonexistent.npz"),
+            str(Path(td) / "m.pt"),
+        )
+        assert r.success is False
+        assert "not found" in r.message
+
+
 def test_diffusion_volume_research_stub():
     """Diffusion volume gen returns research_stub backend."""
     from core.generator.native_ai import (
