@@ -102,5 +102,107 @@ def test_native_ai_with_bl_does_not_crash():
         assert r.mesh_type == "tet"
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# AI-V1 ML-tet smoothing tests (skeleton)
+# ─────────────────────────────────────────────────────────────────────────
+
+def test_ml_tet_smoothing_skeleton_skip():
+    """skeleton: trained model 미배치 → graceful skip"""
+    from core.generator.native_ai import (
+        ml_tet_smoothing_apply,
+        MLTetSmoothingResult,
+    )
+    pts = np.random.rand(20, 3)
+    tets = np.random.randint(0, 20, (5, 4))
+    new_pts, new_tets, r = ml_tet_smoothing_apply(pts, tets)
+    assert isinstance(r, MLTetSmoothingResult)
+    assert r.success is False  # skeleton — model not trained
+    assert "model not yet trained" in r.message or "not available" in r.message
+    # Graceful pass-through: input == output
+    assert new_pts.shape == pts.shape
+    assert new_tets.shape == tets.shape
+
+
+def test_ml_tet_smoothing_predictor_architecture():
+    """predictor MLP architecture sketch는 즉시 build 가능."""
+    from core.generator.native_ai import build_quality_predictor_skeleton
+    m = build_quality_predictor_skeleton()
+    if m is None:
+        pytest.skip("torch not available")
+    # input 20-dim, output 1-dim with sigmoid
+    import torch
+    x = torch.randn(4, 20)
+    y = m(x)
+    assert y.shape == (4, 1)
+    assert (y >= 0).all() and (y <= 1).all()  # sigmoid range
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# AI-V3 ML BL collision predict tests (skeleton)
+# ─────────────────────────────────────────────────────────────────────────
+
+def test_ml_bl_collision_skeleton_skip():
+    """skeleton: graceful skip → infinity distance fallback."""
+    from core.generator.native_ai import (
+        predict_bl_collision_distances,
+        BLCollisionPredictResult,
+    )
+    pts = np.random.rand(20, 3)
+    wall_v = np.array([0, 1, 2, 3], dtype=np.int64)
+    wall_f = np.array([0, 1], dtype=np.int64)
+    wall_fv = np.array([[0, 1, 2], [1, 2, 3]], dtype=np.int64)
+    dist, r = predict_bl_collision_distances(pts, wall_v, wall_f, wall_fv)
+    assert isinstance(r, BLCollisionPredictResult)
+    assert r.success is False  # skeleton
+    assert dist.shape == (4,)
+    assert np.isinf(dist).all()  # infinity fallback
+
+
+def test_ml_bl_collision_predictor_architecture():
+    """BL collision predictor MLP."""
+    from core.generator.native_ai import build_collision_predictor_skeleton
+    m = build_collision_predictor_skeleton()
+    if m is None:
+        pytest.skip("torch not available")
+    import torch
+    x = torch.randn(4, 12)
+    y = m(x)
+    assert y.shape == (4, 1)
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# C8 GPU envelope tests
+# ─────────────────────────────────────────────────────────────────────────
+
+def test_gpu_envelope_check_basic():
+    """torch.cdist 기반 envelope check — torch 있으면 동작."""
+    from core.generator.native_ai import gpu_envelope_check, GPUEnvelopeResult
+    np.random.seed(42)
+    surf = np.random.rand(20, 3)
+    faces = np.random.randint(0, 20, (10, 3))
+    query = np.random.rand(50, 3)
+    inside, r = gpu_envelope_check(query, surf, faces, eps=2.0)  # large eps
+    assert isinstance(r, GPUEnvelopeResult)
+    assert r.n_query == 50
+    if r.success:
+        # All query points within large eps
+        assert inside.sum() > 0
+        assert r.backend.startswith("torch_")
+    else:
+        # torch not available — graceful skip
+        assert r.backend == "skip"
+
+
+def test_gpu_envelope_empty_query():
+    """0 query — graceful."""
+    from core.generator.native_ai import gpu_envelope_check
+    surf = np.random.rand(5, 3)
+    faces = np.array([[0, 1, 2]], dtype=np.int64)
+    query = np.zeros((0, 3), dtype=np.float64)
+    inside, r = gpu_envelope_check(query, surf, faces, eps=0.1)
+    assert inside.shape == (0,)
+    assert r.n_query == 0
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
