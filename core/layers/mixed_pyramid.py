@@ -187,6 +187,85 @@ def split_quad_to_tri(
     ]
 
 
+def merge_hex_tet_with_pyramid_layer(
+    hex_pts: NDArray[np.float64],
+    hex_cells: NDArray[np.int64],
+    hex_face_owner: NDArray[np.int64],
+    hex_face_verts: list[list[int]],
+    tet_pts: NDArray[np.float64],
+    tet_cells: NDArray[np.int64],
+    *,
+    apex_offset_factor: float = 0.5,
+    tet_ids_in_combined_space: bool = False,
+) -> dict:
+    """H3 / beta2612 — hex 영역 + tet 영역 + pyramid transition layer 병합.
+
+    1. hex 와 tet 점 통합 (단순 vstack — 같은 좌표 dedup 호출자 책임).
+    2. interface quad 식별.
+    3. pyramid cells + 4 tri face per quad 추가.
+
+    Args:
+        hex_pts / hex_cells: (Nh, 3) / (Mh, 8).
+        hex_face_owner / hex_face_verts: hex polyMesh face/owner.
+        tet_pts / tet_cells: (Nt, 3) / (Mt, 4).
+        apex_offset_factor: pyramid apex 의 normal 방향 offset 비율.
+
+    Returns:
+        dict {
+            "points": (N, 3) all combined points,
+            "hex_cells": (Mh, 8),
+            "tet_cells": (Mt, 4) — re-indexed with offset,
+            "pyramid_cells": (Mp, 5),
+            "n_interface_quads": int,
+            "n_apex_added": int,
+        }
+    """
+    hex_pts = np.asarray(hex_pts, dtype=np.float64)
+    tet_pts = np.asarray(tet_pts, dtype=np.float64)
+    hex_n = int(hex_pts.shape[0])
+    tet_n = int(tet_pts.shape[0])
+
+    # tet vertex IDs offset by hex_n unless caller pre-merged.
+    if tet_ids_in_combined_space:
+        tet_cells_off = np.asarray(tet_cells, dtype=np.int64)
+    else:
+        tet_cells_off = np.asarray(tet_cells, dtype=np.int64) + hex_n
+    combined_pts = np.vstack([hex_pts, tet_pts])
+
+    # interface 식별 (tet cell vertex ID 가 offset 됐으므로 offset 적용).
+    tet_v_set = set(tet_cells_off.reshape(-1).tolist())
+    interface_quad_verts: list[list[int]] = []
+    interface_face_ids: list[int] = []
+    for fi, fv in enumerate(hex_face_verts):
+        if len(fv) != 4:
+            continue
+        n_shared = sum(1 for v in fv if int(v) in tet_v_set)
+        if n_shared >= 3:
+            interface_quad_verts.append(list(fv))
+            interface_face_ids.append(fi)
+
+    # pyramid 빌드.
+    if interface_quad_verts:
+        new_pts, pyr_cells, _new_tris, r = build_pyramid_cells(
+            combined_pts, interface_quad_verts,
+            apex_offset_factor=apex_offset_factor,
+        )
+    else:
+        new_pts = combined_pts
+        pyr_cells = np.zeros((0, 5), dtype=np.int64)
+        r = None
+
+    return {
+        "points": new_pts,
+        "hex_cells": np.asarray(hex_cells, dtype=np.int64),
+        "tet_cells": tet_cells_off,
+        "pyramid_cells": pyr_cells,
+        "n_interface_quads": len(interface_quad_verts),
+        "n_apex_added": int(new_pts.shape[0] - combined_pts.shape[0]),
+        "interface_face_ids": interface_face_ids,
+    }
+
+
 def pyramid_quality(pts: NDArray[np.float64], pyramid: NDArray[np.int64]) -> float:
     """Pyramid (5-vertex) 의 normalized quality.
 

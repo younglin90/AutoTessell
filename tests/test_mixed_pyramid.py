@@ -7,6 +7,7 @@ import pytest
 from core.layers.mixed_pyramid import (
     build_pyramid_cells,
     detect_interface_quads,
+    merge_hex_tet_with_pyramid_layer,
     pyramid_quality,
     split_quad_to_tri,
 )
@@ -75,6 +76,50 @@ def test_detect_interface_quads_basic():
     # face 1 (4,5,6,7) 은 0 vertex 공유.
     assert 0 in interfaces
     assert 1 not in interfaces
+
+
+def test_merge_hex_tet_with_pyramid_layer():
+    """H3 / beta2612 — hex+tet+pyramid 통합 (tet IDs in combined space)."""
+    hex_pts = np.array([
+        [0,0,0],[1,0,0],[1,1,0],[0,1,0],
+        [0,0,1],[1,0,1],[1,1,1],[0,1,1],
+    ], dtype=np.float64)
+    hex_cells = np.array([[0,1,2,3,4,5,6,7]], dtype=np.int64)
+    hex_face_owner = np.array([0]*6, dtype=np.int64)
+    hex_face_verts = [
+        [4, 5, 6, 7],  # top — tet 와 공유.
+        [0, 1, 2, 3],
+        [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7],
+    ]
+    # tet vertex 8 = combined space new vertex.
+    tet_pts = np.array([[0.5, 0.5, 2.0]], dtype=np.float64)
+    # tet cell uses hex IDs 4,5,6 (shared) + 8 (combined ID for tet_pts[0]).
+    tet_cells_combined = np.array([[4, 5, 6, 8]], dtype=np.int64)
+
+    r = merge_hex_tet_with_pyramid_layer(
+        hex_pts, hex_cells, hex_face_owner, hex_face_verts,
+        tet_pts, tet_cells_combined,
+        tet_ids_in_combined_space=True,
+    )
+    assert r["n_interface_quads"] == 1, f"interface count={r['n_interface_quads']}"
+    assert r["pyramid_cells"].shape[0] == 1
+    assert r["points"].shape[0] >= 10  # hex 8 + tet 1 + apex 1.
+
+
+def test_merge_hex_tet_no_interface():
+    """tet 가 hex 와 공유 vertex 없으면 interface count = 0."""
+    hex_pts = np.array([[0,0,0],[1,0,0],[0,1,0],[0,0,1]], dtype=np.float64)
+    hex_cells = np.array([[0,1,2,3,0,1,2,3]], dtype=np.int64)
+    hex_face_verts = [[0, 1, 2, 3]]
+    hex_face_owner = np.array([0], dtype=np.int64)
+    tet_pts = np.array([[10,10,10],[11,10,10],[10,11,10],[10,10,11]], dtype=np.float64)
+    tet_cells = np.array([[0,1,2,3]], dtype=np.int64)
+    r = merge_hex_tet_with_pyramid_layer(
+        hex_pts, hex_cells, hex_face_owner, hex_face_verts,
+        tet_pts, tet_cells,
+    )
+    assert r["n_interface_quads"] == 0
+    assert r["pyramid_cells"].shape[0] == 0
 
 
 if __name__ == "__main__":
