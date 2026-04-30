@@ -251,6 +251,33 @@ def resolve_either(name: str) -> tuple[str, list[str]]:
     return canon, aliases_for_tier(canon)
 
 
+def list_all_tiers() -> list[dict]:
+    """S4 / beta2691 — 모든 등록 tier 의 메타데이터 list.
+
+    Returns:
+        list of {"canonical": str, "aliases": list[str], "order": int}.
+    """
+    return [
+        {
+            "canonical": canon,
+            "aliases": aliases_for_tier(canon),
+            "order": i,
+        }
+        for i, canon in enumerate(_TIER_ORDER)
+    ]
+
+
+def is_native_tier(name: str) -> bool:
+    """S4 — name 이 native (자체 구현) tier 인지 검사."""
+    canon = canonical_tier(name)
+    return canon.startswith("tier_native_") or canon == "tier_native_ai"
+
+
+def is_external_tier(name: str) -> bool:
+    """S4 — external lib (TetWild/Netgen 등) 의존 tier 인지."""
+    return not is_native_tier(name) and canonical_tier(name) != "auto"
+
+
 # CLI hint → canonical tier name
 _HINT_MAP: dict[str, str] = {
     "auto": "auto",
