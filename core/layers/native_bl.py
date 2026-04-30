@@ -2244,6 +2244,86 @@ def generate_native_bl(
         for v in wall_vert_indices:
             lp_ids[cfg.num_layers][v] = int(v)
 
+        # P3.4 / beta2591 — REAL anisotropic prism split (layer-uniform subdivide).
+        # cfMesh splitInternalLayers 동등. mean aspect > threshold 시 모든 layer
+        # k 와 k+1 사이에 mid-vertex 새 layer 삽입 → cfg.num_layers 2배.
+        # env AUTO_TESSELL_BL_ANISO_SPLIT=1 (default OFF, diagnostic only) 시 활성.
+        # diagnostic-only path (line 2700+) 와 별개로 실 mesh 변환 수행.
+        _aniso_real_split = (
+            os.environ.get("AUTO_TESSELL_BL_ANISO_SPLIT", "0") == "1"
+            and cfg.num_layers >= 1
+            and cfg.num_layers <= 16  # 32 cap (32+ 은 무리).
+        )
+        if _aniso_real_split:
+            try:
+                _thr = float(os.environ.get("AUTO_TESSELL_BL_ANISO_SPLIT_THRESH", "4.0"))
+                # 모든 prism (wi, k) 의 wall-normal / base aspect 평균.
+                _aspects = []
+                _wt = wall_tri_verts
+                for fi_chk in wall_face_indices:
+                    if fi_chk not in _wt:
+                        continue
+                    v0c, v1c, v2c = _wt[fi_chk]
+                    base_e = float(
+                        np.linalg.norm(fp[v1c] - fp[v0c])
+                        + np.linalg.norm(fp[v2c] - fp[v1c])
+                        + np.linalg.norm(fp[v0c] - fp[v2c])
+                    ) / 3.0
+                    if base_e <= 1e-30:
+                        continue
+                    for kc in range(cfg.num_layers):
+                        lk_o = lp_ids[kc]
+                        lk_i = lp_ids[kc + 1]
+                        if not all(v in lk_o and v in lk_i for v in (v0c, v1c, v2c)):
+                            continue
+                        wn_e = float(
+                            np.linalg.norm(fp[lk_i[v0c]] - fp[lk_o[v0c]])
+                            + np.linalg.norm(fp[lk_i[v1c]] - fp[lk_o[v1c]])
+                            + np.linalg.norm(fp[lk_i[v2c]] - fp[lk_o[v2c]])
+                        ) / 3.0
+                        _aspects.append(wn_e / base_e)
+                _mean_asp = float(np.mean(_aspects)) if _aspects else 0.0
+                _max_asp = float(np.max(_aspects)) if _aspects else 0.0
+                if _mean_asp > _thr or _max_asp > _thr * 2.0:
+                    # 새 lp_ids 빌드: [0, 0.5, 1, 1.5, ..., N].
+                    _new_lp: list[dict[int, int]] = []
+                    _new_pts_buf: list[np.ndarray] = [fp]
+                    _next_pid = int(fp.shape[0])
+                    _N_old = cfg.num_layers
+                    for kc in range(_N_old):
+                        _new_lp.append(lp_ids[kc])  # 기존 layer.
+                        _mid_dict: dict[int, int] = {}
+                        for v in wall_vert_indices:
+                            if v in lp_ids[kc] and v in lp_ids[kc + 1]:
+                                _mid_pt = 0.5 * (
+                                    fp[lp_ids[kc][v]] + fp[lp_ids[kc + 1][v]]
+                                )
+                                _new_pts_buf.append(_mid_pt[None, :])
+                                _mid_dict[v] = _next_pid
+                                _next_pid += 1
+                        _new_lp.append(_mid_dict)
+                    _new_lp.append(lp_ids[_N_old])  # 마지막 (innermost) layer.
+                    fp = np.vstack(_new_pts_buf) if len(_new_pts_buf) > 1 else fp
+                    lp_ids = _new_lp
+                    object.__setattr__(cfg, "num_layers", _N_old * 2)
+                    n_prism_per_face = cfg.num_layers
+                    n_prism_total = n_wall_faces * n_prism_per_face
+                    log.info(
+                        "native_bl_aniso_split_applied",
+                        component="native_bl", phase="P3.4/beta2591",
+                        mean_aspect_pre=round(_mean_asp, 3),
+                        max_aspect_pre=round(_max_asp, 3),
+                        threshold=_thr,
+                        num_layers_pre=_N_old,
+                        num_layers_post=cfg.num_layers,
+                        new_mid_pts=int(fp.shape[0]) - int(fp.shape[0] - (cfg.num_layers // 2) * len(wall_vert_indices)),
+                    )
+            except Exception as _asp_exc:
+                log.warning(
+                    "native_bl_aniso_split_skipped",
+                    reason=str(_asp_exc)[:120],
+                )
+
         # 6) Prism cell 위상 구성
         p_int_faces: list[list[int]] = []
         p_int_owner: list[int] = []
