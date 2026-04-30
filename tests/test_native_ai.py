@@ -524,6 +524,65 @@ def test_starccm_binary_skeleton():
         assert r.fmt == "binary"
 
 
+def test_tecplot_plt_writer_basic(monkeypatch):
+    """I1 / beta2619 — Tecplot .plt ASCII writer."""
+    import sys, types
+    fake_pm = {
+        "points": [[0,0,0],[1,0,0],[0,1,0],[0,0,1]],
+        "faces": [[0,1,2],[0,1,3],[1,2,3],[0,2,3]],
+        "owner": [0,0,0,0],
+        "neighbour": [],
+        "boundary": [{"name":"walls","type":"wall","nFaces":4,"startFace":0}],
+    }
+    fake_mod = types.ModuleType("core.utils.poly_mesh_reader")
+    fake_mod.read_poly_mesh = lambda _p: fake_pm
+    monkeypatch.setitem(sys.modules, "core.utils.poly_mesh_reader", fake_mod)
+
+    from core.utils.tecplot_writer import write_tecplot_plt
+    with tempfile.TemporaryDirectory() as td:
+        pm = Path(td) / "pm"
+        pm.mkdir()
+        out = Path(td) / "tet.plt"
+        r = write_tecplot_plt(str(pm), str(out))
+        assert r.success
+        assert r.n_nodes == 4
+        assert r.n_cells == 1
+        assert r.zonetype == "FETETRAHEDRON"
+        content = out.read_text(encoding="ascii")
+        assert "TITLE" in content
+        assert "VARIABLES" in content
+        assert "ZONE T=" in content
+        assert "FETETRAHEDRON" in content
+
+
+def test_plot3d_grid_writer_binary(monkeypatch):
+    """I2 / beta2620 — Plot3D .x binary writer."""
+    import sys, types, struct
+    fake_pm = {
+        "points": [[0,0,0],[1,0,0],[0,1,0],[0,0,1]],
+        "faces": [], "owner": [], "neighbour": [], "boundary": [],
+    }
+    fake_mod = types.ModuleType("core.utils.poly_mesh_reader")
+    fake_mod.read_poly_mesh = lambda _p: fake_pm
+    monkeypatch.setitem(sys.modules, "core.utils.poly_mesh_reader", fake_mod)
+
+    from core.utils.plot3d_writer import write_plot3d_grid
+    with tempfile.TemporaryDirectory() as td:
+        pm = Path(td) / "pm"
+        pm.mkdir()
+        out = Path(td) / "grid.x"
+        r = write_plot3d_grid(str(pm), str(out), binary=True)
+        assert r.success
+        assert r.n_blocks == 1
+        assert r.n_total_points == 4
+        # binary 헤더 확인 (Fortran unformatted record marker).
+        with out.open("rb") as f:
+            rec_len = struct.unpack("<i", f.read(4))[0]
+            assert rec_len == 4
+            nblocks = struct.unpack("<i", f.read(4))[0]
+            assert nblocks == 1
+
+
 def test_fluent_msh_writer_basic(monkeypatch):
     """H1 / beta2610 — Fluent .msh ASCII writer 검증."""
     import sys, types
