@@ -524,5 +524,74 @@ def test_starccm_binary_skeleton():
         assert r.fmt == "binary"
 
 
+def test_starccm_binary_v2_full_blocks(monkeypatch):
+    """C7-1.3 / beta2593 — 6-block binary writer 검증.
+    구조: header(32B) + PTS + FAC + OWN + NBR + ZNE + END trailer.
+    """
+    import struct
+    import sys
+    import types
+    from core.utils.mesh_exporter_starccm import write_starccm
+    # 합성 polyMesh — fake reader 모듈 제공.
+    fake_pm = {
+        "points": [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
+        "faces": [[0, 1, 2], [0, 1, 3], [1, 2, 3], [0, 2, 3]],
+        "owner": [0, 0, 0, 0],
+        "neighbour": [],
+        "boundary": [{"name": "walls", "type": "wall", "nFaces": 4, "startFace": 0}],
+    }
+    fake_mod = types.ModuleType("core.utils.poly_mesh_reader")
+    fake_mod.read_poly_mesh = lambda _p: fake_pm  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "core.utils.poly_mesh_reader", fake_mod)
+
+    with tempfile.TemporaryDirectory() as td:
+        pm = Path(td) / "pm"
+        pm.mkdir()
+        out = Path(td) / "tet.ccm"
+        r = write_starccm(str(pm), str(out), fmt="binary")
+        if not r.success:
+            pytest.skip(f"poly_mesh_reader 미지원: {r.message[:60]}")
+        # 바이너리 검증.
+        with out.open("rb") as f:
+            magic = f.read(4)
+            assert magic == b"CCMV", f"magic 불일치: {magic!r}"
+            ver = struct.unpack("<I", f.read(4))[0]
+            assert ver == 2, f"version=2 expected, got {ver}"
+            # n_points / n_cells / n_faces / n_internal_faces.
+            n_pts = struct.unpack("<I", f.read(4))[0]
+            n_cells = struct.unpack("<I", f.read(4))[0]
+            n_faces = struct.unpack("<I", f.read(4))[0]
+            n_int = struct.unpack("<I", f.read(4))[0]
+            n_zones = struct.unpack("<H", f.read(2))[0]
+            f.read(6)  # padding.
+            assert n_pts == 4
+            assert n_cells >= 1
+            assert n_faces == 4
+            assert n_zones == 1
+            # 블록 tag 순차 확인.
+            assert f.read(4) == b"PTS\0"
+            f.read(4)  # count.
+            f.read(n_pts * 3 * 8)  # points.
+            assert f.read(4) == b"FAC\0"
+            f.read(4)  # count.
+            for _ in range(n_faces):
+                nv = struct.unpack("<I", f.read(4))[0]
+                f.read(nv * 4)
+            assert f.read(4) == b"OWN\0"
+            cnt = struct.unpack("<I", f.read(4))[0]
+            f.read(cnt * 4)
+            assert f.read(4) == b"NBR\0"
+            cnt = struct.unpack("<I", f.read(4))[0]
+            f.read(cnt * 4)
+            assert f.read(4) == b"ZNE\0"
+            cnt = struct.unpack("<I", f.read(4))[0]
+            for _ in range(cnt):
+                name_len = struct.unpack("<H", f.read(2))[0]
+                f.read(name_len + 4 + 4 + 1)
+            assert f.read(4) == b"END\0"
+            trailer = struct.unpack("<I", f.read(4))[0]
+            assert trailer == 0xCCAA5555, f"trailer magic 불일치: {trailer:#x}"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

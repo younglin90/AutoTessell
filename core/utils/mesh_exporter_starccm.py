@@ -172,6 +172,7 @@ def _write_binary_ccm_skeleton(
         points = np.asarray(pm.get("points", []), dtype=np.float64)
         faces = list(pm.get("faces", []))
         owner = np.asarray(pm.get("owner", []), dtype=np.int64)
+        neighbour = np.asarray(pm.get("neighbour", []), dtype=np.int64)
         boundary = list(pm.get("boundary", []))
     except Exception as exc:
         return StarCCMExportResult(
@@ -185,19 +186,66 @@ def _write_binary_ccm_skeleton(
     n_cells = int(owner.max() + 1) if owner.size else 0
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with output_path.open("wb") as fp:
-        fp.write(b"CCM ")  # magic
-        fp.write(struct.pack("<I", 1))  # version
+        # === C7-1.3 / beta2593 — full topology binary blocks ===
+        # 헤더 (32 bytes 고정).
+        fp.write(b"CCMV")  # magic (변경: "CCMV" — 우리 native variant 표시).
+        fp.write(struct.pack("<I", 2))  # version 2 (beta2593 호환).
         fp.write(struct.pack("<I", len(points)))
         fp.write(struct.pack("<I", n_cells))
         fp.write(struct.pack("<I", len(faces)))
+        fp.write(struct.pack("<I", int(neighbour.size)))     # internal face count.
         fp.write(struct.pack("<H", len(boundary)))
-        fp.write(b"\x00\x00")  # reserved
-        # point block
-        fp.write(points.astype(np.float64).tobytes())
-        # face block (length + indices per face) — placeholder
+        fp.write(b"\x00" * 6)  # reserved padding to 32 bytes.
+
+        # === BLOCK 1: POINTS ===
+        # tag "PTS\0" + count + payload (n_points × 3 × float64 little-endian).
+        fp.write(b"PTS\0")
+        fp.write(struct.pack("<I", len(points)))
+        fp.write(points.astype("<f8").tobytes(order="C"))
+
+        # === BLOCK 2: FACES (var-length) ===
+        # tag "FAC\0" + count + per-face: <uint32 nVerts> <int32 verts...>.
+        fp.write(b"FAC\0")
+        fp.write(struct.pack("<I", len(faces)))
         for face in faces:
             fp.write(struct.pack("<I", len(face)))
-            fp.write(np.asarray(face, dtype=np.int32).tobytes())
+            fp.write(np.asarray(face, dtype="<i4").tobytes(order="C"))
+
+        # === BLOCK 3: OWNER ===
+        # tag "OWN\0" + count + int32 array.
+        fp.write(b"OWN\0")
+        fp.write(struct.pack("<I", int(owner.size)))
+        fp.write(owner.astype("<i4").tobytes(order="C"))
+
+        # === BLOCK 4: NEIGHBOUR ===
+        # tag "NBR\0" + count + int32 array (only internal faces).
+        fp.write(b"NBR\0")
+        fp.write(struct.pack("<I", int(neighbour.size)))
+        fp.write(neighbour.astype("<i4").tobytes(order="C"))
+
+        # === BLOCK 5: ZONES (boundary patches) ===
+        # tag "ZNE\0" + count + per-zone: <uint16 nameLen> <name bytes>
+        # <uint32 startFace> <uint32 nFaces> <uint8 typeCode>.
+        # typeCode: 0=patch, 1=wall, 2=symmetry, 3=empty.
+        fp.write(b"ZNE\0")
+        fp.write(struct.pack("<I", len(boundary)))
+        for patch in boundary:
+            name = str(patch.get("name", "patch")).encode("utf-8")[:255]
+            start_face = int(patch.get("startFace", 0))
+            n_face_p = int(patch.get("nFaces", 0))
+            type_str = str(patch.get("type", "patch")).lower()
+            type_map = {"patch": 0, "wall": 1, "symmetry": 2, "empty": 3, "symmetryplane": 2}
+            type_code = type_map.get(type_str, 0)
+            fp.write(struct.pack("<H", len(name)))
+            fp.write(name)
+            fp.write(struct.pack("<I", start_face))
+            fp.write(struct.pack("<I", n_face_p))
+            fp.write(struct.pack("<B", type_code))
+
+        # === BLOCK 6: TRAILER ===
+        # tag "END\0" + magic 0xCCAA5555 (sanity check).
+        fp.write(b"END\0")
+        fp.write(struct.pack("<I", 0xCCAA5555))
 
     return StarCCMExportResult(
         success=True,
@@ -209,8 +257,8 @@ def _write_binary_ccm_skeleton(
         fmt="binary",
         elapsed=time.perf_counter() - t0,
         message=(
-            f"binary .ccm skeleton written ({output_path}). "
-            f"NOTE: header speculative — Siemens 비공개 포맷. "
-            f"StarCCM+ 으로 import 안 될 수 있음."
+            f"AutoTessell native binary .ccm v2 written ({output_path}). "
+            f"6 블록 (PTS/FAC/OWN/NBR/ZNE/END). Siemens 공식 포맷 아님 — "
+            f"내부 / 사용자 정의 reader 용. 공식 import 는 ASCII path 권장."
         ),
     )
