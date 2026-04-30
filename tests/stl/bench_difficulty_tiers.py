@@ -139,14 +139,27 @@ def _worker_run(payload: tuple) -> dict:
                 if not r.success:
                     out["message"] = str(getattr(r, "message", ""))[:120]
 
-            out["elapsed"] = round(time.perf_counter() - t0, 2)
+            # I4 / beta2622 — stage profiling: gen vs bl vs total.
+            _t_gen_end = time.perf_counter()
+            out["t_gen_s"] = round(_t_gen_end - t0, 3)
 
             if out.get("success") and with_bl:
+                _t_bl_start = time.perf_counter()
                 # beta2250: pass bbox_diag for relative first_thickness.
                 _bbox_arr = V.max(axis=0) - V.min(axis=0)
                 _bbox_d = float(np.linalg.norm(_bbox_arr))
                 bl = _try_bl(case, n_layers=3, engine_tag=engine, bbox_diag=_bbox_d)
                 out.update(bl)
+                out["t_bl_s"] = round(time.perf_counter() - _t_bl_start, 3)
+            else:
+                out["t_bl_s"] = 0.0
+
+            out["elapsed"] = round(time.perf_counter() - t0, 2)
+            # gen / bl / overhead 비율.
+            _t_total = float(out["elapsed"])
+            if _t_total > 1e-6:
+                out["pct_gen"] = round(100.0 * out["t_gen_s"] / _t_total, 1)
+                out["pct_bl"] = round(100.0 * out["t_bl_s"] / _t_total, 1)
 
         except Exception as exc:
             out["success"] = False
@@ -419,6 +432,7 @@ def main():
     tsv_path = Path(__file__).parent / "bench_difficulty_tiers_result.tsv"
     _cols = [
         "tier", "engine", "fid", "success", "grade", "n_cells", "elapsed",
+        "t_gen_s", "t_bl_s", "pct_gen", "pct_bl",
         "mq", "min_q", "max_aspect", "n_self_intersect_pre",
         "bl_success", "bl_n_prism", "bl_max_aspect",
     ]
