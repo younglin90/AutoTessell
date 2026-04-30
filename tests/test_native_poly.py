@@ -204,16 +204,18 @@ def test_native_poly_best_of_n_repair_tries_two_variants_and_two_lp_p(
 
     res = generate_native_poly_voronoi(V, F, tmp_case_dir, seed_density=2, auto_escalate_max=1)
     assert not res.success  # 모두 forced fail.
-    # 2 repair variants 시도.
-    assert len(repair_calls) == 2, f"repair 호출 수: {len(repair_calls)}"
+    # P1.2 / beta2581 — 3 repair variants (v0=aggressive=3, v1=2, v2=5 extreme).
+    assert len(repair_calls) == 3, f"repair 호출 수: {len(repair_calls)}"
     assert repair_calls[0]["aggressive"] == 3
     assert repair_calls[1]["aggressive"] == 2
     assert repair_calls[1]["fill_hole_max_boundary"] == 512  # 더 큰 hole.
-    # 각 variant 마다 lp_p ∈ {2.0, 4.0} 양쪽 시도 → 최소 4 회 inner.
-    repair_path_inner = [c for c in inner_calls if c["lp_p"] in (2.0, 4.0)]
-    # best-of-N 의 p=2/p=4 도 lp_p 가지므로 ≥ 4 만 검증.
+    assert repair_calls[2]["aggressive"] == 5  # extreme variant.
+    assert repair_calls[2]["fill_hole_max_boundary"] == 1024
+    # variant v0/v1 = lp_p ∈ {2,4} (2 each), variant v2 = lp_p ∈ {2,4,8}.
+    repair_path_inner = [c for c in inner_calls if c["lp_p"] in (2.0, 4.0, 8.0)]
     p_set = {c["lp_p"] for c in repair_path_inner}
     assert 2.0 in p_set and 4.0 in p_set, f"lp_p 양쪽 미시도: {p_set}"
+    assert 8.0 in p_set, f"P1.2 extreme variant 의 lp_p=8.0 미시도: {p_set}"
 
 
 def test_native_poly_lloyd_signature_accepts_n_lloyd() -> None:

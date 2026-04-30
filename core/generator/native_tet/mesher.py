@@ -2637,12 +2637,23 @@ def generate_native_tet(
                             # 신규: worst 하락 ≤ 0.015 허용 + mean 향상 (≥ pre - 1e-12).
                             #       → fTetWild §3.5 envelope-bounded relocation 의 활용 가능.
                             #       SSS_REVIVAL (line 2508) 와 동일 임계.
+                            # P1.3 / beta2581 — D-cell recovery branch 추가.
+                            #   min quality 개선이 큰 경우 (≥ 0.005) 작은 mean
+                            #   drop (≤ 0.005) 까지 허용. Klingner §3.5 가
+                            #   강조하는 worst tet 회복 우선 정책. tet grade A
+                            #   self-impl 0/20 → +2~3/20 expected.
                             _worst_drop = pre_min - float(post_q.min())
                             _mean_gain = float(post_q.mean()) - pre_mean
-                            accepted = bool(
+                            _min_gain = float(post_q.min()) - pre_min
+                            accepted_standard = (
                                 _worst_drop <= 0.015
                                 and _mean_gain >= -1e-12
                             )
+                            accepted_d_recovery = (
+                                _min_gain >= 0.005
+                                and _mean_gain >= -0.005
+                            )
+                            accepted = bool(accepted_standard or accepted_d_recovery)
                             if accepted:
                                 final_pts = sm_pts
 

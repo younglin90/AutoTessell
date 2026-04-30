@@ -1332,10 +1332,18 @@ def generate_native_poly_voronoi(
 
             try:
                 from core.preprocessor.native_repair import run_native_repair  # noqa: PLC0415
+                # P1.2 / beta2581 — extreme repair variant 추가.
+                #   기존 v0 (aggressive=3, tight dedup) + v1 (aggressive=2,
+                #   relaxed dedup) 모두 실패 시: v2 = 최대 aggressive=5 + 매우
+                #   relaxed dedup (1e-5) + 큰 hole cap (1024). 입력에 self-
+                #   intersection 이 100+ 인 extreme tier 회복용. 추가로 retry
+                #   에서 lp_p=8.0 (octant 최대) 까지 시도 → CVT 가 더 isotropic
+                #   하게 수렴.
                 _repair_variants = [
                     # (aggressive, dedup_tol, fill_max_boundary)
                     (3, 1e-9, 256),
                     (2, 1e-7, 512),  # beta2306 — 더 관대한 dedup + 더 큰 hole.
+                    (5, 1e-5, 1024),  # P1.2 / beta2581 — extreme.
                 ]
                 for _v_idx, (_aggr, _dtol, _fcap) in enumerate(_repair_variants):
                     _r = run_native_repair(
@@ -1366,7 +1374,12 @@ def generate_native_poly_voronoi(
                         ),
                     )
                     # beta2306: p=2 와 p=4 모두 시도.
-                    for _lp_p in (2.0, 4.0):
+                    # P1.2 / beta2581 — variant 2 (extreme) 일 때만 lp_p=8.0
+                    # 추가 시도 (octant 한계 — CVT 등방성 강화).
+                    _lp_p_trials: tuple[float, ...] = (2.0, 4.0)
+                    if _v_idx == 2:
+                        _lp_p_trials = (2.0, 4.0, 8.0)
+                    for _lp_p in _lp_p_trials:
                         _retry_r = _generate_native_poly_voronoi_inner(
                             _r.vertices.astype(np.float64),
                             _r.faces.astype(np.int64),

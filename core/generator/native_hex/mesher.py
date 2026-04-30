@@ -1,6 +1,7 @@
 """native_hex MVP 메쉬 생성기 — uniform hex grid + inside filter."""
 from __future__ import annotations
 
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -668,7 +669,16 @@ def generate_native_hex(
     centroids = grid_pts[hexes].mean(axis=1)
     inside = _inside_winding_number(centroids, V, F)
     kept = hexes[inside]
-    if kept.shape[0] == 0:
+    # P1.1 / beta2581 — small-count auto escalate.
+    #   trigger 확장: kept==0 → kept<50 (절대 floor 기준).
+    #   small-bbox 케이스에서 hex 수가 50 미만으로 떨어지면 mesh_integrity_suspect
+    #   flag (line 137) 가 켜지고 grade A 평가에서 disqualify. 이전 escalate
+    #   는 kept==0 만 trigger 였으나, 1<=kept<50 인 thin/small case 도 escalate
+    #   대상에 포함. n_kept_post > _smallhex_floor 이거나 n_kept_post >
+    #   pre_kept * 1.5 면 escalate 채택.
+    _smallhex_floor = int(os.environ.get("AUTO_TESSELL_HEX_SMALL_FLOOR", "50"))
+    _pre_kept = int(kept.shape[0])
+    if _pre_kept < _smallhex_floor:
         # P1 (beta2232 + beta2305) — small bbox auto escalate.
         # target_edge_length 가 사용자 명시 (user_set) 가 아니면, default
         # seed_density 의 grid spacing 이 너무 커서 hex centroid 모두 외부인
@@ -707,13 +717,24 @@ def generate_native_hex(
                 _centroids2 = _grid_pts2[_hexes_all2].mean(axis=1)
                 _inside2 = _inside_winding_number(_centroids2, V, F)
                 _kept2 = _hexes_all2[_inside2]
-                if _kept2.shape[0] > 0:
+                # P1.1 / beta2581 — accept escalate only when post-kept clears
+                # _smallhex_floor OR is >=1.5× pre. 0→k 은 항상 채택.
+                _post_n = int(_kept2.shape[0])
+                _accept_escalate = (
+                    _pre_kept == 0 and _post_n > 0
+                ) or (
+                    _post_n >= _smallhex_floor
+                ) or (
+                    _post_n >= int(_pre_kept * 1.5) and _post_n > _pre_kept
+                )
+                if _accept_escalate:
                     log.info(
                         "native_hex_p1_auto_escalate",
                         seed_density_old=int(seed_density),
                         seed_density_new=_new_sd,
                         cap_old=int(cap), cap_new=int(_new_cap),
                         retry=_retry + 1, n_kept=int(_kept2.shape[0]),
+                        pre_kept=_pre_kept, smallhex_floor=_smallhex_floor,
                     )
                     grid_pts = _grid_pts2
                     hexes = _kept2
