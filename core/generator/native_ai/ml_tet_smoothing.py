@@ -226,11 +226,12 @@ def ml_tet_smoothing_apply(
     pts_cand = pts_cur.copy()
     pts_cand[nz] = 0.5 * (pts_cur[nz] + targets[nz])
 
-    # ML predictor query 후보 vs 현재.
-    feats_cur = extract_features_batch(pts_cur, tets)
-    feats_cand = extract_features_batch(pts_cand, tets)
-    pred_cur = predict_quality_batch(model, feats_cur, device=device_str)
-    pred_cand = predict_quality_batch(model, feats_cand, device=device_str)
+    # ML predictor query 후보 vs 현재. extract_features_batch returns
+    # (coords (K,12), context (K,8), qualities (K,)).
+    coords_cur, ctx_cur, _ = extract_features_batch(pts_cur, tets)
+    coords_cand, ctx_cand, _ = extract_features_batch(pts_cand, tets)
+    pred_cur = predict_quality_batch(model, coords_cur, ctx_cur, use_cuda=(device_str == "cuda"))
+    pred_cand = predict_quality_batch(model, coords_cand, ctx_cand, use_cuda=(device_str == "cuda"))
     if pred_cur is None or pred_cand is None:
         return pts, tets, MLTetSmoothingResult(
             success=False,
