@@ -206,8 +206,20 @@ def train_quality_predictor(
         val_pred = model(X_val)
         final_val_loss = float(loss_fn(val_pred, y_val).item())
 
-    # Save state_dict + meta
+    # L4 / beta2643 — model metadata + dataset checksum.
     Path(output_pt).parent.mkdir(parents=True, exist_ok=True)
+    import hashlib as _hashlib_l4
+    import datetime as _dt_l4
+    _ds_path = Path(dataset_npz)
+    _ds_size = _ds_path.stat().st_size if _ds_path.exists() else 0
+    _ds_hash = ""
+    if _ds_path.exists():
+        _h = _hashlib_l4.sha256()
+        with _ds_path.open("rb") as _f:
+            for _chunk in iter(lambda: _f.read(8192), b""):
+                _h.update(_chunk)
+        _ds_hash = _h.hexdigest()[:16]
+
     torch.save({
         "state_dict": model.state_dict(),
         "n_train": int(train_idx.shape[0]),
@@ -215,6 +227,18 @@ def train_quality_predictor(
         "epochs": epochs,
         "final_train_loss": final_train_loss,
         "final_val_loss": final_val_loss,
+        # L4 metadata.
+        "model_version": "v1" if architecture not in ("v3", "residual") else "v3",
+        "architecture": architecture,
+        "input_dim": 20,
+        "trained_at": _dt_l4.datetime.utcnow().isoformat(),
+        "dataset_path": str(_ds_path),
+        "dataset_size_bytes": _ds_size,
+        "dataset_sha256_short": _ds_hash,
+        "lr": lr,
+        "batch_size": batch_size,
+        "seed": seed,
+        "backend": backend_str,
     }, output_pt)
 
     return TrainResult(
