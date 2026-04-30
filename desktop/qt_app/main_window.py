@@ -2320,6 +2320,46 @@ class AutoTessellWindow:  # type: ignore[misc]
             "기본은 cpu_count() ≥ 2 시 자동 (beta2375).\n"
             "AUTO_TESSELL_PARALLEL_DELAUNAY=1 동등."
         )
+        # C-GUI-D3 / beta2594 — beta2581-2593 신규 env flags 노출.
+        self._cvt3d_qweight_check = QCheckBox(
+            "CVT3D quality-weighted Lloyd (beta2586)"
+        )
+        self._cvt3d_qweight_check.setToolTip(
+            "체크 시 Volumetric Lloyd 가 quality-weighted target.\n"
+            "poor tet (q<0.3) → centroid weight 1/(q+0.05) — sliver pull 가속.\n"
+            "AUTO_TESSELL_CVT3D_QUALITY_WEIGHT=1 동등."
+        )
+        self._lcr_auto_reduce_check = QCheckBox(
+            "BL LCR global num_layers auto-reduce (beta2587)"
+        )
+        self._lcr_auto_reduce_check.setToolTip(
+            "50%+ wall verts 가 좁은 gap 인 경우 cfg.num_layers 를\n"
+            "median 으로 globally 감소 (Pointwise T-Rex 동등).\n"
+            "AUTO_TESSELL_LCR_AUTO_REDUCE=1 동등."
+        )
+        self._bl_aniso_split_check = QCheckBox(
+            "BL anisotropic prism split (beta2591)"
+        )
+        self._bl_aniso_split_check.setToolTip(
+            "체크 시 mean wall-normal aspect > 4.0 인 BL 의 layer 를 mid-vertex\n"
+            "삽입으로 균일 subdivide (cfMesh splitInternalLayers 동등).\n"
+            "cfg.num_layers 2배. AUTO_TESSELL_BL_ANISO_SPLIT=1 동등."
+        )
+        self._ml_smooth_model_path = QLineEdit() if False else None  # lazy init below
+        # C-GUI-D3: ML model path inputs.
+        from PySide6.QtWidgets import QLineEdit as _QLE
+        self._ml_smooth_model_path = _QLE()
+        self._ml_smooth_model_path.setPlaceholderText("(optional) /path/to/ml_smooth_model.pt")
+        self._ml_smooth_model_path.setToolTip(
+            "tet quality predictor model 경로. 비워두면 ML smoothing 비활성.\n"
+            "models/ml_smooth_model.pt 추천. AUTO_TESSELL_ML_SMOOTH_MODEL 동등."
+        )
+        self._bl_predict_model_path = _QLE()
+        self._bl_predict_model_path.setPlaceholderText("(optional) /path/to/bl_predictor.pt")
+        self._bl_predict_model_path.setToolTip(
+            "BL collision predictor model 경로. 비워두면 ML predict 비활성.\n"
+            "models/bl_predictor.pt 추천. AUTO_TESSELL_BL_PREDICT_MODEL 동등."
+        )
         # C-GUI-14 / beta2449 — BL floor ratio (curvature_adaptive 강도).
         from PySide6.QtWidgets import QDoubleSpinBox, QLabel, QHBoxLayout, QWidget, QSpinBox
         self._bl_floor_ratio_spin = QDoubleSpinBox()
@@ -2383,6 +2423,10 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._seed_gwn_check.setChecked(False)
         self._stellar_split_check.setChecked(False)
         self._parallel_delaunay_check.setChecked(False)
+        # C-GUI-D3 / beta2594 — 신규 env-flag default OFF.
+        self._cvt3d_qweight_check.setChecked(False)
+        self._lcr_auto_reduce_check.setChecked(False)
+        self._bl_aniso_split_check.setChecked(False)
         for chk in (
             self._no_repair_check, self._surface_remesh_check,
             self._allow_ai_fallback_check, self._prefer_native_check,
@@ -2392,8 +2436,26 @@ class AutoTessellWindow:  # type: ignore[misc]
             self._enable_vvv9p_apply_check,
             self._seed_gwn_check, self._stellar_split_check,
             self._parallel_delaunay_check,
+            self._cvt3d_qweight_check, self._lcr_auto_reduce_check,
+            self._bl_aniso_split_check,
         ):
             v.addWidget(chk)
+        # C-GUI-D3: ML model path rows.
+        try:
+            from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
+            for label_txt, line_edit in (
+                ("ML smooth model:", self._ml_smooth_model_path),
+                ("BL predict model:", self._bl_predict_model_path),
+            ):
+                _row = QWidget()
+                _row.setStyleSheet("background: transparent;")
+                _h = QHBoxLayout(_row)
+                _h.setContentsMargins(0, 0, 0, 0); _h.setSpacing(8)
+                _h.addWidget(QLabel(label_txt))
+                _h.addWidget(line_edit, 1)
+                v.addWidget(_row)
+        except Exception:
+            pass
         # C-GUI-14 / beta2449 — BL floor ratio spin row.
         try:
             from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
@@ -3116,6 +3178,26 @@ class AutoTessellWindow:  # type: ignore[misc]
                 if (getattr(self, "_stellar_split_check", None)
                         and self._stellar_split_check.isChecked()):
                     _os_v9.environ["AUTO_TESSELL_STELLAR_SPLIT"] = "1"
+                # C-GUI-D3 / beta2594 — beta2581-2593 env flags.
+                if (getattr(self, "_cvt3d_qweight_check", None)
+                        and self._cvt3d_qweight_check.isChecked()):
+                    _os_v9.environ["AUTO_TESSELL_CVT3D_QUALITY_WEIGHT"] = "1"
+                if (getattr(self, "_lcr_auto_reduce_check", None)
+                        and self._lcr_auto_reduce_check.isChecked()):
+                    _os_v9.environ["AUTO_TESSELL_LCR_AUTO_REDUCE"] = "1"
+                if (getattr(self, "_bl_aniso_split_check", None)
+                        and self._bl_aniso_split_check.isChecked()):
+                    _os_v9.environ["AUTO_TESSELL_BL_ANISO_SPLIT"] = "1"
+                _ml_path = getattr(self, "_ml_smooth_model_path", None)
+                if _ml_path is not None:
+                    _ml_str = _ml_path.text().strip()
+                    if _ml_str:
+                        _os_v9.environ["AUTO_TESSELL_ML_SMOOTH_MODEL"] = _ml_str
+                _bl_path = getattr(self, "_bl_predict_model_path", None)
+                if _bl_path is not None:
+                    _bl_str = _bl_path.text().strip()
+                    if _bl_str:
+                        _os_v9.environ["AUTO_TESSELL_BL_PREDICT_MODEL"] = _bl_str
                 if (getattr(self, "_parallel_delaunay_check", None)
                         and self._parallel_delaunay_check.isChecked()):
                     _os_v9.environ["AUTO_TESSELL_PARALLEL_DELAUNAY"] = "1"
