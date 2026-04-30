@@ -147,8 +147,8 @@ def predict_bl_collision_distances(
         else:
             model.load_state_dict(ckpt)
         model.to(device).eval()
-        # feature extract.
-        feats = extract_bl_collision_features(
+        # feature extract — returns (features (Nw, 12), gaps (Nw,)).
+        feats, _gt_gaps = extract_bl_collision_features(
             points, wall_vert_indices, wall_face_verts,
         )
         if feats is None or feats.shape[0] == 0:
