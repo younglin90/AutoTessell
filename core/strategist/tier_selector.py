@@ -422,6 +422,17 @@ class TierSelector:
                 "fallback_tiers": list(fallbacks),
             }
             log.info("tier_auto_selected", tier=selected, quality_level=ql, fallbacks=fallbacks)
+            # M2 / beta2648 — fallback chain 전체 로그 (디버깅 visibility).
+            log.info(
+                "tier_fallback_chain",
+                source="critical_input_issues",
+                selected=selected,
+                chain=[selected] + list(fallbacks),
+                chain_length=1 + len(fallbacks),
+                quality_level=ql,
+                surface_quality_level=sql,
+                mesh_type=mt,
+            )
             return selected, fallbacks
 
         # l3_ai 표면 → tetwild 강제
