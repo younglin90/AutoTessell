@@ -204,5 +204,79 @@ def test_gpu_envelope_empty_query():
     assert r.n_query == 0
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# AI-V1.1 training data generator tests
+# ─────────────────────────────────────────────────────────────────────────
+
+def test_extract_tet_features_regular_unit_tet():
+    """Regular unit tet → high quality + correct shapes."""
+    from core.generator.native_ai import extract_tet_features
+    pts = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]],
+                   dtype=np.float64)
+    tets = np.array([[0, 1, 2, 3]], dtype=np.int64)
+    coords, context, q = extract_tet_features(pts, tets, 0)
+    assert coords.shape == (12,)
+    assert context.shape == (8,)
+    assert 0.5 < q <= 1.0  # regular tet → high quality
+
+
+def test_extract_tet_features_degenerate():
+    """Degenerate tet (zero volume) → 0 quality."""
+    from core.generator.native_ai import extract_tet_features
+    pts = np.array([[0, 0, 0], [1, 0, 0], [2, 0, 0], [3, 0, 0]],
+                   dtype=np.float64)  # all collinear
+    tets = np.array([[0, 1, 2, 3]], dtype=np.int64)
+    _, _, q = extract_tet_features(pts, tets, 0)
+    assert q == 0.0
+
+
+def test_extract_features_batch():
+    """Batch extraction returns correct shapes."""
+    from core.generator.native_ai import extract_features_batch
+    pts = np.array([
+        [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1],
+        [1, 1, 1], [2, 0, 0], [0, 2, 0], [0, 0, 2],
+    ], dtype=np.float64)
+    tets = np.array([
+        [0, 1, 2, 3],
+        [4, 5, 6, 7],
+    ], dtype=np.int64)
+    coords, contexts, quals = extract_features_batch(pts, tets)
+    assert coords.shape == (2, 12)
+    assert contexts.shape == (2, 8)
+    assert quals.shape == (2,)
+    assert (quals >= 0).all() and (quals <= 1).all()
+
+
+def test_generate_dataset_skeleton_skip():
+    """Dataset generator currently stub → not implemented."""
+    from core.generator.native_ai import (
+        generate_dataset_skeleton, DatasetGenResult,
+    )
+    r = generate_dataset_skeleton("/tmp/dummy_ai_v11.npz", n_samples=100)
+    assert isinstance(r, DatasetGenResult)
+    assert r.success is False
+    assert "not yet implemented" in r.message
+
+
+# ─────────────────────────────────────────────────────────────────────────
+# AI-V4 diffusion stub tests
+# ─────────────────────────────────────────────────────────────────────────
+
+def test_diffusion_volume_research_stub():
+    """Diffusion volume gen returns research_stub backend."""
+    from core.generator.native_ai import (
+        diffusion_generate_volume, DiffusionVolumeResult,
+    )
+    V = np.random.rand(10, 3)
+    F = np.random.randint(0, 10, (5, 3))
+    pts, tets, r = diffusion_generate_volume(V, F)
+    assert isinstance(r, DiffusionVolumeResult)
+    assert r.success is False
+    assert r.backend == "research_stub"
+    assert pts.shape == (0, 3)
+    assert tets.shape == (0, 4)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
