@@ -380,3 +380,53 @@ def _quality_percentiles(pts: np.ndarray, tets: np.ndarray) -> dict:
         "aspect": _pct_dict(asp),
         "min_dihedral_deg": _pct_dict(dih),
     }
+
+
+def compute_quality_grade(
+    min_q: float,
+    mean_q: float,
+    *,
+    grade_a_min_q: float | None = None,
+    grade_a_mean_q: float | None = None,
+    grade_b_min_q: float | None = None,
+    grade_c_min_q: float | None = None,
+) -> str:
+    """Q6 / beta2679 — env-overridable quality grade computation.
+
+    환경변수:
+        AUTO_TESSELL_GRADE_A_MIN_Q (default 0.10).
+        AUTO_TESSELL_GRADE_A_MEAN_Q (default 0.30).
+        AUTO_TESSELL_GRADE_B_MIN_Q (default 0.05).
+        AUTO_TESSELL_GRADE_C_MIN_Q (default 0.01).
+
+    Args:
+        min_q / mean_q: Klingner quality (0-1).
+        grade_*: 명시 override (None 시 env, 그 다음 default).
+
+    Returns:
+        "A" | "B" | "C" | "D" | "F".
+    """
+    import os as _os_q6
+
+    def _resolve(name: str, kwarg: float | None, default: float) -> float:
+        if kwarg is not None:
+            return float(kwarg)
+        try:
+            return float(_os_q6.environ.get(name, str(default)))
+        except Exception:
+            return default
+
+    a_min = _resolve("AUTO_TESSELL_GRADE_A_MIN_Q", grade_a_min_q, 0.10)
+    a_mean = _resolve("AUTO_TESSELL_GRADE_A_MEAN_Q", grade_a_mean_q, 0.30)
+    b_min = _resolve("AUTO_TESSELL_GRADE_B_MIN_Q", grade_b_min_q, 0.05)
+    c_min = _resolve("AUTO_TESSELL_GRADE_C_MIN_Q", grade_c_min_q, 0.01)
+
+    if min_q >= a_min and mean_q >= a_mean:
+        return "A"
+    if min_q >= b_min:
+        return "B"
+    if min_q >= c_min:
+        return "C"
+    if min_q > 0:
+        return "D"
+    return "F"
