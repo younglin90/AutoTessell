@@ -91,13 +91,63 @@ def cli(ctx: click.Context, verbose: bool, json_log: bool) -> None:
 
 
 @cli.command()
-def doctor() -> None:
+@click.option("--json", "as_json", is_flag=True, help="JSON 출력 (CI/CD 사용)")
+def doctor(as_json: bool) -> None:
     """런타임 의존성 탐지 결과(설치/미설치/선택)를 표로 출력한다."""
     from rich.table import Table
 
     from core.runtime.dependency_status import collect_dependency_statuses
 
     rows = collect_dependency_statuses()
+
+    # R5 / beta2685 — JSON 출력 모드.
+    if as_json:
+        import json as _json_r5
+        import os as _os_r5
+        out = {
+            "dependencies": [
+                {
+                    "name": row.name, "category": row.category,
+                    "type": "optional" if row.optional else "required",
+                    "detected": row.detected,
+                    "fallback": row.fallback, "action": row.action,
+                }
+                for row in rows
+            ],
+            "ml": {
+                "smooth_model_path": _os_r5.environ.get("AUTO_TESSELL_ML_SMOOTH_MODEL", ""),
+                "bl_predict_model_path": _os_r5.environ.get("AUTO_TESSELL_BL_PREDICT_MODEL", ""),
+            },
+        }
+        # CUDA detect.
+        try:
+            import torch
+            out["cuda"] = {
+                "available": bool(torch.cuda.is_available()),
+                "device_count": int(torch.cuda.device_count() if torch.cuda.is_available() else 0),
+            }
+        except Exception:
+            out["cuda"] = {"available": False, "device_count": 0}
+        # h5py.
+        try:
+            import h5py
+            out["h5py"] = {"available": True, "version": h5py.__version__}
+        except ImportError:
+            out["h5py"] = {"available": False, "version": ""}
+        # plugins.
+        try:
+            from core.generator.plugin_loader import discover_plugins, _default_plugin_dir
+            pdir = _default_plugin_dir()
+            plugins = discover_plugins(pdir)
+            out["plugins"] = [
+                {"name": p.name, "path": str(p.path)} for p in plugins
+            ]
+        except Exception:
+            out["plugins"] = []
+        click.echo(_json_r5.dumps(out, indent=2, ensure_ascii=False))
+        return
+
+
     table = Table(title="Runtime Dependency Status")
     table.add_column("Dependency", style="cyan")
     table.add_column("Category")
