@@ -1,5 +1,64 @@
 # Auto-Tessell Release Notes
 
+## v0.6 "Tooling + Diagnostics" — BETA2686 (2026-05-01)
+
+J + K + L + M + N + O + P + Q + R 누적 60+ 카드 (BETA2625-2686).
+**107 atomic 카드, 642+ tests PASS** (P-series 631 + Q-series +5 + R-series +6).
+
+### 신규 export formats (12 → 12)
+- Tecplot .plt / NASA Plot3D .x (J series).
+- AVS UCD / Gambit .neu (J series).
+- Nastran small-field .bdf / Abaqus keyword .inp (K+L).
+- STL ASCII + binary / OBJ / PLY ASCII+binary (O+Q).
+- VTU binary base64 mode (M).
+
+### Native infrastructure
+- Mixed-element pyramid interface (G/H series).
+- Volume mesh statistics + adjacency graph (M+R).
+- Surface diagnostics + feature edges + curvature (K+R).
+- Geometry KPI (Euler χ + genus + Gauss-Bonnet 검증) (P+R).
+- Polyhedral cell validator (P).
+- Triangle mesh signed distance (Q).
+- Edge length stats (Q).
+
+### CLI 추가
+- export-native (14 fmt dispatch).
+- mesh-info / list-tiers / cleanup / tier-test / bench-summary.
+- doctor --json (CI/CD output).
+- --config FILE (JSON env loader).
+
+### 사용성 / 진단
+- pre-flight STL validator (J).
+- bench --quick + diff + summary (G+J+P).
+- 중앙 error catalog 20 codes (J).
+- ProgressTracker + multi-callback (K).
+- failed mesh diagnostic JSON + 추천 (R).
+- ML inference benchmark (N).
+- predict_with_confidence (MC dropout) (P).
+
+### 알고리즘
+- ML training rotation augmentation (K).
+- Predictor v3 residual MLP (I).
+- y+ auto-targeting (Schlichting) (H).
+- BL aspect cap (T-Rex parity) (G).
+- Anisotropic prism real subdivide (G/H).
+- Stellar 4-op split default ON (P-series 초기).
+- D-cell recovery branch (P-series 초기).
+
+### 인프라
+- Tier plugin discovery (K).
+- Tier alias bidirectional resolver (P).
+- Quality grade env-overridable (Q).
+- ML model metadata + sha256 (L).
+- ML loader v3 architecture detect (O).
+
+### 회귀 status
+- **642+ tests PASS** (test suites: 19 → tet/hex/poly/ai/cvt3d/SI/repair/snap/qt/mixed_pyramid/cli/strategist/export/k_l/m/n/o/p/q/r series).
+
+자세한 카드별 내역: `docs/plans/{G,H,I,J,K,L,M,N,O,P,Q,R}_series_*.md`.
+
+---
+
 ## v0.5 "ML + Multi-format" — BETA2624 (2026-04-30)
 
 P-series + AI(D) + E + F + G + H + I 누적 ~46 카드. 592+ tests PASS.
