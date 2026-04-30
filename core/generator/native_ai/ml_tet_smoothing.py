@@ -173,12 +173,106 @@ def ml_tet_smoothing_apply(
             elapsed=time.perf_counter() - t0,
         )
 
-    # Skeleton: trained model 미배치 — graceful pass-through.
-    # AI-V1.1 에서 model.pt 다운로드 + load, AI-V1.2 에서 inference.
-    return pts, tets, MLTetSmoothingResult(
-        success=False,
-        backend=f"torch_{device_str}_skeleton",
-        message="ML model not yet trained (AI-V1.1 pending)",
+    # AI-V1.C / beta2588 — production smoothing path (model_pt provided 시).
+    # Algorithm: 1-ring Laplacian candidate displacement + ML quality predictor
+    # 로 채택 여부 결정. monotone guard (worst quality 하락 ≤ 0.015) 가 final.
+    import os as _os
+    _model_path = model_pt or _os.environ.get("AUTO_TESSELL_ML_SMOOTH_MODEL", "")
+    if not _model_path:
+        return pts, tets, MLTetSmoothingResult(
+            success=False,
+            backend=f"torch_{device_str}_skeleton",
+            message="model not provided (set AUTO_TESSELL_ML_SMOOTH_MODEL)",
+            elapsed=time.perf_counter() - t0,
+        )
+
+    try:
+        from .training_data import extract_features_batch
+        from core.generator.native_tet.quality import tet_shape_quality
+    except ImportError as exc:
+        return pts, tets, MLTetSmoothingResult(
+            success=False,
+            backend=f"torch_{device_str}_skip",
+            message=f"deps missing: {exc!s:.60}",
+            elapsed=time.perf_counter() - t0,
+        )
+
+    model = load_trained_predictor(_model_path, device=device_str)
+    if model is None:
+        return pts, tets, MLTetSmoothingResult(
+            success=False,
+            backend=f"torch_{device_str}_skip",
+            message=f"model load failed: {_model_path[:60]}",
+            elapsed=time.perf_counter() - t0,
+        )
+
+    pts_cur = pts.copy()
+    q_pre = tet_shape_quality(pts_cur, tets)
+    pre_min = float(q_pre.min())
+    pre_mean = float(q_pre.mean())
+
+    # Candidate: interior vertex 1-ring centroid 평균 (Laplacian displacement).
+    n_v = pts_cur.shape[0]
+    flat_v = tets.reshape(-1)
+    centroids = pts_cur[tets].mean(axis=1)
+    flat_c = np.repeat(centroids, 4, axis=0)
+    sums = np.zeros((n_v, 3), dtype=np.float64)
+    counts = np.zeros(n_v, dtype=np.int64)
+    np.add.at(sums, flat_v, flat_c)
+    np.add.at(counts, flat_v, 1)
+    nz = counts > 0
+    targets = np.zeros_like(sums)
+    targets[nz] = sums[nz] / counts[nz, None]
+    pts_cand = pts_cur.copy()
+    pts_cand[nz] = 0.5 * (pts_cur[nz] + targets[nz])
+
+    # ML predictor query 후보 vs 현재.
+    feats_cur = extract_features_batch(pts_cur, tets)
+    feats_cand = extract_features_batch(pts_cand, tets)
+    pred_cur = predict_quality_batch(model, feats_cur, device=device_str)
+    pred_cand = predict_quality_batch(model, feats_cand, device=device_str)
+    if pred_cur is None or pred_cand is None:
+        return pts, tets, MLTetSmoothingResult(
+            success=False,
+            backend=f"torch_{device_str}_skip",
+            message="predictor inference failed",
+            elapsed=time.perf_counter() - t0,
+        )
+    # 예측이 향상되는 vertex 만 채택. 단순 majority vote.
+    cand_better = (pred_cand >= pred_cur)
+    n_smoothed = int(cand_better.sum())
+    if n_smoothed == 0:
+        return pts, tets, MLTetSmoothingResult(
+            success=False, n_smoothed=0,
+            avg_q_before=pre_mean, avg_q_after=pre_mean,
+            backend=f"torch_{device_str}",
+            message="no ML-improving vertex found",
+            elapsed=time.perf_counter() - t0,
+        )
+
+    # apply: cand_better tets 의 vertex 만 cand 위치로 이동.
+    move_mask = np.zeros(n_v, dtype=bool)
+    move_mask[tets[cand_better]] = True
+    pts_new = pts_cur.copy()
+    pts_new[move_mask] = pts_cand[move_mask]
+    q_post = tet_shape_quality(pts_new, tets)
+    post_min = float(q_post.min())
+    post_mean = float(q_post.mean())
+    accepted = (pre_min - post_min <= 0.015) and (post_mean >= pre_mean - 1e-12)
+    if not accepted:
+        return pts, tets, MLTetSmoothingResult(
+            success=False, n_smoothed=int(move_mask.sum()),
+            avg_q_before=pre_mean, avg_q_after=post_mean,
+            backend=f"torch_{device_str}",
+            message="monotone guard rejected",
+            elapsed=time.perf_counter() - t0,
+        )
+    return pts_new, tets, MLTetSmoothingResult(
+        success=True,
+        n_smoothed=int(move_mask.sum()),
+        avg_q_before=pre_mean, avg_q_after=post_mean,
+        backend=f"torch_{device_str}",
+        message=f"ML smoothed {int(move_mask.sum())} verts, mean {pre_mean:.4f} → {post_mean:.4f}",
         elapsed=time.perf_counter() - t0,
     )
 

@@ -107,7 +107,7 @@ def test_native_ai_with_bl_does_not_crash():
 # ─────────────────────────────────────────────────────────────────────────
 
 def test_ml_tet_smoothing_skeleton_skip():
-    """skeleton: trained model 미배치 → graceful skip"""
+    """AI-V1.C / beta2588: trained model 경로 미제공 → graceful skip."""
     from core.generator.native_ai import (
         ml_tet_smoothing_apply,
         MLTetSmoothingResult,
@@ -116,8 +116,14 @@ def test_ml_tet_smoothing_skeleton_skip():
     tets = np.random.randint(0, 20, (5, 4))
     new_pts, new_tets, r = ml_tet_smoothing_apply(pts, tets)
     assert isinstance(r, MLTetSmoothingResult)
-    assert r.success is False  # skeleton — model not trained
-    assert "model not yet trained" in r.message or "not available" in r.message
+    assert r.success is False  # model 경로 미제공 → skip.
+    # 메시지: "not provided" / "not yet trained" / "not available" 중 하나.
+    msg = r.message
+    assert (
+        "model not provided" in msg
+        or "model not yet trained" in msg
+        or "not available" in msg
+    ), f"unexpected message: {msg}"
     # Graceful pass-through: input == output
     assert new_pts.shape == pts.shape
     assert new_tets.shape == tets.shape
