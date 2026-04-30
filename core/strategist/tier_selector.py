@@ -219,6 +219,38 @@ def canonical_tier(tier_hint: str) -> str:
     return _HINT_MAP.get(str(tier_hint).lower(), str(tier_hint))
 
 
+def aliases_for_tier(canonical: str) -> list[str]:
+    """P3 / beta2669 — canonical tier name → 모든 alias list (역매핑).
+
+    예: "tier_native_tet" → ["native_tet", "tier_native_tet"].
+    canonical 자체도 결과에 포함 (self-mapping).
+
+    Args:
+        canonical: canonical tier 이름.
+
+    Returns:
+        sorted alias list (자기 자신 포함).
+    """
+    s = str(canonical).lower()
+    aliases = sorted({
+        hint for hint, canon in _HINT_MAP.items() if canon == s
+    })
+    if s not in aliases:
+        aliases.append(s)
+    return aliases
+
+
+def resolve_either(name: str) -> tuple[str, list[str]]:
+    """P3 — name 이 alias 든 canonical 이든 동일하게 (canonical, all_aliases) 반환.
+
+    Returns:
+        (canonical_tier_name, sorted_alias_list).
+    """
+    s = str(name).lower()
+    canon = _HINT_MAP.get(s, s)
+    return canon, aliases_for_tier(canon)
+
+
 # CLI hint → canonical tier name
 _HINT_MAP: dict[str, str] = {
     "auto": "auto",
