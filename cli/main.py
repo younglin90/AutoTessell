@@ -748,6 +748,15 @@ def evaluate(
 @click.option("--polyhedral", is_flag=True, help="Tet→Polyhedral 듀얼 변환 (polyDualMesh)")
 @click.option("--parallel", type=int, default=None, help="MPI 병렬 프로세서 수 (decomposeParDict 생성)")
 @click.option("--verbose-mesh", is_flag=True, help="메쉬 생성 상세 로그")
+# J4 / beta2629 — config 파일 (JSON) 로 env / 기본값 일괄 설정.
+@click.option(
+    "--config",
+    "config_file",
+    type=click.Path(exists=True, path_type=Path),
+    default=None,
+    help="JSON config 파일. {env: {KEY: VALUE}} 형식. "
+    "여러 환경변수 한 번에 설정 (--ml-smooth-model 등 대신 사용 가능).",
+)
 # G7 / beta2607 — ML model 통합 옵션.
 @click.option(
     "--ml-smooth-model",
@@ -863,9 +872,25 @@ def run(
     cvt3d_quality_weight: bool,
     lcr_auto_reduce: bool,
     bl_aniso_split: bool,
+    config_file: Path | None = None,
 ) -> None:
     """전체 파이프라인(Analyze→Preprocess→Strategize→Generate→Evaluate)을 실행한다."""
     import os as _os_g7
+
+    # J4 / beta2629 — config 파일 로드 (env 일괄 설정).
+    if config_file is not None:
+        try:
+            import json as _json_j4
+            _cfg = _json_j4.loads(Path(config_file).read_text(encoding="utf-8"))
+            _env_dict = _cfg.get("env", {}) if isinstance(_cfg, dict) else {}
+            for _k, _v in _env_dict.items():
+                _os_g7.environ[str(_k)] = str(_v)
+            click.echo(
+                f"[INFO] config loaded: {config_file} ({len(_env_dict)} env vars)",
+                err=True,
+            )
+        except Exception as _cfg_exc:
+            click.echo(f"[WARN] config parse failed: {_cfg_exc}", err=True)
     # G7 / beta2607 — CLI flag → env 설정 (mesher 가 env 로 dispatch).
     if ml_smooth_model is not None:
         _os_g7.environ["AUTO_TESSELL_ML_SMOOTH_MODEL"] = str(ml_smooth_model)
