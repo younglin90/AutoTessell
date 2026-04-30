@@ -1460,6 +1460,52 @@ def export_cmd(case_dir: Path, fmt: str | None, output: Path | None) -> None:
         sys.exit(1)
 
 
+@cli.command("list-tiers")
+def list_tiers_cmd() -> None:
+    """N6 / beta2658 — 등록된 모든 Tier + alias 표시.
+
+    canonical tier 명 + 사용자 hint alias mapping 한눈에 보기.
+    """
+    from rich.table import Table
+    try:
+        from core.strategist.tier_selector import _HINT_MAP, _TIER_ORDER
+    except ImportError as exc:
+        console.print(f"[red]tier registry import 실패: {exc}[/red]")
+        sys.exit(1)
+
+    canonical_set = set(_TIER_ORDER)
+    canonical_to_aliases: dict[str, list[str]] = {c: [] for c in canonical_set}
+    for hint, canon in _HINT_MAP.items():
+        if canon in canonical_to_aliases:
+            canonical_to_aliases[canon].append(hint)
+
+    t = Table(title=f"Registered Tiers ({len(canonical_set)})")
+    t.add_column("Tier (canonical)", style="cyan")
+    t.add_column("Aliases (hint → canonical)")
+    t.add_column("Order priority", style="dim")
+
+    for i, canon in enumerate(_TIER_ORDER):
+        aliases = canonical_to_aliases.get(canon, [])
+        alias_str = ", ".join(sorted(aliases)) if aliases else "(none)"
+        t.add_row(canon, alias_str, str(i + 1))
+
+    console.print(t)
+
+    # Plugin tiers.
+    try:
+        from core.generator.plugin_loader import discover_plugins, _default_plugin_dir
+        pdir = _default_plugin_dir()
+        plugins = discover_plugins(pdir)
+        if plugins:
+            console.print(f"\n[bold]Plugin Tiers ({len(plugins)})[/bold] from {pdir}:")
+            for p in plugins:
+                console.print(
+                    f"  • {p.name}  (after: {p.fallback_after or '(none)'})"
+                )
+    except Exception:
+        pass
+
+
 @cli.command("export-native")
 @click.argument("case_dir", type=click.Path(exists=True, path_type=Path))
 @click.option(
