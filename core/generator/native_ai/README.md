@@ -34,7 +34,7 @@ print(r.n_cells, r.grade, r.backend, r.ai_applied)
 | 카드 | 변경 | 시간 |
 |------|------|------|
 | AI-V1 | ML-based tet smoothing (Klingner §4 swap + neural quality predictor) | 2-3주 |
-| AI-V2 | MeshGPT/MeshAnything L3 integration → after-cleanup native_tet | 1주 |
+| AI-V2 | MeshGPT/MeshAnything L3 integration → after-cleanup native_tet | **이미 구현됨** (`core/preprocessor/pipeline.py:386 _l3_ai_fix`). `allow_ai_fallback=True` + GPU 환경에서 자동 활성. native_ai 가 호출되면 자동 wire 예정 (beta2558+) |
 | AI-V3 | ML-based BL collision predict (gap detection net) | 2주 |
 | AI-V4 | Diffusion-based volume gen (research, no production lib) | 다월 |
 

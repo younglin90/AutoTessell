@@ -95,6 +95,35 @@ def generate_native_ai_volume(
         "collision_predict": False,
     }
 
+    # AI-V2 wire: ai_surface_repair=True 시 L3 fallback 자동 시도.
+    # GPU 없거나 lib 미설치 시 silently skip (gate_check 가 그대로 통과).
+    if cfg.ai_surface_repair:
+        try:
+            import trimesh as _tm  # noqa: F401
+            from core.preprocessor.pipeline import PreprocessPipeline as _PP
+            _mesh_in = _tm.Trimesh(vertices=V, faces=F, process=False)
+            _pipe = _PP()
+            _fixed_mesh, _passed, _rec = _pipe._l3_ai_fix(
+                _mesh_in, allow_ai_fallback=True,
+            )
+            if _passed and _rec is not None and _rec.get("method") in (
+                "meshgpt-pytorch", "MeshAnythingV2",
+            ):
+                V = np.asarray(_fixed_mesh.vertices, dtype=np.float64)
+                F = np.asarray(_fixed_mesh.faces, dtype=np.int64)
+                ai_applied["surface_repair"] = True
+                log.info(
+                    "native_ai_surface_repair_applied",
+                    method=_rec.get("method"),
+                    in_faces=_rec.get("input_faces"),
+                    out_faces=_rec.get("output_faces"),
+                )
+        except Exception as _ai_exc:
+            log.warning(
+                "native_ai_surface_repair_skipped",
+                error=str(_ai_exc)[:120],
+            )
+
     try:
         if cfg.mesh_type == "tet":
             from core.generator.native_tet.mesher import generate_native_tet
