@@ -85,6 +85,38 @@ class Envelope:
         return d <= self.eps
 
     def contains_points(self, pts: np.ndarray) -> np.ndarray:
+        # E3 / beta2598 — env-gated GPU fast-path.
+        # AUTO_TESSELL_GPU_ENVELOPE=1 → torch.compile + Eberly fused kernel.
+        # 50-100× speedup target (CUDA + fp16). 실패 / torch 미가용 시
+        # CPU BVH path 자동 fallback.
+        try:
+            import os as _os_e3
+            if _os_e3.environ.get("AUTO_TESSELL_GPU_ENVELOPE", "0") == "1":
+                return self._contains_points_gpu(pts)
+        except Exception:
+            pass
+        d = self.bvh.unsigned_distances(np.asarray(pts, dtype=np.float64))
+        return d <= self.eps
+
+    def _contains_points_gpu(self, pts: np.ndarray) -> np.ndarray:
+        """GPU 가속 envelope check (Eberly + torch.compile)."""
+        try:
+            from core.generator.native_ai.gpu_envelope import (
+                gpu_envelope_check_accurate,
+            )
+            # BVH 의 V/F 를 직접 사용해 surf array 추출.
+            surf_V = np.asarray(self.bvh.V, dtype=np.float64)
+            surf_F = np.asarray(self.bvh.F, dtype=np.int64)
+            inside, r = gpu_envelope_check_accurate(
+                np.asarray(pts, dtype=np.float64),
+                surf_V, surf_F, float(self.eps),
+                use_fp16=False,  # fp32 default — sliver 정확.
+            )
+            if r.success:
+                return inside
+        except Exception:
+            pass
+        # GPU 실패 → CPU fallback.
         d = self.bvh.unsigned_distances(np.asarray(pts, dtype=np.float64))
         return d <= self.eps
 
