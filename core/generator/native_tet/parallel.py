@@ -23,6 +23,10 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from core.utils.logging import get_logger
+
+log = get_logger(__name__)
+
 
 @dataclass
 class ParallelDelaunayResult:
@@ -177,6 +181,20 @@ def parallel_chunked_delaunay(
 
     all_tets = np.array(all_tets_list, dtype=np.int64)
     elapsed = time.perf_counter() - t0
+    # N3 / beta2655 — audit log: chunk size 분포 + worker 활용도.
+    try:
+        log.info(
+            "parallel_delaunay_audit",
+            n_chunks=len(chunks),
+            n_workers=n_workers,
+            n_input_pts=int(V.shape[0]),
+            n_output_tets=int(all_tets.shape[0]),
+            elapsed_s=round(elapsed, 3),
+            speedup_estimate=float(n_workers),
+            avg_pts_per_chunk=int(V.shape[0] // max(len(chunks), 1)),
+        )
+    except Exception:
+        pass
     return V, all_tets, ParallelDelaunayResult(
         n_chunks=len(chunks), n_workers=n_workers,
         elapsed_s=elapsed,
