@@ -30,6 +30,52 @@ class TrainResult:
     message: str = ""
 
 
+def _build_predictor_v3_residual(input_dim: int = 20):
+    """I3 / beta2621 — residual MLP architecture (3 blocks, hidden=128, dropout 0.1).
+
+    block: Linear(d, h) → ReLU → Linear(h, h) → residual add (if input dim
+    matches) → BatchNorm → Dropout. 마지막 단일 head Linear(h, 1) + Sigmoid.
+
+    Returns: torch.nn.Module (or None if torch unavailable).
+    """
+    try:
+        import torch
+        import torch.nn as nn
+    except ImportError:
+        return None
+
+    h = 128
+
+    class _ResBlock(nn.Module):
+        def __init__(self, dim: int) -> None:
+            super().__init__()
+            self.fc1 = nn.Linear(dim, dim)
+            self.fc2 = nn.Linear(dim, dim)
+            self.bn = nn.BatchNorm1d(dim)
+            self.relu = nn.ReLU()
+            self.drop = nn.Dropout(0.1)
+
+        def forward(self, x):
+            r = self.fc1(x)
+            r = self.relu(r)
+            r = self.fc2(r)
+            r = x + r  # residual.
+            r = self.bn(r)
+            r = self.relu(r)
+            r = self.drop(r)
+            return r
+
+    return nn.Sequential(
+        nn.Linear(input_dim, h),
+        nn.ReLU(),
+        _ResBlock(h),
+        _ResBlock(h),
+        _ResBlock(h),
+        nn.Linear(h, 1),
+        nn.Sigmoid(),
+    )
+
+
 def train_quality_predictor(
     dataset_npz: str,
     output_pt: str,
@@ -40,6 +86,7 @@ def train_quality_predictor(
     val_split: float = 0.1,
     seed: int = 42,
     use_cuda: bool = True,
+    architecture: str = "v1",
 ) -> TrainResult:
     """Train quality predictor on dataset.
 
@@ -114,14 +161,25 @@ def train_quality_predictor(
     X_val = torch.tensor(X[val_idx], device=device)
     y_val = torch.tensor(y[val_idx], device=device)
 
-    model = nn.Sequential(
-        nn.Linear(20, 64),
-        nn.ReLU(),
-        nn.Linear(64, 64),
-        nn.ReLU(),
-        nn.Linear(64, 1),
-        nn.Sigmoid(),
-    ).to(device)
+    # I3 / beta2621 — architecture 선택.
+    if architecture == "v3" or architecture == "residual":
+        _v3 = _build_predictor_v3_residual(input_dim=20)
+        if _v3 is None:
+            return TrainResult(
+                success=False, output_path=output_pt,
+                elapsed=time.perf_counter() - t0,
+                message="v3 architecture build failed",
+            )
+        model = _v3.to(device)
+    else:
+        model = nn.Sequential(
+            nn.Linear(20, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1),
+            nn.Sigmoid(),
+        ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     loss_fn = nn.MSELoss()
 
