@@ -26,6 +26,8 @@ from .ml_tet_smoothing import (
     ml_tet_smoothing_apply,
     MLTetSmoothingResult,
     build_quality_predictor_skeleton,
+    load_trained_predictor,
+    predict_quality_batch,
 )
 from .ml_bl_collision import (
     predict_bl_collision_distances,
@@ -61,6 +63,8 @@ __all__ = [
     "ml_tet_smoothing_apply",
     "MLTetSmoothingResult",
     "build_quality_predictor_skeleton",
+    "load_trained_predictor",
+    "predict_quality_batch",
     "predict_bl_collision_distances",
     "BLCollisionPredictResult",
     "build_collision_predictor_skeleton",

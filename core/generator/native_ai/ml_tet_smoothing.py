@@ -58,6 +58,75 @@ class MLTetSmoothingResult:
     message: str = ""
 
 
+def load_trained_predictor(model_pt: str, device=None):
+    """Trained quality predictor 로드 (AI-V1.2).
+
+    Args:
+        model_pt: trained .pt 파일 경로.
+        device: torch device. None → auto.
+
+    Returns:
+        torch.nn.Module 또는 None (실패 시).
+    """
+    if not _torch_available():
+        return None
+    import torch
+    from pathlib import Path
+    if not Path(model_pt).exists():
+        return None
+    if device is None:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    try:
+        ckpt = torch.load(model_pt, map_location=device, weights_only=False)
+    except Exception:
+        return None
+
+    import torch.nn as nn
+    model = nn.Sequential(
+        nn.Linear(20, 64),
+        nn.ReLU(),
+        nn.Linear(64, 64),
+        nn.ReLU(),
+        nn.Linear(64, 1),
+        nn.Sigmoid(),
+    ).to(device)
+    if isinstance(ckpt, dict) and "state_dict" in ckpt:
+        model.load_state_dict(ckpt["state_dict"])
+    else:
+        model.load_state_dict(ckpt)
+    model.eval()
+    return model
+
+
+def predict_quality_batch(
+    model,
+    coords: np.ndarray,
+    context: np.ndarray,
+    *,
+    use_cuda: bool = True,
+) -> np.ndarray:
+    """Trained predictor 를 사용해 quality 예측 (AI-V1.2).
+
+    Args:
+        model: load_trained_predictor 의 결과.
+        coords: (K, 12).
+        context: (K, 8).
+        use_cuda: CUDA 시도.
+
+    Returns:
+        (K,) predicted quality ∈ (0, 1).
+    """
+    if model is None or not _torch_available():
+        return np.zeros(coords.shape[0], dtype=np.float32)
+    import torch
+    device = next(model.parameters()).device
+    X = np.concatenate([coords.astype(np.float32), context.astype(np.float32)], axis=1)
+    X_t = torch.tensor(X, device=device)
+    with torch.no_grad():
+        y = model(X_t).cpu().numpy().reshape(-1)
+    return y.astype(np.float32)
+
+
 def ml_tet_smoothing_apply(
     pts: np.ndarray,
     tets: np.ndarray,
@@ -65,6 +134,7 @@ def ml_tet_smoothing_apply(
     quality_threshold: float = 0.1,
     max_iter: int = 5,
     use_cuda: bool = True,
+    model_pt: str | None = None,
 ) -> tuple[np.ndarray, np.ndarray, MLTetSmoothingResult]:
     """ML-augmented tet smoothing entry point.
 
