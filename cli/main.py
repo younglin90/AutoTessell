@@ -748,6 +748,45 @@ def evaluate(
 @click.option("--polyhedral", is_flag=True, help="Tet→Polyhedral 듀얼 변환 (polyDualMesh)")
 @click.option("--parallel", type=int, default=None, help="MPI 병렬 프로세서 수 (decomposeParDict 생성)")
 @click.option("--verbose-mesh", is_flag=True, help="메쉬 생성 상세 로그")
+# G7 / beta2607 — ML model 통합 옵션.
+@click.option(
+    "--ml-smooth-model",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="trained tet quality predictor model 경로 (.pt). "
+    "AUTO_TESSELL_ML_SMOOTH_MODEL 동등.",
+)
+@click.option(
+    "--bl-predict-model",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="trained BL collision predictor model 경로 (.pt). "
+    "AUTO_TESSELL_BL_PREDICT_MODEL 동등.",
+)
+@click.option(
+    "--gpu-envelope",
+    is_flag=True,
+    help="Eberly + torch.compile envelope check 활성 "
+    "(AUTO_TESSELL_GPU_ENVELOPE=1, CUDA 50-100× speedup).",
+)
+@click.option(
+    "--cvt3d-quality-weight",
+    is_flag=True,
+    help="Volumetric Lloyd 가 quality-weighted target 사용 "
+    "(AUTO_TESSELL_CVT3D_QUALITY_WEIGHT=1).",
+)
+@click.option(
+    "--lcr-auto-reduce",
+    is_flag=True,
+    help="BL LCR global num_layers majority reduction "
+    "(AUTO_TESSELL_LCR_AUTO_REDUCE=1).",
+)
+@click.option(
+    "--bl-aniso-split",
+    is_flag=True,
+    help="BL prism layer-uniform subdivide "
+    "(AUTO_TESSELL_BL_ANISO_SPLIT=1, num_layers 2배).",
+)
 @click.pass_context
 def run(
     ctx: click.Context,
@@ -817,8 +856,30 @@ def run(
     polyhedral: bool,
     parallel: int | None,
     verbose_mesh: bool,
+    # G7 / beta2607
+    ml_smooth_model: Path | None,
+    bl_predict_model: Path | None,
+    gpu_envelope: bool,
+    cvt3d_quality_weight: bool,
+    lcr_auto_reduce: bool,
+    bl_aniso_split: bool,
 ) -> None:
     """전체 파이프라인(Analyze→Preprocess→Strategize→Generate→Evaluate)을 실행한다."""
+    import os as _os_g7
+    # G7 / beta2607 — CLI flag → env 설정 (mesher 가 env 로 dispatch).
+    if ml_smooth_model is not None:
+        _os_g7.environ["AUTO_TESSELL_ML_SMOOTH_MODEL"] = str(ml_smooth_model)
+    if bl_predict_model is not None:
+        _os_g7.environ["AUTO_TESSELL_BL_PREDICT_MODEL"] = str(bl_predict_model)
+    if gpu_envelope:
+        _os_g7.environ["AUTO_TESSELL_GPU_ENVELOPE"] = "1"
+    if cvt3d_quality_weight:
+        _os_g7.environ["AUTO_TESSELL_CVT3D_QUALITY_WEIGHT"] = "1"
+    if lcr_auto_reduce:
+        _os_g7.environ["AUTO_TESSELL_LCR_AUTO_REDUCE"] = "1"
+    if bl_aniso_split:
+        _os_g7.environ["AUTO_TESSELL_BL_ANISO_SPLIT"] = "1"
+
     from core.pipeline.orchestrator import PipelineOrchestrator
 
     # volume_engine이 지정되면 tier를 override
