@@ -1460,6 +1460,96 @@ def export_cmd(case_dir: Path, fmt: str | None, output: Path | None) -> None:
         sys.exit(1)
 
 
+@cli.command("export-native")
+@click.argument("case_dir", type=click.Path(exists=True, path_type=Path))
+@click.option(
+    "--format", "-f", "fmt",
+    type=click.Choice([
+        "vtu", "vtu-binary",
+        "starccm-txt", "starccm-binary", "starccm-ccmio",
+        "cgns",
+        "fluent", "tecplot",
+        "plot3d", "plot3d-ascii",
+        "avs-ucd", "gambit-neu",
+        "nastran-bdf", "abaqus-inp",
+    ], case_sensitive=False),
+    required=True,
+    help="N2 / beta2654 — AutoTessell 자체 native writer 12 포맷.",
+)
+@click.option("--output", "-o", type=click.Path(path_type=Path), required=True)
+def export_native_cmd(case_dir: Path, fmt: str, output: Path) -> None:
+    """N2 / beta2654 — 자체 native writer 12 포맷 직접 dispatch.
+
+    기존 export 와 별개 — 내장 raw writer 사용 (meshio 의존 없음).
+
+    예시::
+
+        auto-tessell export-native ./case -f vtu-binary -o mesh.vtu
+        auto-tessell export-native ./case -f starccm-ccmio -o mesh.ccm
+        auto-tessell export-native ./case -f nastran-bdf -o mesh.bdf
+    """
+    pm_dir = case_dir
+    if (case_dir / "constant" / "polyMesh").exists():
+        pm_dir = case_dir / "constant" / "polyMesh"
+
+    f = fmt.lower()
+    try:
+        if f == "vtu":
+            from core.utils.vtk_writer import write_vtu
+            r = write_vtu(str(pm_dir), str(output), binary=False)
+        elif f == "vtu-binary":
+            from core.utils.vtk_writer import write_vtu
+            r = write_vtu(str(pm_dir), str(output), binary=True)
+        elif f == "starccm-txt":
+            from core.utils.mesh_exporter_starccm import write_starccm
+            r = write_starccm(str(pm_dir), str(output), fmt="txt")
+        elif f == "starccm-binary":
+            from core.utils.mesh_exporter_starccm import write_starccm
+            r = write_starccm(str(pm_dir), str(output), fmt="binary")
+        elif f == "starccm-ccmio":
+            from core.utils.mesh_exporter_starccm import write_starccm
+            r = write_starccm(str(pm_dir), str(output), fmt="ccmio")
+        elif f == "cgns":
+            from core.utils.cgns_writer import write_cgns
+            r = write_cgns(str(pm_dir), str(output))
+        elif f == "fluent":
+            from core.utils.fluent_writer import write_fluent_msh
+            r = write_fluent_msh(str(pm_dir), str(output))
+        elif f == "tecplot":
+            from core.utils.tecplot_writer import write_tecplot_plt
+            r = write_tecplot_plt(str(pm_dir), str(output))
+        elif f == "plot3d":
+            from core.utils.plot3d_writer import write_plot3d_grid
+            r = write_plot3d_grid(str(pm_dir), str(output), binary=True)
+        elif f == "plot3d-ascii":
+            from core.utils.plot3d_writer import write_plot3d_grid
+            r = write_plot3d_grid(str(pm_dir), str(output), binary=False)
+        elif f == "avs-ucd":
+            from core.utils.avs_ucd_writer import write_avs_ucd
+            r = write_avs_ucd(str(pm_dir), str(output))
+        elif f == "gambit-neu":
+            from core.utils.gambit_neu_writer import write_gambit_neu
+            r = write_gambit_neu(str(pm_dir), str(output))
+        elif f == "nastran-bdf":
+            from core.utils.nastran_writer import write_nastran_bdf
+            r = write_nastran_bdf(str(pm_dir), str(output))
+        elif f == "abaqus-inp":
+            from core.utils.abaqus_writer import write_abaqus_inp
+            r = write_abaqus_inp(str(pm_dir), str(output))
+        else:
+            console.print(f"[red]unknown fmt={f}[/red]")
+            sys.exit(1)
+    except Exception as exc:
+        console.print(f"[red]✗ writer failed: {exc}[/red]")
+        sys.exit(2)
+
+    if getattr(r, "success", False):
+        console.print(f"[green]✓[/green] {f} → {output} ({getattr(r, 'message', '')})")
+    else:
+        console.print(f"[red]✗ {f} export failed: {getattr(r, 'message', '')}[/red]")
+        sys.exit(3)
+
+
 # ---------------------------------------------------------------------------
 # interactive
 # ---------------------------------------------------------------------------
