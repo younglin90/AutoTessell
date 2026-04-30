@@ -107,17 +107,85 @@ def predict_bl_collision_distances(
             ),
         )
 
-    # Skeleton: trained model 미배치.
-    return (
-        np.full(Nw, np.inf, dtype=np.float64),
-        BLCollisionPredictResult(
-            success=False,
-            n_vertices=Nw,
-            backend=f"torch_{device_str}_skeleton",
-            message="ML model not yet trained (AI-V3.1 pending)",
-            elapsed=time.perf_counter() - t0,
-        ),
-    )
+    # AI-V3.B / beta2589 — production ML predict path (model 제공 시).
+    import os as _os
+    _model_path = _os.environ.get("AUTO_TESSELL_BL_PREDICT_MODEL", "")
+    if not _model_path:
+        return (
+            np.full(Nw, np.inf, dtype=np.float64),
+            BLCollisionPredictResult(
+                success=False,
+                n_vertices=Nw,
+                backend=f"torch_{device_str}_skeleton",
+                message="model not provided (set AUTO_TESSELL_BL_PREDICT_MODEL)",
+                elapsed=time.perf_counter() - t0,
+            ),
+        )
+    if not _os.path.exists(_model_path):
+        return (
+            np.full(Nw, np.inf, dtype=np.float64),
+            BLCollisionPredictResult(
+                success=False,
+                n_vertices=Nw,
+                backend=f"torch_{device_str}_skip",
+                message=f"model file missing: {_model_path[:60]}",
+                elapsed=time.perf_counter() - t0,
+            ),
+        )
+
+    try:
+        from .bl_collision_data import extract_bl_collision_features
+        import torch
+        device = torch.device(device_str)
+        # 모델 architecture: 12 → 64 → 64 → 1.
+        model = build_collision_predictor_skeleton()
+        if model is None:
+            raise RuntimeError("torch.nn unavailable")
+        ckpt = torch.load(_model_path, map_location=device)
+        if isinstance(ckpt, dict) and "state_dict" in ckpt:
+            model.load_state_dict(ckpt["state_dict"])
+        else:
+            model.load_state_dict(ckpt)
+        model.to(device).eval()
+        # feature extract.
+        feats = extract_bl_collision_features(
+            points, wall_vert_indices, wall_face_verts,
+        )
+        if feats is None or feats.shape[0] == 0:
+            return (
+                np.full(Nw, np.inf, dtype=np.float64),
+                BLCollisionPredictResult(
+                    success=False, n_vertices=Nw,
+                    backend=f"torch_{device_str}_skip",
+                    message="feature extract empty",
+                    elapsed=time.perf_counter() - t0,
+                ),
+            )
+        x = torch.tensor(feats, dtype=torch.float32, device=device)
+        with torch.no_grad():
+            log_gap = model(x).squeeze(-1).cpu().numpy()
+        # log(1 + gap) → gap = exp(log_gap) - 1, clamp positive.
+        gap = np.clip(np.expm1(log_gap), 0.0, None)
+        n_high_risk = int((gap < (np.percentile(gap, 10) if gap.size > 10 else 0.0)).sum())
+        return (
+            gap.astype(np.float64),
+            BLCollisionPredictResult(
+                success=True, n_vertices=Nw, n_high_risk=n_high_risk,
+                backend=f"torch_{device_str}",
+                message=f"ML BL collision predicted ({Nw} verts, {n_high_risk} high-risk)",
+                elapsed=time.perf_counter() - t0,
+            ),
+        )
+    except Exception as _exc:
+        return (
+            np.full(Nw, np.inf, dtype=np.float64),
+            BLCollisionPredictResult(
+                success=False, n_vertices=Nw,
+                backend=f"torch_{device_str}_skip",
+                message=f"predict error: {str(_exc)[:60]}",
+                elapsed=time.perf_counter() - t0,
+            ),
+        )
 
 
 def build_collision_predictor_skeleton():
