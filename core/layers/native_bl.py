@@ -1677,7 +1677,27 @@ def generate_native_bl(
                 effective_first_thickness = _new_ft
     except Exception:
         pass
-    if cfg.target_y_plus is not None and cfg.target_y_plus > 0:
+    # H4 / beta2613 — auto y+ default: env AUTO_TESSELL_BL_AUTO_YPLUS=N (1-300)
+    #   target_y_plus 미지정 + AUTO_TESSELL_BL_AUTO_YPLUS=30 (or env value) 면
+    #   자동 y+ targeting 적용. 30 = log-law region (wall function 표준).
+    _auto_yplus_str = os.environ.get("AUTO_TESSELL_BL_AUTO_YPLUS", "")
+    _effective_yplus = cfg.target_y_plus
+    if _effective_yplus is None and _auto_yplus_str:
+        try:
+            _effective_yplus = float(_auto_yplus_str)
+            if _effective_yplus <= 0 or _effective_yplus > 1000:
+                _effective_yplus = None
+        except Exception:
+            _effective_yplus = None
+        if _effective_yplus is not None:
+            log.info(
+                "native_bl_auto_yplus_enabled",
+                component="native_bl", phase="H4/beta2613",
+                auto_y_plus=_effective_yplus,
+                source="env AUTO_TESSELL_BL_AUTO_YPLUS",
+            )
+
+    if _effective_yplus is not None and _effective_yplus > 0:
         try:
             U = float(cfg.flow_velocity)
             nu = effective_nu
@@ -1685,11 +1705,11 @@ def generate_native_bl(
             Re = max(1.0, U * L / nu)
             Cf = 0.058 / (Re ** 0.2)  # Schlichting flat plate
             u_tau = U * (Cf / 2.0) ** 0.5
-            y1 = float(cfg.target_y_plus) * nu / u_tau
+            y1 = float(_effective_yplus) * nu / u_tau
             effective_first_thickness = y1
             log.info(
                 "native_bl_y_plus_targeting", component="native_bl", phase="BL2",
-                target_y_plus=cfg.target_y_plus,
+                target_y_plus=_effective_yplus,
                 flow_U=U, flow_nu=nu, flow_L=L,
                 Re=round(Re, 1), Cf=round(Cf, 6), u_tau=round(u_tau, 6),
                 first_thickness_computed=round(y1, 9),
