@@ -41,6 +41,13 @@ from .diffusion_volume import (
     DiffusionVolumeResult,
     architecture_sketch as diffusion_architecture_sketch,
 )
+from .training_data import (
+    extract_tet_features,
+    extract_features_batch,
+    generate_dataset_skeleton,
+    TetSample,
+    DatasetGenResult,
+)
 
 __all__ = [
     "generate_native_ai_volume",
@@ -57,4 +64,9 @@ __all__ = [
     "diffusion_generate_volume",
     "DiffusionVolumeResult",
     "diffusion_architecture_sketch",
+    "extract_tet_features",
+    "extract_features_batch",
+    "generate_dataset_skeleton",
+    "TetSample",
+    "DatasetGenResult",
 ]
