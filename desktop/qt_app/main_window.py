@@ -3514,6 +3514,37 @@ class AutoTessellWindow:  # type: ignore[misc]
                     total_time = getattr(result, "total_time_seconds", None)
                     if total_time is not None:
                         kpi.set_value("Time", f"{float(total_time):.1f}s")
+                    # G6 / beta2606 — 실시간 quality metric KPI 추가.
+                    # mean_q / min_q / grade / cells.
+                    try:
+                        q_report = getattr(result, "quality_report", None)
+                        if q_report is not None:
+                            ev = getattr(q_report, "evaluation_summary", None)
+                            if ev is not None:
+                                _mq = getattr(ev, "mean_quality", None)
+                                _minq = getattr(ev, "min_quality", None)
+                                _grade = getattr(ev, "grade", None)
+                                if _mq is not None:
+                                    kpi.set_value("Mean Q", f"{float(_mq):.3f}")
+                                if _minq is not None:
+                                    _warn_minq = float(_minq) < 0.05
+                                    kpi.set_value(
+                                        "Min Q", f"{float(_minq):.3f}",
+                                        warn=_warn_minq,
+                                    )
+                                if _grade is not None:
+                                    _hl = str(_grade) in ("A", "B")
+                                    _warn_grade = str(_grade) in ("D", "F")
+                                    kpi.set_value(
+                                        "Grade", str(_grade),
+                                        highlight=_hl, warn=_warn_grade,
+                                    )
+                        if summary is not None:
+                            _nc = getattr(summary, "n_cells", None)
+                            if _nc is not None and _nc > 0:
+                                kpi.set_value("Cells", f"{int(_nc):,}")
+                    except Exception:
+                        pass
                 except Exception:
                     pass
             if self._right_column is not None:
