@@ -1545,6 +1545,64 @@ def stats_cmd(case_dir: Path) -> None:
     console.print()
 
 
+@cli.command("mesh-info")
+@click.argument("case_dir", type=click.Path(exists=True, path_type=Path))
+@click.option("--histogram", is_flag=True, help="quality histogram 표시")
+def mesh_info_cmd(case_dir: Path, histogram: bool) -> None:
+    """L2 / beta2641 — polyMesh 종합 info (topology + 선택적 histogram).
+
+    예시:
+        auto-tessell mesh-info ./case
+        auto-tessell mesh-info ./case --histogram
+    """
+    import os as _os_l2
+    pm_dir = case_dir / "constant" / "polyMesh"
+    if not pm_dir.exists():
+        pm_dir = case_dir
+    points_f = pm_dir / "points"
+    faces_f = pm_dir / "faces"
+    owner_f = pm_dir / "owner"
+
+    console.print(f"\n[bold cyan]Mesh Info[/bold cyan] — {case_dir}\n")
+    if not points_f.exists():
+        console.print(f"[red]polyMesh 없음: {pm_dir}[/red]")
+        sys.exit(1)
+
+    # 라인 카운트로 빠른 estimate.
+    def _count_lines(p: Path) -> int:
+        try:
+            return sum(1 for _ in p.open(encoding="utf-8", errors="replace"))
+        except Exception:
+            return 0
+
+    n_lines_pts = _count_lines(points_f)
+    n_lines_fs = _count_lines(faces_f) if faces_f.exists() else 0
+    n_lines_own = _count_lines(owner_f) if owner_f.exists() else 0
+
+    console.print(f"  polyMesh path    : {pm_dir}")
+    console.print(f"  points lines     : {n_lines_pts:>10,}")
+    console.print(f"  faces lines      : {n_lines_fs:>10,}")
+    console.print(f"  owner lines      : {n_lines_own:>10,}")
+
+    # 파일 크기.
+    total_bytes = 0
+    for f in (points_f, faces_f, owner_f, pm_dir / "neighbour", pm_dir / "boundary"):
+        if f.exists():
+            total_bytes += f.stat().st_size
+    console.print(f"  total bytes      : {total_bytes:>10,}")
+
+    if histogram:
+        # quality histogram 호출 (scripts 활용).
+        import subprocess
+        repo = Path(__file__).resolve().parents[1]
+        rc = subprocess.run([
+            sys.executable, str(repo / "scripts" / "dump_quality_histogram.py"),
+            str(case_dir),
+        ], capture_output=False).returncode
+        if rc != 0:
+            console.print(f"[yellow]histogram dump rc={rc}[/yellow]")
+
+
 @cli.command("convert")
 @click.argument("input_path", type=click.Path(exists=True, path_type=Path))
 @click.argument("output_path", type=click.Path(path_type=Path))
