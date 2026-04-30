@@ -100,6 +100,23 @@ def test_write_vtu(fake_cube_polymesh):
         assert "<VTKFile" in content
 
 
+def test_write_vtu_binary(fake_cube_polymesh):
+    """M1 / beta2647 — VTU binary base64 mode."""
+    from core.utils.vtk_writer import write_vtu
+    with tempfile.TemporaryDirectory() as td:
+        pm = Path(td) / "pm"; pm.mkdir()
+        out_a = Path(td) / "cube_ascii.vtu"
+        out_b = Path(td) / "cube_bin.vtu"
+        r_a = write_vtu(str(pm), str(out_a), binary=False)
+        r_b = write_vtu(str(pm), str(out_b), binary=True)
+        assert r_a.success and r_b.success
+        c_a = out_a.read_text(encoding="utf-8")
+        c_b = out_b.read_text(encoding="utf-8")
+        assert 'format="ascii"' in c_a
+        assert 'format="binary"' in c_b
+        assert "<VTKFile" in c_b
+
+
 def test_write_tecplot_plt(fake_cube_polymesh):
     from core.utils.tecplot_writer import write_tecplot_plt
     with tempfile.TemporaryDirectory() as td:
