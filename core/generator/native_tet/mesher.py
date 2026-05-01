@@ -1977,6 +1977,58 @@ def generate_native_tet(
     except Exception as exc:
         log.debug("native_tet_sliver_post_skipped", reason=str(exc))
 
+    # P2.1 / beta2770 — Stellar Klingner edge-contract pass (sliver removal).
+    # _klingner_edge_contract_candidates → _apply_klingner_edge_contract_topK
+    # 이미 모듈 존재 (stellar.py:1514, 1615) but caller 없었음 (R196 dryrun gate).
+    # 활성화: env AUTO_TESSELL_STELLAR_KLINGNER=1 (default ON in this card).
+    # tet self-impl grade A 0/20 → +5/20 목표.
+    # 단조 가드: _apply_klingner_edge_contract_topK 가 자체 revert 로직 보유.
+    try:
+        if _phase_bc_skip:
+            raise RuntimeError("_phase_bc_skip")
+        if os.environ.get("AUTO_TESSELL_STELLAR_KLINGNER", "1") != "0":
+            from core.generator.native_tet.quality import snapshot as _qsnap_st
+            pre_q_st = _qsnap_st(final_pts, final_tets)
+            # 트리거: mean_q < 0.30 또는 min_q < 1e-4 (sliver 잔존).
+            if (
+                (float(pre_q_st.mean_q) < 0.30
+                 or float(pre_q_st.min_q) < 1e-4)
+                and final_tets.shape[0] > 100
+            ):
+                from core.generator.native_tet.stellar import (
+                    _klingner_edge_contract_candidates,
+                    _apply_klingner_edge_contract_topK,
+                )
+                cands = _klingner_edge_contract_candidates(
+                    final_pts, final_tets,
+                    q_max=0.10,
+                    max_candidates=200,
+                )
+                if cands:
+                    pts_st, tets_st, st_stats = _apply_klingner_edge_contract_topK(
+                        final_pts, final_tets, cands, k=50,
+                    )
+                    if tets_st.shape[0] > 50:
+                        post_q_st = _qsnap_st(pts_st, tets_st)
+                        # global monotone: mean_q × 0.99 가드 (collapse 와 동일).
+                        if (
+                            float(post_q_st.mean_q)
+                            >= float(pre_q_st.mean_q) * 0.99
+                        ):
+                            final_pts = pts_st
+                            final_tets = tets_st
+                            log.info(
+                                "native_tet_p21_stellar_klingner",
+                                n_applied=int(st_stats.get("n_applied", 0)),
+                                n_reverted=int(st_stats.get("n_reverted", 0)),
+                                mq_before=round(float(pre_q_st.mean_q), 4),
+                                mq_after=round(float(post_q_st.mean_q), 4),
+                                min_q_before=round(float(pre_q_st.min_q), 6),
+                                min_q_after=round(float(post_q_st.min_q), 6),
+                            )
+    except Exception as exc:
+        log.debug("native_tet_p21_stellar_skipped", reason=str(exc)[:200])
+
     # RR1 (beta1950) — 2-3 face flip pass: connectivity-only sliver 깨기.
     # vertex 위치 변경 X (surface 보존), tet 재구성으로 min Q 향상.
     try:
