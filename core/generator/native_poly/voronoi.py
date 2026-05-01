@@ -216,7 +216,22 @@ class NativePolyResult:
     mesh_integrity_suspect: bool = False
 
 
-from core.utils.geometry import inside_winding_number as _inside_ray_cast
+from core.utils.geometry import inside_winding_number as _inside_ray_cast_full
+from core.utils.inside_safe import inside_safe as _inside_safe
+
+
+def _inside_ray_cast(query, V, F):
+    """GAP-OOM / beta2777 — OOM-safe wrapper.
+
+    F.shape[0] > 3000 시 KDTree-pruned inside_safe 사용 → memory bounded.
+    그 외엔 기존 full ray-cast (정확).
+    """
+    if F.size == 0:
+        import numpy as _np
+        return _np.zeros(query.shape[0], dtype=bool)
+    if F.shape[0] > 3000:
+        return _inside_safe(query, V, F)
+    return _inside_ray_cast_full(query, V, F)
 
 
 # VAL2 (beta2148) — global negative-volume poly cell validation (3-engine defensive parity).
