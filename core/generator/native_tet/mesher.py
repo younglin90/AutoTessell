@@ -2849,6 +2849,41 @@ def generate_native_tet(
                     accepted=_cvt_res.accepted,
                     elapsed_s=round(_cvt_res.elapsed_s, 3),
                 )
+                # GAP-TET / beta2779 — 2차 CVT3D pass (quality-weighted, 강력).
+                # 첫 pass 후 mean_q < 0.20 (grade A 미달) 이면 quality-weighted
+                # Lloyd 6 iter 추가. monotone guard 자체적으로 reject 처리.
+                # self-impl tet grade A 0/20 → +N/20 시도.
+                from core.generator.native_tet.quality import snapshot as _qsnap_cvt2
+                _q_post1 = _qsnap_cvt2(final_pts, final_tets)
+                if (
+                    float(_q_post1.mean_q) < 0.20
+                    and final_tets.shape[0] > 100
+                ):
+                    # 임시 env 활성 (this scope only).
+                    _qw_prev = os.environ.get("AUTO_TESSELL_CVT3D_QUALITY_WEIGHT", "")
+                    os.environ["AUTO_TESSELL_CVT3D_QUALITY_WEIGHT"] = "1"
+                    try:
+                        _new_pts_cvt2, _cvt2_res = lloyd_cvt_3d(
+                            final_pts, final_tets,
+                            n_surface=_n_surface_cvt,
+                            n_iter=6,
+                            relax=0.7,
+                            monotone_worst_drop_max=0.020,
+                        )
+                        if _cvt2_res.accepted:
+                            final_pts = _new_pts_cvt2
+                        log.info(
+                            "native_tet_cvt3d_lloyd_pass2_qw",
+                            n_iter=_cvt2_res.n_iter_used,
+                            pre_mean=round(_cvt2_res.pre_mean_q, 4),
+                            post_mean=round(_cvt2_res.post_mean_q, 4),
+                            accepted=_cvt2_res.accepted,
+                        )
+                    finally:
+                        if _qw_prev:
+                            os.environ["AUTO_TESSELL_CVT3D_QUALITY_WEIGHT"] = _qw_prev
+                        else:
+                            os.environ.pop("AUTO_TESSELL_CVT3D_QUALITY_WEIGHT", None)
             except Exception as exc:
                 log.warning("native_tet_cvt3d_skipped", reason=str(exc)[:120])
 
