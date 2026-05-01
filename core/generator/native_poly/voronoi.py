@@ -1742,7 +1742,11 @@ def _generate_native_poly_voronoi_inner(
     # 각 seed (region) → vertex indices
     region_of_point = vor.point_region
     # 유지할 region 식별 — surface-inside 만 검사 (bbox 체크는 MVP 에서 포기).
+    # GAP3 / beta2765 — clip_boundary=True 시 partial-inside cell 도 유지 (clip 단계가
+    # 책임). 이전엔 ALL inside 만 유지 → boundary 인접 cell 의 ~40% 가 drop.
+    # PPP5 clip 이 이미 존재하나 keep 단계에서 떨어진 cell 은 도달하지 못함.
     keep_region_indices: list[int] = []
+    n_partial_kept = 0
     for pi in range(n_real):
         r_idx = region_of_point[pi]
         if r_idx < 0:
@@ -1751,10 +1755,18 @@ def _generate_native_poly_voronoi_inner(
         if -1 in region or len(region) < 4:
             continue
         verts = vor_vertices[region]
-        # 모든 vertex 가 surface 내부인지
-        if not _inside_ray_cast(verts, V, F).all():
-            continue
-        keep_region_indices.append(pi)
+        inside_mask = _inside_ray_cast(verts, V, F)
+        if inside_mask.all():
+            keep_region_indices.append(pi)
+        elif clip_boundary and _NATIVE_POLY_PPP4_ENABLE and inside_mask.any():
+            # GAP3: partial-inside cell — clip 단계가 boundary 로 잘라 keep.
+            # seed 자체는 inside 이어야 함 (cell 전체가 outside 인 경우 회피).
+            seed_inside = bool(_inside_ray_cast(seeds[pi:pi+1], V, F)[0])
+            if seed_inside:
+                keep_region_indices.append(pi)
+                n_partial_kept += 1
+    if n_partial_kept > 0:
+        log.info("native_poly_gap3_partial_kept", n=n_partial_kept)
 
     if not keep_region_indices:
         return NativePolyResult(
