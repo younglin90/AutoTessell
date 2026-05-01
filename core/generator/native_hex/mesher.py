@@ -685,8 +685,13 @@ def generate_native_hex(
         # 케이스. seed_density ×1.7 × 5 회 retry, 매 retry 마다 cap 도 함께
         # ×1.5 로 raise (직전 시도가 per-axis cap 에 binding 된 경우 의미 회복).
         if not _p1_te_user_set:
-            for _retry in range(5):
-                _new_sd = int(seed_density * (1.7 ** (_retry + 1)))
+            # GAP2 / beta2766 — 5→8 retries + 마지막 2회 더 공격적 (2.5x).
+            # 목표: hex grade A 16/20 → 19+/20 (extreme tier 회복).
+            _retries_max = 8
+            for _retry in range(_retries_max):
+                # GAP2: retry 6-8 에서 2.5x growth (1.7 base 보다 공격적).
+                _growth = 1.7 if _retry < 5 else 2.5
+                _new_sd = int(seed_density * (_growth ** (_retry + 1)))
                 _new_h = diag / max(1, _new_sd)
                 # beta2305: cap 도 escalate — 이전엔 cap=50 binding 으로 인해
                 # seed_density 만 늘려봤자 nxyz 가 cap 에서 멈춰 효과 없었음.
