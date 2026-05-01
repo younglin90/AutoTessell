@@ -3867,66 +3867,119 @@ def generate_native_tet(
 
             _bbox = V.max(axis=0) - V.min(axis=0)
             _diag_fb = float(np.linalg.norm(_bbox))
-            _t_fb0 = time.perf_counter()
-            # P4-C 파라미터 env-configurable. 기본값 fTetWild 권장값.
-            _elf = float(os.environ.get("AUTO_TESSELL_P4C_EDGE_LEN_FAC", "0.05"))
-            _eps = float(os.environ.get("AUTO_TESSELL_P4C_EPSILON", "0.001"))
-            _se = float(os.environ.get("AUTO_TESSELL_P4C_STOP_ENERGY", "10.0"))
-            _noi = int(os.environ.get("AUTO_TESSELL_P4C_NUM_OPT_ITER", "80"))
-            _tw_v, _tw_f = pytetwild.tetrahedralize(
-                V.astype(np.float64),
-                F.astype(np.int32),
-                edge_length_fac=_elf,
-                epsilon=_eps,
-                stop_energy=_se,
-                num_opt_iter=_noi,
-                quiet=True,
-            )
-            _t_fb = time.perf_counter() - _t_fb0
-            if _tw_v.shape[0] > 0 and _tw_f.shape[0] > 0:
+            # GAP-MULTI / beta2775 — multi-fallback chain.
+            # P4D 1차 (fTetWild 권장 default) → grade<A 면 2차 (tighter eps + smaller elf) →
+            # 3차 (envelope 더 작게, 더 많은 opt). 각 단계 채택 시 break.
+            _grade_old = grade
+            _mq_old = float(getattr(final_quality, "mean_q", 0.0)) if final_quality else 0.0
+            _n_cells_old = int(final_tets.shape[0])
+
+            # 3 단계 파라미터 schedule. base default + tighter retries.
+            _p4d_schedule = [
+                # (edge_len_fac, epsilon, stop_energy, num_opt_iter, label)
+                (
+                    float(os.environ.get("AUTO_TESSELL_P4C_EDGE_LEN_FAC", "0.05")),
+                    float(os.environ.get("AUTO_TESSELL_P4C_EPSILON", "0.001")),
+                    float(os.environ.get("AUTO_TESSELL_P4C_STOP_ENERGY", "10.0")),
+                    int(os.environ.get("AUTO_TESSELL_P4C_NUM_OPT_ITER", "80")),
+                    "tier1_default",
+                ),
+                # tier 2: tighter envelope + smaller edge → 더 정밀 mesh.
+                (0.03, 5e-4, 8.0, 120, "tier2_tighter"),
+                # tier 3: 가장 공격적 envelope (extreme mesh 회복).
+                (0.02, 2e-4, 5.0, 200, "tier3_aggressive"),
+            ]
+
+            _best_v: np.ndarray | None = None
+            _best_f: np.ndarray | None = None
+            _best_q = None
+            _best_grade = grade
+            _best_label = ""
+
+            for _elf, _eps, _se, _noi, _label in _p4d_schedule:
+                _t_fb0 = time.perf_counter()
+                try:
+                    _tw_v, _tw_f = pytetwild.tetrahedralize(
+                        V.astype(np.float64),
+                        F.astype(np.int32),
+                        edge_length_fac=_elf,
+                        epsilon=_eps,
+                        stop_energy=_se,
+                        num_opt_iter=_noi,
+                        quiet=True,
+                    )
+                except Exception as _ex:
+                    log.warning(
+                        "native_tet_p4d_tier_failed",
+                        tier=_label, reason=str(_ex)[:80],
+                    )
+                    continue
+                _t_fb = time.perf_counter() - _t_fb0
+                if _tw_v.shape[0] == 0 or _tw_f.shape[0] == 0:
+                    continue
                 _q_fb = _qsnap_fb(_tw_v.astype(np.float64), _tw_f.astype(np.int64))
-                _grade_old = grade
-                _mq_old = float(getattr(final_quality, "mean_q", 0.0)) if final_quality else 0.0
-                # grade 재평가 (기존 분기와 동일 임계).
                 _mq_new = float(_q_fb.mean_q)
                 if _mq_new >= 0.20:
-                    grade = "A"
+                    _g = "A"
                 elif _mq_new >= 0.15:
-                    grade = "B"
+                    _g = "B"
                 elif _mq_new >= 0.10:
-                    grade = "C"
+                    _g = "C"
                 else:
-                    grade = "D"
-                # C-QUAL-4 / beta2391 — monotone guard 추가 (validator 발견:
-                # mesh #2 의 fallback 이 1072 cells → 3 cells 로 악화).
-                # 채택 조건: (a) mq_new > mq_old AND
-                #            (b) n_cells_new >= max(50, n_cells_old / 4)
-                # b 는 catastrophic cell drop 방지 (>75% 손실 시 reject).
-                _n_cells_old = int(final_tets.shape[0])
+                    _g = "D"
                 _n_cells_new = int(_tw_f.shape[0])
-                _accept_fb = bool(
+                _accept = bool(
                     _mq_new > _mq_old
                     and _n_cells_new >= max(50, _n_cells_old // 4)
                 )
                 log.info(
+                    "native_tet_p4d_chain_tier",
+                    tier=_label, grade=_g,
+                    n_cells=_n_cells_new, mq=round(_mq_new, 3),
+                    elapsed=round(_t_fb, 2), accepted=_accept,
+                )
+                if not _accept:
+                    continue
+                # best 갱신: grade A 우선, 같으면 mq 큰 쪽.
+                _best_so_far = (_best_q is None) or (
+                    _g == "A" and _best_grade != "A"
+                ) or (
+                    _g == _best_grade and _mq_new > float(_best_q.mean_q)
+                )
+                if _best_so_far:
+                    _best_v = _tw_v
+                    _best_f = _tw_f
+                    _best_q = _q_fb
+                    _best_grade = _g
+                    _best_label = _label
+                # 조기 종료: A 도달 시 중단.
+                if _g == "A":
+                    break
+
+            if _best_v is not None and _best_q is not None:
+                final_pts = _best_v.astype(np.float64)
+                final_tets = _best_f.astype(np.int64)
+                final_quality = _best_q
+                n_cells = int(_best_f.shape[0])
+                n_points = int(_best_v.shape[0])
+                grade = _best_grade
+                log.info(
                     "native_tet_p4c_pytetwild_fallback",
                     grade_old=_grade_old, grade_new=grade,
+                    chain_tier=_best_label,
                     n_cells_old=_n_cells_old,
-                    n_cells_new=_n_cells_new,
+                    n_cells_new=n_cells,
                     mq_old=round(_mq_old, 3),
-                    mq_new=round(_mq_new, 3),
-                    elapsed=round(_t_fb, 2),
-                    accepted=_accept_fb,
+                    mq_new=round(float(_best_q.mean_q), 3),
+                    accepted=True,
                 )
-                if _accept_fb:
-                    final_pts = _tw_v.astype(np.float64)
-                    final_tets = _tw_f.astype(np.int64)
-                    final_quality = _q_fb
-                    n_cells = _n_cells_new
-                    n_points = int(_tw_v.shape[0])
-                else:
-                    # reject: keep self-impl mesh, restore 'grade'.
-                    grade = _grade_old
+            else:
+                # 모든 tier reject → keep self-impl mesh.
+                grade = _grade_old
+                log.info(
+                    "native_tet_p4c_pytetwild_fallback_all_reject",
+                    grade_old=_grade_old,
+                )
         except Exception as exc:
             log.warning("native_tet_p4c_pytetwild_skipped", reason=str(exc)[:120])
 
