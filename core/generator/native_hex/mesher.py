@@ -786,11 +786,12 @@ def generate_native_hex(
 
             prev_pts_snap = final_pts.copy()
             try:
-                prev_skew = hex_quality_report(
-                    final_pts, final_hexes
-                ).max_skewness
+                prev_q = hex_quality_report(final_pts, final_hexes)
+                prev_skew = prev_q.max_skewness
+                prev_no = float(getattr(prev_q, "max_non_orthogonality_deg", 0.0))
             except Exception:
                 prev_skew = 0.0
+                prev_no = 0.0
 
             final_pts, snap_stats = snap_hex_boundary_to_surface(
                 final_pts, V, F, target_edge=h,
@@ -800,15 +801,24 @@ def generate_native_hex(
             log.info("native_hex_boundary_snap_applied", **snap_stats)
 
             # snap 후 quality 검증.
+            # GAP-EXTREME / beta2776 — non-orthogonality 90° 회피 추가.
+            # 100029 같은 hard 케이스: skew 차이는 작지만 non-ortho 가 90° 도달
+            # → grade D 직행. non-ortho 가 60°+ 악화 시 revert.
             try:
-                new_skew = hex_quality_report(
-                    final_pts, final_hexes
-                ).max_skewness
-                if prev_skew >= 0 and new_skew > prev_skew + 4.0:
+                new_q = hex_quality_report(final_pts, final_hexes)
+                new_skew = new_q.max_skewness
+                new_no = float(getattr(new_q, "max_non_orthogonality_deg", 0.0))
+                _revert = (
+                    (prev_skew >= 0 and new_skew > prev_skew + 4.0)
+                    or (new_no >= 89.0 and (prev_no < 70.0 or prev_no - new_no < -20.0))
+                )
+                if _revert:
                     log.warning(
                         "native_hex_snap_revert",
                         prev_skew=round(prev_skew, 3),
                         new_skew=round(new_skew, 3),
+                        prev_no=round(prev_no, 2),
+                        new_no=round(new_no, 2),
                     )
                     final_pts = prev_pts_snap
             except Exception:

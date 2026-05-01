@@ -1434,14 +1434,18 @@ def generate_native_poly_voronoi(
         # beta2245n — best 가 grade != A 시 P2 repair retry 시도.
         # 입력 self-intersect 등으로 voronoi 가 grade B/C 에 머무르는 경우 회복 가능성.
         # hex_fallback 도 retry 대상 — repair 후 voronoi 가 작동할 가능성.
-        # 보호 가드: 큰 mesh (F > 5000) 는 retry 시간 비용 폭주 → skip.
+        # GAP-EXTREME / beta2776 — face limit 5000 → 20000 (extreme tier 회복).
+        # extreme mesh (102308 si=7611, 1017017 si=15712) 도 retry 대상에 포함.
         # env AUTO_TESSELL_POLY_GRADE_RETRY=0 으로 비활성 가능.
         _grade_retry_on = _os_poly.environ.get("AUTO_TESSELL_POLY_GRADE_RETRY", "1") != "0"
+        _retry_face_cap = int(
+            _os_poly.environ.get("AUTO_TESSELL_POLY_GRADE_RETRY_MAX_FACES", "20000"),
+        )
         if (
             _grade_retry_on
             and best_result.quality_grade != "A"
             and best_result.success
-            and faces.shape[0] <= 5000
+            and faces.shape[0] <= _retry_face_cap
         ):
             try:
                 from core.preprocessor.native_repair import run_native_repair  # noqa: PLC0415
