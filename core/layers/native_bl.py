@@ -2850,6 +2850,59 @@ def generate_native_bl(
                 threshold=cfg.aspect_ratio_threshold,
             )
 
+    # GAP4 / beta2769 — aspect_cap_enforcer wire-in.
+    # max_ar > target_aspect 인 prism 의 outer node 를 wall 쪽으로 shrink.
+    # env AUTO_TESSELL_BL_ASPECT_ENFORCE=1 활성 (default OFF — 회귀 안전).
+    # 활성 시: aspect 11500 → ≤target_aspect (1000 default) 로 강제.
+    if (
+        os.environ.get("AUTO_TESSELL_BL_ASPECT_ENFORCE", "0") == "1"
+        and n_prism_total > 0
+        and max_ar > cfg.aspect_ratio_threshold
+    ):
+        try:
+            from core.layers.aspect_cap_enforcer import enforce_prism_aspect_cap
+            # build prism (P, 6) array from layer_point_ids.
+            valid_faces = [fi for fi in wall_face_indices if fi in wall_tri_verts]
+            tri_arr_e = np.array(
+                [wall_tri_verts[fi] for fi in valid_faces], dtype=np.int64,
+            )
+            n_F = tri_arr_e.shape[0]
+            prism_list = []
+            for k in range(cfg.num_layers):
+                lp_o = layer_point_ids[k]      # wall side of this layer
+                lp_i = layer_point_ids[k + 1]  # outer side
+                for fi in range(n_F):
+                    v0, v1, v2 = (int(x) for x in tri_arr_e[fi])
+                    prism_list.append([
+                        lp_o[v0], lp_o[v1], lp_o[v2],
+                        lp_i[v0], lp_i[v1], lp_i[v2],
+                    ])
+            prisms_arr = np.array(prism_list, dtype=np.int64)
+            new_pts, ace_res = enforce_prism_aspect_cap(
+                final_points, prisms_arr,
+                target_aspect=float(cfg.aspect_ratio_threshold),
+                min_scale=0.05,
+            )
+            log.info(
+                "native_bl_aspect_enforced",
+                aspect_max_pre=round(ace_res.aspect_max_pre, 1),
+                aspect_max_post=round(ace_res.aspect_max_post, 1),
+                n_violations_pre=ace_res.n_violations_pre,
+                n_violations_post=ace_res.n_violations_post,
+                n_outer_modified=ace_res.n_outer_modified,
+            )
+            # accept only if monotone improvement (no aspect increase).
+            if ace_res.aspect_max_post < ace_res.aspect_max_pre:
+                final_points = new_pts
+                # re-measure.
+                n_degen, max_ar = _prism_aspect_ratio_stats(
+                    final_points, wall_tri_verts, wall_face_indices,
+                    layer_point_ids, cfg.num_layers,
+                    threshold=cfg.aspect_ratio_threshold,
+                )
+        except Exception as exc:
+            log.warning("native_bl_aspect_enforce_failed", reason=str(exc)[:160])
+
     # C3.2 / beta2376 — anisotropic prism split diagnostic (cfMesh
     # splitInternalLayers 동등). env-gated: AUTO_TESSELL_BL_ANISO_SPLIT_DIAG=1.
     # mesh 변경 없이 split 가능한 prism 수만 측정 (실 split 은 후속 카드).
