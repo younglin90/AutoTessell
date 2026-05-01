@@ -89,6 +89,105 @@ def _shrink_outer_to_target(
     return best_outer, best_scale
 
 
+def enforce_prism_aspect_cap_v2(
+    pts: NDArray[np.float64],
+    prisms: NDArray[np.int64],
+    *,
+    target_aspect: float = 1000.0,
+    min_height_factor: float = 0.05,
+) -> tuple[NDArray[np.float64], AspectCapResult]:
+    """GAP-BL / beta2778 — direct height shrink (degenerate wall 도 작동).
+
+    이전 v1: outer 를 wall 쪽으로 binary search (degenerate wall = 작은 wall edge
+    인 경우 outer 줄여도 aspect 안 줄어듦, 1017017 같은 extreme 무효).
+
+    v2: outer node 의 height (== prism direction) 를 직접 축소.
+        새 outer = wall_centroid + outer_dir * (h * scale)
+        h = 원래 height. scale = target_aspect / current_aspect (clamped).
+        wall_edge_max 와 무관하게 wall→outer 거리 직접 제어.
+    """
+    import time
+    t0 = time.perf_counter()
+
+    pts = np.asarray(pts, dtype=np.float64).copy()
+    prisms = np.asarray(prisms, dtype=np.int64)
+    n_p = int(prisms.shape[0])
+    if n_p == 0:
+        return pts, AspectCapResult(elapsed_s=time.perf_counter() - t0)
+
+    # pre stats.
+    aspects_pre = np.zeros(n_p, dtype=np.float64)
+    for i in range(n_p):
+        aspects_pre[i] = _prism_aspect(pts[prisms[i]])
+    n_viol_pre = int((aspects_pre > target_aspect).sum())
+
+    # 각 outer vertex 별 가장 보수적 (smallest) height scale.
+    outer_scale: dict[int, float] = {}
+    outer_orig_height: dict[int, tuple[float, np.ndarray, np.ndarray]] = {}
+
+    for i in range(n_p):
+        if aspects_pre[i] <= target_aspect:
+            continue
+        wall_idx = prisms[i, :3]
+        outer_idx = prisms[i, 3:]
+        wall_pts = pts[wall_idx]
+        outer_pts = pts[outer_idx]
+        wall_centroid = wall_pts.mean(axis=0)
+
+        # 각 outer vertex 별 height (wall_centroid → outer_v).
+        for k in range(3):
+            oi = int(outer_idx[k])
+            wi = int(wall_idx[k])
+            wall_v = pts[wi]  # paired wall vertex.
+            outer_v = pts[oi]
+            h_vec = outer_v - wall_v
+            h = float(np.linalg.norm(h_vec))
+            if h < 1e-30:
+                continue
+            # required scale: target / current aspect.
+            target_scale = target_aspect / float(aspects_pre[i])
+            # 최소 scale 한도.
+            target_scale = max(min_height_factor, min(1.0, target_scale))
+            if oi not in outer_scale or target_scale < outer_scale[oi]:
+                outer_scale[oi] = target_scale
+                outer_orig_height[oi] = (h, wall_v.copy(), outer_v.copy())
+
+    # 적용.
+    n_modified = 0
+    for oi, scale in outer_scale.items():
+        if scale >= 1.0 - 1e-9:
+            continue
+        if oi not in outer_orig_height:
+            continue
+        h_orig, wall_v, outer_orig = outer_orig_height[oi]
+        h_dir = outer_orig - wall_v
+        h_norm = np.linalg.norm(h_dir)
+        if h_norm < 1e-30:
+            continue
+        h_unit = h_dir / h_norm
+        new_outer = wall_v + h_unit * (h_orig * scale)
+        pts[oi] = new_outer
+        n_modified += 1
+
+    # post stats.
+    aspects_post = np.zeros(n_p, dtype=np.float64)
+    for i in range(n_p):
+        aspects_post[i] = _prism_aspect(pts[prisms[i]])
+    n_viol_post = int((aspects_post > target_aspect).sum())
+
+    return pts, AspectCapResult(
+        n_prisms=n_p,
+        n_violations_pre=n_viol_pre,
+        n_violations_post=n_viol_post,
+        aspect_max_pre=float(aspects_pre.max()),
+        aspect_max_post=float(aspects_post.max()),
+        aspect_mean_pre=float(aspects_pre.mean()),
+        aspect_mean_post=float(aspects_post.mean()),
+        n_outer_modified=n_modified,
+        elapsed_s=time.perf_counter() - t0,
+    )
+
+
 def enforce_prism_aspect_cap(
     pts: NDArray[np.float64],
     prisms: NDArray[np.int64],

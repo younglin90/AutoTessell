@@ -2860,7 +2860,7 @@ def generate_native_bl(
         and max_ar > cfg.aspect_ratio_threshold
     ):
         try:
-            from core.layers.aspect_cap_enforcer import enforce_prism_aspect_cap
+            from core.layers.aspect_cap_enforcer import enforce_prism_aspect_cap_v2 as enforce_prism_aspect_cap
             # build prism (P, 6) array from layer_point_ids.
             valid_faces = [fi for fi in wall_face_indices if fi in wall_tri_verts]
             tri_arr_e = np.array(
@@ -2881,7 +2881,7 @@ def generate_native_bl(
             new_pts, ace_res = enforce_prism_aspect_cap(
                 final_points, prisms_arr,
                 target_aspect=float(cfg.aspect_ratio_threshold),
-                min_scale=0.05,
+                min_height_factor=0.05,
             )
             log.info(
                 "native_bl_aspect_enforced",
