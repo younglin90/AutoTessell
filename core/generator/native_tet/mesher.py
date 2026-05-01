@@ -1928,7 +1928,16 @@ def generate_native_tet(
             raise RuntimeError("_phase_bc_skip")
         from core.generator.native_tet.quality import snapshot as _qsnap_pre
         pre_q = _qsnap_pre(final_pts, final_tets)
-        if float(pre_q.mean_q) < 0.20 and final_tets.shape[0] > 100:
+        # GAP1 / beta2767 — trigger 확장: mean_q < 0.30 또는 p10_q < 0.05.
+        # 이전: mean_q < 0.20 만 → mean 정상이지만 worst tet 잔존하는 grade A
+        # 실패 케이스 (sliver < 5%) 에서 collapse 미작동.
+        # 신규: p10 (worst 10%) < 0.05 도 트리거 → sliver 적극 제거.
+        # 단조 가드 (mean_q*0.99) 는 그대로 → 회귀 안전.
+        _gap1_trigger = (
+            float(pre_q.mean_q) < 0.30
+            or float(pre_q.p10_q) < 0.05
+        )
+        if _gap1_trigger and final_tets.shape[0] > 100:
             from core.generator.native_tet.local_ops import collapse_short_edges
             n_v_pre = int(final_pts.shape[0])
             n_t_pre = int(final_tets.shape[0])
