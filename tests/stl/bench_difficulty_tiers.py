@@ -69,7 +69,12 @@ def _try_bl(case_dir, n_layers: int = 3, engine_tag: str = "generic",
 
 
 def _worker_run(payload: tuple) -> dict:
-    V_bytes, V_shape, F_bytes, F_shape, engine, with_bl = payload
+    # GAP-FAST / beta2774 — payload 에 tier 추가 (extreme 시 phase_c skip).
+    if len(payload) == 7:
+        V_bytes, V_shape, F_bytes, F_shape, engine, with_bl, tier = payload
+    else:
+        V_bytes, V_shape, F_bytes, F_shape, engine, with_bl = payload
+        tier = ""
     sys.path.insert(0, str(_REPO_ROOT))
     import warnings as _w
     _w.filterwarnings("ignore")
@@ -90,10 +95,16 @@ def _worker_run(payload: tuple) -> dict:
         try:
             if engine == "tet":
                 from core.generator.native_tet.mesher import generate_native_tet
+                # GAP-FAST / beta2774 — extreme/hard tier: heavy phase_c skip
+                # (fixed time budget). worker 에서 self-impl 빨리 fail/D 도달 →
+                # main 의 P4D fallback 이 처리. extreme tet 333s → 30s 이내.
+                _heavy_tier = tier in ("extreme", "hard")
+                _phase_c = (not _heavy_tier)
+                _amips = (not _heavy_tier)
                 r = generate_native_tet(
                     V, F, case, seed_density=8,
                     enable_phase_a=True, enable_phase_b=False,
-                    enable_phase_c=True, enable_amips_smooth=True,
+                    enable_phase_c=_phase_c, enable_amips_smooth=_amips,
                 )
                 out["success"] = bool(r.success)
                 out["n_cells"] = int(getattr(r, "n_cells", 0) or getattr(r, "n_tets", 0))
@@ -282,7 +293,8 @@ def main():
         F_bytes = F.tobytes(); F_shape = F.shape
         for engine in _engines:
             jobs.append((info, engine, True,
-                         (V_bytes, V_shape, F_bytes, F_shape, engine, True)))
+                         (V_bytes, V_shape, F_bytes, F_shape, engine, True,
+                          str(info.get("tier", "")))))
 
     # 권장 보정: workers 4→8, per-cell timeout 180→90s.
     n_workers = min(8, max(1, (os.cpu_count() or 1)))
