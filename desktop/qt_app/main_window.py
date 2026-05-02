@@ -1795,15 +1795,12 @@ class AutoTessellWindow:  # type: ignore[misc]
         f, v = self._section_frame("Tier 엔진 (고급)")
 
         # v0.4 Native-First: Tier 3 (볼륨 메쉬) 를 별도 "메시 엔진" 섹션에서
-        # GUI-DEFAULT / beta2810 — 모든 Tier default = native_* 모듈.
-        # Tier 0 (수리), 1 (표면 생성 — disabled 유지: input STL 그대로),
-        # Tier 2 (isotropic remesh), Tier 3 (volume mesh strategist auto),
-        # Tier 4 (BL — auto: quality_level draft 시 native_bl 자동),
-        # Tier 5 (native quality checker).
+        # GUI-CLEAN / beta2812 — Tier 1 (표면 생성) + Tier 2 (표면 리메쉬) 제거.
+        # 입력 STL/CAD 가 이미 surface mesh 이므로 Tier 1 불필요.
+        # Tier 2 remesh 는 자동 (필요 시 strategist 가 내부에서 호출).
+        # 사용자 노출: Tier 0 (수리) + Tier 3 (볼륨) + Tier 4 (BL) + Tier 5 (검증).
         rows: list[tuple[str, str, tuple[tuple[str, str], ...], str]] = [
             ("Tier 0 · 표면 수리", "tier0", self._TIER0_ENGINES, "native_repair"),
-            ("Tier 1 · 표면 생성", "tier1", self._TIER1_ENGINES, "disabled"),
-            ("Tier 2 · 표면 리메쉬", "tier2", self._TIER2_ENGINES, "native_isotropic"),
             ("Tier 3 · 볼륨 메쉬", "tier3", self._TIER3_ENGINES, "native_tet"),
             ("Tier 4 · 경계층", "tier4", self._TIER4_ENGINES, "auto"),
             ("Tier 5 · 메쉬 검증", "tier5", self._TIER5_ENGINES, "native"),
