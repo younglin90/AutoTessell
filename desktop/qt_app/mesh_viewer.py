@@ -1511,6 +1511,24 @@ class MeshViewerWidget(QWidget):
 
         layout.addWidget(self._viewer)
 
+        # BC-INTEGRATION / beta2810 — face-pick BC toolbar 를 MeshViewerWidget
+        # 에 직접 부착 (Static / Interactive 양쪽 fallback 보장).
+        self._bc_ui = None
+        try:
+            from desktop.qt_app.bc_picker_integration import attach_bc_picker
+            plotter = getattr(self._viewer, "_plotter", None)
+            if plotter is not None:
+                self._bc_ui = attach_bc_picker(
+                    plotter, surface_mesh=None, parent=self,
+                )
+                if self._bc_ui and self._bc_ui.toolbar is not None:
+                    layout.addWidget(self._bc_ui.toolbar)
+                    log.info("BC face-pick toolbar attached to MeshViewerWidget")
+            else:
+                log.info("BC toolbar skipped — viewer has no plotter (static fallback)")
+        except Exception as _bc_exc:
+            log.debug(f"BC toolbar attach skipped: {_bc_exc}")
+
     def _compute_and_emit_stats(self, mesh: object) -> None:
         """PyVista compute_cell_quality()로 메시 품질 통계를 계산하고 Signal emit."""
         if not PYVISTA_AVAILABLE or mesh is None:

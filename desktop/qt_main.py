@@ -77,12 +77,37 @@ def _configure_pyvista_runtime() -> None:
         pass  # PyVista 미설치 또는 초기화 실패
 
 
+_DEFAULT_ENV = {
+    # GUI-DEFAULT / beta2810 — GUI 실행 시 즉시 최적 default 활성화.
+    # 모든 self-impl tet 강화 + multi-fallback chain + BL aspect cap +
+    # P4D pytetwild fallback + AGGR/L3 repair (extreme 입력 회복).
+    "AUTO_TESSELL_STELLAR_KLINGNER": "1",   # Klingner edge contract (P2.1).
+    "AUTO_TESSELL_BL_ASPECT_ENFORCE": "1",  # post-extrude aspect cap.
+    "AUTO_TESSELL_P4C_PYTETWILD": "1",      # P4-C external fallback.
+    "AUTO_TESSELL_VVV2_QUEUE": "1",         # Stellar swap queue.
+    "AUTO_TESSELL_RRR2_TARGETED": "1",      # AMIPS targeted smoothing.
+    "AUTO_TESSELL_P3_SSS_REVIVAL": "1",     # surface vertex relocate.
+    "AUTO_TESSELL_CVT3D_QUALITY_WEIGHT": "0",  # opt-in only (heavier).
+    "AUTO_TESSELL_AGGR_REPAIR": "0",        # off by default (heavier).
+    "AUTO_TESSELL_L3_AI_REPAIR": "0",       # off by default (very heavy).
+    "AUTO_TESSELL_POLY_GRADE_RETRY": "1",   # poly retry chain.
+}
+
+
+def _apply_default_env() -> None:
+    """default 환경변수 적용 (사용자가 미리 설정하지 않은 것만)."""
+    import os
+    for k, v in _DEFAULT_ENV.items():
+        os.environ.setdefault(k, v)
+
+
 def main() -> None:  # pragma: no cover
     """QApplication 을 생성하고 AutoTessellWindow 를 표시한다."""
     import sys
     import faulthandler
     faulthandler.enable()  # SIGSEGV 시 Python traceback 출력
 
+    _apply_default_env()
     _configure_pyvista_runtime()
 
     from PySide6.QtCore import QTimer, Qt
