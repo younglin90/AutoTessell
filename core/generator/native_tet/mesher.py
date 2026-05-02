@@ -2081,25 +2081,40 @@ def generate_native_tet(
             except Exception as exc:
                 log.debug("native_tet_flip_32_skipped", reason=str(exc))
             # TT1 (beta1970) — 4-4 edge flip: 내부 edge ring 재배치.
+            # P3.4 / beta2782 — adaptive threshold + multi-pass for self-impl A.
+            # Klingner 2008 §4 4-4 swap 완전 적용: threshold 적응적 lowering
+            # (1e-3 → 1e-5), 최대 5 pass. 각 pass 가 독립 flip 후보 발견.
             try:
                 pre_q_44 = _qsnap_flip(final_pts, final_tets)
                 t_pre_44 = int(final_tets.shape[0])
-                new_tets_44, n_44 = flip_edges_44(
-                    final_pts, final_tets,
-                    min_quality_improvement=1e-3,
-                    max_flips=2000,
-                )
-                if n_44 > 0 and new_tets_44.shape[0] > 50:
-                    post_q_44 = _qsnap_flip(final_pts, new_tets_44)
-                    if float(post_q_44.mean_q) >= float(pre_q_44.mean_q) * 0.99:
-                        final_tets = new_tets_44
-                        log.info(
-                            "native_tet_flip_44",
-                            n_flips=int(n_44),
-                            t_before=t_pre_44, t_after=int(new_tets_44.shape[0]),
-                            mq_before=round(float(pre_q_44.mean_q), 3),
-                            mq_after=round(float(post_q_44.mean_q), 3),
-                        )
+                _adaptive_thrs = (1e-3, 5e-4, 1e-4, 5e-5, 1e-5)
+                _total_44 = 0
+                cur_pts_44 = final_pts
+                cur_tets_44 = final_tets
+                cur_mq_44 = float(pre_q_44.mean_q)
+                for _thr_44 in _adaptive_thrs:
+                    new_tets_44, n_44 = flip_edges_44(
+                        cur_pts_44, cur_tets_44,
+                        min_quality_improvement=float(_thr_44),
+                        max_flips=2000,
+                    )
+                    if n_44 == 0 or new_tets_44.shape[0] <= 50:
+                        continue
+                    post_q_44 = _qsnap_flip(cur_pts_44, new_tets_44)
+                    if float(post_q_44.mean_q) >= cur_mq_44 * 0.99:
+                        cur_tets_44 = new_tets_44
+                        cur_mq_44 = float(post_q_44.mean_q)
+                        _total_44 += int(n_44)
+                if _total_44 > 0:
+                    final_tets = cur_tets_44
+                    log.info(
+                        "native_tet_flip_44_adaptive",
+                        n_flips=_total_44,
+                        t_before=t_pre_44, t_after=int(final_tets.shape[0]),
+                        mq_before=round(float(pre_q_44.mean_q), 4),
+                        mq_after=round(cur_mq_44, 4),
+                        adaptive_thr_min=_adaptive_thrs[-1],
+                    )
             except Exception as exc:
                 log.debug("native_tet_flip_44_skipped", reason=str(exc))
 
