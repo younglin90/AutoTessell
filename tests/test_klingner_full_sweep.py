@@ -387,6 +387,98 @@ def test_ccmio_native_simple_polymesh_read(tmp_path):
     assert len(bnd) == 1 and bnd[0]["name"] == "inlet"
 
 
+# AGGRESSIVE-REPAIR (BETA2805).
+
+def test_aggressive_repair_clean_input():
+    from core.preprocessor.aggressive_input_repair import aggressive_input_repair
+    V = np.array([
+        [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1],
+    ], dtype=np.float64)
+    F = np.array([
+        [0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3],
+    ], dtype=np.int64)
+    V_out, F_out, r = aggressive_input_repair(V, F, max_sweep=1)
+    assert r.success
+    assert F_out.shape[0] >= 3
+
+
+def test_aggressive_repair_with_dups():
+    from core.preprocessor.aggressive_input_repair import aggressive_input_repair
+    V = np.array([
+        [0, 0, 0], [1, 0, 0], [1, 0, 1e-12], [0, 1, 0], [0, 0, 1],
+    ], dtype=np.float64)
+    F = np.array([
+        [0, 1, 3], [0, 2, 4],  # 1과 2가 dup.
+    ], dtype=np.int64)
+    V_out, F_out, r = aggressive_input_repair(V, F, max_sweep=1)
+    assert r.success
+    # dup 제거되어 vertex 수 감소.
+    assert r.post_n_vertices < r.pre_n_vertices
+
+
+def test_aggressive_repair_empty():
+    from core.preprocessor.aggressive_input_repair import aggressive_input_repair
+    V_out, F_out, r = aggressive_input_repair(
+        np.zeros((0, 3), dtype=np.float64),
+        np.zeros((0, 3), dtype=np.int64),
+    )
+    assert r.message == "empty input"
+
+
+# HDF1.4-RAW (BETA2806).
+
+def test_hdf14_raw_write_read(tmp_path):
+    from core.utils.ccmio_hdf14_binary import (
+        write_ccmio_hdf14_raw, read_ccmio_hdf14_raw_header,
+    )
+    pdir = tmp_path / "polyMesh"
+    pdir.mkdir()
+    (pdir / "points").write_text(
+        "FoamFile\n4\n(\n(0 0 0)\n(1 0 0)\n(0 1 0)\n(0 0 1)\n)\n",
+    )
+    (pdir / "faces").write_text(
+        "4\n(\n3(0 1 2)\n3(0 1 3)\n3(0 2 3)\n3(1 2 3)\n)\n",
+    )
+    (pdir / "owner").write_text("4\n(\n0\n0\n0\n0\n)\n")
+    (pdir / "neighbour").write_text("0\n(\n)\n")
+    (pdir / "boundary").write_text(
+        "FoamFile\n1\n(\n    walls\n    {\n"
+        "        type            wall;\n"
+        "        nFaces          4;\n"
+        "        startFace       0;\n"
+        "    }\n)\n",
+    )
+    out = tmp_path / "test.ccm"
+    res = write_ccmio_hdf14_raw(pdir, out, big_endian=True)
+    assert res.success, f"failed: {res.message}"
+    assert out.exists()
+    assert res.n_bytes_written > 200
+    assert "HDF1.4-raw-binary-v1" in res.pro_star_compat_level
+
+    # header parse.
+    hdr = read_ccmio_hdf14_raw_header(out)
+    assert hdr is not None
+    assert hdr["magic_ok"]
+    assert "AdapcoCCMIO" in hdr["adapco_signature"]
+    assert hdr["n_vertices"] == 4
+    assert hdr["n_cells"] == 1
+    assert hdr["n_patches"] == 1
+    assert hdr["big_endian"] is True
+
+
+def test_hdf14_raw_read_missing(tmp_path):
+    from core.utils.ccmio_hdf14_binary import read_ccmio_hdf14_raw_header
+    assert read_ccmio_hdf14_raw_header(tmp_path / "nope.ccm") is None
+
+
+def test_hdf14_raw_magic_check(tmp_path):
+    """잘못된 magic 인 파일 → None."""
+    from core.utils.ccmio_hdf14_binary import read_ccmio_hdf14_raw_header
+    p = tmp_path / "fake.ccm"
+    p.write_bytes(b"NOTHDF\x00\x00" + b"\x00" * 256)
+    assert read_ccmio_hdf14_raw_header(p) is None
+
+
 def test_ccmio_native_write_pro_star(tmp_path):
     pytest.importorskip("h5py")
     import h5py

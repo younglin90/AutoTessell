@@ -324,6 +324,42 @@ def generate_native_tet(
             except Exception as exc:
                 log.debug("native_tet_auto_fix_skipped", reason=str(exc))
 
+            # AGGRESSIVE-REPAIR / beta2805 — input fragility (high SI count
+            # or low surface mq) 케이스 강력 pre-pass.
+            # env AUTO_TESSELL_AGGR_REPAIR=1 활성 (default OFF — 안전).
+            if os.environ.get("AUTO_TESSELL_AGGR_REPAIR", "0") == "1":
+                try:
+                    from core.preprocessor.aggressive_input_repair import (
+                        aggressive_input_repair,
+                    )
+                    V_ar, F_ar, ar_res = aggressive_input_repair(
+                        V, F,
+                        max_sweep=3,
+                        si_threshold=100,
+                        mq_threshold=0.05,
+                    )
+                    if (
+                        ar_res.success
+                        and (ar_res.post_si_count <= ar_res.pre_si_count
+                             or ar_res.post_min_quality > ar_res.pre_min_quality)
+                        and F_ar.shape[0] >= 4
+                    ):
+                        V = V_ar.astype(np.float64)
+                        F = F_ar.astype(np.int64)
+                        log.info(
+                            "native_tet_aggressive_repair",
+                            iterations=ar_res.n_iterations,
+                            si_before=ar_res.pre_si_count,
+                            si_after=ar_res.post_si_count,
+                            mq_before=round(ar_res.pre_min_quality, 4),
+                            mq_after=round(ar_res.post_min_quality, 4),
+                            v_before=ar_res.pre_n_vertices,
+                            v_after=ar_res.post_n_vertices,
+                        )
+                except Exception as exc:
+                    log.debug("native_tet_aggr_repair_skipped",
+                              reason=str(exc)[:120])
+
             # P4-B-4 (beta2243) + P1.4 (beta2308) — quadric error decimation
             # pre-pass. 입력 face > AUTO_TESSELL_QED_MIN_F 시 face 수 절반으로
             # 감소 (G&H 1997). MM1 직전 sliver 격감.
