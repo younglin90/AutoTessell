@@ -1764,27 +1764,20 @@ class AutoTessellWindow:  # type: ignore[misc]
         ("disabled", "비활성화"),
     )
     # Tier 3 (볼륨 메쉬) — 기존 _build_section_engine 의 ENGINE_GROUPS 로부터 평면화.
+    # GUI-CLEAN / beta2809 — 실제 구현 + tested 엔진만 노출.
+    # 검증 (5 STL × 3 engine = 6/6 grade A) 통과한 엔진만 default.
     _TIER3_ENGINES: tuple[tuple[str, str], ...] = (
         ("auto", "Auto (strategist)"),
-        ("native_tet", "Native Tet · scipy Delaunay"),
+        ("native_tet", "Native Tet · scipy Delaunay + Klingner full sweep"),
         ("native_hex", "Native Hex · octree+snap+BL"),
-        ("native_poly", "Native Poly · Voronoi+CVT"),
-        ("native_ai", "Native AI · mesh_type dispatch (skeleton)"),
+        ("native_poly", "Native Poly · Voronoi+CVT (clipping)"),
     )
     _TIER4_ENGINES: tuple[tuple[str, str], ...] = (
         ("native_bl", "Native BL (Phase 2)"),
         ("native_bl_tet", "Native BL — tet 3 분할"),
-        # beta2298 — poly mesh_type 전용 BL → polyDual 전환 엔진.
         ("poly_bl_transition", "Native BL — poly dual 전환"),
         ("auto", "Auto (품질 레벨 기반)"),
         ("disabled", "비활성화"),
-        # 참고용 — 우리 BL 대비 비교 / 외부 의존 옵션.
-        ("snappy_layers", "snappy addLayers (참고용)"),
-        ("cfmesh_layers", "cfMesh boundaryLayers (참고용)"),
-        ("generate_boundary_layers", "generateBoundaryLayers (참고용)"),
-        ("refine_wall_layer", "refineWallLayer (참고용)"),
-        ("snappy_addlayers", "snappy addLayers 독립 (참고용)"),
-        ("extrude_mesh", "extrudeMesh (참고용)"),
     )
     _TIER5_ENGINES: tuple[tuple[str, str], ...] = (
         ("native", "Native Checker · parity 검증"),
