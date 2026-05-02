@@ -211,3 +211,101 @@ def test_bc_overlay_legend():
     assert len(legend) == 2
     assert legend[0][0] == "w1"
     assert legend[1][1] == "inlet"
+
+
+# C: OpenFOAM 0/ field write (BETA2802).
+
+def test_openfoam_field_write_U_p(tmp_path):
+    from desktop.qt_app.bc_face_picker import BCManager, BCAssignment
+    from core.utils.openfoam_field_writer import write_openfoam_fields
+
+    m = BCManager()
+    m.add(BCAssignment(
+        name="inlet", bc_type="velocity_inlet", face_indices=[1, 2],
+        values={"velocity": [2.5, 0.0, 0.0]},
+    ))
+    m.add(BCAssignment(
+        name="outlet", bc_type="pressure_outlet", face_indices=[3, 4],
+        values={"pressure": 0.0},
+    ))
+    m.add(BCAssignment(
+        name="wall", bc_type="wall", face_indices=[5, 6],
+        values={"velocity": [0, 0, 0]},
+    ))
+
+    res = write_openfoam_fields(tmp_path, m, fields=("U", "p"))
+    assert res.success
+    assert res.n_fields_written == 2
+    assert (tmp_path / "0" / "U").exists()
+    assert (tmp_path / "0" / "p").exists()
+
+    u_text = (tmp_path / "0" / "U").read_text()
+    assert "boundaryField" in u_text
+    assert "inlet" in u_text
+    assert "fixedValue" in u_text
+    assert "(2.5 0.0 0.0)" in u_text
+    assert "zeroGradient" in u_text  # outlet U = zeroGradient.
+
+    p_text = (tmp_path / "0" / "p").read_text()
+    assert "outlet" in p_text
+    assert "fixedValue" in p_text
+
+
+def test_openfoam_field_temperature(tmp_path):
+    from desktop.qt_app.bc_face_picker import BCManager, BCAssignment
+    from core.utils.openfoam_field_writer import write_openfoam_fields
+
+    m = BCManager()
+    m.add(BCAssignment(
+        name="hot_wall", bc_type="interface_heat", face_indices=[1],
+        values={"htc": 500.0, "T_ext": 350.0},
+    ))
+    res = write_openfoam_fields(
+        tmp_path, m, fields=("T",), include_temperature=True,
+    )
+    assert res.success
+    t_text = (tmp_path / "0" / "T").read_text()
+    assert "externalWallHeatFluxTemperature" in t_text
+    assert "500.0" in t_text
+    assert "350.0" in t_text
+
+
+def test_openfoam_field_advanced_bc(tmp_path):
+    from desktop.qt_app.bc_face_picker import BCManager, BCAssignment
+    from core.utils.openfoam_field_writer import write_openfoam_fields
+
+    m = BCManager()
+    m.add(BCAssignment(
+        name="fan_in", bc_type="fan", face_indices=[1, 2],
+        values={"pressure_jump": 200.0},
+    ))
+    m.add(BCAssignment(
+        name="periodic_x", bc_type="periodic", face_indices=[3, 4],
+    ))
+    m.add(BCAssignment(
+        name="symm", bc_type="symmetry", face_indices=[5, 6],
+    ))
+    res = write_openfoam_fields(tmp_path, m)
+    assert res.success
+    p_text = (tmp_path / "0" / "p").read_text()
+    assert "fan" in p_text
+    assert "200.0" in p_text
+    u_text = (tmp_path / "0" / "U").read_text()
+    assert "cyclic" in u_text
+    assert "symmetryPlane" in u_text
+
+
+def test_openfoam_bcmanager_export_fields(tmp_path):
+    from desktop.qt_app.bc_face_picker import BCManager, BCAssignment
+    m = BCManager()
+    m.add(BCAssignment(
+        name="inlet", bc_type="velocity_inlet", face_indices=[1],
+        values={"velocity": [1, 0, 0]},
+    ))
+    m.add(BCAssignment(
+        name="outlet", bc_type="outlet", face_indices=[2],
+    ))
+    res = m.export_openfoam_fields(tmp_path)
+    assert res.success
+    assert (tmp_path / "0" / "U").exists()
+    assert (tmp_path / "0" / "p").exists()

@@ -238,6 +238,41 @@ class BCManager:
             return False
         return write_ccmio_boundary_conditions(ccm_path, self.to_ccmio_dict())
 
+    def export_openfoam_fields(
+        self,
+        case_dir,
+        *,
+        fields: tuple = ("U", "p"),
+        include_turbulence: bool = False,
+        include_temperature: bool = False,
+    ):
+        """C / beta2802 — OpenFOAM 0/ field 파일 자동 생성.
+
+        Args:
+            case_dir: case directory.
+            fields: 기본 ('U', 'p').
+            include_turbulence: True 면 k, epsilon, omega, nut.
+            include_temperature: True 면 T.
+
+        Returns:
+            FieldWriteResult.
+        """
+        try:
+            from core.utils.openfoam_field_writer import write_openfoam_fields
+        except Exception as exc:
+            class _Err:
+                success = False
+                message = f"import failed: {exc}"
+                n_fields_written = 0
+                field_paths: list = []
+            return _Err()
+        return write_openfoam_fields(
+            case_dir, self,
+            fields=fields,
+            include_turbulence=include_turbulence,
+            include_temperature=include_temperature,
+        )
+
     def export_face_groups_to_polymesh_boundary(
         self, polymesh_dir, n_total_faces: int,
     ) -> bool:

@@ -146,6 +146,41 @@ def attach_bc_picker(
 
     btn_save.clicked.connect(_save_bc)
 
+    # C / beta2802 — OpenFOAM 0/ field files 자동 생성.
+    btn_save_fields = QPushButton("Save 0/ fields", toolbar)
+    btn_save_fields.setToolTip(
+        "Generate OpenFOAM 0/U, 0/p, 0/T field files for solver",
+    )
+
+    def _save_fields():
+        if len(manager) == 0:
+            QMessageBox.information(parent, "BC", "No BC assigned yet.")
+            return
+        path = QFileDialog.getExistingDirectory(
+            parent, "Select OpenFOAM case directory...",
+        )
+        if not path:
+            return
+        # detect: include T if any patch has temperature/htc value.
+        has_T = any(
+            "temperature" in (ba.values or {})
+            or ba.bc_type == "interface_heat"
+            for ba in manager.assignments
+        )
+        res = manager.export_openfoam_fields(
+            path,
+            fields=("U", "p"),
+            include_turbulence=False,
+            include_temperature=has_T,
+        )
+        QMessageBox.information(
+            parent, "BC",
+            f"OpenFOAM fields:\n{res.message}\n"
+            f"\nfiles:\n" + "\n".join(res.field_paths),
+        )
+
+    btn_save_fields.clicked.connect(_save_fields)
+
     btn_list = QPushButton("List BC", toolbar)
 
     def _list_bc():
@@ -194,6 +229,7 @@ def attach_bc_picker(
     h.addWidget(btn_list)
     h.addWidget(btn_overlay)
     h.addWidget(btn_save)
+    h.addWidget(btn_save_fields)
     h.addWidget(selected_label, stretch=1)
 
     return BCPickerUI(
