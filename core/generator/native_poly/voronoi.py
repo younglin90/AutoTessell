@@ -1503,6 +1503,39 @@ def generate_native_poly_voronoi(
                             new_cells=_retry_r2.n_cells,
                         )
                         return _inject_si(_retry_r2)
+                    # GAP-EXTREME-V2 / beta2781 — 2차 retry: seed_density ×2.
+                    # 1017017 (extreme, cells=19, C) 같이 small cell count 케이스
+                    # 가 retry 후에도 grade C 잔류 → seed_density 증가로 회복.
+                    if (
+                        _retry_r2.success
+                        and _retry_r2.n_cells <= 50
+                        and _retry_r2.quality_grade in ("C", "D")
+                    ):
+                        try:
+                            _retry_r3 = _generate_native_poly_voronoi_inner(
+                                _r2.vertices.astype(np.float64),
+                                _r2.faces.astype(np.int64),
+                                case_dir,
+                                target_edge_length=target_edge_length,
+                                seed_density=int(seed_density) * 2,
+                                n_lloyd=int(n_lloyd), lp_p=2.0,
+                            )
+                            if (
+                                _retry_r3.success
+                                and _grade_rank.get(_retry_r3.quality_grade, 0)
+                                > _grade_rank.get(_retry_r2.quality_grade, 0)
+                            ):
+                                log.info(
+                                    "native_poly_p2_grade_retry3_accepted",
+                                    old_grade=_retry_r2.quality_grade,
+                                    new_grade=_retry_r3.quality_grade,
+                                    new_cells=_retry_r3.n_cells,
+                                    seed_density_x2=True,
+                                )
+                                return _inject_si(_retry_r3)
+                        except Exception as _e3:
+                            log.debug("native_poly_p2_retry3_skipped",
+                                      reason=str(_e3)[:120])
             except Exception as exc:
                 log.debug("native_poly_p2_grade_retry_skipped", reason=str(exc)[:120])
         # voronoi 가 chosen 이면 case_dir 가 이미 그 결과로 채워짐.
