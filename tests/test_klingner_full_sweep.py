@@ -309,3 +309,129 @@ def test_openfoam_bcmanager_export_fields(tmp_path):
     assert res.success
     assert (tmp_path / "0" / "U").exists()
     assert (tmp_path / "0" / "p").exists()
+
+
+# Self-impl: METRIC-TENSOR sweep (BETA2803).
+
+def test_metric_tensor_isotropic():
+    from core.generator.native_tet.metric_tensor_sweep import (
+        compute_isotropic_metric,
+    )
+    pts = np.random.RandomState(0).rand(20, 3).astype(np.float64)
+    tets = np.array([[0, 1, 2, 3]], dtype=np.int64)
+    M = compute_isotropic_metric(pts, tets, target_edge=0.5)
+    assert M.shape == (20, 3, 3)
+    # M[i] = (1/0.25) * I = 4 * I.
+    assert abs(M[0, 0, 0] - 4.0) < 1e-9
+    assert abs(M[0, 0, 1]) < 1e-9
+
+
+def test_metric_edge_length_sq():
+    from core.generator.native_tet.metric_tensor_sweep import metric_edge_length_sq
+    p0 = np.array([0, 0, 0])
+    p1 = np.array([1, 0, 0])
+    M = np.eye(3) * 4.0
+    L_sq = metric_edge_length_sq(p0, p1, M, M)
+    assert abs(float(L_sq) - 4.0) < 1e-9
+
+
+def test_metric_tensor_sweep_too_small():
+    from core.generator.native_tet.metric_tensor_sweep import metric_tensor_sweep
+    pts = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=np.float64)
+    tets = np.array([[0, 1, 2, 3]], dtype=np.int64)
+    new_pts, new_tets, r = metric_tensor_sweep(pts, tets, n_cycles=2)
+    # 1 tet < 50 → too_small (no change).
+    assert new_tets.shape == tets.shape
+
+
+# CCMIO-NATIVE Pro-STAR mimic (BETA2804).
+
+def test_ccmio_native_cell_classify():
+    from core.utils.ccmio_native_binary import _classify_cell_pro_star
+    # tet: 4 tri faces → 1.
+    assert _classify_cell_pro_star(4, [3, 3, 3, 3]) == 1
+    # hex: 6 quad → 4.
+    assert _classify_cell_pro_star(6, [4, 4, 4, 4, 4, 4]) == 4
+    # pyr: 4 tri + 1 quad → 2.
+    assert _classify_cell_pro_star(5, [3, 3, 3, 3, 4]) == 2
+    # wedge: 2 tri + 3 quad → 3.
+    assert _classify_cell_pro_star(5, [3, 3, 4, 4, 4]) == 3
+    # poly: anything else → 5.
+    assert _classify_cell_pro_star(7, [3, 3, 4, 5, 5, 6, 6]) == 5
+
+
+def test_ccmio_native_simple_polymesh_read(tmp_path):
+    """간단 polyMesh fixture 생성 후 _simple_polymesh_read 테스트."""
+    from core.utils.ccmio_native_binary import _simple_polymesh_read
+    pdir = tmp_path / "polyMesh"
+    pdir.mkdir()
+    (pdir / "points").write_text(
+        "FoamFile\n3\n(\n(0 0 0)\n(1 0 0)\n(0 1 0)\n)\n",
+    )
+    (pdir / "faces").write_text(
+        "1\n(\n3(0 1 2)\n)\n",
+    )
+    (pdir / "owner").write_text("1\n(\n0\n)\n")
+    (pdir / "neighbour").write_text("0\n(\n)\n")
+    (pdir / "boundary").write_text(
+        "FoamFile\n1\n(\n    inlet\n    {\n"
+        "        type            patch;\n"
+        "        nFaces          1;\n"
+        "        startFace       0;\n"
+        "    }\n)\n",
+    )
+    pts, faces, owner, nbr, bnd = _simple_polymesh_read(pdir)
+    assert pts is not None and pts.shape == (3, 3)
+    assert len(faces) == 1
+    assert len(owner) == 1
+    assert len(bnd) == 1 and bnd[0]["name"] == "inlet"
+
+
+def test_ccmio_native_write_pro_star(tmp_path):
+    pytest.importorskip("h5py")
+    import h5py
+    from core.utils.ccmio_native_binary import write_ccmio_native_pro_star
+
+    # fake polyMesh: 1 tet + 4 tri patches.
+    pdir = tmp_path / "polyMesh"
+    pdir.mkdir()
+    (pdir / "points").write_text(
+        "FoamFile\n4\n(\n(0 0 0)\n(1 0 0)\n(0 1 0)\n(0 0 1)\n)\n",
+    )
+    (pdir / "faces").write_text(
+        "4\n(\n3(0 1 2)\n3(0 1 3)\n3(0 2 3)\n3(1 2 3)\n)\n",
+    )
+    (pdir / "owner").write_text("4\n(\n0\n0\n0\n0\n)\n")
+    (pdir / "neighbour").write_text("0\n(\n)\n")
+    (pdir / "boundary").write_text(
+        "FoamFile\n1\n(\n    walls\n    {\n"
+        "        type            wall;\n"
+        "        nFaces          4;\n"
+        "        startFace       0;\n"
+        "    }\n)\n",
+    )
+
+    out = tmp_path / "test.ccm"
+    res = write_ccmio_native_pro_star(pdir, out, big_endian=True)
+    assert res.success, f"failed: {res.message}"
+    assert res.n_vertices == 4
+    assert res.n_cells == 1
+    assert res.pro_star_compat_level == "HDF1.4-mimic"
+
+    # verify hdf5 structure.
+    with h5py.File(str(out), "r") as f:
+        assert "State" in f
+        assert "State/Default/Topology/Mesh-1" in f
+        mg = f["State/Default/Topology/Mesh-1"]
+        assert "Vertices/Coordinates" in mg
+        assert "Cells/CellType" in mg
+        assert "BoundaryFaces-1" in mg
+        # cell type = tet → 1.
+        ct = mg["Cells/CellType"][...]
+        assert int(ct[0]) == 1
+        # attrs.
+        assert mg.attrs["NumVertices"] == 4
+        assert mg.attrs["NumCells"] == 1
+    # root attrs.
+    with h5py.File(str(out), "r") as f:
+        assert f.attrs["AdapcoCompat"] == b"HDF5-mimic-v1"

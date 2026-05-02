@@ -3943,6 +3943,56 @@ def generate_native_tet(
         except Exception as exc:
             log.debug("native_tet_klingner_full_skipped", reason=str(exc)[:120])
 
+    # METRIC-TENSOR / beta2803 — curvature anisotropic metric guided sweep.
+    # surface curvature → anisotropic metric tensor → collapse/split 우선순위.
+    # self-impl tet 단독 grade A 도달 시도.
+    if grade in ("B", "C", "D", "?") and final_tets.shape[0] > 100:
+        try:
+            from core.generator.native_tet.metric_tensor_sweep import (
+                metric_tensor_sweep, compute_curvature_metric,
+            )
+            _EDGES_M = np.array([[0,1],[0,2],[0,3],[1,2],[1,3],[2,3]], dtype=np.int64)
+            _e_idx_m = final_tets[:, _EDGES_M]
+            _e_lens_m = np.linalg.norm(
+                final_pts[_e_idx_m[..., 1]] - final_pts[_e_idx_m[..., 0]], axis=-1,
+            )
+            _h_target_m = float(np.median(_e_lens_m))
+            _metric = compute_curvature_metric(
+                V, F, n_total_v=int(final_pts.shape[0]),
+                base_edge=_h_target_m, aniso_factor=2.0,
+            )
+            _ns_m = int(min(V.shape[0], final_pts.shape[0]))
+            _lock_m = np.arange(_ns_m, dtype=np.int64)
+            _new_pts_m, _new_tets_m, _mt_res = metric_tensor_sweep(
+                final_pts, final_tets,
+                n_cycles=2,
+                target_edge=_h_target_m,
+                metric=_metric,
+                locked_vertex_ids=_lock_m,
+                monotone_min_drop=0.025,
+            )
+            if _mt_res.accepted:
+                final_pts = _new_pts_m
+                final_tets = _new_tets_m
+                log.info(
+                    "native_tet_metric_tensor_sweep",
+                    cycles=_mt_res.n_cycles_used,
+                    aniso_max=round(_mt_res.metric_aniso_max, 3),
+                    mq_before=round(_mt_res.pre_mean_q, 4),
+                    mq_after=round(_mt_res.post_mean_q, 4),
+                    n_collapse=_mt_res.n_collapse,
+                    n_split=_mt_res.n_split,
+                    n_flip=_mt_res.n_flip,
+                )
+                if _mt_res.post_mean_q >= 0.20:
+                    grade = "A"
+                elif _mt_res.post_mean_q >= 0.15:
+                    grade = "B"
+                elif _mt_res.post_mean_q >= 0.10:
+                    grade = "C"
+        except Exception as exc:
+            log.debug("native_tet_metric_tensor_skipped", reason=str(exc)[:120])
+
     # GAP-SELF / beta2791 — final aggressive AMIPS multistage smoothing.
     # P4-C 진입 직전, grade<A 인 self-impl mesh 에 강력한 multi-alpha sweep 적용.
     # alphas=(0.5, 1.0, 2.0, 4.0) — 점진적으로 sliver energy weight 강화.
