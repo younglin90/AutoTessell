@@ -166,3 +166,48 @@ def test_bc_export_polymesh_boundary(tmp_path):
     assert "inlet" in content
     assert "wall" in content
     assert "velocity_inlet" in content
+
+
+# E: 확장 BC types (BETA2800).
+
+def test_bc_extended_types_present():
+    from desktop.qt_app.bc_face_picker import BC_TYPES, BC_DEFAULT_VALUES
+    advanced = ["periodic", "cyclic_ami", "interface_heat",
+                "sliding_mesh", "fan", "porous_jump", "wedge",
+                "mass_flow_inlet", "outflow"]
+    for t in advanced:
+        assert t in BC_TYPES, f"{t} missing from BC_TYPES"
+        assert t in BC_DEFAULT_VALUES, f"{t} missing default values"
+
+
+def test_bc_extended_default_values():
+    from desktop.qt_app.bc_face_picker import BC_DEFAULT_VALUES
+    assert "omega" in BC_DEFAULT_VALUES["sliding_mesh"]
+    assert "axis" in BC_DEFAULT_VALUES["sliding_mesh"]
+    assert "pressure_jump" in BC_DEFAULT_VALUES["fan"]
+    assert "resistance" in BC_DEFAULT_VALUES["porous_jump"]
+    assert "htc" in BC_DEFAULT_VALUES["interface_heat"]
+
+
+# D: BC overlay color map (BETA2799).
+
+def test_bc_overlay_color_map():
+    from desktop.qt_app.bc_overlay import BC_COLOR_MAP, get_bc_color
+    assert "wall" in BC_COLOR_MAP
+    assert "fan" in BC_COLOR_MAP
+    assert "periodic" in BC_COLOR_MAP
+    # default fallback.
+    c = get_bc_color("nonexistent_xyz")
+    assert isinstance(c, tuple) and len(c) == 3
+
+
+def test_bc_overlay_legend():
+    from desktop.qt_app.bc_face_picker import BCManager, BCAssignment
+    from desktop.qt_app.bc_overlay import patch_color_legend
+    m = BCManager()
+    m.add(BCAssignment(name="w1", bc_type="wall", face_indices=[1]))
+    m.add(BCAssignment(name="i1", bc_type="inlet", face_indices=[2]))
+    legend = patch_color_legend(m)
+    assert len(legend) == 2
+    assert legend[0][0] == "w1"
+    assert legend[1][1] == "inlet"
