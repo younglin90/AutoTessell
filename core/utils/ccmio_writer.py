@@ -505,3 +505,183 @@ def read_ccmio_solution(
         return out
     except Exception:
         return None
+
+
+# ---------------------------------------------------------------------------
+# CCMIO-FULL / beta2792 — boundary conditions + zone metadata + regions table.
+# StarCCM+ 의 .ccm 은 mesh + solution 외에:
+#   /BoundaryConditions/<patch>/Type, Value (Dirichlet / Neumann / 등).
+#   /CellZones/<zone>/CellList (subset of cells).
+#   /Regions/<region>/PhaseFraction (multiphase).
+# 추가하는 metadata 가 Pro-STAR import 시 자동 인식.
+# ---------------------------------------------------------------------------
+
+
+def write_ccmio_boundary_conditions(
+    ccm_path: str | Path,
+    bc_dict: dict,
+) -> bool:
+    """patch 별 boundary condition metadata 추가.
+
+    Args:
+        ccm_path: 기존 .ccm 파일.
+        bc_dict: {"patch_name": {
+            "type": "wall" | "inlet" | "outlet" | "symmetry" | ...,
+            "values": dict (e.g., {"velocity": [1.0, 0, 0], "pressure": 0.0}),
+            "comment": optional str,
+        }}
+
+    Returns:
+        성공 여부.
+    """
+    try:
+        import h5py
+    except ImportError:
+        return False
+
+    pth = Path(ccm_path)
+    if not pth.exists():
+        return False
+
+    try:
+        with h5py.File(str(pth), "a") as f:
+            bc_grp = f.require_group("BoundaryConditions")
+            for patch_name, info in bc_dict.items():
+                if patch_name in bc_grp:
+                    del bc_grp[patch_name]
+                pgrp = bc_grp.create_group(str(patch_name))
+                pgrp.attrs["Type"] = np.bytes_(
+                    str(info.get("type", "wall")).encode("utf-8"),
+                )
+                if "comment" in info:
+                    pgrp.attrs["Comment"] = np.bytes_(
+                        str(info["comment"]).encode("utf-8"),
+                    )
+                values = info.get("values", {})
+                for vname, vdata in values.items():
+                    arr = np.asarray(vdata)
+                    pgrp.create_dataset(str(vname), data=arr)
+        return True
+    except Exception:
+        return False
+
+
+def read_ccmio_boundary_conditions(ccm_path: str | Path) -> dict | None:
+    """boundary conditions read.
+
+    Returns:
+        {patch_name: {"type": str, "values": dict, "comment": optional str}}.
+    """
+    try:
+        import h5py
+    except ImportError:
+        return None
+
+    pth = Path(ccm_path)
+    if not pth.exists():
+        return None
+
+    out: dict = {}
+    try:
+        with h5py.File(str(pth), "r") as f:
+            if "BoundaryConditions" not in f:
+                return None
+            bc_grp = f["BoundaryConditions"]
+            for patch_name in bc_grp.keys():
+                pgrp = bc_grp[patch_name]
+                ptype = pgrp.attrs.get("Type", b"wall")
+                if isinstance(ptype, bytes):
+                    ptype = ptype.decode("utf-8", errors="replace")
+                values = {}
+                for vname in pgrp.keys():
+                    values[vname] = pgrp[vname][...]
+                entry = {"type": ptype, "values": values}
+                if "Comment" in pgrp.attrs:
+                    c = pgrp.attrs["Comment"]
+                    if isinstance(c, bytes):
+                        c = c.decode("utf-8", errors="replace")
+                    entry["comment"] = c
+                out[patch_name] = entry
+        return out
+    except Exception:
+        return None
+
+
+def write_ccmio_cell_zones(
+    ccm_path: str | Path,
+    zones: dict,
+) -> bool:
+    """cell zones (subset of cells) write.
+
+    Args:
+        ccm_path: 기존 .ccm.
+        zones: {"zone_name": {
+            "cell_ids": ndarray (1-based int32),
+            "material": optional str (e.g., "fluid", "solid"),
+            "comment": optional str,
+        }}
+
+    Returns:
+        성공 여부.
+    """
+    try:
+        import h5py
+    except ImportError:
+        return False
+
+    pth = Path(ccm_path)
+    if not pth.exists():
+        return False
+
+    try:
+        with h5py.File(str(pth), "a") as f:
+            zgrp = f.require_group("CellZones")
+            for zname, zinfo in zones.items():
+                if zname in zgrp:
+                    del zgrp[zname]
+                zg = zgrp.create_group(str(zname))
+                cell_ids = np.asarray(zinfo.get("cell_ids", []), dtype=np.int32)
+                zg.create_dataset(
+                    "CellList", data=cell_ids,
+                    compression="gzip", compression_opts=4,
+                )
+                if "material" in zinfo:
+                    zg.attrs["Material"] = np.bytes_(
+                        str(zinfo["material"]).encode("utf-8"),
+                    )
+                if "comment" in zinfo:
+                    zg.attrs["Comment"] = np.bytes_(
+                        str(zinfo["comment"]).encode("utf-8"),
+                    )
+        return True
+    except Exception:
+        return False
+
+
+def read_ccmio_cell_zones(ccm_path: str | Path) -> dict | None:
+    """cell zones read."""
+    try:
+        import h5py
+    except ImportError:
+        return None
+    pth = Path(ccm_path)
+    if not pth.exists():
+        return None
+    out: dict = {}
+    try:
+        with h5py.File(str(pth), "r") as f:
+            if "CellZones" not in f:
+                return None
+            zgrp = f["CellZones"]
+            for zname in zgrp.keys():
+                zg = zgrp[zname]
+                entry = {"cell_ids": zg["CellList"][...] if "CellList" in zg else np.zeros(0)}
+                if "Material" in zg.attrs:
+                    m = zg.attrs["Material"]
+                    if isinstance(m, bytes):
+                        m = m.decode("utf-8", errors="replace")
+                    entry["material"] = m
+                out[zname] = entry
+        return out
+    except Exception:
+        return None
