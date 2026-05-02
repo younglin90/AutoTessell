@@ -1790,69 +1790,78 @@ class AutoTessellWindow:  # type: ignore[misc]
         Tier 3 (볼륨 메쉬)는 상위 '메시 엔진' 섹션에서 이미 선택하므로 제외.
         기본적으로 Tier 0/1/2/4는 비활성화 — WildMesh 단독으로 돌릴 수 있게.
         """
-        from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QWidget
+        # GUI-SIMPLIFY / beta2814 — Option C: mesh_type 1콤보 + BL 체크박스만 노출.
+        # Tier 3 (볼륨) → Mesh Type combo (tet / hex / poly).
+        # Tier 4 (BL) → 체크박스 1개 (체크 시 auto, 미체크 시 disabled).
+        # Tier 5 (검증) → 항상 native (UI 숨김).
+        from PySide6.QtWidgets import (
+            QCheckBox, QComboBox, QHBoxLayout, QLabel, QWidget,
+        )
 
-        f, v = self._section_frame("Tier 엔진 (고급)")
+        f, v = self._section_frame("메쉬 설정")
 
-        # v0.4 Native-First: Tier 3 (볼륨 메쉬) 를 별도 "메시 엔진" 섹션에서
-        # GUI-CLEAN / beta2813 — Tier 0 (표면 수리) 도 제거.
-        # 표면 수리는 strategist/preprocessor 내부에서 자동 (native_repair default).
-        # 사용자 노출 Tier (3개): Tier 3 (볼륨) + Tier 4 (BL) + Tier 5 (검증).
-        rows: list[tuple[str, str, tuple[tuple[str, str], ...], str]] = [
-            ("Tier 3 · 볼륨 메쉬", "tier3", self._TIER3_ENGINES, "native_tet"),
-            ("Tier 4 · 경계층", "tier4", self._TIER4_ENGINES, "auto"),
-            ("Tier 5 · 메쉬 검증", "tier5", self._TIER5_ENGINES, "native"),
-        ]
+        # --- Mesh Type combo (Tier 3) ---
+        row1 = QWidget()
+        row1.setStyleSheet("background: transparent;")
+        rl1 = QHBoxLayout(row1)
+        rl1.setContentsMargins(0, 0, 0, 0); rl1.setSpacing(8)
+        lbl1 = QLabel("Mesh Type")
+        lbl1.setStyleSheet(
+            f"color: {PALETTE['text_2']}; font-size: 11px; "
+            f"background: transparent; min-width: 120px;"
+        )
+        rl1.addWidget(lbl1)
 
-        for label_text, slot, options, default in rows:
-            row = QWidget()
-            row.setStyleSheet("background: transparent;")
-            rl = QHBoxLayout(row)
-            rl.setContentsMargins(0, 0, 0, 0); rl.setSpacing(8)
+        cb_mesh = QComboBox()
+        cb_mesh.setStyleSheet(self._dark_combo_qss())
+        # 핵심 3 mesh type 만 노출 (CLAUDE.md mesh_type 정책).
+        for value, display in [
+            ("native_tet", "Tet · 복잡 형상 강건"),
+            ("native_hex", "Hex_dominant · BL 품질 우수"),
+            ("native_poly", "Poly · 셀 수 최소 (gradient 해소)"),
+        ]:
+            cb_mesh.addItem(display, value)
+        cb_mesh.setCurrentIndex(0)  # default: native_tet.
+        cb_mesh.currentIndexChanged.connect(
+            lambda _idx: self._on_engine_changed()
+        )
+        # alias 로 기존 핸들러 호환.
+        self._engine_combo = cb_mesh
+        self._tier_combo = cb_mesh
+        self._tier3_engine_combo = cb_mesh
+        rl1.addWidget(cb_mesh, stretch=1)
+        v.addWidget(row1)
 
-            lbl = QLabel(label_text)
-            lbl.setStyleSheet(
-                f"color: {PALETTE['text_2']}; font-size: 11px; "
-                f"background: transparent; min-width: 120px;"
-            )
-            rl.addWidget(lbl)
+        # --- BL checkbox (Tier 4) ---
+        row2 = QWidget()
+        row2.setStyleSheet("background: transparent;")
+        rl2 = QHBoxLayout(row2)
+        rl2.setContentsMargins(0, 0, 0, 0); rl2.setSpacing(8)
+        self._bl_check = QCheckBox("Boundary Layer 적용 (auto)")
+        self._bl_check.setStyleSheet(
+            f"color: {PALETTE['text_2']}; font-size: 11px; "
+            f"background: transparent;"
+        )
+        self._bl_check.setChecked(True)   # default ON.
+        self._bl_check.setToolTip(
+            "체크 시: quality_level 기반 자동 BL.\n"
+            "미체크 시: BL 비활성화 (Euler/inviscid simulation 용)."
+        )
+        # 가짜 combobox alias — 기존 _tier4_engine_text() 호환.
+        class _BLComboShim:
+            def __init__(self, check):
+                self._check = check
+            def currentData(self):
+                return "auto" if self._check.isChecked() else "disabled"
+        self._tier4_engine_combo = _BLComboShim(self._bl_check)
+        rl2.addWidget(self._bl_check)
+        rl2.addStretch(1)
+        v.addWidget(row2)
 
-            cb = QComboBox()
-            cb.setStyleSheet(self._dark_combo_qss())
-            if slot == "tier3":
-                # Tier 3 는 풀 ENGINE_GROUPS (참고용 외부 엔진 포함) 모델 사용.
-                model, default_idx = self._make_engine_combo_model(cb)
-                cb.setModel(model)
-                cb.setCurrentIndex(default_idx)
-            else:
-                for value, display in options:
-                    cb.addItem(display, value)
-                # 기본값 설정
-                for i in range(cb.count()):
-                    if cb.itemData(i) == default:
-                        cb.setCurrentIndex(i)
-                        break
-            if slot == "tier3":
-                # Tier 3 (볼륨 메쉬) 는 기존 "메시 엔진" 섹션과 같은 역할.
-                # _engine_combo / _tier_combo 와 동일 객체로 alias 해 기존
-                # 파이프라인 / 이벤트 핸들러 (_on_engine_changed, _tier_combo_text)
-                # 가 그대로 동작한다.
-                self._engine_combo = cb
-                self._tier_combo = cb
-                cb.currentIndexChanged.connect(
-                    lambda _idx: self._on_engine_changed()
-                )
-            else:
-                cb.currentIndexChanged.connect(
-                    lambda _idx: self._refresh_tier_strip_engine_labels()
-                )
-            setattr(self, f"_{slot}_engine_combo", cb)
-            rl.addWidget(cb, stretch=1)
+        # Tier 5 (검증) — 항상 native, UI 노출 안 함.
+        # _tier5_engine_combo 미생성 → _tier5_engine_text() fallback "native".
+        self._tier5_engine_combo = None
 
-            v.addWidget(row)
-
-        # Tier 2 콤보는 사이드바의 L2 엔진 콤보와 동기화를 위해 참조 유지.
-        # (기존 _remesh_engine_combo 는 preprocess 섹션의 콤보)
         return f
 
     def _tier0_engine_text(self) -> str:
