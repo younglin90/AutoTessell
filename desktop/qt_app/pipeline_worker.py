@@ -87,6 +87,8 @@ class PipelineWorker:
         allow_ai_fallback: bool = False,
         validator_engine: str = "checkmesh",
         strict_tier: bool = False,
+        # GUI-FIX / beta2811 — beta2299 호환: GUI cross_engine_fallback 통과.
+        cross_engine_fallback: bool = False,
     ) -> PipelineWorker:  # type: ignore[misc]
         """QThread 를 동적으로 상속한 인스턴스를 반환한다."""
         from PySide6.QtCore import QThread, Signal
@@ -292,6 +294,7 @@ class PipelineWorker:
             allow_ai_fallback=allow_ai_fallback,
             validator_engine=validator_engine,
             strict_tier=strict_tier,
+            cross_engine_fallback=cross_engine_fallback,
         )
         return instance  # type: ignore[return-value]
 
