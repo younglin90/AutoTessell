@@ -142,3 +142,62 @@ def test_dd6_poly_aspect_stretched():
     r = poly_cell_aspect(pts, [np.arange(8)])
     assert r.aspect_max == 10.0
     assert r.n_above_5 == 1
+
+
+# CCMIO-FULL (BETA2792) tests.
+
+def test_ccmio_full_bc_roundtrip(tmp_path):
+    pytest.importorskip("h5py")
+    import h5py
+    from core.utils.ccmio_writer import (
+        write_ccmio_boundary_conditions,
+        read_ccmio_boundary_conditions,
+    )
+    p = tmp_path / "test.h5"
+    with h5py.File(p, "w") as f:
+        f.create_group("Meshes/Mesh-0")
+    bc = {
+        "wall": {"type": "wall", "values": {"velocity": np.array([0.0, 0, 0])}},
+        "inlet": {"type": "inlet",
+                  "values": {"velocity": np.array([1.0, 0, 0])},
+                  "comment": "main flow"},
+    }
+    assert write_ccmio_boundary_conditions(p, bc)
+    rd = read_ccmio_boundary_conditions(p)
+    assert "wall" in rd and "inlet" in rd
+    assert rd["wall"]["type"] == "wall"
+    assert rd["inlet"]["comment"] == "main flow"
+    assert np.allclose(rd["inlet"]["values"]["velocity"], [1.0, 0, 0])
+
+
+def test_ccmio_full_zones_roundtrip(tmp_path):
+    pytest.importorskip("h5py")
+    import h5py
+    from core.utils.ccmio_writer import (
+        write_ccmio_cell_zones,
+        read_ccmio_cell_zones,
+    )
+    p = tmp_path / "test.h5"
+    with h5py.File(p, "w") as f:
+        f.create_group("Meshes/Mesh-0")
+    zones = {
+        "fluid": {"cell_ids": np.array([1, 2, 3], dtype=np.int32),
+                  "material": "air"},
+        "solid": {"cell_ids": np.array([4, 5], dtype=np.int32)},
+    }
+    assert write_ccmio_cell_zones(p, zones)
+    rd = read_ccmio_cell_zones(p)
+    assert "fluid" in rd and "solid" in rd
+    assert rd["fluid"]["material"] == "air"
+    assert len(rd["fluid"]["cell_ids"]) == 3
+    assert "material" not in rd["solid"]  # not provided
+
+
+def test_ccmio_full_bc_missing_path(tmp_path):
+    from core.utils.ccmio_writer import (
+        write_ccmio_boundary_conditions,
+        read_ccmio_boundary_conditions,
+    )
+    p = tmp_path / "missing.h5"
+    assert not write_ccmio_boundary_conditions(p, {"x": {"type": "wall"}})
+    assert read_ccmio_boundary_conditions(p) is None
