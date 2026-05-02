@@ -411,3 +411,97 @@ def read_ccmio(input_path: str | Path) -> dict[str, Any] | None:
             }
     except Exception:
         return None
+
+
+# ---------------------------------------------------------------------------
+# CCMIO-EXT / beta2784 — Solution data (cell field) write/read.
+# 실 .ccm 파일은 mesh 외 calculation result (pressure/velocity/T) 도 포함.
+# /Calculations/<name>/PhaseM/CellFieldValue 구조 reverse-engineered.
+# StarCCM+ 와 정확한 호환은 Pro-STAR validation 필요하지만 HDF5 layer
+# 자체는 표준 — 다른 CCMIO reader (Tecplot, ParaView CCM plugin) 도 read 가능.
+# ---------------------------------------------------------------------------
+
+
+def write_ccmio_solution(
+    ccm_path: str | Path,
+    cell_fields: dict,
+    *,
+    calculation_name: str = "AutoTessell-Calc",
+    phase: int = 0,
+) -> bool:
+    """기존 CCMIO 파일에 cell-centered solution field 추가.
+
+    Args:
+        ccm_path: 기존 .ccm/.h5 파일 (mesh write 후).
+        cell_fields: {"FieldName": ndarray(Nc,) or (Nc, 3)}.
+            scalar 는 (Nc,), vector 는 (Nc, 3). int 또는 float OK.
+        calculation_name: /Calculations/<name>/ group label.
+        phase: phase index (multiphase 지원).
+
+    Returns:
+        성공 여부.
+    """
+    try:
+        import h5py
+    except ImportError:
+        return False
+
+    pth = Path(ccm_path)
+    if not pth.exists():
+        return False
+
+    try:
+        with h5py.File(str(pth), "a") as f:
+            calc_grp = f.require_group(f"Calculations/{calculation_name}")
+            ph_grp = calc_grp.require_group(f"Phase{int(phase)}")
+            for fname, arr in cell_fields.items():
+                arr = np.asarray(arr)
+                if arr.ndim not in (1, 2):
+                    continue
+                if fname in ph_grp:
+                    del ph_grp[fname]
+                ds = ph_grp.create_dataset(
+                    fname, data=arr, compression="gzip", compression_opts=4,
+                )
+                ds.attrs["FieldType"] = (
+                    "scalar" if arr.ndim == 1 else "vector"
+                )
+                ds.attrs["Location"] = "cell"
+                ds.attrs["NumComponents"] = int(arr.shape[1] if arr.ndim == 2 else 1)
+        return True
+    except Exception:
+        return False
+
+
+def read_ccmio_solution(
+    ccm_path: str | Path,
+    *,
+    calculation_name: str = "AutoTessell-Calc",
+    phase: int = 0,
+) -> dict | None:
+    """CCMIO solution field read.
+
+    Returns:
+        {"FieldName": ndarray, ...} or None.
+    """
+    try:
+        import h5py
+    except ImportError:
+        return None
+
+    pth = Path(ccm_path)
+    if not pth.exists():
+        return None
+
+    out: dict = {}
+    try:
+        with h5py.File(str(pth), "r") as f:
+            grp_path = f"Calculations/{calculation_name}/Phase{int(phase)}"
+            if grp_path not in f:
+                return None
+            ph_grp = f[grp_path]
+            for fname in ph_grp.keys():
+                out[fname] = ph_grp[fname][...]
+        return out
+    except Exception:
+        return None
