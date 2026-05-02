@@ -3902,6 +3902,50 @@ def generate_native_tet(
         except Exception:
             pass
 
+    # GAP-SELF / beta2791 — final aggressive AMIPS multistage smoothing.
+    # P4-C 진입 직전, grade<A 인 self-impl mesh 에 강력한 multi-alpha sweep 적용.
+    # alphas=(0.5, 1.0, 2.0, 4.0) — 점진적으로 sliver energy weight 강화.
+    # n_iter_per=2 (보통 1) → 더 깊은 minimization. monotone guard (자체 보유).
+    # P4-C fallback 직전 self-impl 의 마지막 회복 기회 — 외부 fallback 없을 때
+    # (env P4C OFF) 에도 self-impl 단독 grade A 향상 가능.
+    if grade in ("B", "C", "D", "?"):
+        try:
+            from core.generator.native_tet.amips import smooth_amips_multistage as _ams
+            from core.generator.native_tet.quality import snapshot as _qs_self
+            _q_pre_self = _qs_self(final_pts, final_tets)
+            _mq_pre_self = float(_q_pre_self.mean_q)
+            if final_tets.shape[0] > 100:
+                _lock_ids_self = np.arange(int(min(V.shape[0], final_pts.shape[0])),
+                                            dtype=np.int64)
+                _, _new_pts_self = _ams(
+                    final_pts, final_tets,
+                    locked_vertex_ids=_lock_ids_self,
+                    alphas=(0.5, 1.0, 2.0, 4.0),
+                    n_iter_per=2,
+                    step_init=0.1,
+                )
+                _q_post_self = _qs_self(_new_pts_self, final_tets)
+                _mq_post_self = float(_q_post_self.mean_q)
+                _min_drop_self = float(_q_pre_self.min_q) - float(_q_post_self.min_q)
+                # 채택: mean 향상 + worst drop ≤ 0.020 (RRR2 임계).
+                if _mq_post_self > _mq_pre_self and _min_drop_self <= 0.020:
+                    final_pts = _new_pts_self
+                    log.info(
+                        "native_tet_gap_self_amips_multistage",
+                        mq_before=round(_mq_pre_self, 4),
+                        mq_after=round(_mq_post_self, 4),
+                        min_drop=round(_min_drop_self, 5),
+                    )
+                    # grade 재평가.
+                    if _mq_post_self >= 0.20:
+                        grade = "A"
+                    elif _mq_post_self >= 0.15:
+                        grade = "B"
+                    elif _mq_post_self >= 0.10:
+                        grade = "C"
+        except Exception as exc:
+            log.debug("native_tet_gap_self_skipped", reason=str(exc)[:120])
+
     # P4-C (beta2236) — grade<A 시 pytetwild fallback.
     # native_tet 의 self-구현 algorithm 이 grade A 도달 못한 mesh 만 fTetWild
     # python wrapper (pytetwild) 로 재생성. 결과 final_pts/final_tets 교체
