@@ -324,6 +324,46 @@ def generate_native_tet(
             except Exception as exc:
                 log.debug("native_tet_auto_fix_skipped", reason=str(exc))
 
+            # L3-AI / beta2807 — voxel SDF + marching cubes 재구성.
+            # extreme fragile input (SI > 500) 강제 회복.
+            # env AUTO_TESSELL_L3_AI_REPAIR=1 활성 (default OFF — 시간 비싸).
+            if os.environ.get("AUTO_TESSELL_L3_AI_REPAIR", "0") == "1":
+                try:
+                    from core.preprocessor.l3_ai_surface_repair import (
+                        voxel_sdf_repair,
+                    )
+                    from core.preprocessor.native_repair.self_intersect import (
+                        detect_self_intersections,
+                    )
+                    _si_chk = detect_self_intersections(V, F)
+                    if int(_si_chk.n_intersections) > 500:
+                        _l3_res_size = int(os.environ.get(
+                            "AUTO_TESSELL_L3_VOXEL_RES", "64",
+                        ))
+                        V_l3, F_l3, l3_res = voxel_sdf_repair(
+                            V, F,
+                            voxel_resolution=_l3_res_size,
+                            smooth_iters=2,
+                            iso_value=0.0,
+                        )
+                        if l3_res.success and F_l3.shape[0] >= 4:
+                            V = V_l3.astype(np.float64)
+                            F = F_l3.astype(np.int64)
+                            log.info(
+                                "native_tet_l3_ai_voxel_repair",
+                                method=l3_res.method,
+                                voxel_res=l3_res.voxel_resolution,
+                                pre_si=l3_res.pre_si_count,
+                                post_si=l3_res.post_si_count,
+                                pre_mq=round(l3_res.pre_mq, 4),
+                                post_mq=round(l3_res.post_mq, 4),
+                                v_after=l3_res.post_n_vertices,
+                                f_after=l3_res.post_n_faces,
+                            )
+                except Exception as exc:
+                    log.debug("native_tet_l3_ai_skipped",
+                              reason=str(exc)[:120])
+
             # AGGRESSIVE-REPAIR / beta2805 — input fragility (high SI count
             # or low surface mq) 케이스 강력 pre-pass.
             # env AUTO_TESSELL_AGGR_REPAIR=1 활성 (default OFF — 안전).

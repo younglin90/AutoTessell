@@ -479,6 +479,107 @@ def test_hdf14_raw_magic_check(tmp_path):
     assert read_ccmio_hdf14_raw_header(p) is None
 
 
+# L3-AI surface repair (BETA2807).
+
+def test_l3_ai_voxel_sdf_repair():
+    pytest.importorskip("scipy")
+    from core.preprocessor.l3_ai_surface_repair import voxel_sdf_repair
+    V = np.array([
+        [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+        [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+    ], dtype=np.float64)
+    F = np.array([
+        [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7],
+        [0, 1, 5], [0, 5, 4], [2, 3, 7], [2, 7, 6],
+        [1, 2, 6], [1, 6, 5], [3, 0, 4], [3, 4, 7],
+    ], dtype=np.int64)
+    V_new, F_new, r = voxel_sdf_repair(
+        V, F, voxel_resolution=24, smooth_iters=1, keep_if_worse=True,
+    )
+    assert r.pre_n_faces == 12
+    assert r.elapsed_s > 0
+    assert r.method != ""
+
+
+def test_l3_ai_empty():
+    from core.preprocessor.l3_ai_surface_repair import voxel_sdf_repair
+    V_out, F_out, r = voxel_sdf_repair(
+        np.zeros((0, 3), dtype=np.float64),
+        np.zeros((0, 3), dtype=np.int64),
+    )
+    assert r.message == "empty input"
+
+
+# CCMIO chunked binary (BETA2808).
+
+def test_ccmio_chunked_write_and_master(tmp_path):
+    from core.utils.ccmio_chunk_format import (
+        write_ccmio_chunked_binary, parse_chunked_binary_master,
+        CHUNK_META, CHUNK_VERTICES, CHUNK_CELLS,
+    )
+    pdir = tmp_path / "polyMesh"
+    pdir.mkdir()
+    (pdir / "points").write_text(
+        "FoamFile\n4\n(\n(0 0 0)\n(1 0 0)\n(0 1 0)\n(0 0 1)\n)\n",
+    )
+    (pdir / "faces").write_text(
+        "4\n(\n3(0 1 2)\n3(0 1 3)\n3(0 2 3)\n3(1 2 3)\n)\n",
+    )
+    (pdir / "owner").write_text("4\n(\n0\n0\n0\n0\n)\n")
+    (pdir / "neighbour").write_text("0\n(\n)\n")
+    (pdir / "boundary").write_text(
+        "FoamFile\n1\n(\n    walls\n    {\n"
+        "        type            wall;\n"
+        "        nFaces          4;\n"
+        "        startFace       0;\n"
+        "    }\n)\n",
+    )
+    out = tmp_path / "test.ccm"
+    res = write_ccmio_chunked_binary(pdir, out, big_endian=True)
+    assert res.success, f"failed: {res.message}"
+    assert res.n_chunks >= 5
+
+    master = parse_chunked_binary_master(out)
+    assert master is not None
+    assert CHUNK_META in master["chunks"]
+    assert CHUNK_VERTICES in master["chunks"]
+    assert CHUNK_CELLS in master["chunks"]
+
+
+def test_ccmio_chunked_read_chunk(tmp_path):
+    from core.utils.ccmio_chunk_format import (
+        write_ccmio_chunked_binary, read_chunk, CHUNK_META,
+    )
+    pdir = tmp_path / "polyMesh"
+    pdir.mkdir()
+    (pdir / "points").write_text(
+        "FoamFile\n4\n(\n(0 0 0)\n(1 0 0)\n(0 1 0)\n(0 0 1)\n)\n",
+    )
+    (pdir / "faces").write_text("1\n(\n3(0 1 2)\n)\n")
+    (pdir / "owner").write_text("1\n(\n0\n)\n")
+    (pdir / "neighbour").write_text("0\n(\n)\n")
+    (pdir / "boundary").write_text(
+        "FoamFile\n1\n(\n    walls\n    {\n"
+        "        type            wall;\n"
+        "        nFaces          1;\n"
+        "        startFace       0;\n"
+        "    }\n)\n",
+    )
+    out = tmp_path / "test.ccm"
+    res = write_ccmio_chunked_binary(pdir, out)
+    assert res.success
+    meta_data = read_chunk(out, CHUNK_META)
+    assert meta_data is not None
+    assert len(meta_data) >= 28
+
+
+def test_ccmio_chunked_invalid_magic(tmp_path):
+    from core.utils.ccmio_chunk_format import parse_chunked_binary_master
+    p = tmp_path / "fake.ccm"
+    p.write_bytes(b"BADMAGIC\x00" * 16)
+    assert parse_chunked_binary_master(p) is None
+
+
 def test_ccmio_native_write_pro_star(tmp_path):
     pytest.importorskip("h5py")
     import h5py
