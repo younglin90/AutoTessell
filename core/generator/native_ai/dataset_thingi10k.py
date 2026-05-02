@@ -129,9 +129,16 @@ def collect(
 
     # Thingi10K iterator.
     stl_paths: list[Path] = []
+    # Thingi10K: file_path 는 .npz (V, F 직접 load 필요).
+    thingi10k_loader = None
     if use_thingi10k:
         try:
             import thingi10k
+            try:
+                thingi10k.init()
+            except Exception:
+                pass
+            thingi10k_loader = thingi10k.load_file
             for _i, mesh_info in enumerate(thingi10k.dataset()):
                 if _i >= limit:
                     break
@@ -140,6 +147,8 @@ def collect(
                     stl_paths.append(Path(p))
         except ImportError:
             res.errors.append("thingi10k package not installed — falling back")
+        except Exception as exc:
+            res.errors.append(f"thingi10k iter: {str(exc)[:80]}")
 
     if not stl_paths and fallback_stl_dir is not None:
         for p in Path(fallback_stl_dir).glob("*.stl"):
@@ -165,10 +174,15 @@ def collect(
             res.errors.append("global timeout")
             break
         try:
-            from core.analyzer.readers.stl import read_stl
-            mesh = read_stl(str(stl_p))
-            V = np.asarray(mesh.vertices, dtype=np.float64)
-            F = np.asarray(mesh.faces, dtype=np.int64)
+            if thingi10k_loader is not None and str(stl_p).endswith(".npz"):
+                V, F = thingi10k_loader(str(stl_p))
+                V = np.asarray(V, dtype=np.float64)
+                F = np.asarray(F, dtype=np.int64)
+            else:
+                from core.analyzer.readers.stl import read_stl
+                mesh = read_stl(str(stl_p))
+                V = np.asarray(mesh.vertices, dtype=np.float64)
+                F = np.asarray(mesh.faces, dtype=np.int64)
         except Exception as exc:
             res.errors.append(f"{stl_p.name}: read {exc}")
             continue
