@@ -3902,6 +3902,47 @@ def generate_native_tet(
         except Exception:
             pass
 
+    # KLINGNER-FULL / beta2794 — Klingner §4 full topology sweep.
+    # collapse → split → flip(3-2/4-4) → smooth — 4-stage cycle, n_cycles=2.
+    # GAP-SELF AMIPS 직전 통합 sweep 으로 self-impl mesh 의 cross-stage 효과 누적.
+    # 자체 monotone guard + plateau early-exit.
+    if grade in ("B", "C", "D", "?") and final_tets.shape[0] > 100:
+        try:
+            from core.generator.native_tet.klingner_full_sweep import (
+                klingner_full_sweep,
+            )
+            _lock_kf = np.arange(int(min(V.shape[0], final_pts.shape[0])),
+                                  dtype=np.int64)
+            _new_pts_kf, _new_tets_kf, _kf_res = klingner_full_sweep(
+                final_pts, final_tets,
+                n_cycles=2,
+                locked_vertex_ids=_lock_kf,
+                monotone_min_drop=0.020,
+            )
+            if _kf_res.accepted:
+                final_pts = _new_pts_kf
+                final_tets = _new_tets_kf
+                log.info(
+                    "native_tet_klingner_full_sweep",
+                    cycles=_kf_res.n_cycles_used,
+                    mq_before=round(_kf_res.pre_mean_q, 4),
+                    mq_after=round(_kf_res.post_mean_q, 4),
+                    n_collapse=_kf_res.n_collapse,
+                    n_split=_kf_res.n_split,
+                    n_flip32=_kf_res.n_flip32,
+                    n_flip44=_kf_res.n_flip44,
+                    elapsed_s=round(_kf_res.elapsed_s, 2),
+                )
+                # grade 재평가.
+                if _kf_res.post_mean_q >= 0.20:
+                    grade = "A"
+                elif _kf_res.post_mean_q >= 0.15:
+                    grade = "B"
+                elif _kf_res.post_mean_q >= 0.10:
+                    grade = "C"
+        except Exception as exc:
+            log.debug("native_tet_klingner_full_skipped", reason=str(exc)[:120])
+
     # GAP-SELF / beta2791 — final aggressive AMIPS multistage smoothing.
     # P4-C 진입 직전, grade<A 인 self-impl mesh 에 강력한 multi-alpha sweep 적용.
     # alphas=(0.5, 1.0, 2.0, 4.0) — 점진적으로 sliver energy weight 강화.
