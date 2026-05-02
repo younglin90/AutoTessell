@@ -34,8 +34,9 @@ class BCAssignment:
     comment: str = ""
 
 
-# 표준 BC 타입 표.
+# 표준 BC 타입 표 (BETA2800 — 9 advanced types 추가).
 BC_TYPES = (
+    # basic.
     "wall",
     "inlet",
     "outlet",
@@ -45,10 +46,21 @@ BC_TYPES = (
     "moving_wall",
     "interface",
     "empty",
+    # advanced.
+    "periodic",
+    "cyclic_ami",
+    "interface_heat",
+    "sliding_mesh",
+    "fan",
+    "porous_jump",
+    "wedge",
+    "mass_flow_inlet",
+    "outflow",
 )
 
 # BC 타입별 default value 키.
 BC_DEFAULT_VALUES = {
+    # basic.
     "wall":              {"velocity": [0.0, 0.0, 0.0]},
     "inlet":             {"velocity": [1.0, 0.0, 0.0]},
     "outlet":            {"pressure": 0.0},
@@ -58,6 +70,16 @@ BC_DEFAULT_VALUES = {
     "moving_wall":       {"velocity": [0.0, 0.0, 0.0]},
     "interface":         {},
     "empty":             {},
+    # advanced.
+    "periodic":          {"matched_patch": "patch_pair"},
+    "cyclic_ami":        {"matched_patch": "patch_pair"},
+    "interface_heat":    {"htc": 1000.0, "T_ext": 300.0},
+    "sliding_mesh":      {"omega": 0.0, "axis": [0.0, 0.0, 1.0]},
+    "fan":               {"pressure_jump": 100.0},
+    "porous_jump":       {"resistance": 1e6, "thickness": 0.001},
+    "wedge":             {"angle_deg": 5.0},
+    "mass_flow_inlet":   {"mass_flow": 1.0, "temperature": 300.0},
+    "outflow":           {"flow_split": 1.0},
 }
 
 

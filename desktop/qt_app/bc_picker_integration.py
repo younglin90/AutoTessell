@@ -160,11 +160,39 @@ def attach_bc_picker(
 
     btn_list.clicked.connect(_list_bc)
 
+    # BC-OVERLAY / beta2799 — patch color visualization toggle.
+    btn_overlay = QPushButton("Show colors", toolbar)
+    btn_overlay.setCheckable(True)
+    btn_overlay.setToolTip("Color BC patches on the mesh")
+    overlay_actors: list = []
+
+    def _toggle_overlay(checked):
+        from desktop.qt_app.bc_overlay import (
+            render_bc_overlay, remove_bc_overlay,
+        )
+        nonlocal overlay_actors
+        if overlay_actors:
+            remove_bc_overlay(plotter, overlay_actors)
+            overlay_actors = []
+        if checked and len(manager) > 0:
+            actors = render_bc_overlay(
+                plotter, surface_mesh, manager,
+                opacity=0.7, show_edges=True,
+            )
+            overlay_actors = actors
+        try:
+            plotter.render()
+        except Exception:
+            pass
+
+    btn_overlay.toggled.connect(_toggle_overlay)
+
     h.addWidget(btn_single)
     h.addWidget(btn_box)
     h.addWidget(btn_clear)
     h.addWidget(btn_assign)
     h.addWidget(btn_list)
+    h.addWidget(btn_overlay)
     h.addWidget(btn_save)
     h.addWidget(selected_label, stretch=1)
 

@@ -708,6 +708,9 @@ class InteractiveMeshViewer(QWidget):
         self._clip_active: bool = False
         self._loader_thread: Optional[QThread] = None
         self._loader_path: Optional[Path] = None
+        # BC-INTEGRATION / beta2798 — face-pick BC ui (lazy init).
+        self._bc_ui = None
+        self._bc_overlay_actors: list = []
 
         self._init_ui()
 
@@ -732,6 +735,18 @@ class InteractiveMeshViewer(QWidget):
             fallback.setAlignment(Qt.AlignCenter)
             fallback.setStyleSheet("background: #0d1117; color: white;")
             layout.addWidget(fallback, stretch=1)
+
+        # BC-INTEGRATION / beta2798 — face-pick BC toolbar (collapsible).
+        try:
+            from desktop.qt_app.bc_picker_integration import attach_bc_picker
+            if self._plotter is not None:
+                self._bc_ui = attach_bc_picker(
+                    self._plotter, surface_mesh=None, parent=self,
+                )
+                if self._bc_ui and self._bc_ui.toolbar is not None:
+                    layout.addWidget(self._bc_ui.toolbar)
+        except Exception as _bc_exc:
+            log.debug(f"BC picker attach skipped: {_bc_exc}")
 
         # 정보 패널 (크게)
         self._info_label = QLabel("대기 중...")
