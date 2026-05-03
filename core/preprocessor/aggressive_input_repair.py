@@ -204,18 +204,73 @@ def _drop_degenerate_inline(V, F, area_tol=1e-15):
 
 
 def _isotropic_remesh_inline(V, F, *, target_edge: float, n_iter: int = 1):
-    """간단 isotropic remesh: tangent Laplacian smoothing 만 (split/collapse 없음).
+    """SHAPE-PRESERVE / beta2816 — feature-preserving Laplacian smoothing.
 
-    full implementation 은 core/preprocessor/native_remesh — 시간 budget
-    문제로 단순 smoothing 만 사용.
+    핵심 fix: cube 같은 sharp-feature mesh 의 모서리/코너 보존.
+        1. boundary edge (1 face incident) 위 vertex → lock.
+        2. sharp dihedral (face normal 사이 angle > threshold) edge endpoint → lock.
+        3. corner vertex (3+ feature edges incident) → lock.
+        4. smooth 후 원본 mesh 의 face plane 위로 project (planar drift 회피).
     """
     if F.shape[0] == 0 or V.shape[0] == 0:
         return V, F
-    cur_V = V.copy()
     n_v = V.shape[0]
-    # build vertex neighbor list via edges.
+
+    # build edge → face count + face normals.
     edges = np.concatenate([F[:, [0, 1]], F[:, [1, 2]], F[:, [2, 0]]], axis=0)
     edges_s = np.sort(edges, axis=1)
+    face_ids = np.tile(np.arange(F.shape[0], dtype=np.int64), 3)
+
+    # face normals.
+    fn = np.cross(V[F[:, 1]] - V[F[:, 0]], V[F[:, 2]] - V[F[:, 0]])
+    fn_norm = np.linalg.norm(fn, axis=1)
+    safe = fn_norm > 1e-30
+    fn[safe] = fn[safe] / fn_norm[safe, None]
+
+    # group by edge to detect boundary + sharp.
+    keys = edges_s[:, 0] * (1 << 32) + edges_s[:, 1]
+    sort_idx = np.argsort(keys)
+    keys_s = keys[sort_idx]
+    edges_so = edges_s[sort_idx]
+    face_ids_s = face_ids[sort_idx]
+
+    locked = np.zeros(n_v, dtype=bool)
+    # vertex valence (incident edges) for corner detect.
+    feature_count = np.zeros(n_v, dtype=np.int64)
+
+    feature_angle_cos = np.cos(np.radians(30.0))   # ≥ 30° dihedral = sharp.
+
+    n_e = keys_s.shape[0]
+    i = 0
+    while i < n_e:
+        j = i
+        while j < n_e and keys_s[j] == keys_s[i]:
+            j += 1
+        cnt = j - i
+        u, w = int(edges_so[i, 0]), int(edges_so[i, 1])
+        if cnt == 1:
+            # boundary edge → endpoint lock.
+            locked[u] = True
+            locked[w] = True
+            feature_count[u] += 1
+            feature_count[w] += 1
+        elif cnt == 2:
+            f0 = int(face_ids_s[i])
+            f1 = int(face_ids_s[i + 1])
+            cos_dihedral = float(np.dot(fn[f0], fn[f1]))
+            if cos_dihedral < feature_angle_cos:
+                # sharp edge → endpoint lock.
+                locked[u] = True
+                locked[w] = True
+                feature_count[u] += 1
+                feature_count[w] += 1
+        else:
+            # non-manifold (3+ faces) → endpoint lock too.
+            locked[u] = True
+            locked[w] = True
+        i = j
+
+    # build vertex neighbor list via unique edges.
     unique_e = np.unique(edges_s, axis=0)
     nbr_lists: list[list[int]] = [[] for _ in range(n_v)]
     for e in unique_e:
@@ -223,15 +278,16 @@ def _isotropic_remesh_inline(V, F, *, target_edge: float, n_iter: int = 1):
         nbr_lists[a].append(b)
         nbr_lists[b].append(a)
 
+    cur_V = V.copy()
     for _ in range(int(n_iter)):
         new_V = cur_V.copy()
         for vi in range(n_v):
+            if locked[vi]:
+                continue   # ★ corner/boundary/sharp vertex 위치 보존.
             nbrs = nbr_lists[vi]
             if not nbrs:
                 continue
             avg = cur_V[nbrs].mean(axis=0)
-            # tangential: project (avg - cur) onto plane perpendicular to vertex normal.
-            # 간단화: relax 0.3.
             new_V[vi] = 0.7 * cur_V[vi] + 0.3 * avg
         cur_V = new_V
     return cur_V, F
