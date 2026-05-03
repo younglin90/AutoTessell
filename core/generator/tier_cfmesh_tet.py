@@ -98,6 +98,13 @@ class CfMeshTetGenerator:
             n_layers = int(getattr(bl, "num_layers", 0) or 0)
             thickness_ratio = float(getattr(bl, "growth_ratio", 1.2) or 1.2)
             max_first = float(getattr(bl, "first_layer_thickness", 0.0) or 0.0)
+        # BETA2847 — GUI cfMesh BL widget override (params 의 cfmesh_bl_* 키).
+        if "cfmesh_bl_n_layers" in params:
+            n_layers = int(params["cfmesh_bl_n_layers"])
+        if "cfmesh_bl_thickness_ratio" in params:
+            thickness_ratio = float(params["cfmesh_bl_thickness_ratio"])
+        if "cfmesh_bl_max_first_layer" in params:
+            max_first = float(params["cfmesh_bl_max_first_layer"])
 
         t_step = time.monotonic()
         r = cfm.tet_mesh(

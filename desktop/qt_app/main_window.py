@@ -1867,6 +1867,71 @@ class AutoTessellWindow:  # type: ignore[misc]
         rl2.addStretch(1)
         v.addWidget(row2)
 
+        # --- BETA2847 — cfMesh cell size 조절 (hex_dominant + poly 에 적용) ---
+        from PySide6.QtWidgets import QDoubleSpinBox, QSpinBox, QLabel as _QL
+        row3 = QWidget()
+        row3.setStyleSheet("background: transparent;")
+        rl3 = QHBoxLayout(row3)
+        rl3.setContentsMargins(0, 0, 0, 0); rl3.setSpacing(8)
+        rl3.addWidget(_QL("max cell:"))
+        self._cfm_max_cell_spin = QDoubleSpinBox()
+        self._cfm_max_cell_spin.setRange(0.0, 10.0)
+        self._cfm_max_cell_spin.setSingleStep(0.01)
+        self._cfm_max_cell_spin.setDecimals(4)
+        self._cfm_max_cell_spin.setValue(0.0)  # 0 = auto from strategist.
+        self._cfm_max_cell_spin.setToolTip(
+            "cfMesh maxCellSize (volume cell size). 0 = strategist 자동값."
+        )
+        rl3.addWidget(self._cfm_max_cell_spin)
+        rl3.addWidget(_QL("boundary cell:"))
+        self._cfm_bnd_cell_spin = QDoubleSpinBox()
+        self._cfm_bnd_cell_spin.setRange(0.0, 10.0)
+        self._cfm_bnd_cell_spin.setSingleStep(0.005)
+        self._cfm_bnd_cell_spin.setDecimals(4)
+        self._cfm_bnd_cell_spin.setValue(0.0)  # 0 = auto.
+        self._cfm_bnd_cell_spin.setToolTip(
+            "cfMesh boundaryCellSize (surface 셀 크기, 작을수록 STL 정확).\n"
+            "0 = strategist 자동값. 보통 max cell 의 1/4~1/10."
+        )
+        rl3.addWidget(self._cfm_bnd_cell_spin)
+        rl3.addStretch(1)
+        v.addWidget(row3)
+
+        # --- BETA2847 — BL 세부 조절 (BL checkbox 가 켜진 경우에만 사용) ---
+        row4 = QWidget()
+        row4.setStyleSheet("background: transparent;")
+        rl4 = QHBoxLayout(row4)
+        rl4.setContentsMargins(0, 0, 0, 0); rl4.setSpacing(8)
+        rl4.addWidget(_QL("BL layers:"))
+        self._cfm_bl_layers_spin = QSpinBox()
+        self._cfm_bl_layers_spin.setRange(0, 30)
+        self._cfm_bl_layers_spin.setValue(0)  # 0 = auto from strategist.
+        self._cfm_bl_layers_spin.setToolTip(
+            "BL 레이어 수. 0 = quality_level 자동 결정 (BL 체크박스 ON 시).\n"
+            ">0 = 명시적으로 강제 (overrides BL checkbox)."
+        )
+        rl4.addWidget(self._cfm_bl_layers_spin)
+        rl4.addWidget(_QL("BL ratio:"))
+        self._cfm_bl_ratio_spin = QDoubleSpinBox()
+        self._cfm_bl_ratio_spin.setRange(1.0, 3.0)
+        self._cfm_bl_ratio_spin.setSingleStep(0.05)
+        self._cfm_bl_ratio_spin.setDecimals(3)
+        self._cfm_bl_ratio_spin.setValue(1.2)
+        self._cfm_bl_ratio_spin.setToolTip("BL expansion ratio (각 레이어 두께 증가율).")
+        rl4.addWidget(self._cfm_bl_ratio_spin)
+        rl4.addWidget(_QL("first thick:"))
+        self._cfm_bl_first_spin = QDoubleSpinBox()
+        self._cfm_bl_first_spin.setRange(0.0, 1.0)
+        self._cfm_bl_first_spin.setSingleStep(0.001)
+        self._cfm_bl_first_spin.setDecimals(5)
+        self._cfm_bl_first_spin.setValue(0.0)  # 0 = auto.
+        self._cfm_bl_first_spin.setToolTip(
+            "최외곽 레이어 두께 (maxFirstLayerThickness). 0 = cfMesh 자동."
+        )
+        rl4.addWidget(self._cfm_bl_first_spin)
+        rl4.addStretch(1)
+        v.addWidget(row4)
+
         # Tier 5 (검증) — 항상 native, UI 노출 안 함.
         # _tier5_engine_combo 미생성 → _tier5_engine_text() fallback "native".
         self._tier5_engine_combo = None
@@ -2974,6 +3039,32 @@ class AutoTessellWindow:  # type: ignore[misc]
         tier_params: dict[str, object] = {}
         if feature_angle is not None:
             tier_params["bl_feature_angle"] = feature_angle
+
+        # BETA2847 — cfMesh GUI widget 값 propagate (hex_dominant + poly).
+        # 0 값은 strategist 자동값을 그대로 쓰겠다는 뜻이므로 키 추가 안 함.
+        try:
+            if getattr(self, "_cfm_max_cell_spin", None) is not None:
+                _v = float(self._cfm_max_cell_spin.value())
+                if _v > 0.0:
+                    tier_params["cfmesh_max_cell_size"] = _v
+            if getattr(self, "_cfm_bnd_cell_spin", None) is not None:
+                _v = float(self._cfm_bnd_cell_spin.value())
+                if _v > 0.0:
+                    tier_params["cfmesh_boundary_cell_size"] = _v
+            if getattr(self, "_cfm_bl_layers_spin", None) is not None:
+                _v = int(self._cfm_bl_layers_spin.value())
+                if _v > 0:
+                    tier_params["cfmesh_bl_n_layers"] = _v
+            if getattr(self, "_cfm_bl_ratio_spin", None) is not None:
+                _v = float(self._cfm_bl_ratio_spin.value())
+                if abs(_v - 1.2) > 1e-9:
+                    tier_params["cfmesh_bl_thickness_ratio"] = _v
+            if getattr(self, "_cfm_bl_first_spin", None) is not None:
+                _v = float(self._cfm_bl_first_spin.value())
+                if _v > 0.0:
+                    tier_params["cfmesh_bl_max_first_layer"] = _v
+        except Exception:
+            pass
 
         # y⁺ 패널에서 계산된 첫 층 두께 자동 주입 (beta100)
         if self._computed_bl_first_thickness is not None:

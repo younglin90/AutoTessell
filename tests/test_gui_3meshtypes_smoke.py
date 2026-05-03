@@ -136,6 +136,65 @@ def test_gui_default_poly_uses_vendored_cfmesh_poly():
     assert r["cells"] > 0, f"empty mesh: {r}"
 
 
+def _run_meshtype_with_params(mesh_type: str, tier_hint: str, tier_params: dict) -> dict:
+    """tier_specific_params 를 명시적으로 전달하는 변종."""
+    from core.pipeline.orchestrator import PipelineOrchestrator
+    from core.utils.stl_writer import write_stl_ascii
+    V, F = _cube_VF()
+    with tempfile.TemporaryDirectory() as td:
+        td = Path(td)
+        stl = td / "cube.stl"
+        write_stl_ascii(V, F, stl)
+        out = td / "out"
+        orch = PipelineOrchestrator()
+        orch.run(
+            stl, out,
+            mesh_type=mesh_type, tier_hint=tier_hint, quality_level="draft",
+            tier_specific_params=tier_params,
+        )
+        poly = out / "constant" / "polyMesh"
+        cells = _read_polymesh_count(poly) if poly.exists() else 0
+        return {"cells": cells}
+
+
+def test_gui_cfmesh_max_cell_param_changes_count():
+    """GUI cfmesh_max_cell_size param 변경 시 cell 수 달라짐."""
+    cfm_so = REPO / "auto_tessell_core" / "build" / "cfmesh_native.cpython-312-x86_64-linux-gnu.so"
+    if not cfm_so.exists():
+        pytest.skip("cfmesh_native.so not built")
+    coarse = _run_meshtype_with_params(
+        "hex_dominant", "cfmesh", {"cfmesh_max_cell_size": 0.3},
+    )
+    fine = _run_meshtype_with_params(
+        "hex_dominant", "cfmesh", {"cfmesh_max_cell_size": 0.1},
+    )
+    assert coarse["cells"] > 0 and fine["cells"] > 0
+    assert fine["cells"] > coarse["cells"], (
+        f"finer max_cell should yield more cells: coarse={coarse} fine={fine}"
+    )
+
+
+def test_gui_cfmesh_bl_layers_param_creates_bl():
+    """GUI cfmesh_bl_n_layers > 0 → BL 추가 → cell 수 증가."""
+    cfm_so = REPO / "auto_tessell_core" / "build" / "cfmesh_native.cpython-312-x86_64-linux-gnu.so"
+    if not cfm_so.exists():
+        pytest.skip("cfmesh_native.so not built")
+    no_bl = _run_meshtype_with_params(
+        "hex_dominant", "cfmesh",
+        {"cfmesh_max_cell_size": 0.2, "cfmesh_bl_n_layers": 0},
+    )
+    with_bl = _run_meshtype_with_params(
+        "hex_dominant", "cfmesh",
+        {"cfmesh_max_cell_size": 0.2, "cfmesh_bl_n_layers": 3,
+         "cfmesh_bl_thickness_ratio": 1.2},
+    )
+    assert no_bl["cells"] > 0 and with_bl["cells"] > 0
+    # BL 추가 시 boundary cell 들이 prism 으로 분할되어 셀 수 증가 (>=).
+    assert with_bl["cells"] >= no_bl["cells"], (
+        f"BL=3 should yield ≥ no-BL cells: no_bl={no_bl} with_bl={with_bl}"
+    )
+
+
 if __name__ == "__main__":
     """Direct run — print result table."""
     print(f"{'mesh_type':<14} {'tier_hint':<14} {'cells':<8} {'status'}")

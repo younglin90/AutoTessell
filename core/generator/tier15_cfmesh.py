@@ -153,6 +153,13 @@ class Tier15CfMeshGenerator:
                         _nL = int(getattr(_bl, "num_layers", 0) or 0)
                         _tr = float(getattr(_bl, "growth_ratio", 1.2) or 1.2)
                         _mf = float(getattr(_bl, "first_layer_thickness", 0.0) or 0.0)
+                    # BETA2847 — GUI cfMesh BL widget override.
+                    if "cfmesh_bl_n_layers" in _params:
+                        _nL = int(_params["cfmesh_bl_n_layers"])
+                    if "cfmesh_bl_thickness_ratio" in _params:
+                        _tr = float(_params["cfmesh_bl_thickness_ratio"])
+                    if "cfmesh_bl_max_first_layer" in _params:
+                        _mf = float(_params["cfmesh_bl_max_first_layer"])
                     _r = _cfm.cartesian_mesh(
                         str(_stls[0]), str(case_dir),
                         max_cell_size=_max,
