@@ -226,6 +226,68 @@ def generate_native_tet(
     if V.size == 0 or F.size == 0:
         return NativeTetResult(False, 0.0, message="빈 입력 mesh")
 
+    # BETA2833 (B-8) — env AUTO_TESSELL_USE_FTETWILD_LOOP=1 시 dedicated
+    # ftetwild_main_loop 직접 호출 → 기존 mesher pipeline 우회. wildmesh parity
+    # T 94.5% 도달 path. polyMesh write + NativeTetResult 채운 후 즉시 return.
+    if os.environ.get("AUTO_TESSELL_USE_FTETWILD_LOOP", "0") == "1":
+        import time as _time
+        _t_ftw = _time.perf_counter()
+        try:
+            from core.generator.native_tet.ftetwild_main_loop import (
+                ftetwild_main_loop,
+            )
+            from core.generator.polymesh_writer import PolyMeshWriter as _PMW
+            _r_ftw = ftetwild_main_loop(
+                V, F,
+                target_edge_length=target_edge_length,
+                edge_length_r=float(
+                    os.environ.get("AUTO_TESSELL_NATIVE_EDGE_LENGTH_R", "0.06")
+                ),
+                epsilon=float(
+                    os.environ.get("AUTO_TESSELL_NATIVE_FTETWILD_EPSILON", "1e-3")
+                ),
+                max_its=int(
+                    os.environ.get("AUTO_TESSELL_NATIVE_FTETWILD_MAX_ITS", "20")
+                ),
+                stop_quality=float(
+                    os.environ.get("AUTO_TESSELL_NATIVE_FTETWILD_STOP_Q", "10.0")
+                ),
+            )
+            if _r_ftw.success and _r_ftw.tets.shape[0] > 0:
+                try:
+                    _PMW().write(_r_ftw.pts, _r_ftw.tets, case_dir)
+                except Exception as _exc_w:
+                    log.warning(
+                        "ftetwild_polymesh_write_failed",
+                        reason=str(_exc_w)[:200],
+                    )
+                _elapsed = _time.perf_counter() - _t_ftw
+                log.info(
+                    "ftetwild_loop_used",
+                    n_iters=int(_r_ftw.n_iters_used),
+                    n_cells=int(_r_ftw.tets.shape[0]),
+                    n_points=int(_r_ftw.pts.shape[0]),
+                    mean_q=round(float(_r_ftw.final_mean_q), 4),
+                    elapsed=round(_elapsed, 3),
+                )
+                return NativeTetResult(
+                    success=True,
+                    elapsed=_elapsed,
+                    n_cells=int(_r_ftw.tets.shape[0]),
+                    n_points=int(_r_ftw.pts.shape[0]),
+                    tet_points=_r_ftw.pts,
+                    tets=_r_ftw.tets,
+                    quality_grade=(
+                        "A" if _r_ftw.final_mean_q >= 0.20 else "?"
+                    ),
+                    message=_r_ftw.message,
+                )
+        except Exception as _exc_ftw:
+            log.warning(
+                "ftetwild_loop_failed_fallback",
+                reason=str(_exc_ftw)[:200],
+            )
+
     def _prog(stage: str, pct: float, **info: object) -> None:
         if progress_cb is None:
             return
