@@ -603,7 +603,20 @@ def generate_native_tet(
                 derived_target_edge=target_edge_length,
             )
         else:
-            target_edge_length = diag / max(1, int(seed_density))
+            # BETA2823 — wildmesh edge_length_r 정렬 모드 (env-gated, default OFF).
+            # AUTO_TESSELL_NATIVE_WILDMESH_DENSITY=1 일 때 fTetWild 의
+            # `edge_length_r × bbox_diag` 와 동일한 표준 격자 간격을 사용.
+            _wm_align = os.environ.get("AUTO_TESSELL_NATIVE_WILDMESH_DENSITY", "0") == "1"
+            if _wm_align:
+                # 0.072 = grid-snap sweet spot (cube V/T count parity ~98%/84%).
+                _r = float(os.environ.get("AUTO_TESSELL_NATIVE_EDGE_LENGTH_R", "0.072"))
+                target_edge_length = max(1e-12, _r * diag)
+                log.info(
+                    "native_tet_wildmesh_density_align",
+                    edge_length_r=_r, derived_target_edge=target_edge_length,
+                )
+            else:
+                target_edge_length = diag / max(1, int(seed_density))
 
     # LL1 (beta1880) — 입력 V 가 작으면 셀 폭증 방지 위해 target_edge 키움.
     # 11k vertex 입력에서 156k tet 폭증 → mean_q 0.12 sliver. cell 수
