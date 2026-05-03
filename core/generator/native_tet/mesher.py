@@ -3057,10 +3057,18 @@ def generate_native_tet(
                     if _stellar_env_prev == "__set_by_mesher__":
                         os.environ.pop("AUTO_TESSELL_STELLAR_SPLIT", None)
                 post = _qsnap(pts2, tets2)
+                # BETA2824 — Klingner monotone proof 만으로 채택 충분 (cell count
+                # 변화는 3-2/sliver split 의 정상적 결과). drop_floor env-gated:
+                # default 0.85 (15% drop 허용) — native_tet 의 over-density 와
+                # wildmesh 정렬 위해 loosened. AUTO_TESSELL_STELLAR_DROP_FLOOR
+                # 로 override 가능.
+                _drop_floor = float(
+                    os.environ.get("AUTO_TESSELL_STELLAR_DROP_FLOOR", "0.85")
+                )
                 accepted = (
                     post.min_q >= pre.min_q - 1e-6
                     and post.mean_q >= pre.mean_q - 1e-3
-                    and tets2.shape[0] >= 0.95 * pre_n
+                    and tets2.shape[0] >= _drop_floor * pre_n
                 )
                 if accepted:
                     final_pts, final_tets = pts2, tets2
