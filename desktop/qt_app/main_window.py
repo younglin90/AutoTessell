@@ -1823,10 +1823,11 @@ class AutoTessellWindow:  # type: ignore[misc]
         # 이전 "native_tet" 은 우리 Python self-impl tet engine (tier_native_tet)
         # 으로 wildmesh 와 알고리즘 자체가 다른 결과 생성. BETA2834 vendored
         # binding 이 있으므로 default 는 fTetWild 로 변경 — 결과 동일성 보장.
+        # BETA2845 — 3 mesh_type 모두 vendored backend 로 default.
         for value, display in [
             ("wildmesh",    "Tet · fTetWild (vendored, wildmesh-identical)"),
-            ("native_hex",  "Hex_dominant · BL 품질 우수"),
-            ("native_poly", "Poly · 셀 수 최소 (gradient 해소)"),
+            ("cfmesh",      "Hex_dominant · cfMesh cartesianMesh (vendored, BL 통합)"),
+            ("cfmesh_poly", "Poly · cfMesh pMesh (vendored, BL 통합)"),
         ]:
             cb_mesh.addItem(display, value)
         cb_mesh.setCurrentIndex(0)  # default: wildmesh (vendored fTetWild).

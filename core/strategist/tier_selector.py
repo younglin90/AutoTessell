@@ -129,20 +129,24 @@ _MESH_TYPE_TIER_MAP: dict[str, dict[str, list[str]]] = {
 # --prefer-native-tier=on 이면 이 맵을 사용. native tier 실패 시 기존
 # _MESH_TYPE_TIER_MAP 의 fallback 순서로 이어간다.
 _MESH_TYPE_TIER_MAP_NATIVE: dict[str, dict[str, list[str]]] = {
+    # BETA2845 정책 — vendored backend primary, 자체 구현 fallback.
+    # tet: vendored fTetWild (BETA2834, wildmesh-identical, mean_q ≈ 0.7+)
+    # hex_dominant: vendored cfMesh cartesianMesh (BETA2843, BL meshDict 통합)
+    # poly: vendored cfMesh pMesh (BETA2845, BL meshDict 통합)
     "tet": {
-        "draft":    ["tier_native_tet"],
-        "standard": ["tier_native_tet"],
-        "fine":     ["tier_native_tet"],
+        "draft":    ["tier_wildmesh", "tier_cfmesh_tet", "tier_native_tet"],
+        "standard": ["tier_wildmesh", "tier_cfmesh_tet", "tier_native_tet"],
+        "fine":     ["tier_wildmesh", "tier_cfmesh_tet", "tier_native_tet"],
     },
     "hex_dominant": {
-        "draft":    ["tier_native_hex"],
-        "standard": ["tier_native_hex"],
-        "fine":     ["tier_native_hex"],
+        "draft":    ["tier15_cfmesh", "tier_native_hex"],
+        "standard": ["tier15_cfmesh", "tier_native_hex"],
+        "fine":     ["tier15_cfmesh", "tier_native_hex"],
     },
     "poly": {
-        "draft":    ["tier_native_poly"],
-        "standard": ["tier_native_poly"],
-        "fine":     ["tier_native_poly"],
+        "draft":    ["tier_cfmesh_poly", "tier_native_poly", "tier_voro_poly"],
+        "standard": ["tier_cfmesh_poly", "tier_native_poly", "tier_voro_poly"],
+        "fine":     ["tier_cfmesh_poly", "tier_native_poly", "tier_voro_poly"],
     },
 }
 
@@ -211,6 +215,8 @@ _TIER_ORDER = [
     "tier_native_tet",          # AutoTessell 자체 tet MVP (v0.4)
     "tier_native_hex",          # AutoTessell 자체 hex MVP (v0.4)
     "tier_native_poly",         # AutoTessell 자체 poly MVP (v0.4)
+    "tier_cfmesh_tet",          # vendored cfMesh tetMesh (BETA2845, fallback)
+    "tier_cfmesh_poly",         # vendored cfMesh pMesh (BETA2845, poly primary)
     "tier_native_ai",           # AI-assisted volume mesh (v0.5 skeleton)
 ]
 
@@ -345,6 +351,10 @@ _HINT_MAP: dict[str, str] = {
     "tier_gmsh_hex": "tier_gmsh_hex",
     "tier_cinolib_hex": "tier_cinolib_hex",
     "tier_voro_poly": "tier_voro_poly",
+    "tier_cfmesh_tet": "tier_cfmesh_tet",
+    "tier_cfmesh_poly": "tier_cfmesh_poly",
+    "cfmesh_tet": "tier_cfmesh_tet",
+    "cfmesh_poly": "tier_cfmesh_poly",
     "tier_hohqmesh": "tier_hohqmesh",
 }
 

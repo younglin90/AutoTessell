@@ -12,6 +12,8 @@ from core.generator.tier05_netgen import Tier05NetgenGenerator
 from core.generator.tier1_snappy import Tier1SnappyGenerator
 from core.generator.tier2_tetwild import Tier2TetWildGenerator
 from core.generator.tier15_cfmesh import Tier15CfMeshGenerator
+from core.generator.tier_cfmesh_tet import CfMeshTetGenerator
+from core.generator.tier_cfmesh_poly import CfMeshPolyGenerator
 from core.generator.tier_classy_blocks import TierClassyBlocksGenerator
 from core.generator.tier_hex_classy_blocks import TierHexClassyBlocksGenerator
 from core.generator.tier_jigsaw import TierJigsawGenerator
@@ -68,6 +70,9 @@ _TIER_REGISTRY: dict[str, type] = {
     "tier_native_hex": TierNativeHexGenerator,
     "tier_native_poly": TierNativePolyGenerator,
     "tier_native_ai": TierNativeAIGenerator,
+    # BETA2845 — vendored cfMesh tetMesh / pMesh wrappers.
+    "tier_cfmesh_tet":  CfMeshTetGenerator,
+    "tier_cfmesh_poly": CfMeshPolyGenerator,
 }
 
 # CLI --tier 별칭 → 정규 Tier 이름
@@ -87,6 +92,8 @@ _TIER_ALIASES: dict[str, str] = {
     "jigsaw": "tier_jigsaw",
     "jigsaw_fallback": "tier_jigsaw_fallback",
     "wildmesh": "tier_wildmesh",
+    "cfmesh_tet":  "tier_cfmesh_tet",
+    "cfmesh_poly": "tier_cfmesh_poly",
     "gmsh_hex": "tier_gmsh_hex",
     "cinolib_hex": "tier_cinolib_hex",
     # 정규 이름 자체도 허용

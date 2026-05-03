@@ -68,7 +68,10 @@ void write_control_dict(const fs::path& case_dir, const std::string& app)
 void write_mesh_dict_cartesian(const fs::path& case_dir,
                                const std::string& stl_relpath,
                                double max_cell_size,
-                               double min_cell_size)
+                               double min_cell_size,
+                               int bl_n_layers,
+                               double bl_thickness_ratio,
+                               double bl_max_first_layer)
 {
     std::ostringstream oss;
     oss << "FoamFile { version 2.0; format ascii; class dictionary; "
@@ -77,6 +80,15 @@ void write_mesh_dict_cartesian(const fs::path& case_dir,
         << "maxCellSize " << max_cell_size << ";\n";
     if (min_cell_size > 0.0) {
         oss << "minCellSize " << min_cell_size << ";\n";
+    }
+    if (bl_n_layers > 0) {
+        oss << "boundaryLayers\n{\n"
+            << "    nLayers " << bl_n_layers << ";\n"
+            << "    thicknessRatio " << bl_thickness_ratio << ";\n";
+        if (bl_max_first_layer > 0.0) {
+            oss << "    maxFirstLayerThickness " << bl_max_first_layer << ";\n";
+        }
+        oss << "    optimiseLayer 1;\n}\n";
     }
     write_dict(case_dir / "system" / "meshDict", oss.str());
 }
@@ -103,7 +115,10 @@ py::dict cartesian_mesh_impl(
     const std::string& stl_path,
     const std::string& case_dir_str,
     double max_cell_size,
-    double min_cell_size)
+    double min_cell_size,
+    int bl_n_layers,
+    double bl_thickness_ratio,
+    double bl_max_first_layer)
 {
     fs::path case_dir = fs::absolute(case_dir_str);
     fs::create_directories(case_dir / "system");
@@ -120,7 +135,8 @@ py::dict cartesian_mesh_impl(
     write_control_dict(case_dir, "cartesianMesh");
     write_mesh_dict_cartesian(
         case_dir, "constant/triSurface/" + fs::path(stl_path).filename().string(),
-        max_cell_size, min_cell_size);
+        max_cell_size, min_cell_size,
+        bl_n_layers, bl_thickness_ratio, bl_max_first_layer);
 
     std::string exe = find_exe("cartesianMesh");
     std::string log;
@@ -139,7 +155,10 @@ py::dict tet_mesh_impl(
     const std::string& stl_path,
     const std::string& case_dir_str,
     double max_cell_size,
-    double min_cell_size)
+    double min_cell_size,
+    int bl_n_layers,
+    double bl_thickness_ratio,
+    double bl_max_first_layer)
 {
     fs::path case_dir = fs::absolute(case_dir_str);
     fs::create_directories(case_dir / "system");
@@ -156,7 +175,8 @@ py::dict tet_mesh_impl(
     write_control_dict(case_dir, "tetMesh");
     write_mesh_dict_cartesian(
         case_dir, "constant/triSurface/" + fs::path(stl_path).filename().string(),
-        max_cell_size, min_cell_size);
+        max_cell_size, min_cell_size,
+        bl_n_layers, bl_thickness_ratio, bl_max_first_layer);
 
     std::string exe = find_exe("tetMesh");
     std::string log;
@@ -175,7 +195,10 @@ py::dict poly_mesh_impl(
     const std::string& stl_path,
     const std::string& case_dir_str,
     double max_cell_size,
-    double min_cell_size)
+    double min_cell_size,
+    int bl_n_layers,
+    double bl_thickness_ratio,
+    double bl_max_first_layer)
 {
     fs::path case_dir = fs::absolute(case_dir_str);
     fs::create_directories(case_dir / "system");
@@ -192,7 +215,8 @@ py::dict poly_mesh_impl(
     write_control_dict(case_dir, "pMesh");
     write_mesh_dict_cartesian(
         case_dir, "constant/triSurface/" + fs::path(stl_path).filename().string(),
-        max_cell_size, min_cell_size);
+        max_cell_size, min_cell_size,
+        bl_n_layers, bl_thickness_ratio, bl_max_first_layer);
 
     std::string exe = find_exe("pMesh");
     std::string log;
@@ -215,15 +239,24 @@ PYBIND11_MODULE(cfmesh_native, m) {
           py::arg("stl_path"), py::arg("case_dir"),
           py::arg("max_cell_size") = 0.2,
           py::arg("min_cell_size") = 0.0,
-          "Run vendored cfMesh cartesianMesh (hex-dominant) on STL → polyMesh.");
+          py::arg("bl_n_layers") = 0,
+          py::arg("bl_thickness_ratio") = 1.2,
+          py::arg("bl_max_first_layer") = 0.0,
+          "Run vendored cfMesh cartesianMesh (hex-dominant) on STL → polyMesh + optional BL.");
     m.def("tet_mesh", &tet_mesh_impl,
           py::arg("stl_path"), py::arg("case_dir"),
           py::arg("max_cell_size") = 0.2,
           py::arg("min_cell_size") = 0.0,
-          "Run vendored cfMesh tetMesh (Delaunay) on STL → polyMesh.");
+          py::arg("bl_n_layers") = 0,
+          py::arg("bl_thickness_ratio") = 1.2,
+          py::arg("bl_max_first_layer") = 0.0,
+          "Run vendored cfMesh tetMesh (Delaunay) on STL → polyMesh + optional BL.");
     m.def("poly_mesh", &poly_mesh_impl,
           py::arg("stl_path"), py::arg("case_dir"),
           py::arg("max_cell_size") = 0.2,
           py::arg("min_cell_size") = 0.0,
-          "Run vendored cfMesh pMesh (polyhedral) on STL → polyMesh.");
+          py::arg("bl_n_layers") = 0,
+          py::arg("bl_thickness_ratio") = 1.2,
+          py::arg("bl_max_first_layer") = 0.0,
+          "Run vendored cfMesh pMesh (polyhedral) on STL → polyMesh + optional BL.");
 }
