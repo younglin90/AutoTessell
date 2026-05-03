@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2819,
+  "beta": 2820,
   "max_round": 1000,
-  "round": 229,
+  "round": 230,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -19,7 +19,9 @@
       "A": 5,
       "B": 0,
       "C": 0,
-      "D": 0
+      "D": 0,
+      "source": "BETA2820_HEX_SMALL_BBOX_PREFLIGHT - small-bbox seed_density pre-bump (diag<1.0, 8x cap)",
+      "bench_time_s": 64.2
     },
     "poly": {
       "A": 5,
@@ -32,23 +34,23 @@
     "tet_worst": 0.208,
     "tet_industrial_reach": "100%"
   },
-  "last_bench_time": 59.1,
+  "last_bench_time": 64.2,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "BETA2820_HEX_SMALL_BBOX_PREFLIGHT",
     "BETA2819_RRR3_EXTREME_WORST_LANE",
     "BETA2293_VVV9P5_REAL_APPLY_ENV",
     "BETA2292_VVV9P4_APPLY_HELPER",
-    "BETA2291_VVV9P3_DIAG_ON",
-    "BETA2290_VVV9P2_DIAG_HOOK"
+    "BETA2291_VVV9P3_DIAG_ON"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2819_RRR3_EXTREME_WORST_LANE (R229)"
+  "plan_archive": "BETA2820_HEX_SMALL_BBOX_PREFLIGHT (R230)"
 }

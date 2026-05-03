@@ -534,6 +534,25 @@ def generate_native_hex(
 
     bmin_pre = V.min(axis=0); bmax_pre = V.max(axis=0)
     diag_pre = float(np.linalg.norm(bmax_pre - bmin_pre))
+
+    # BETA2820: small-bbox pre-flight seed_density bump (proactive, before grid build).
+    # diag_pre < THRESH 이고 target_edge_length user-set 이 아니면 seed_density 를 pre-bump.
+    _sbp_on = os.environ.get("AUTO_TESSELL_HEX_SMALL_BBOX_PREFLIGHT", "1") != "0"
+    _te_user_set_pre = (target_edge_length is not None and float(target_edge_length) > 0)
+    if _sbp_on and not _te_user_set_pre:
+        _THRESH = float(os.environ.get("AUTO_TESSELL_HEX_SMALL_BBOX_THRESH", "1.0"))
+        if 1e-9 < diag_pre < _THRESH:
+            _sd_orig = int(seed_density)
+            _factor = (_THRESH / diag_pre) ** 0.5
+            _eff_sd = max(_sd_orig, int(np.ceil(seed_density * _factor)))
+            seed_density = min(_eff_sd, _sd_orig * 8)
+            log.info(
+                "native_hex_small_bbox_preflight",
+                diag=round(diag_pre, 6),
+                seed_density_orig=_sd_orig,
+                seed_density_eff=int(seed_density),
+            )
+
     h_pre = float(target_edge_length) if (
         target_edge_length is not None and target_edge_length > 0
     ) else diag_pre / max(1, int(seed_density))

@@ -172,10 +172,10 @@ def test_nlevel_mesher_forward(sphere_mesh, tmp_dir) -> None:
 
 
 def test_nlevel_harness_params_fine_n_levels() -> None:
-    """beta92 — HARNESS_PARAMS fine 에 n_levels=3 포함."""
+    """beta92→beta860 — HARNESS_PARAMS fine 의 n_levels 가 octree 강화 후 4."""
     from core.generator._tier_native_common import HARNESS_PARAMS
     fine = HARNESS_PARAMS["tier_native_hex"]["fine"]
-    assert fine.get("n_levels") == 3
+    assert fine.get("n_levels") == 4
 
 
 def test_nlevel_tier_param_keys_include_n_levels() -> None:
