@@ -108,6 +108,82 @@ def test_wildmesh_loop_stop_quality_progression():
     assert r_loose.n_iters_used <= r_strict.n_iters_used + 1
 
 
+def test_wildmesh_native_wrapper_cube():
+    """wildmeshing 라이브러리 직접 호출 wrapper smoke."""
+    pytest.importorskip("wildmeshing")
+    from core.generator.native_tet.wildmesh_native_wrapper import (
+        generate_via_wildmeshing,
+    )
+    V = np.array([
+        [0,0,0],[1,0,0],[1,1,0],[0,1,0],
+        [0,0,1],[1,0,1],[1,1,1],[0,1,1],
+    ], dtype=np.float64)
+    F = np.array([
+        [0,2,1],[0,3,2],[4,5,6],[4,6,7],
+        [0,1,5],[0,5,4],[2,3,7],[2,7,6],
+        [1,2,6],[1,6,5],[3,0,4],[3,4,7],
+    ], dtype=np.int64)
+    V_out, T_out, r = generate_via_wildmeshing(
+        V, F, stop_quality=10.0, edge_length_r=0.1, max_its=20,
+    )
+    assert r.success
+    assert V_out.shape[0] >= 8   # at least input verts.
+    assert T_out.shape[0] >= 1
+    assert T_out.shape[1] == 4
+
+
+def test_wildmesh_native_caching_100_percent_match(tmp_path):
+    """cache 사용 시 두 번째 호출 = 100% bit-identical."""
+    pytest.importorskip("wildmeshing")
+    from core.generator.native_tet.wildmesh_native_wrapper import (
+        generate_via_wildmeshing_cached, parity_compare_strict,
+    )
+    V = np.array([
+        [0,0,0],[1,0,0],[1,1,0],[0,1,0],
+        [0,0,1],[1,0,1],[1,1,1],[0,1,1],
+    ], dtype=np.float64)
+    F = np.array([
+        [0,2,1],[0,3,2],[4,5,6],[4,6,7],
+        [0,1,5],[0,5,4],[2,3,7],[2,7,6],
+        [1,2,6],[1,6,5],[3,0,4],[3,4,7],
+    ], dtype=np.int64)
+    # 1st call: no cache, runs wildmeshing.
+    V1, T1, r1 = generate_via_wildmeshing_cached(
+        V, F, cache_dir=str(tmp_path),
+        stop_quality=10.0, edge_length_r=0.1, max_its=20,
+    )
+    # 2nd call: cache hit.
+    V2, T2, r2 = generate_via_wildmeshing_cached(
+        V, F, cache_dir=str(tmp_path),
+        stop_quality=10.0, edge_length_r=0.1, max_its=20,
+    )
+    assert r1.success and r2.success
+    assert "cache hit" in r2.message
+    m = parity_compare_strict(V1, T1, V2, T2)
+    # 100% match (caching ensures bit-identical).
+    assert m["n_vertices_match"]
+    assert m["n_tets_match"]
+    assert m["vertex_match_pct"] == 100.0
+    assert m["tet_match_pct"] == 100.0
+    assert m["overall_match_pct"] == 100.0
+
+
+def test_wildmesh_native_cache_diff_input_diff_key(tmp_path):
+    """다른 input 은 다른 cache key → 별개 결과."""
+    pytest.importorskip("wildmeshing")
+    from core.generator.native_tet.wildmesh_native_wrapper import (
+        _input_cache_key,
+    )
+    V_a = np.array([[0,0,0],[1,0,0],[0,1,0],[0,0,1]], dtype=np.float64)
+    F_a = np.array([[0,1,2],[0,1,3],[0,2,3],[1,2,3]], dtype=np.int64)
+    V_b = V_a * 2.0
+    k_a = _input_cache_key(V_a, F_a, {"stop_quality": 10.0})
+    k_b = _input_cache_key(V_b, F_a, {"stop_quality": 10.0})
+    k_c = _input_cache_key(V_a, F_a, {"stop_quality": 5.0})
+    assert k_a != k_b   # 다른 V → 다른 key.
+    assert k_a != k_c   # 다른 param → 다른 key.
+
+
 def test_wildmesh_parity_with_pytetwild():
     """pytetwild (libccmio fTetWild Python wrapper) 와 결과 비교."""
     pytest.importorskip("scipy")
