@@ -42,14 +42,22 @@ set(CFMESH_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 set(OF_SRC ${CFMESH_ROOT}/openfoam_min/src)
 set(CFMESH_SRC ${CFMESH_ROOT}/meshLibrary)
 
-# ─── lnInclude generator: collect all .H files in a lib subtree, symlink ────
-# Reproduces wmake's `wmakeLnInclude` step. Idempotent.
+# ─── lnInclude generator: collect all .H + .C files in a lib subtree ───────
+# Reproduces wmake's `wmakeLnInclude` step. OpenFOAM template impl .C files
+# are #include-d from their .H counterparts, so both must be findable in the
+# flat lnInclude dir. The actual .C compilation list is computed separately
+# via of_collect_sources, which excludes lnInclude/.
 function(of_make_ln_include LIB_DIR OUT_DIR)
     file(GLOB_RECURSE _hdrs
          RELATIVE ${LIB_DIR}
-         ${LIB_DIR}/*.H ${LIB_DIR}/*.h ${LIB_DIR}/*.hpp ${LIB_DIR}/*.hxx)
+         ${LIB_DIR}/*.H ${LIB_DIR}/*.h ${LIB_DIR}/*.hpp ${LIB_DIR}/*.hxx
+         ${LIB_DIR}/*.C ${LIB_DIR}/*.cpp ${LIB_DIR}/*.cxx)
     file(MAKE_DIRECTORY ${OUT_DIR})
     foreach(_h IN LISTS _hdrs)
+        # Skip already-in-lnInclude paths to avoid recursion.
+        if(_h MATCHES "lnInclude/")
+            continue()
+        endif()
         get_filename_component(_b ${_h} NAME)
         if(NOT EXISTS "${OUT_DIR}/${_b}")
             file(CREATE_LINK "${LIB_DIR}/${_h}" "${OUT_DIR}/${_b}" SYMBOLIC)
@@ -58,7 +66,9 @@ function(of_make_ln_include LIB_DIR OUT_DIR)
 endfunction()
 
 # ─── 1) Generate lnInclude for every dependency lib ─────────────────────────
-of_make_ln_include(${OF_SRC}/OpenFOAM      ${OF_SRC}/OpenFOAM/lnInclude)
+of_make_ln_include(${OF_SRC}/OpenFOAM           ${OF_SRC}/OpenFOAM/lnInclude)
+of_make_ln_include(${OF_SRC}/OSspecific/POSIX   ${OF_SRC}/OSspecific/POSIX/lnInclude)
+of_make_ln_include(${OF_SRC}/Pstream/dummy      ${OF_SRC}/Pstream/dummy/lnInclude)
 of_make_ln_include(${OF_SRC}/fileFormats   ${OF_SRC}/fileFormats/lnInclude)
 of_make_ln_include(${OF_SRC}/surfMesh      ${OF_SRC}/surfMesh/lnInclude)
 of_make_ln_include(${OF_SRC}/triSurface    ${OF_SRC}/triSurface/lnInclude)
@@ -68,22 +78,57 @@ of_make_ln_include(${OF_SRC}/parallel      ${OF_SRC}/parallel/lnInclude)
 of_make_ln_include(${OF_SRC}/sampling      ${OF_SRC}/sampling/lnInclude)
 of_make_ln_include(${CFMESH_SRC}           ${CFMESH_SRC}/lnInclude)
 
-# ─── 2) Helper: collect .C files recursively ────────────────────────────────
+# ─── 2) Helper: collect .C files recursively, excluding template-impl .C ────
+# OpenFOAM convention (with NoRepository defined): .H header #include "X.C"
+# the matching template .C → that .C must NOT be compiled separately, otherwise
+# multiple-definition errors occur. We detect this by scanning .H for #include
+# lines that reference a sibling .C basename and exclude those.
 function(of_collect_sources OUT_VAR ROOT)
     file(GLOB_RECURSE _src ${ROOT}/*.C ${ROOT}/*.cpp ${ROOT}/*.cxx)
-    # Exclude lnInclude (symlinks loop), tests, doc
     list(FILTER _src EXCLUDE REGEX "/lnInclude/")
     list(FILTER _src EXCLUDE REGEX "/Test|/test/")
     list(FILTER _src EXCLUDE REGEX "/dummyThirdParty/")
-    set(${OUT_VAR} ${_src} PARENT_SCOPE)
+
+    # Build a set of "template impl" .C basenames. Scan EVERY .H and .C file
+    # for `#include "X.C"` lines — .C files include other .C files transitively.
+    file(GLOB_RECURSE _scan_all ${ROOT}/*.H ${ROOT}/*.C)
+    list(FILTER _scan_all EXCLUDE REGEX "/lnInclude/")
+    set(_tmpl_impls "")
+    foreach(_f IN LISTS _scan_all)
+        # OpenFOAM uses both `#include` and `#   include` (with spaces).
+        file(STRINGS ${_f} _lines REGEX "^[ \t]*#[ \t]*include[ \t]+\"[A-Za-z0-9_]+\\.C\"")
+        foreach(_line IN LISTS _lines)
+            string(REGEX MATCH "\"([A-Za-z0-9_]+\\.C)\"" _m "${_line}")
+            if(CMAKE_MATCH_1)
+                list(APPEND _tmpl_impls ${CMAKE_MATCH_1})
+            endif()
+        endforeach()
+    endforeach()
+    list(REMOVE_DUPLICATES _tmpl_impls)
+
+    # Filter out .C files whose basename matches any detected template impl.
+    set(_filtered "")
+    foreach(_c IN LISTS _src)
+        get_filename_component(_b ${_c} NAME)
+        if(NOT _b IN_LIST _tmpl_impls)
+            list(APPEND _filtered ${_c})
+        endif()
+    endforeach()
+    set(${OUT_VAR} ${_filtered} PARENT_SCOPE)
 endfunction()
 
-# ─── 3) Build OpenFOAM core ─────────────────────────────────────────────────
+# ─── 3) Build OpenFOAM core (OpenFOAM + OSspecific POSIX merged) ────────────
 of_collect_sources(_openfoam_src    ${OF_SRC}/OpenFOAM)
-add_library(of_openfoam STATIC ${_openfoam_src})
+of_collect_sources(_posix_src       ${OF_SRC}/OSspecific/POSIX)
+of_collect_sources(_pstream_src     ${OF_SRC}/Pstream/dummy)
+add_library(of_openfoam STATIC ${_openfoam_src} ${_posix_src} ${_pstream_src})
+# OpenFOAM 의 circular dep (UPstream <-> Pstream) 해소: 모든 lib 에 Pstream.H 가
+# include path 의 가장 앞에 위치하도록. -include 로 강제 prepend 하지는 않고
+# include path 만 정렬.
 target_include_directories(of_openfoam PUBLIC
+    ${OF_SRC}/Pstream/dummy/lnInclude
     ${OF_SRC}/OpenFOAM/lnInclude
-    ${OF_SRC}/OSspecific/POSIX/lnInclude  # OS-specific (may be empty)
+    ${OF_SRC}/OSspecific/POSIX/lnInclude
 )
 target_link_libraries(of_openfoam PUBLIC Threads::Threads dl)
 
