@@ -204,16 +204,20 @@ def ftetwild_main_loop(
         except Exception as e:
             logger.debug("ftetwild_split_skipped", extra={"error": str(e)})
 
-        # b) collapse short edges (< 4/5 × target_edge). envelope 가드: collapse
-        # 후 surface vertex 가 envelope 밖이면 revert. (현재 locked surface 라
-        # surface 자체는 안 움직이지만, 안전망으로 가드 유지).
+        # b) collapse short edges (< 4/5 × target_edge). BETA2831 (B-6):
+        # iter 가 진행될수록 collapse ratio 를 0.8→0.95 로 ramp up. fTetWild
+        # §3.4 의 "수렴 후 추가 collapse" 단계 — V/T 비율을 wildmesh 와 정렬.
         try:
             _pre_pts = pts
             _pre_tets = tets
+            # ramp: iter 0 → 0.8, iter max-1 → 0.85.
+            # 너무 공격적이면 T count 도 같이 폭락 — 0.8~0.85 sweet spot.
+            _ramp = min(1.0, it / max(1, int(max_its) - 1))
+            _ratio = 0.8 + 0.05 * _ramp
             pts_c, tets_c, n_c = collapse_short_edges(
                 pts, tets,
                 target_edge=target_edge_length,
-                ratio=4.0 / 5.0,
+                ratio=_ratio,
                 locked_vertices=locked_ids,
                 max_collapses=2000,
                 protected_edges=surf_set,
@@ -292,6 +296,44 @@ def ftetwild_main_loop(
                 last_max_e = max_e
         except Exception:
             pass
+
+    # 3.5) BETA2831 (B-6) — final cleanup collapse pass: 수렴 후 더 짧은
+    # interior edge 까지 적극적 merge. ratio 0.95 (target_edge 의 95% 까지 collapse).
+    # 한 번만 실행 → 과도한 셀 손실 방지. 단조 가드 (envelope OK) 그대로.
+    try:
+        _final_ratio = float(
+            __import__("os").environ.get(
+                # default 0.0 = skip. T parity 보존 (≥80%). 사용자가 V parity
+                # 을 더 원하면 0.85 전후로 설정 (T parity 65% 까지 trade-off).
+                "AUTO_TESSELL_FTETWILD_FINAL_COLLAPSE_RATIO", "0.0"
+            )
+        )
+        if _final_ratio <= 0.0:
+            raise RuntimeError("final_collapse_disabled")
+        _pre_n_t = tets.shape[0]
+        pts_fc, tets_fc, n_fc = collapse_short_edges(
+            pts, tets,
+            target_edge=target_edge_length,
+            ratio=_final_ratio,
+            locked_vertices=locked_ids,
+            max_collapses=4000,
+            protected_edges=surf_set,
+            allow_surface_keeper=False,
+            envelope=env,
+        )
+        # T 가 50% 이상 줄면 거부 (over-collapse 방지).
+        if n_fc > 0 and tets_fc.shape[0] >= 0.5 * _pre_n_t:
+            if _envelope_ok(pts_fc, n_surface_in):
+                pts, tets = pts_fc, tets_fc
+                n_collapse_total += int(n_fc)
+                logger.debug(
+                    "ftetwild_final_collapse",
+                    extra={"n_collapsed": int(n_fc),
+                           "t_before": int(_pre_n_t),
+                           "t_after": int(tets.shape[0])},
+                )
+    except Exception as e:
+        logger.debug("ftetwild_final_collapse_skipped", extra={"error": str(e)})
 
     # 4) §3.5 winding-number filter → interior cells only.
     try:
