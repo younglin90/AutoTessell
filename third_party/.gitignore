@@ -1,0 +1,4 @@
+# Vendored build artifacts (do not commit)
+fTetWild/build/
+fTetWild/3rdparty/
+fTetWild/cmake-build*/

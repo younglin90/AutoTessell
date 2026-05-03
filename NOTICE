@@ -1,0 +1,33 @@
+AutoTessell — third-party software notices
+==========================================
+
+This product includes software developed by external open-source projects.
+Their original licenses are preserved in their respective vendored directories.
+
+Vendored under third_party/
+----------------------------
+
+fTetWild (Float Tetrahedral Meshing in the Wild)
+    Source: https://github.com/wildmeshing/fTetWild
+    License: Mozilla Public License Version 2.0 (MPL-2.0)
+    License file: third_party/fTetWild/LICENSE.MPL2
+    Citation:
+        Hu, Yixin, Teseo Schneider, Bolun Wang, Denis Zorin, Daniele Panozzo.
+        "Fast Tetrahedral Meshing in the Wild." ACM Trans. Graph. 39, 4 (2020).
+
+    Vendored to enable in-tree pybind11 binding (auto_tessell_core/ftetwild_bind.cpp)
+    that replaces the previous external `wildmeshing` PyPI dependency. No
+    modifications to the fTetWild source files; only build glue + binding glue.
+
+Indirect (transitively built by fTetWild):
+    geogram (BSD-3-Clause)            https://github.com/BrunoLevy/geogram
+    libigl (MPL-2.0)                  https://github.com/libigl/libigl
+    Eigen (MPL-2.0 / LGPL-2.1+)       https://eigen.tuxfamily.org
+    spdlog (MIT)                      https://github.com/gabime/spdlog
+    nlohmann/json (MIT)               https://github.com/nlohmann/json
+    oneTBB (Apache-2.0)               https://github.com/oneapi-src/oneTBB
+    GMP (LGPL-3.0+)                   https://gmplib.org
+    MPFR (LGPL-3.0+)                  https://www.mpfr.org
+
+These dependencies are downloaded at CMake configure time by fTetWild's own
+build system; their licenses apply to the binaries produced.

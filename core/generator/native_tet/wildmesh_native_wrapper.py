@@ -88,16 +88,34 @@ def generate_via_wildmeshing(
         max_its=int(max_its),
     )
 
+    # BETA2834 (V-4) — vendored fTetWild 우선 (auto_tessell_core/build/ftetwild).
+    # 외부 wildmeshing PyPI 패키지 의존 제거. fallback 으로 외부 패키지 유지.
+    _vendored_ftw = None
     try:
-        import wildmeshing as wm
-    except ImportError:
-        res.message = "wildmeshing not installed"
-        res.elapsed_s = time.perf_counter() - t0
-        return (
-            np.zeros((0, 3), dtype=np.float64),
-            np.zeros((0, 4), dtype=np.int64),
-            res,
+        import sys as _sys
+        from pathlib import Path as _P
+        _build_dir = (
+            _P(__file__).resolve().parents[3]
+            / "auto_tessell_core" / "build"
         )
+        if str(_build_dir) not in _sys.path:
+            _sys.path.insert(0, str(_build_dir))
+        import ftetwild as _vendored_ftw  # type: ignore
+    except Exception:
+        _vendored_ftw = None
+
+    wm = None
+    if _vendored_ftw is None:
+        try:
+            import wildmeshing as wm  # type: ignore
+        except ImportError:
+            res.message = "neither vendored ftetwild nor wildmeshing available"
+            res.elapsed_s = time.perf_counter() - t0
+            return (
+                np.zeros((0, 3), dtype=np.float64),
+                np.zeros((0, 4), dtype=np.int64),
+                res,
+            )
 
     if V.shape[0] < 4 or F.shape[0] < 4:
         res.message = "input too small"
@@ -120,40 +138,62 @@ def generate_via_wildmeshing(
     random.seed(int(rng_seed))
 
     try:
-        tet = wm.Tetrahedralizer(
-            stop_quality=float(stop_quality),
-            max_its=int(max_its),
-            stage=int(stage),
-            epsilon=float(epsilon),
-            edge_length_r=float(edge_length_r),
-            skip_simplify=bool(skip_simplify),
-            coarsen=bool(coarsen),
-            max_threads=int(max_threads),
-        )
         V_arr = np.ascontiguousarray(V, dtype=np.float64)
         F_arr = np.ascontiguousarray(F, dtype=np.int32)
-        tet.set_mesh(V_arr, F_arr)
-        tet.tetrahedralize()
-        out_tuple = tet.get_tet_mesh(
-            smooth_open_boundary=bool(smooth_open_boundary),
-            floodfill=bool(floodfill),
-            use_input_for_wn=bool(use_input_for_wn),
-            manifold_surface=bool(manifold_surface),
-            correct_surface_orientation=bool(correct_surface_orientation),
-            all_mesh=bool(all_mesh),
-        )
-        # wildmeshing.get_tet_mesh 는 (V, T, per_tet_color) 3-tuple 반환.
-        V_out = np.asarray(out_tuple[0], dtype=np.float64)
-        T_out = np.asarray(out_tuple[1], dtype=np.int64)
+        if _vendored_ftw is not None:
+            # BETA2834 — vendored fTetWild path (in-tree, MPL-2.0).
+            V_out, T_out, _rc = _vendored_ftw.tetrahedralize(
+                V_arr, F_arr,
+                stop_quality=float(stop_quality),
+                max_its=int(max_its),
+                epsilon=float(epsilon),
+                edge_length_r=float(edge_length_r),
+                max_threads=int(max_threads),
+                skip_simplify=bool(skip_simplify),
+                coarsen=bool(coarsen),
+                smooth_open_boundary=bool(smooth_open_boundary),
+                floodfill=bool(floodfill),
+                use_input_for_wn=bool(use_input_for_wn),
+                manifold_surface=bool(manifold_surface),
+                correct_surface_orientation=bool(correct_surface_orientation),
+                log_level=4,
+            )
+            V_out = np.asarray(V_out, dtype=np.float64)
+            T_out = np.asarray(T_out, dtype=np.int64)
+            _backend = "vendored"
+        else:
+            tet = wm.Tetrahedralizer(
+                stop_quality=float(stop_quality),
+                max_its=int(max_its),
+                stage=int(stage),
+                epsilon=float(epsilon),
+                edge_length_r=float(edge_length_r),
+                skip_simplify=bool(skip_simplify),
+                coarsen=bool(coarsen),
+                max_threads=int(max_threads),
+            )
+            tet.set_mesh(V_arr, F_arr)
+            tet.tetrahedralize()
+            out_tuple = tet.get_tet_mesh(
+                smooth_open_boundary=bool(smooth_open_boundary),
+                floodfill=bool(floodfill),
+                use_input_for_wn=bool(use_input_for_wn),
+                manifold_surface=bool(manifold_surface),
+                correct_surface_orientation=bool(correct_surface_orientation),
+                all_mesh=bool(all_mesh),
+            )
+            V_out = np.asarray(out_tuple[0], dtype=np.float64)
+            T_out = np.asarray(out_tuple[1], dtype=np.int64)
+            _backend = "wildmeshing_pypi"
         res.success = True
         res.n_vertices_out = int(V_out.shape[0])
         res.n_tets_out = int(T_out.shape[0])
         res.message = (
-            f"wildmeshing: V_in={res.n_vertices_in} F_in={res.n_faces_in} → "
+            f"backend={_backend} V_in={res.n_vertices_in} F_in={res.n_faces_in} → "
             f"V_out={res.n_vertices_out} T_out={res.n_tets_out}"
         )
     except Exception as exc:
-        res.message = f"wildmeshing error: {exc!s:.120}"
+        res.message = f"tetrahedralize error: {exc!s:.120}"
         V_out = np.zeros((0, 3), dtype=np.float64)
         T_out = np.zeros((0, 4), dtype=np.int64)
 

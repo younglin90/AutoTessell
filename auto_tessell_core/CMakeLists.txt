@@ -7,6 +7,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 # ── Build options ────────────────────────────────────────────────────────────
 option(BUILD_ROBUSTHEX "Build robusthex pybind11 module (needs ROBUSTHEX_DIR source)" ON)
+option(BUILD_FTETWILD  "Build vendored fTetWild pybind11 module (third_party/fTetWild)" ON)
 
 # ── Paths to cloned repos (define first — used by subdirectory builds) ───────
 set(CINOLIB_DIR     "/tmp/hexmesh_build/cinolib"                    CACHE PATH "")
@@ -122,5 +123,28 @@ else()
       "  Clone https://github.com/mlivesu/robust_hex_dominant_meshing and set -DROBUSTHEX_DIR=<path>")
   else()
     message(STATUS "robusthex: skipped (BUILD_ROBUSTHEX=OFF)")
+  endif()
+endif()
+
+# ── ftetwild module (vendored, MPL-2.0) ─────────────────────────────────────
+# third_party/fTetWild 에 vendored 된 fTetWild C++ 소스를 빌드 + pybind11 wrap.
+# 외부 wildmeshing PyPI 패키지 의존을 제거하고 같은 algorithm 을 in-tree 로 호출.
+set(FTETWILD_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/fTetWild" CACHE PATH "")
+if(BUILD_FTETWILD AND EXISTS "${FTETWILD_SRC_DIR}/CMakeLists.txt")
+  message(STATUS "ftetwild: vendoring from '${FTETWILD_SRC_DIR}'")
+  # fTetWild 의 옵션 — main 실행 파일 + 테스트 끄고 lib 만 빌드.
+  set(FLOAT_TETWILD_TOPLEVEL_PROJECT OFF CACHE BOOL "" FORCE)
+  set(FLOAT_TETWILD_ENABLE_TBB        ON  CACHE BOOL "" FORCE)
+  set(FLOAT_TETWILD_USE_FLOAT         OFF CACHE BOOL "" FORCE)
+  set(FLOAT_TETWILD_WITH_SANITIZERS   OFF CACHE BOOL "" FORCE)
+  set(LIBIGL_USE_STATIC_LIBRARY       OFF CACHE BOOL "" FORCE)
+  add_subdirectory("${FTETWILD_SRC_DIR}" ext_build/ftetwild EXCLUDE_FROM_ALL)
+
+  pybind11_add_module(ftetwild ftetwild_bind.cpp)
+  target_link_libraries(ftetwild PRIVATE FloatTetwild Eigen3::Eigen)
+  target_compile_options(ftetwild PRIVATE -O2 -w)
+else()
+  if(BUILD_FTETWILD)
+    message(STATUS "ftetwild: '${FTETWILD_SRC_DIR}' not found — skipping.")
   endif()
 endif()
