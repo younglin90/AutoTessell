@@ -1,17 +1,2 @@
-......................F......................                            [100%]
-=================================== FAILURES ===================================
-___________________ test_nlevel_harness_params_fine_n_levels ___________________
-
-    def test_nlevel_harness_params_fine_n_levels() -> None:
-        """beta92 — HARNESS_PARAMS fine 에 n_levels=3 포함."""
-        from core.generator._tier_native_common import HARNESS_PARAMS
-        fine = HARNESS_PARAMS["tier_native_hex"]["fine"]
->       assert fine.get("n_levels") == 3
-E       AssertionError: assert 4 == 3
-E        +  where 4 = <built-in method get of dict object at 0x7ec5932cc1c0>('n_levels')
-E        +    where <built-in method get of dict object at 0x7ec5932cc1c0> = {'adaptive': True, 'enable_post_smooth': True, 'feature_angle_deg': 40.0, 'hex_buffer_cells': 1, ...}.get
-
-tests/test_native_hex_octree.py:178: AssertionError
-=========================== short test summary info ============================
-FAILED tests/test_native_hex_octree.py::test_nlevel_harness_params_fine_n_levels
-1 failed, 44 passed in 22.90s
+........................                                                 [100%]
+24 passed in 84.38s (0:01:24)

@@ -1,8 +1,8 @@
 {
   "target_engine": "tet",
-  "beta": 2820,
+  "beta": 2821,
   "max_round": 1000,
-  "round": 230,
+  "round": 231,
   "last_grade": {
     "tet": {
       "A": 0,
@@ -27,30 +27,32 @@
       "A": 5,
       "B": 0,
       "C": 0,
-      "D": 0
+      "D": 0,
+      "source": "BETA2821_POLY_SELF_INTERSECT_DETECT - detect-only helper, no caller (skeleton)",
+      "bench_time_s": 65.0
     }
   },
   "last_mq": {
     "tet_worst": 0.208,
     "tet_industrial_reach": "100%"
   },
-  "last_bench_time": 64.2,
+  "last_bench_time": 65.0,
   "consecutive_fails": 0,
   "dones": [
     "hex",
     "poly"
   ],
   "recent_cards": [
+    "BETA2821_POLY_SELF_INTERSECT_DETECT",
     "BETA2820_HEX_SMALL_BBOX_PREFLIGHT",
     "BETA2819_RRR3_EXTREME_WORST_LANE",
     "BETA2293_VVV9P5_REAL_APPLY_ENV",
-    "BETA2292_VVV9P4_APPLY_HELPER",
-    "BETA2291_VVV9P3_DIAG_ON"
+    "BETA2292_VVV9P4_APPLY_HELPER"
   ],
   "rotate_targets": [
     "tet",
     "hex",
     "poly"
   ],
-  "plan_archive": "BETA2820_HEX_SMALL_BBOX_PREFLIGHT (R230)"
+  "plan_archive": "BETA2821_POLY_SELF_INTERSECT_DETECT (R231)"
 }

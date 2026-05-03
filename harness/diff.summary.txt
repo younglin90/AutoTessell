@@ -1,5 +1,5 @@
-file: harness/state.json
-functions: n/a (state update only — round 177→178, beta 2228→2229)
-lines_added: 1
-lines_removed: 1
-note: all core/evaluator/ files already vectorized — no code changes needed
+file: core/generator/native_poly/voronoi.py
+functions: _detect_cell_self_intersect, NativeVoroPolyResult
+lines_added: 54
+lines_removed: 0
+card: BETA2821_POLY_SELF_INTERSECT_DETECT

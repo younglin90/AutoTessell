@@ -1,2 +1,2 @@
 PASS
-Regression 75/75 PASS (hex/tet/poly), env OFF smoke OK, syntax valid. hex grade A 5/5 monotone, bench_time~64s.
+BETA2821_POLY_SELF_INTERSECT_DETECT (skeleton helper, 36/36 regression, no caller).

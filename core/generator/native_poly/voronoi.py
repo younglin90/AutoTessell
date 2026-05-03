@@ -214,6 +214,8 @@ class NativePolyResult:
     # validator 발견: mesh #2 (V=12k) 의 poly 가 5 cells 만 — 사용자 입장에서
     # success=True 인데 사실상 빈 mesh. n_cells < n_surface_v / 32 시 True.
     mesh_integrity_suspect: bool = False
+    # BETA2821 — post-mesh cell self-intersect count. None = 미측정, 0 = clean.
+    n_self_intersect_cells_post: int | None = None
 
 
 from core.utils.geometry import inside_winding_number as _inside_ray_cast_full
@@ -752,6 +754,66 @@ def _ccw_sort_face_vertices(
     angles = np.arctan2(proj[:, 1], proj[:, 0])
     order = np.argsort(angles)
     return [int(verts_idx[k]) for k in order]
+
+
+def _detect_cell_self_intersect(
+    cell_faces: list[list[int]],
+    points: np.ndarray,
+    *,
+    eps: float = 1e-12,
+) -> tuple[int, int]:
+    """Voronoi cell self-intersect 감지 (skeleton, 호출 site 없음 — BETA2821).
+
+    Parameters
+    ----------
+    cell_faces : list of face vertex-index lists for a single cell.
+    points     : (N,3) vertex coordinate array.
+    eps        : tolerance for collinear / coplanar checks.
+
+    Returns
+    -------
+    (n_collinear_face, n_si_pair) — 각각 collinear face 수, self-intersect face-pair 수.
+    """
+    normals: list[np.ndarray] = []
+    ds: list[float] = []
+    n_collinear = 0
+
+    for face in cell_faces:
+        if len(face) < 3:
+            n_collinear += 1
+            normals.append(np.zeros(3))
+            ds.append(0.0)
+            continue
+        pts = points[face]
+        # collinear 검사: cross-product of first two edges
+        v0 = pts[1] - pts[0]
+        v1 = pts[2] - pts[0]
+        cross = np.cross(v0, v1)
+        norm_cross = float(np.linalg.norm(cross))
+        if norm_cross < eps:
+            n_collinear += 1
+            normals.append(np.zeros(3))
+            ds.append(0.0)
+        else:
+            n = cross / norm_cross
+            normals.append(n)
+            ds.append(float(np.dot(n, pts[0])))
+
+    n_si_pair = 0
+    nf = len(normals)
+    for i in range(nf):
+        ni = normals[i]
+        if np.linalg.norm(ni) < 0.5:
+            continue
+        for j in range(i + 1, nf):
+            nj = normals[j]
+            if np.linalg.norm(nj) < 0.5:
+                continue
+            dot = abs(float(np.dot(ni, nj)))
+            if dot > 0.9999 and abs(ds[i] - ds[j]) < eps:
+                n_si_pair += 1
+
+    return (n_collinear, n_si_pair)
 
 
 def _inject_feature_seeds(
