@@ -2390,10 +2390,6 @@ class AutoTessellWindow:  # type: ignore[misc]
         except Exception:
             pass
         # BETA2851 — legacy native_bl/hex/poly spin row 제거.
-            try:
-                chk.toggled.connect(lambda _v: self._refresh_tier_strip_engine_labels())
-            except Exception:
-                pass
 
         from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QWidget
         rem_row = QWidget()
