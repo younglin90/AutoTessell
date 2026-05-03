@@ -126,6 +126,9 @@ class LongList
 
 public:
 
+    // STL-compatible typedef (required by OpenFOAM v2406 token.H)
+    typedef T value_type;
+
     // Constructors
 
         //- Construct null

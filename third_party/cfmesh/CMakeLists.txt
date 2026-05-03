@@ -71,7 +71,7 @@ of_make_ln_include(${OF_SRC}/OSspecific/POSIX   ${OF_SRC}/OSspecific/POSIX/lnInc
 of_make_ln_include(${OF_SRC}/Pstream/dummy      ${OF_SRC}/Pstream/dummy/lnInclude)
 of_make_ln_include(${OF_SRC}/fileFormats   ${OF_SRC}/fileFormats/lnInclude)
 of_make_ln_include(${OF_SRC}/surfMesh      ${OF_SRC}/surfMesh/lnInclude)
-of_make_ln_include(${OF_SRC}/triSurface    ${OF_SRC}/triSurface/lnInclude)
+# ESI v2406 — triSurface는 surfMesh/triSurface 와 meshTools/triSurface 안으로 통합됨
 of_make_ln_include(${OF_SRC}/meshTools     ${OF_SRC}/meshTools/lnInclude)
 of_make_ln_include(${OF_SRC}/finiteVolume  ${OF_SRC}/finiteVolume/lnInclude)
 of_make_ln_include(${OF_SRC}/parallel      ${OF_SRC}/parallel/lnInclude)
@@ -88,6 +88,16 @@ function(of_collect_sources OUT_VAR ROOT)
     list(FILTER _src EXCLUDE REGEX "/lnInclude/")
     list(FILTER _src EXCLUDE REGEX "/Test|/test/")
     list(FILTER _src EXCLUDE REGEX "/dummyThirdParty/")
+    # OpenFOAM convention: *Templates.C are template impl files, not standalone.
+    list(FILTER _src EXCLUDE REGEX "Templates\\.C$")
+    # cfMesh 가 사용 않는 모듈 (CFD solver / graph utility) 컴파일 제외.
+    list(FILTER _src EXCLUDE REGEX "/meshTools/graph/")
+    # fvc 의 reconstruction 류 — header 만 필요, 본체는 cfMesh 무관.
+    list(FILTER _src EXCLUDE REGEX "fvcSimpleReconstruct\\.C$")
+    # OpenFOAM expression parser — Ragel/Flex 빌드 필요. cfMesh 무사용.
+    list(FILTER _src EXCLUDE REGEX "/OpenFOAM/expressions/")
+    # cfMesh 내부 orphan (deleted header 참조). 단일 함수, 사용 안 됨.
+    list(FILTER _src EXCLUDE REGEX "meshSurfaceEdgeCreateBoundaryFaces\\.C$")
 
     # Build a set of "template impl" .C basenames. Scan EVERY .H and .C file
     # for `#include "X.C"` lines — .C files include other .C files transitively.
@@ -121,14 +131,18 @@ endfunction()
 of_collect_sources(_openfoam_src    ${OF_SRC}/OpenFOAM)
 of_collect_sources(_posix_src       ${OF_SRC}/OSspecific/POSIX)
 of_collect_sources(_pstream_src     ${OF_SRC}/Pstream/dummy)
+# foamVersion 자체 stub (wmake 의 buildtime gen 대체).
+list(APPEND _openfoam_src ${OF_SRC}/OpenFOAM/global/foamVersion_stub.C)
+# STL ASCII parser 자체 stub (flex/ragel 미빌드 → readAsciiManual 위임).
+list(APPEND _fileFormats_src ${OF_SRC}/fileFormats/stl/STLAsciiParseStubs.C)
 add_library(of_openfoam STATIC ${_openfoam_src} ${_posix_src} ${_pstream_src})
 # OpenFOAM 의 circular dep (UPstream <-> Pstream) 해소: 모든 lib 에 Pstream.H 가
 # include path 의 가장 앞에 위치하도록. -include 로 강제 prepend 하지는 않고
 # include path 만 정렬.
 target_include_directories(of_openfoam PUBLIC
-    ${OF_SRC}/Pstream/dummy/lnInclude
     ${OF_SRC}/OpenFOAM/lnInclude
     ${OF_SRC}/OSspecific/POSIX/lnInclude
+    ${OF_SRC}/Pstream/dummy/lnInclude
 )
 target_link_libraries(of_openfoam PUBLIC Threads::Threads dl)
 
@@ -143,20 +157,17 @@ add_library(of_surfMesh STATIC ${_surfMesh_src})
 target_include_directories(of_surfMesh PUBLIC ${OF_SRC}/surfMesh/lnInclude)
 target_link_libraries(of_surfMesh PUBLIC of_fileFormats)
 
-of_collect_sources(_triSurface_src ${OF_SRC}/triSurface)
-add_library(of_triSurface STATIC ${_triSurface_src})
-target_include_directories(of_triSurface PUBLIC ${OF_SRC}/triSurface/lnInclude)
-target_link_libraries(of_triSurface PUBLIC of_surfMesh)
+# ESI v2406 — triSurface는 surfMesh + meshTools 안으로 통합. of_triSurface 별도 target 없음.
 
 of_collect_sources(_meshTools_src ${OF_SRC}/meshTools)
 add_library(of_meshTools STATIC ${_meshTools_src})
 target_include_directories(of_meshTools PUBLIC ${OF_SRC}/meshTools/lnInclude)
-target_link_libraries(of_meshTools PUBLIC of_triSurface)
+target_link_libraries(of_meshTools PUBLIC of_surfMesh)
 
-of_collect_sources(_finiteVolume_src ${OF_SRC}/finiteVolume)
-add_library(of_finiteVolume STATIC ${_finiteVolume_src})
-target_include_directories(of_finiteVolume PUBLIC ${OF_SRC}/finiteVolume/lnInclude)
-target_link_libraries(of_finiteVolume PUBLIC of_meshTools)
+# finiteVolume — cfMesh는 header-only 사용 (CFD solver utility 본체 무관).
+add_library(of_finiteVolume INTERFACE)
+target_include_directories(of_finiteVolume INTERFACE ${OF_SRC}/finiteVolume/lnInclude)
+target_link_libraries(of_finiteVolume INTERFACE of_meshTools)
 
 # ─── 5) Build cfMesh meshLibrary ────────────────────────────────────────────
 of_collect_sources(_cfmesh_src ${CFMESH_SRC})
@@ -165,6 +176,7 @@ add_library(cfmesh_meshlib STATIC ${_cfmesh_src})
 target_include_directories(cfmesh_meshlib PUBLIC ${CFMESH_SRC}/lnInclude)
 target_link_libraries(cfmesh_meshlib PUBLIC
     of_finiteVolume of_meshTools of_surfMesh of_fileFormats of_openfoam)
+# ESI v2406 — of_triSurface는 별도 target 아님 (surfMesh/meshTools 통합됨).
 
 find_package(OpenMP)
 if(OpenMP_CXX_FOUND)

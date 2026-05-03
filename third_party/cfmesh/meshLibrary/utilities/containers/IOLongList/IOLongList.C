@@ -67,7 +67,7 @@ Foam::Module::IOLongList<T, Offset>::IOLongList
 
 
 template<class T, int Offset>
-Foam::Module::Module::IOLongList<T, Offset>::IOLongList
+Foam::Module::IOLongList<T, Offset>::IOLongList
 (
     const IOobject& io,
     const LongList<T, Offset>& list
