@@ -2039,6 +2039,13 @@ def generate_native_tet(
             # YY1 (beta2000) — hard input (mq < 0.15) 일 땐 ratio 0.85 로
             # 더 적극적 collapse → sliver 더 격감.
             collapse_ratio = 0.85 if float(pre_q.mean_q) < 0.15 else 0.7
+            # BETA2825 — wildmesh density alignment 모드에선 native 의 grid
+            # over-density (셀 수 1.18× 초과) 를 줄이기 위해 ratio 0.95 로 escalate.
+            # env AUTO_TESSELL_NATIVE_WILDMESH_DENSITY=1 인 경우만 발동.
+            if os.environ.get("AUTO_TESSELL_NATIVE_WILDMESH_DENSITY", "0") == "1":
+                collapse_ratio = float(
+                    os.environ.get("AUTO_TESSELL_NATIVE_DENSITY_COLLAPSE_RATIO", "0.95")
+                )
             new_pts, new_tets, n_c = collapse_short_edges(
                 final_pts, final_tets,
                 target_edge=float(target_edge_length),
