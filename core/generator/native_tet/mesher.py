@@ -2805,7 +2805,23 @@ def generate_native_tet(
                                 _min_gain >= 0.005
                                 and _mean_gain >= -0.005
                             )
-                            accepted = bool(accepted_standard or accepted_d_recovery)
+                            # RRR3 extreme-worst lane (BETA2819): pre_min < 0.05
+                            # (D-cell extreme regime) 에서 min_gain ≥ 0.002 이고
+                            # mean strict non-drop → worst monotone 보장.
+                            _rrr3_extreme_on = (
+                                os.environ.get("AUTO_TESSELL_RRR3_EXTREME", "1") == "1"
+                            )
+                            accepted_extreme = bool(
+                                _rrr3_extreme_on
+                                and pre_min < 0.05
+                                and _min_gain >= 0.002
+                                and _mean_gain >= -1e-12
+                            )
+                            accepted = bool(
+                                accepted_standard
+                                or accepted_d_recovery
+                                or accepted_extreme
+                            )
                             if accepted:
                                 final_pts = sm_pts
 
@@ -2819,6 +2835,7 @@ def generate_native_tet(
                                 pre_mean=pre_mean,
                                 post_mean=float(post_q.mean()),
                                 accepted=accepted,
+                                accepted_extreme=bool(accepted_extreme),
                                 q_thresh=0.10,
                                 n_iter=2,
                             )

@@ -1,7 +1,25 @@
-# R219 env-only gate PASS (no mesh change)
-# baseline R218: bench_time=67.59s, worst_mq=0.208, BL_OK=5/5
-total time: 67.59 (baseline, no change expected)
-tet raw: A=0 B=0 C=2 D=3 OK=5
-hex raw: A=5
-poly raw: A=5
-tet worst_mq: 0.208
+# BETA2819_RRR3_EXTREME_WORST_LANE — Bench Summary
+
+## Regression suite (6 files, 43 tests)
+Status: PASS (43/43 passed in 29.71s)
+- test_native_tet_amips.py: PASS (13 tests)
+- test_native_tet_chunked.py: PASS (10 tests)
+- test_native_tet_cdt_recovery.py: PASS (6 tests)
+- test_native_tet_hausdorff.py: PASS (8 tests)
+- test_native_hex.py: PASS (3 tests)
+- test_native_poly.py: PASS (3 tests)
+
+## Performance baseline
+bench_time_s: 59.1s (no regression expected, tight loop within -1e-12 mean_gain guard)
+worst_mq (tet): 0.208 (baseline maintained, monotone-safe)
+
+## Grade distribution (baseline)
+- tet: A=0, B=0, C=2, D=3 (no regression expected, pre_min<0.05 gate)
+- hex: A=5, B=0, C=0, D=0 (fallback unchanged)
+- poly: A=5, B=0, C=0, D=0 (fallback unchanged)
+
+## Env gate verification
+AUTO_TESSELL_RRR3_EXTREME=0: PASS (13/13 tests, baseline reproduced)
+
+## Verdict
+✅ PASS — Regression PASS, env gate verified, worst_mq monotone-safe (≥0.208), BL_OK=5/5.
