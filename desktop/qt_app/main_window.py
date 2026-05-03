@@ -1819,13 +1819,17 @@ class AutoTessellWindow:  # type: ignore[misc]
         cb_mesh = QComboBox()
         cb_mesh.setStyleSheet(self._dark_combo_qss())
         # 핵심 3 mesh type 만 노출 (CLAUDE.md mesh_type 정책).
+        # BETA2836 — Tet 옵션을 vendored fTetWild (wildmesh) 로 매핑.
+        # 이전 "native_tet" 은 우리 Python self-impl tet engine (tier_native_tet)
+        # 으로 wildmesh 와 알고리즘 자체가 다른 결과 생성. BETA2834 vendored
+        # binding 이 있으므로 default 는 fTetWild 로 변경 — 결과 동일성 보장.
         for value, display in [
-            ("native_tet", "Tet · 복잡 형상 강건"),
-            ("native_hex", "Hex_dominant · BL 품질 우수"),
+            ("wildmesh",    "Tet · fTetWild (vendored, wildmesh-identical)"),
+            ("native_hex",  "Hex_dominant · BL 품질 우수"),
             ("native_poly", "Poly · 셀 수 최소 (gradient 해소)"),
         ]:
             cb_mesh.addItem(display, value)
-        cb_mesh.setCurrentIndex(0)  # default: native_tet.
+        cb_mesh.setCurrentIndex(0)  # default: wildmesh (vendored fTetWild).
         cb_mesh.currentIndexChanged.connect(
             lambda _idx: self._on_engine_changed()
         )
