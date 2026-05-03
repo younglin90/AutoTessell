@@ -255,11 +255,28 @@ def _input_cache_key(
     F: NDArray[np.int64],
     params: dict,
 ) -> str:
-    """input + parameter hash → cache key (bit-identical reproducibility)."""
+    """input + parameter hash → cache key (bit-identical reproducibility).
+
+    BETA2822 — 순서 불변 정규화: STL write/read 사이 vertex/face 순서가 바뀌어도
+    동일 surface 면 동일 cache key. lexicographic V sort + V-permutation 으로 F
+    재인덱싱 → canonical form 으로 hash.
+    """
     import hashlib
+    V64 = np.ascontiguousarray(V, dtype=np.float64)
+    F64 = np.ascontiguousarray(F, dtype=np.int64)
+    # V 좌표 round (1e-9) 후 lexicographic sort → permutation 얻음.
+    V_round = np.round(V64 * 1e9).astype(np.int64)
+    perm = np.lexsort((V_round[:, 2], V_round[:, 1], V_round[:, 0]))
+    inv = np.empty_like(perm)
+    inv[perm] = np.arange(len(perm), dtype=perm.dtype)
+    V_canon = V64[perm]
+    # F 의 vertex index 를 inv 로 remap, 각 row 내부도 sort, 그리고 row 들을 lex-sort.
+    F_remap = inv[F64]
+    F_remap = np.sort(F_remap, axis=1)
+    F_canon = F_remap[np.lexsort((F_remap[:, 2], F_remap[:, 1], F_remap[:, 0]))]
     h = hashlib.sha256()
-    h.update(np.ascontiguousarray(V, dtype=np.float64).tobytes())
-    h.update(np.ascontiguousarray(F, dtype=np.int64).tobytes())
+    h.update(V_canon.tobytes())
+    h.update(F_canon.tobytes())
     for k in sorted(params.keys()):
         h.update(f"{k}={params[k]}".encode("utf-8"))
     return h.hexdigest()[:32]

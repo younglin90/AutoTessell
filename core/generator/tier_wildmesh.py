@@ -34,6 +34,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import os
 from pathlib import Path
 from typing import Any
 
@@ -566,12 +567,46 @@ class TierWildMeshGenerator:
         timeout_sec = _compute_timeout(quality_level, int(len(faces)), params)
 
         logger.info("wildmesh_tetrahedralize_start", timeout=timeout_sec)
-        tet_v, tet_f, _tags = _run_tetrahedralize_subprocess(
-            vertices,
-            faces,
-            {**params, **p},
-            timeout_sec,
-        )
+        # BETA2822 — verify-script parity wire-in: cached wrapper 호출 (default ON).
+        # 같은 (V, F, params) 입력 → SHA256 cache key 일치 → bit-identical 결과.
+        # subprocess 는 cache miss 시 fallback 으로 유지.
+        _use_cached = os.environ.get("AUTO_TESSELL_WILDMESH_USE_CACHED", "1") == "1"
+        tet_v = tet_f = None
+        if _use_cached:
+            try:
+                from core.generator.native_tet.wildmesh_native_wrapper import (
+                    generate_via_wildmeshing_cached,
+                )
+                _cache_dir = os.environ.get(
+                    "AUTO_TESSELL_WILDMESH_CACHE_DIR",
+                    str(Path.home() / ".cache" / "autotessell" / "wildmesh"),
+                )
+                Path(_cache_dir).mkdir(parents=True, exist_ok=True)
+                tet_v, tet_f, _r = generate_via_wildmeshing_cached(
+                    np.asarray(vertices, dtype=np.float64),
+                    np.asarray(faces, dtype=np.int64),
+                    cache_dir=_cache_dir,
+                    stop_quality=float(p["stop_quality"]),
+                    edge_length_r=float(p["edge_length_r"]),
+                    epsilon=float(p["epsilon"]),
+                    max_its=int(p["max_its"]),
+                )
+                logger.info(
+                    "wildmesh_cached_wrapper_used",
+                    cache_dir=_cache_dir,
+                    cache_hit=getattr(_r, "from_cache", False),
+                    n_tets=int(tet_f.shape[0]) if tet_f is not None else 0,
+                )
+            except Exception as e:
+                logger.debug("wildmesh_cached_wrapper_failed", error=str(e))
+                tet_v = tet_f = None
+        if tet_v is None or tet_f is None or tet_f.shape[0] == 0:
+            tet_v, tet_f, _tags = _run_tetrahedralize_subprocess(
+                vertices,
+                faces,
+                {**params, **p},
+                timeout_sec,
+            )
 
         logger.info(
             "wildmesh_tetrahedralize_done",

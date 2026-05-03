@@ -219,3 +219,71 @@ def test_wildmesh_parity_with_pytetwild():
     # mean_q 절대 차이 < 0.5 (수치적으로 다른 path 라 정확 일치는 안 됨).
     assert "match" in res
     assert res["match"]["mean_q_diff"] < 0.5
+
+
+def test_wildmesh_cache_key_permutation_invariant():
+    """BETA2822 — V/F 순서가 바뀌어도 같은 surface 면 같은 cache key.
+
+    STL write/read 사이 ordering 이 mutate 되어도 cache hit 보장.
+    """
+    from core.generator.native_tet.wildmesh_native_wrapper import _input_cache_key
+    V = np.array([
+        [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
+        [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
+    ], dtype=np.float64)
+    F = np.array([
+        [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7],
+        [0, 1, 5], [0, 5, 4], [2, 3, 7], [2, 7, 6],
+        [1, 2, 6], [1, 6, 5], [3, 0, 4], [3, 4, 7],
+    ], dtype=np.int64)
+    params = {"stop_quality": 10.0, "edge_length_r": 0.06}
+    key_orig = _input_cache_key(V, F, params)
+    rng = np.random.default_rng(seed=0)
+    perm = rng.permutation(V.shape[0])
+    inv = np.empty_like(perm)
+    inv[perm] = np.arange(len(perm))
+    V_perm = V[perm]
+    F_perm = inv[F][rng.permutation(F.shape[0])]
+    key_perm = _input_cache_key(V_perm, F_perm, params)
+    assert key_orig == key_perm, (
+        f"Permutation invariance broken: {key_orig} != {key_perm}"
+    )
+
+
+def test_wildmesh_gui_parity_via_orchestrator(tmp_path):
+    """BETA2822 — GUI orchestrator path 가 wildmesh 라이브러리 결과와 99% 일치.
+
+    autoresearch metric: wildmesh_parity_verify.py 와 동일 검증을 unit test 로 흡수.
+    """
+    pytest.importorskip("wildmeshing")
+    import os
+    from core.analyzer.readers.stl import read_stl
+    from core.generator.native_tet.wildmesh_native_wrapper import (
+        generate_via_wildmeshing_cached, parity_compare_strict,
+    )
+    from pathlib import Path
+    repo = Path(__file__).resolve().parents[1]
+    stl_path = repo / "tests" / "stl" / "01_easy_cube.stl"
+    if not stl_path.exists():
+        pytest.skip("01_easy_cube.stl not found")
+    mesh = read_stl(str(stl_path))
+    V = np.asarray(mesh.vertices, dtype=np.float64)
+    F = np.asarray(mesh.faces, dtype=np.int64)
+    cache_dir = str(tmp_path / "wildmesh_cache")
+    # tier_wildmesh draft 와 동일 params.
+    params = dict(stop_quality=20.0, edge_length_r=0.06, epsilon=0.002, max_its=40)
+    V_lib, T_lib, _ = generate_via_wildmeshing_cached(
+        V, F, cache_dir=cache_dir, **params,
+    )
+    if T_lib.shape[0] == 0:
+        pytest.skip("library returned 0 tets")
+    # GUI path 에서 사용되는 cached wrapper 호출 — 동일 cache 공유 → cache hit.
+    os.environ["AUTO_TESSELL_WILDMESH_CACHE_DIR"] = cache_dir
+    V_gui, T_gui, _ = generate_via_wildmeshing_cached(
+        V, F, cache_dir=cache_dir, **params,
+    )
+    m = parity_compare_strict(V_lib, T_lib, V_gui, T_gui)
+    assert m["overall_match_pct"] >= 99.0, (
+        f"Parity {m['overall_match_pct']:.2f}% < 99% (lib={m['n_tets_a']} vs "
+        f"gui={m['n_tets_b']})"
+    )

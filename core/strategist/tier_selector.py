@@ -99,8 +99,8 @@ def _policy_filter_tier(
 # 로직이 모두 사용된다.
 _MESH_TYPE_TIER_MAP: dict[str, dict[str, list[str]]] = {
     "tet": {
-        # draft: 빠른 검증. tetwild coarse ε 가 가장 관대하고 안정적.
-        "draft":    ["tier2_tetwild",  "tier_wildmesh", "tier05_netgen",
+        # draft: GUI=wildmesh 99% match goal — tier_wildmesh primary (BETA2822 wire-in).
+        "draft":    ["tier_wildmesh",  "tier2_tetwild", "tier05_netgen",
                      "tier_meshpy",    "tier_jigsaw_fallback"],
         # standard: 엔지니어링 용. Netgen 기본.
         "standard": ["tier05_netgen",  "tier_wildmesh", "tier2_tetwild",
