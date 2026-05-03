@@ -141,12 +141,13 @@ class AdditionalMetricsComputer:
             return None
 
     def _run_foam_to_vtk(self, case_dir: Path) -> None:
-        try:
-            from core.utils.openfoam_utils import run_openfoam
-            run_openfoam("foamToVTK", case_dir)
-            log.debug("foamToVTK 완료")
-        except Exception as exc:
-            log.warning("foamToVTK 실패", error=str(exc))
+        """BETA2849 — 외부 OpenFOAM foamToVTK 호출 제거.
+
+        polyMesh 의 metric 은 NativeMeshChecker 가 이미 직접 계산하므로
+        VTK 변환은 추가 보조 metric 용도 (skewness/non-ortho histogram 등) 일
+        뿐 필수 아님. 외부 의존 제거를 위해 호출 자체 skip.
+        """
+        log.debug("foamToVTK skipped (native metrics only, no external OpenFOAM)")
 
     def _find_vtk_file(self, vtk_dir: Path) -> Path | None:
         if not vtk_dir.exists():
