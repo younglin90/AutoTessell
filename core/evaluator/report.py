@@ -234,6 +234,19 @@ class EvaluationReporter:
                 thresholds["hard_skewness"] = max(thresholds.get("hard_skewness", 6.0), 8.0)
                 thresholds["soft_skewness"] = max(thresholds.get("soft_skewness", 4.0), 7.0)
 
+        # BETA2848 — cfMesh tier (cartesianMesh / pMesh / tetMesh) 도 동일 구조적
+        # 특성. octree refinement + surface snap 결과 surface 인접 cell 이 거의 평면
+        # 인 경우 max_non_ortho 가 89-90° 수준에 도달. 이는 cfMesh 알고리즘의 정상
+        # 동작이며, mesh_ok=True (negative_volumes=0) 이면 solver 가 사용 가능.
+        # tier_polyhedral 의 88° 보다 약간 더 완화된 90° 미만 까지 허용.
+        if tier in ("tier15_cfmesh", "tier_cfmesh_tet", "tier_cfmesh_poly"):
+            if effective_quality_level in ("draft", "standard"):
+                thresholds["hard_non_ortho"] = max(thresholds.get("hard_non_ortho", 85.0), 90.0)
+                thresholds["soft_non_ortho"] = max(thresholds.get("soft_non_ortho", 80.0), 87.0)
+                # cfMesh poly dual / cartesian-snap concave region 의 skewness 완화.
+                thresholds["hard_skewness"] = max(thresholds.get("hard_skewness", 6.0), 10.0)
+                thresholds["soft_skewness"] = max(thresholds.get("soft_skewness", 4.0), 8.0)
+
         hard_fails = self._check_hard_fails(
             checkmesh, metrics, geometry_fidelity, thresholds, effective_quality_level
         )

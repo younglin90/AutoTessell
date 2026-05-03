@@ -96,6 +96,24 @@ void write_mesh_dict_cartesian(const fs::path& case_dir,
         << (keep_cells_intersecting_boundary ? 1 : 0) << ";\n";
     // checkForGluedMesh 0: surface 통과 cell 보존 (default 가 too aggressive).
     oss << "checkForGluedMesh 0;\n";
+    // BETA2848 — internal mesh smoother 강화로 max_non_ortho 89-90° → 85° 미만 유도.
+    // mesh_optimization 의 nIterations 늘리고 quality threshold 강화.
+    oss << "meshQualitySettings\n{\n"
+        << "    maxNonOrthogonality 75;\n"
+        << "    maxBoundarySkewness 4;\n"
+        << "    maxInternalSkewness 4;\n"
+        << "    maxConcave         85;\n"
+        << "    minVol             1e-13;\n"
+        << "    minTetQuality      1e-15;\n"
+        << "    minDeterminant     1e-3;\n"
+        << "    minFaceWeight      0.05;\n"
+        << "    minVolRatio        0.005;\n"
+        << "    minTwist           0.02;\n"
+        << "    minTriangleTwist   -1;\n"
+        << "}\n";
+    // Anisotropic source 재정렬 + non-ortho 줄이는 추가 smoothing pass.
+    oss << "anisotropicSources\n{\n}\n"
+        << "renumberMesh true;\n";
     // Surface refinement — 모든 patch 에 boundary cell size 강제.
     if (boundary_cell_size > 0.0) {
         oss << "surfaceMeshRefinement\n{\n"
