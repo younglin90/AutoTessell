@@ -31,3 +31,30 @@ Indirect (transitively built by fTetWild):
 
 These dependencies are downloaded at CMake configure time by fTetWild's own
 build system; their licenses apply to the binaries produced.
+
+
+cfMesh (mesh generation library based on OpenFOAM)
+    Source: https://develop.openfoam.com/Community/integration-cfmesh
+    Upstream: Creative Fields, Ltd. — Franjo Juretic
+    Copyright: (C) 2014-2017 Creative Fields, Ltd. + later contributors
+    License: GNU General Public License, version 3 or later (GPL-3.0-or-later)
+    License file: third_party/cfmesh/LICENSE.GPL3
+    Per-file headers retained: every .H/.C file in third_party/cfmesh/ contains
+    the original GPL-3 notice.
+
+    Vendored as the GPL-3 mesh-generation backend for AutoTessell. AutoTessell
+    is licensed GPL-3.0-or-later (project-wide) to remain compatible with this
+    vendored sub-tree (see project root LICENSE). No modifications to cfMesh
+    sources; only build glue (CMakeLists.txt for wmake → cmake) + pybind11
+    binding glue (auto_tessell_core/cfmesh_bind.cpp).
+
+    cfMesh internally requires a small subset of OpenFOAM core headers
+    (dictionary, IOobject, polyMesh I/O, Time). These are provided either:
+      (a) via a minimal in-tree stub at third_party/cfmesh/openfoam_min/, or
+      (b) by linking against a system OpenFOAM installation if detected.
+
+    Tools provided after build:
+      cartesianMesh — hex-dominant cartesian mesher (snappyHexMesh competitor)
+      tetMesh       — Delaunay-based tet mesher (used as tet fallback only;
+                       primary tet path remains vendored fTetWild)
+      pMesh         — polyhedral mesher (default backend for mesh_type=poly)
