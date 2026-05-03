@@ -117,8 +117,13 @@ def _apply_default_env() -> None:
 def main() -> None:  # pragma: no cover
     """QApplication 을 생성하고 AutoTessellWindow 를 표시한다."""
     import sys
+    import signal
     import faulthandler
     faulthandler.enable()  # SIGSEGV 시 Python traceback 출력
+
+    # BETA2854 — Ctrl+C 가 Qt event loop 까지 전달되도록 SIGINT default 복원.
+    # PySide6 가 default 로 SIGINT 를 SIG_IGN 처리해 Ctrl+C 가 무시됨.
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
 
     _apply_default_env()
     _configure_pyvista_runtime()
@@ -131,6 +136,13 @@ def main() -> None:  # pragma: no cover
     app = QApplication(sys.argv)
     app.setApplicationName("AutoTessell")
     app.setApplicationVersion(APP_VERSION)
+
+    # BETA2854 — QTimer 가 주기적으로 Python 인터프리터에게 제어권 → SIGINT 처리.
+    # SIG_DFL 만으로는 Qt C++ 이벤트 루프 진입 후 Python signal handler 가
+    # 호출되지 않음. 100ms 마다 빈 callback 으로 Python 으로 잠시 복귀.
+    _sigint_timer = QTimer()
+    _sigint_timer.start(100)
+    _sigint_timer.timeout.connect(lambda: None)
 
     window = AutoTessellWindow()
     window.show()
