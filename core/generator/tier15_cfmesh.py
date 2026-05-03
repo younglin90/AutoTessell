@@ -115,9 +115,39 @@ class Tier15CfMeshGenerator:
             )
 
             # cartesianMesh 실행
+            # BETA2844 — vendored cfMesh module 우선 (외부 OpenFOAM 의존 제거).
+            # auto_tessell_core/build/cfmesh_native.so 가 빌드되어 있으면 그쪽을
+            # 호출. 실패 시 시스템 OpenFOAM 의 run_openfoam() 으로 fallback.
             t_step = time.monotonic()
+            _used_vendored = False
             try:
-                run_openfoam("cartesianMesh", case_dir)
+                import sys as _sys
+                from pathlib import Path as _P
+                _build = _P(__file__).resolve().parents[2] / "auto_tessell_core" / "build"
+                if str(_build) not in _sys.path:
+                    _sys.path.insert(0, str(_build))
+                import cfmesh_native as _cfm  # type: ignore
+                # surface STL path: case/constant/triSurface/<filename>
+                _stl_dir = case_dir / "constant" / "triSurface"
+                _stls = list(_stl_dir.glob("*.stl")) + list(_stl_dir.glob("*.STL"))
+                if _stls:
+                    _r = _cfm.cartesian_mesh(
+                        str(_stls[0]), str(case_dir),
+                        max_cell_size=float(
+                            strategy.tier_specific_params.get(
+                                "cfmesh_max_cell_size", 0.2
+                            )
+                        ),
+                    )
+                    if _r.get("success"):
+                        _used_vendored = True
+                        logger.info("cfmesh_vendored_used",
+                                    polymesh=_r.get("polymesh_dir"))
+            except Exception as _exc:
+                logger.debug("cfmesh_vendored_skipped", error=str(_exc)[:120])
+            try:
+                if not _used_vendored:
+                    run_openfoam("cartesianMesh", case_dir)
             except OpenFOAMError as exc:
                 step_elapsed = time.monotonic() - t_step
                 elapsed = time.monotonic() - t_start

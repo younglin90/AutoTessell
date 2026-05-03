@@ -8,6 +8,7 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 # ── Build options ────────────────────────────────────────────────────────────
 option(BUILD_ROBUSTHEX "Build robusthex pybind11 module (needs ROBUSTHEX_DIR source)" ON)
 option(BUILD_FTETWILD  "Build vendored fTetWild pybind11 module (third_party/fTetWild)" ON)
+option(BUILD_CFMESH    "Build vendored cfMesh pybind11 module (third_party/cfmesh)" ON)
 
 # ── Paths to cloned repos (define first — used by subdirectory builds) ───────
 set(CINOLIB_DIR     "/tmp/hexmesh_build/cinolib"                    CACHE PATH "")
@@ -146,5 +147,19 @@ if(BUILD_FTETWILD AND EXISTS "${FTETWILD_SRC_DIR}/CMakeLists.txt")
 else()
   if(BUILD_FTETWILD)
     message(STATUS "ftetwild: '${FTETWILD_SRC_DIR}' not found — skipping.")
+  endif()
+endif()
+
+# ── cfmesh_native module (vendored, GPL-3) ──────────────────────────────────
+set(CFMESH_SRC_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/cfmesh" CACHE PATH "")
+if(BUILD_CFMESH AND EXISTS "${CFMESH_SRC_DIR}/CMakeLists.txt")
+  message(STATUS "cfmesh_native: binding vendored cfMesh from '${CFMESH_SRC_DIR}'")
+  find_package(Threads REQUIRED)
+  pybind11_add_module(cfmesh_native cfmesh_bind.cpp)
+  target_link_libraries(cfmesh_native PRIVATE Threads::Threads)
+  target_compile_options(cfmesh_native PRIVATE -O2 -w)
+else()
+  if(BUILD_CFMESH)
+    message(STATUS "cfmesh_native: '${CFMESH_SRC_DIR}' not found — skipping.")
   endif()
 endif()
