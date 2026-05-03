@@ -114,6 +114,8 @@ def generate_native_tet(
     smooth_iterations: int = 2,
     smooth_relax: float = 0.5,
     # beta160 Phase F — BSP constrained triangle insertion (opt-in fallback).
+    # BETA2826 (B-1) — env AUTO_TESSELL_NATIVE_FTETWILD_MODE 자동 활성:
+    #   wildmesh-parity 정렬 모드에서 BSP insertion + envelope-aware ops 강제.
     enable_bsp_insertion: bool = False,
     bsp_max_inserts_per_triangle: int = 50,
     # beta630 — edge recovery (opt-in; draft 기본 경로 비활성화 해 성능 유지).
@@ -640,10 +642,23 @@ def generate_native_tet(
     except Exception:
         pass
 
+    # BETA2826 (B-1) — fTetWild-mode 자동 활성: wildmesh density alignment
+    # 모드에선 BSP insertion + envelope-aware ops 강제 ON. 이미 사용자가 명시
+    # 활성한 경우 그대로 유지.
+    _ftetwild_mode = (
+        os.environ.get("AUTO_TESSELL_NATIVE_FTETWILD_MODE", "0") == "1"
+        or os.environ.get("AUTO_TESSELL_NATIVE_WILDMESH_DENSITY", "0") == "1"
+    )
+    if _ftetwild_mode:
+        if not enable_bsp_insertion:
+            enable_bsp_insertion = True
+            log.info("native_tet_ftetwild_mode_bsp_force", source="env")
+
     log.info(
         "native_tet_start",
         n_surf_verts=V.shape[0], n_surf_faces=F.shape[0],
         bbox_diag=diag, target_edge_length=float(target_edge_length),
+        ftetwild_mode=bool(_ftetwild_mode),
     )
 
     # 1) 시드 = 표면 vertex + 내부 uniform grid
