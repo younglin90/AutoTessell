@@ -584,20 +584,22 @@ class TierSelector:
             return "tier0_2d_meshpy", "thin_wall_detected"
 
         # ── Open boundary 감지 (모든 quality level)
-        # Open boundary는 전처리 강화 필요 → TetWild 우선 (L2/L3 후처리 안정성)
+        # BETA2835 — open boundary 도 vendored fTetWild (tier_wildmesh) 우선.
+        # tier2_tetwild 는 외부 PyPI 의존, tier_wildmesh 는 in-tree binding.
         if not is_watertight and not is_cad:
             log.debug(
                 "tier_decision",
                 reason="open_boundary_detected",
-                tier="tier2_tetwild",
-                note="L2/L3 전처리 권장",
+                tier="tier_wildmesh",
+                note="vendored fTetWild + L2/L3 전처리 권장",
             )
-            return "tier2_tetwild", "open_boundary_detected"
+            return "tier_wildmesh", "open_boundary_detected"
 
         # ── draft ─────────────────────────────────────────────────────
         if quality_level == QualityLevel.DRAFT.value:
-            log.debug("tier_decision", reason="draft_quality", tier="tier2_tetwild")
-            return "tier2_tetwild", "draft_quality"
+            # BETA2835 — auto+draft 도 vendored fTetWild 사용.
+            log.debug("tier_decision", reason="draft_quality", tier="tier_wildmesh")
+            return "tier_wildmesh", "draft_quality"
 
         # ── fine ──────────────────────────────────────────────────────
         if quality_level == QualityLevel.FINE.value:

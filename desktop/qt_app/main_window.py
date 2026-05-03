@@ -465,7 +465,11 @@ class AutoTessellWindow:  # type: ignore[misc]
         self._log_edit: object | None = None
         self._mesh_type_cards: dict[str, object] = {}
         # v0.4: 사용자가 선택한 메쉬 대분류 (auto/tet/hex_dominant/poly)
-        self._mesh_type: str = "auto"
+        # BETA2835 — default "auto" → "tet". auto path 의 legacy auto_select 가
+        # tier2_tetwild (외부 PyPI) 우선 선택하던 문제 회피. tet 명시 시
+        # _MESH_TYPE_TIER_MAP["tet"]["draft"] 의 tier_wildmesh primary 가
+        # 적용되어 vendored fTetWild binding (BETA2834) 직접 사용.
+        self._mesh_type: str = "tet"
         # v0.4: Evaluator FAIL 시 자동 재시도 모드 (off/once/continue)
         self._auto_retry: str = "off"
         self._pipeline_step_labels: list[object] = []
